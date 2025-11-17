@@ -53,6 +53,40 @@ TEST_F(TimeSeriesTest, Create) {
   EXPECT_EQ(s.ToString(), "Invalid argument: key already exists");
 }
 
+TEST_F(TimeSeriesTest, Alter) {
+  redis::TSCreateOption option;
+  option.retention_time = 3600;
+  option.chunk_size = 1024;
+  option.labels = {{"type", "runtime"}, {"compiler", "gcc"}, {"machine", "Linux"}};
+  key_ = "pa";
+  auto s = ts_db_->Create(*ctx_, key_, option);
+  EXPECT_TRUE(s.ok());
+
+  option.retention_time = 200;
+  s = ts_db_->Alter(*ctx_, key_, option, 1);
+  EXPECT_TRUE(s.ok());
+
+  redis::TSInfoResult res;
+  s = ts_db_->Info(*ctx_, key_, &res);
+  EXPECT_EQ(res.metadata.retention_time, 200);
+  EXPECT_EQ(res.metadata.chunk_size, 1024);
+  EXPECT_EQ(res.labels.size(), 3);
+
+  option.labels = {{"version", "123"}};
+  s = ts_db_->Alter(*ctx_, key_, option, (1 << 4));
+  s = ts_db_->Info(*ctx_, key_, &res);
+  EXPECT_EQ(res.metadata.retention_time, 200);
+  EXPECT_EQ(res.metadata.chunk_size, 1024);
+  EXPECT_EQ(res.labels.size(), 1);
+  EXPECT_EQ(res.labels[0].k, "version");
+  EXPECT_EQ(res.labels[0].v, "123");
+
+  key_ = "pavni";
+  s = ts_db_->Alter(*ctx_, key_, option, 1);
+  EXPECT_FALSE(s.ok());
+  EXPECT_EQ(s.ToString(), "Invalid argument: key not exists");
+}
+
 TEST_F(TimeSeriesTest, Add) {
   redis::TSCreateOption option;
   option.retention_time = 3600;

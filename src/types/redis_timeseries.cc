@@ -1860,6 +1860,54 @@ rocksdb::Status TimeSeries::Create(engine::Context &ctx, const Slice &user_key, 
   return createTimeSeries(ctx, ns_key, &metadata, &option);
 }
 
+rocksdb::Status TimeSeries::Alter(engine::Context &ctx, const Slice &user_key, const TSCreateOption &option,
+                                  uint8_t mask) {
+  std::string ns_key = AppendNamespacePrefix(user_key);
+  TimeSeriesMetadata metadata;
+  if (auto s = getTimeSeriesMetadata(ctx, ns_key, &metadata); !s.ok()) {
+    return rocksdb::Status::InvalidArgument("key not exists");
+  }
+  auto batch = storage_->GetWriteBatchBase();
+  WriteBatchLogData log_data(kRedisTimeSeries, {"Alter"});
+  if (auto s = batch->PutLogData(log_data.Encode()); !s.ok()) return s;
+
+  // LSB 0 - retention time, LSB 1 - chunk size, LSB 2 - duplicate policy, LSB 4 - Labels
+  metadata.retention_time = (mask & 1) ? option.retention_time : metadata.retention_time;
+  metadata.chunk_size = (mask & (1 << 1)) ? option.chunk_size : metadata.chunk_size;
+  metadata.duplicate_policy = (mask & (1 << 2)) ? option.duplicate_policy : metadata.duplicate_policy;
+
+  std::string bytes;
+  metadata.Encode(&bytes);
+  if (auto s = batch->Put(metadata_cf_handle_, ns_key, bytes); !s.ok()) return s;
+
+  if (mask & (1 << 4)) {
+    // Delete reverse indexes and labels first.
+    LabelKVList prev_labels;
+    if (auto s = getLabelKVList(ctx, ns_key, metadata, &prev_labels); !s.ok()) return s;
+
+    auto [ns, user_key] = ExtractNamespaceKey(ns_key, storage_->IsSlotIdEncoded());
+    for (const auto &label : prev_labels) {
+      auto rev_index_key = TSRevLabelKey(ns, label.k, label.v, user_key).Encode();
+      if (auto s = batch->Delete(index_cf_handle_, rev_index_key); !s.ok()) return s;
+
+      auto it = std::find_if(option.labels.begin(), option.labels.end(),
+                             [&label](const auto &kv) { return label.k == kv.k; });
+      if (it == option.labels.end()) {
+        auto internal_key = internalKeyFromLabelKey(ns_key, metadata, label.k);
+        if (auto s = batch->Delete(internal_key); !s.ok()) return s;
+      }
+    }
+    for (const auto &kv : option.labels) {
+      auto internal_key = internalKeyFromLabelKey(ns_key, metadata, kv.k);
+      if (auto s = batch->Put(internal_key, kv.v); !s.ok()) return s;
+
+      auto rev_index_key = TSRevLabelKey(ns, kv.k, kv.v, user_key).Encode();
+      if (auto s = batch->Put(index_cf_handle_, rev_index_key, Slice()); !s.ok()) return s;
+    }
+  }
+  return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+}
+
 rocksdb::Status TimeSeries::Add(engine::Context &ctx, const Slice &user_key, TSSample sample,
                                 const TSCreateOption &option, AddResult *res, const DuplicatePolicy *on_dup_policy) {
   std::string ns_key = AppendNamespacePrefix(user_key);

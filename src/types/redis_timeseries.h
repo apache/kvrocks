@@ -267,6 +267,7 @@ class TimeSeries : public SubKeyScanner {
   TimeSeries(engine::Storage *storage, const std::string &ns)
       : SubKeyScanner(storage, ns), index_cf_handle_(storage->GetCFHandle(ColumnFamilyID::Index)) {}
   rocksdb::Status Create(engine::Context &ctx, const Slice &user_key, const TSCreateOption &option);
+  rocksdb::Status Alter(engine::Context &ctx, const Slice &user_key, const TSCreateOption &option, uint8_t mask);
   rocksdb::Status Add(engine::Context &ctx, const Slice &user_key, TSSample sample, const TSCreateOption &option,
                       AddResult *res, const DuplicatePolicy *on_dup_policy = nullptr);
   rocksdb::Status MAdd(engine::Context &ctx, const Slice &user_key, std::vector<TSSample> samples,

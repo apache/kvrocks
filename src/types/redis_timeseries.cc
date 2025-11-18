@@ -88,7 +88,7 @@ std::vector<TSSample> AggregateSamplesByRangeOption(std::vector<TSSample> sample
   const auto &aggregator = option.aggregator;
   // Retrieve prev_sample and next_sample from samples
   TSSample prev_sample, next_sample;
-  bool is_twa_aggregator = aggregator.type == TSAggregatorType::TWA, prev_available, next_available;
+  bool is_twa_aggregator = aggregator.type == TSAggregatorType::TWA, prev_available = false, next_available = false;
   if (is_twa_aggregator) {
     const bool discard_boundaries = !option.filter_by_ts.empty() || option.filter_by_value.has_value();
     next_sample = samples.back();

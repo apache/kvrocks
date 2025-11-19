@@ -253,6 +253,14 @@ enum class TSCreateRuleResult : uint8_t {
   kSrcEqDst = 6,
 };
 
+enum class TSAlterMode : uint8_t {
+  RETENTION = 1,
+  CHUNK_SIZE = 1 << 1,
+  DUPLICATE_POLICY = 1 << 2,
+  IGNORE = 1 << 3,
+  LABELS = 1 << 4,
+};
+
 std::vector<TSSample> GroupSamplesAndReduce(const std::vector<std::vector<TSSample>> &all_samples,
                                             TSMRangeOption::GroupReducerType reducer_type);
 

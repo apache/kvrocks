@@ -365,23 +365,24 @@ class CommandTSAlter : public CommandTSCreateBase {
   }
 
  private:
-  uint8_t mask_ = 0;  // Bitmask, LSB 0 - retention time, LSB 1 - chunk size, LSB 2 - duplicate policy, LSB 4 - Labels
+  uint8_t mask_ = 0;
 
   void registerDefaultHandlers() override {
+    using AlterMode = std::underlying_type<TSAlterMode>::type;
     registerHandler("RETENTION", [this](TSOptionsParser &parser) {
-      mask_ |= 1;
+      mask_ |= static_cast<AlterMode>(TSAlterMode::RETENTION);
       return handleRetention(parser, create_option_.retention_time);
     });
     registerHandler("CHUNK_SIZE", [this](TSOptionsParser &parser) {
-      mask_ |= (1 << 1);
+      mask_ |= static_cast<AlterMode>(TSAlterMode::CHUNK_SIZE);
       return handleChunkSize(parser, create_option_.chunk_size);
     });
     registerHandler("DUPLICATE_POLICY", [this](TSOptionsParser &parser) {
-      mask_ |= (1 << 2);
+      mask_ |= static_cast<AlterMode>(TSAlterMode::DUPLICATE_POLICY);
       return handleDuplicatePolicy(parser, create_option_.duplicate_policy);
     });
     registerHandler("LABELS", [this](TSOptionsParser &parser) {
-      mask_ |= (1 << 4);
+      mask_ |= static_cast<AlterMode>(TSAlterMode::LABELS);
       return handleLabels(parser, create_option_.labels);
     });
   }

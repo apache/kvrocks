@@ -420,7 +420,8 @@ class TopKMetadata : public Metadata {
 
   explicit TopKMetadata(bool generate_version = true) : Metadata(kRedisTopK, generate_version) {}
 
-  explicit TopKMetadata(uint64_t top_k, uint64_t width = 7, uint64_t depth = 8, double decay = 0.9, bool generate_version = true)
+  explicit TopKMetadata(uint64_t top_k, uint64_t width = 7, uint64_t depth = 8, double decay = 0.9,
+                        bool generate_version = true)
       : Metadata(kRedisTopK, generate_version), top_k(top_k), width(width), depth(depth), decay(decay) {}
 
   void Encode(std::string *dst) const override;

@@ -172,7 +172,7 @@ struct DoubleComparator {
 };
 
 template <typename TD, bool Reverse>
-inline Status TDigestRankImpl(TD&& td, const std::vector<double>& inputs, std::vector<int>& result) {
+inline Status TDigestRank(TD&& td, const std::vector<double>& inputs, std::vector<int>& result) {
   std::map<double, size_t, DoubleComparator> value_to_index;
   for (size_t i = 0; i < inputs.size(); ++i) {
     value_to_index[inputs[i]] = i;
@@ -266,13 +266,4 @@ inline Status TDigestRankImpl(TD&& td, const std::vector<double>& inputs, std::v
     }
   }
   return Status::OK();
-}
-
-template <typename TD>
-inline Status TDigestRank(TD&& td, const std::vector<double>& inputs, bool reverse, std::vector<int>& result) {
-  if (reverse) {
-    return TDigestRankImpl<TD, true>(std::forward<TD>(td), inputs, result);
-  } else {
-    return TDigestRankImpl<TD, false>(std::forward<TD>(td), inputs, result);
-  }
 }

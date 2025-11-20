@@ -110,7 +110,7 @@ TEST_F(RedisTopKTest, TestTopKAddAndQuery) {
   // heap is full, need remove values1.
   for (size_t i = 0; i < values2.size(); ++i) {
     bool found = false;
-    // due to decay, topk is possiable to remove values1.
+    // due to decay, topk is possible to remove values1.
     while (!found) {
       top_k_->Add(*ctx_, key_, values2[i]);
       top_k_->Query(*ctx_, key_, values2[i], &found);

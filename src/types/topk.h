@@ -88,7 +88,7 @@ class BlockSplitTopK {
   uint32_t depth;
   double decay;
 
-  size_t heap_size;
+  int heap_size;
 
   Bucket *buckets;
   HeapBucket *heap;

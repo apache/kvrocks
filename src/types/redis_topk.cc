@@ -175,7 +175,7 @@ rocksdb::Status TopK::getTopKData(engine::Context &ctx, const Slice &ns_key, con
         memcpy(topk->heap[j].item, hb_value.data(), hb_value.size());
       }
     } else {
-      topk->heap_size = static_cast<uint32_t>(std::stoul(pinnable_value.data()));
+      topk->heap_size = static_cast<int>(std::stoul(pinnable_value.data()));
     }
   }
   return rocksdb::Status::OK();

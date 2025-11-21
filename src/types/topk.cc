@@ -162,7 +162,7 @@ void BlockSplitTopK::HeapifyUp(int start) const {
 int BlockSplitTopK::CheckExistInHeap(const std::string &item) const {
   uint32_t itemlen = item.size();
   const char *data = item.c_str();
-  for (int i = (int)heap_size - 1; i >= 0; --i) {
+  for (int i = heap_size - 1; i >= 0; --i) {
     if (heap[i].itemlen == itemlen && memcmp(heap[i].item, data, itemlen) == 0) {
       return i;
     }
@@ -218,7 +218,7 @@ void BlockSplitTopK::Add(const std::string &item, uint32_t increment) {
     }
   }
 
-  if (k == heap_size) {
+  if (k == (uint32_t)heap_size) {
     if (location == -1) {
       if (heap[0].count == max_count || heap[0].count + 1 == max_count) {
         heap[0].fp = fp;
@@ -251,7 +251,7 @@ bool BlockSplitTopK::Query(const std::string &item) const { return CheckExistInH
 
 std::vector<HeapBucket> BlockSplitTopK::List() {
   std::vector<HeapBucket> result(heap_size);
-  for (uint32_t i = 0; i < heap_size; i++) {
+  for (int i = 0; i < heap_size; i++) {
     result[i] = heap[i];
   }
   std::sort(result.begin(), result.end(),

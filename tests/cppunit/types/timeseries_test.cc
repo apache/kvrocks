@@ -123,7 +123,6 @@ TEST_F(TimeSeriesTest, Alter) {
   EXPECT_TRUE(ts_db_->QueryIndex(*ctx_, filters, &query_res).ok());
   EXPECT_TRUE(query_res.empty());
 
-
   key_ = "pavni";
   auto s = ts_db_->Alter(*ctx_, key_, option, 1);
   EXPECT_FALSE(s.ok());

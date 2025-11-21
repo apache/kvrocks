@@ -315,7 +315,6 @@ class CommandTSCreateBase : public KeywordCommandBase {
     return Status::OK();
   }
 
-  //  private:
   TSCreateOption create_option_;
 };
 

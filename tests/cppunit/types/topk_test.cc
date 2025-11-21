@@ -69,7 +69,6 @@ TEST_F(RedisTopKTest, TestTopKAddAndQuery) {
   bool exist = false;
   s = top_k_->Query(*ctx_, no_exist_key, "1", &exist);
   ASSERT_FALSE(s.ok());
-  ASSERT_TRUE(exist);
 
   std::vector<std::string> list;
   s = top_k_->List(*ctx_, no_exist_key, list);

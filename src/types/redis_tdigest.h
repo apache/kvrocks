@@ -197,7 +197,7 @@ class TDigest : public SubKeyScanner {
 
   rocksdb::Status Merge(engine::Context& ctx, const Slice& dest_digest, const std::vector<std::string>& source_digests,
                         const TDigestMergeOptions& options);
-  template <bool reverse>
+  template <bool Reverse>
   rocksdb::Status Rank(engine::Context& ctx, const Slice& digest_name, const std::vector<double>& inputs,
                        std::vector<int>& result);
   rocksdb::Status GetMetaData(engine::Context& context, const Slice& digest_name, TDigestMetadata* metadata);
@@ -253,7 +253,7 @@ class TDigest : public SubKeyScanner {
                                              Centroid* centroid) const;
 };
 
-template <bool reverse>
+template <bool Reverse>
 rocksdb::Status TDigest::Rank(engine::Context& ctx, const Slice& digest_name, const std::vector<double>& inputs,
                               std::vector<int>& result) {
   auto ns_key = AppendNamespacePrefix(digest_name);
@@ -281,7 +281,7 @@ rocksdb::Status TDigest::Rank(engine::Context& ctx, const Slice& digest_name, co
   }
 
   auto dump_centroids = DummyCentroids(metadata, centroids);
-  auto status = TDigestRank<DummyCentroids&, reverse>(dump_centroids, inputs, result);
+  auto status = TDigestRank<DummyCentroids&, Reverse>(dump_centroids, inputs, result);
   if (!status) {
     return rocksdb::Status::InvalidArgument(status.Msg());
   }

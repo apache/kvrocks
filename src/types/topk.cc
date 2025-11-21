@@ -26,9 +26,6 @@
 #include <cstring>
 #include <memory>
 
-#define TOPK_HASH(item, itemlen, i) MurmurHash2(item, itemlen, i)
-#define GA 1919
-
 //-----------------------------------------------------------------------------
 // MurmurHash2 was written by Austin Appleby, and is placed in the public
 // domain. The author hereby disclaims copyright to this source code.
@@ -43,7 +40,6 @@
 // 1. It will not work incrementally.
 // 2. It will not produce the same results on little-endian and big-endian
 //    machines.
-#define BIG_CONSTANT(x) (x##LLU)
 
 //-----------------------------------------------------------------------------
 
@@ -60,7 +56,7 @@ static uint32_t MurmurHash2(const void *key, int len, uint32_t seed) {
 
   // Mix 4 bytes at a time into the hash
 
-  const unsigned char *data = (const unsigned char *)key;
+  auto *data = reinterpret_cast<const unsigned char *>(key);
 
   while (len >= 4) {
     uint32_t k = *(uint32_t *)data;
@@ -98,129 +94,12 @@ static uint32_t MurmurHash2(const void *key, int len, uint32_t seed) {
   return h;
 }
 
-//-----------------------------------------------------------------------------
-// MurmurHash2, 64-bit versions, by Austin Appleby
-
-// The same caveats as 32-bit MurmurHash2 apply here - beware of alignment
-// and endian-ness issues if used across multiple platforms.
-
-// 64-bit hash for 64-bit platforms
-
-[[maybe_unused]] static uint64_t MurmurHash64A_Bloom(const void *key, int len, uint64_t seed) {
-  const uint64_t m = BIG_CONSTANT(0xc6a4a7935bd1e995);
-  const int r = 47;
-
-  uint64_t h = seed ^ (len * m);
-
-  const uint64_t *data = (const uint64_t *)key;
-  const uint64_t *end = data + (len / 8);
-
-  while (data != end) {
-    uint64_t k = *data++;
-
-    k *= m;
-    k ^= k >> r;
-    k *= m;
-
-    h ^= k;
-    h *= m;
-  }
-
-  const unsigned char *data2 = (const unsigned char *)data;
-
-  switch (len & 7) {
-    case 7:
-      h ^= ((uint64_t)data2[6]) << 48;
-    case 6:
-      h ^= ((uint64_t)data2[5]) << 40;
-    case 5:
-      h ^= ((uint64_t)data2[4]) << 32;
-    case 4:
-      h ^= ((uint64_t)data2[3]) << 24;
-    case 3:
-      h ^= ((uint64_t)data2[2]) << 16;
-    case 2:
-      h ^= ((uint64_t)data2[1]) << 8;
-    case 1:
-      h ^= ((uint64_t)data2[0]);
-      h *= m;
-  };
-
-  h ^= h >> r;
-  h *= m;
-  h ^= h >> r;
-
-  return h;
-}
-
-// 64-bit hash for 32-bit platforms
-
-[[maybe_unused]] static uint64_t MurmurHash64B(const void *key, int len, uint64_t seed) {
-  const uint32_t m = 0x5bd1e995;
-  const int r = 24;
-
-  uint32_t h1 = (uint32_t)(seed ^ len);
-  uint32_t h2 = (uint32_t)(seed >> 32);
-
-  const uint32_t *data = (const uint32_t *)key;
-
-  while (len >= 8) {
-    uint32_t k1 = *data++;
-    k1 *= m;
-    k1 ^= k1 >> r;
-    k1 *= m;
-    h1 *= m;
-    h1 ^= k1;
-    len -= 4;
-
-    uint32_t k2 = *data++;
-    k2 *= m;
-    k2 ^= k2 >> r;
-    k2 *= m;
-    h2 *= m;
-    h2 ^= k2;
-    len -= 4;
-  }
-
-  if (len >= 4) {
-    uint32_t k1 = *data++;
-    k1 *= m;
-    k1 ^= k1 >> r;
-    k1 *= m;
-    h1 *= m;
-    h1 ^= k1;
-    len -= 4;
-  }
-
-  switch (len) {
-    case 3:
-      h2 ^= ((unsigned char *)data)[2] << 16;
-    case 2:
-      h2 ^= ((unsigned char *)data)[1] << 8;
-    case 1:
-      h2 ^= ((unsigned char *)data)[0];
-      h2 *= m;
-  };
-
-  h1 ^= h2 >> 18;
-  h1 *= m;
-  h2 ^= h1 >> 22;
-  h2 *= m;
-  h1 ^= h2 >> 17;
-  h1 *= m;
-  h2 ^= h1 >> 19;
-  h2 *= m;
-
-  uint64_t h = h1;
-
-  h = (h << 32) | h2;
-
-  return h;
-}
+static uint32_t TopkHash(const void *item, int itemlen, uint32_t i) { return MurmurHash2(item, itemlen, i); }
+constexpr uint32_t GA = 1919;
 
 /* ---------------------------------------------------------------------- */
-void BlockSplitTopK::heapifyDown(int start) {
-  size_t child = start;
+void BlockSplitTopK::HeapifyDown(int start) const {
+  int child = start;
 
   // check whether larger than children
   if (heap_size < 2 || (heap_size - 2) / 2 < child) {
@@ -253,8 +132,8 @@ void BlockSplitTopK::heapifyDown(int start) {
   memcpy(&heap[start], &top, sizeof(HeapBucket));
 }
 
-void BlockSplitTopK::heapifyUp(int start) {
-  size_t parent = start;
+void BlockSplitTopK::HeapifyUp(int start) const {
+  int parent = start;
 
   // check whether smaller than parent
   if (heap_size < 2 || parent == 0) {
@@ -280,10 +159,10 @@ void BlockSplitTopK::heapifyUp(int start) {
   memcpy(&heap[start], &bottom, sizeof(HeapBucket));
 }
 
-int BlockSplitTopK::checkExistInHeap(const std::string &item) {
+int BlockSplitTopK::CheckExistInHeap(const std::string &item) const {
   uint32_t itemlen = item.size();
   const char *data = item.c_str();
-  for (int32_t i = heap_size - 1; i >= 0; --i) {
+  for (int i = (int)heap_size - 1; i >= 0; --i) {
     if (heap[i].itemlen == itemlen && memcmp(heap[i].item, data, itemlen) == 0) {
       return i;
     }
@@ -291,39 +170,39 @@ int BlockSplitTopK::checkExistInHeap(const std::string &item) {
   return -1;
 }
 
-int BlockSplitTopK::cmpHeapBucketCount(const HeapBucket &a, const HeapBucket &b) {
+int BlockSplitTopK::CmpHeapBucketCount(const HeapBucket &a, const HeapBucket &b) {
   return a.count < b.count ? 1 : a.count > b.count ? -1 : 0;
 }
 
 void BlockSplitTopK::Add(const std::string &item, uint32_t increment) {
   uint32_t itemlen = item.size();
   const char *data = item.c_str();
-  counter_t maxCount = 0;
-  uint32_t fp = TOPK_HASH(data, itemlen, GA);
+  CounterT max_count = 0;
+  uint32_t fp = TopkHash(data, (int)itemlen, GA);
 
-  int location = checkExistInHeap(item);
+  int location = CheckExistInHeap(item);
 
   for (size_t i = 0; i < depth; ++i) {
-    uint32_t loc = TOPK_HASH(data, itemlen, i) % width;
+    uint32_t loc = TopkHash(data, (int)itemlen, i) % width;
 
     loc += i * width;
     if (buckets[loc].count == 0) {
       buckets[loc].fp = fp;
       buckets[loc].count = increment;
-      maxCount = std::max(maxCount, buckets[loc].count);
+      max_count = std::max(max_count, buckets[loc].count);
     } else if (buckets[loc].fp == fp && location != -1) {
       buckets[loc].count += increment;
-      maxCount = std::max(maxCount, buckets[loc].count);
+      max_count = std::max(max_count, buckets[loc].count);
     } else {
       // decay
       uint32_t local_incr = increment;
       for (; local_incr > 0; --local_incr) {
-        double decay;
+        double decay = 0.0;
         if (buckets[loc].count < TOPK_DECAY_LOOKUP_TABLE) {
-          decay = lookupTable[buckets[loc].count];
+          decay = lookup_table[buckets[loc].count];
         } else {
-          decay = pow(lookupTable[TOPK_DECAY_LOOKUP_TABLE - 1], (buckets[loc].count / (TOPK_DECAY_LOOKUP_TABLE - 1))) *
-                  lookupTable[buckets[loc].count % (TOPK_DECAY_LOOKUP_TABLE - 1)];
+          decay = pow(lookup_table[TOPK_DECAY_LOOKUP_TABLE - 1], (buckets[loc].count / (TOPK_DECAY_LOOKUP_TABLE - 1))) *
+                  lookup_table[buckets[loc].count % (TOPK_DECAY_LOOKUP_TABLE - 1)];
         }
         double chance = rand() / (double)RAND_MAX;
         if (chance < decay) {
@@ -331,7 +210,7 @@ void BlockSplitTopK::Add(const std::string &item, uint32_t increment) {
           if (buckets[loc].count == 0) {
             buckets[loc].fp = fp;
             buckets[loc].count = 1;
-            maxCount = std::max(maxCount, buckets[loc].count);
+            max_count = std::max(max_count, buckets[loc].count);
             break;
           }
         }
@@ -341,34 +220,34 @@ void BlockSplitTopK::Add(const std::string &item, uint32_t increment) {
 
   if (k == heap_size) {
     if (location == -1) {
-      if (heap[0].count == maxCount || heap[0].count + 1 == maxCount) {
+      if (heap[0].count == max_count || heap[0].count + 1 == max_count) {
         heap[0].fp = fp;
         heap[0].itemlen = itemlen;
         delete heap[0].item;
         heap[0].item = new char[itemlen];
         memcpy(heap[0].item, data, itemlen);
 
-        heap[0].count = maxCount;
+        heap[0].count = max_count;
 
-        heapifyDown(0);
+        HeapifyDown(0);
       }
     } else {
       heap[location].count += increment;
-      heapifyDown(location);
+      HeapifyDown(location);
     }
   } else {
     heap[heap_size].fp = fp;
     heap[heap_size].itemlen = itemlen;
     heap[heap_size].item = new char[itemlen];
     memcpy(heap[heap_size].item, data, itemlen);
-    heap[heap_size].count = maxCount;
+    heap[heap_size].count = max_count;
 
-    heapifyUp(heap_size);
+    HeapifyUp((int)heap_size);
     heap_size++;
   }
 }
 
-bool BlockSplitTopK::Query(const std::string &item) { return checkExistInHeap(item) != -1; }
+bool BlockSplitTopK::Query(const std::string &item) const { return CheckExistInHeap(item) != -1; }
 
 std::vector<HeapBucket> BlockSplitTopK::List() {
   std::vector<HeapBucket> result(heap_size);
@@ -376,6 +255,6 @@ std::vector<HeapBucket> BlockSplitTopK::List() {
     result[i] = heap[i];
   }
   std::sort(result.begin(), result.end(),
-            [this](const HeapBucket &a, const HeapBucket &b) { return cmpHeapBucketCount(a, b) > 0; });
+            [this](const HeapBucket &a, const HeapBucket &b) { return CmpHeapBucketCount(a, b) > 0; });
   return result;
 }

@@ -29,31 +29,40 @@
 
 static constexpr int TOPK_DECAY_LOOKUP_TABLE = 256;
 
-using counter_t = uint32_t;
+using CounterT = uint32_t;
 
 struct HeapBucket {
   uint32_t fp;
   uint32_t itemlen;
   char *item;
-  counter_t count;
+  CounterT count;
 };
 
 struct Bucket {
   uint32_t fp;
-  counter_t count;
+  CounterT count;
 };
 
 class BlockSplitTopK {
  public:
   BlockSplitTopK() = delete;
+  BlockSplitTopK(const BlockSplitTopK &) = delete;
+  BlockSplitTopK &operator=(const BlockSplitTopK &) = delete;
+  BlockSplitTopK(BlockSplitTopK &&) = default;
+  BlockSplitTopK &operator=(BlockSplitTopK &&) = default;
+
   explicit BlockSplitTopK(uint32_t k, uint32_t width, uint32_t depth, double decay)
-      : k(k), width(width), depth(depth), decay(decay), heap_size(0) {
-    buckets = new Bucket[width * depth];
-    heap = new HeapBucket[k];
+      : k(k),
+        width(width),
+        depth(depth),
+        decay(decay),
+        heap_size(0),
+        buckets(new Bucket[width * depth]),
+        heap(new HeapBucket[k]) {
     std::fill_n(buckets, width * depth, Bucket{0, 0});
     std::fill_n(heap, k, HeapBucket{0, 0, nullptr, 0});
     for (int i = 0; i < TOPK_DECAY_LOOKUP_TABLE; ++i) {
-      lookupTable[i] = pow(decay, i);
+      lookup_table[i] = pow(decay, i);
     }
   }
 
@@ -66,13 +75,13 @@ class BlockSplitTopK {
   }
 
   void Add(const std::string &item, uint32_t increment);
-  bool Query(const std::string &item);
+  bool Query(const std::string &item) const;
   std::vector<HeapBucket> List();
 
-  void heapifyDown(int start);
-  void heapifyUp(int start);
-  int checkExistInHeap(const std::string &item);
-  int cmpHeapBucketCount(const HeapBucket &a, const HeapBucket &b);
+  void HeapifyDown(int start) const;
+  void HeapifyUp(int start) const;
+  int CheckExistInHeap(const std::string &item) const;
+  static int CmpHeapBucketCount(const HeapBucket &a, const HeapBucket &b);
 
   uint32_t k;
   uint32_t width;
@@ -83,5 +92,5 @@ class BlockSplitTopK {
 
   Bucket *buckets;
   HeapBucket *heap;
-  double lookupTable[TOPK_DECAY_LOOKUP_TABLE];
+  double lookup_table[TOPK_DECAY_LOOKUP_TABLE];
 };

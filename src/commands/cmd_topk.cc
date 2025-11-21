@@ -163,14 +163,13 @@ class CommandTopKInfo final : public Commander {
     CommandParser parser(args, 2);
     if (parser.Good()) {
       if (args.size() == 3) {
-        std::string type_str = args[2];
-        if (type_str == "topk") {
+        if (args[2] == "topk") {
           type_ = TopKInfoType::kTopK;
-        } else if (type_str == "width") {
+        } else if (args[2] == "width") {
           type_ = TopKInfoType::kWidth;
-        } else if (type_str == "depth") {
+        } else if (args[2] == "depth") {
           type_ = TopKInfoType::kDepth;
-        } else if (type_str == "decay") {
+        } else if (args[2] == "decay") {
           type_ = TopKInfoType::kDecay;
         } else {
           return {Status::InvalidArgument, "Invalid info type"};
@@ -227,12 +226,12 @@ class CommandTopKQuery final : public Commander {
     redis::TopK topk(srv->storage, conn->GetNamespace());
     CHECK(args_.size() == 3);
 
-    bool is_exists_;
-    auto s = topk.Query(ctx, args_[1], args_[2], &is_exists_);
+    bool is_exists = false;
+    auto s = topk.Query(ctx, args_[1], args_[2], &is_exists);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
-    *output = redis::Bool(redis::RESP::v2, is_exists_);
+    *output = redis::Bool(redis::RESP::v2, is_exists);
     return Status::OK();
   }
 };

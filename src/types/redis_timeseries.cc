@@ -1860,6 +1860,68 @@ rocksdb::Status TimeSeries::Create(engine::Context &ctx, const Slice &user_key, 
   return createTimeSeries(ctx, ns_key, &metadata, &option);
 }
 
+rocksdb::Status TimeSeries::Alter(engine::Context &ctx, const Slice &user_key, const TSCreateOption &option,
+                                  uint8_t mask) {
+  std::string ns_key = AppendNamespacePrefix(user_key);
+  TimeSeriesMetadata metadata;
+  if (auto s = getTimeSeriesMetadata(ctx, ns_key, &metadata); !s.ok()) {
+    return rocksdb::Status::InvalidArgument("key not exists");
+  }
+  auto batch = storage_->GetWriteBatchBase();
+  WriteBatchLogData log_data(kRedisTimeSeries, {"Alter"});
+  if (auto s = batch->PutLogData(log_data.Encode()); !s.ok()) return s;
+
+  using AlterMode = std::underlying_type<TSAlterMode>::type;
+  bool update_retention = mask & static_cast<AlterMode>(TSAlterMode::RETENTION);
+  bool update_chunk_size = mask & static_cast<AlterMode>(TSAlterMode::CHUNK_SIZE);
+  bool update_duplicate_policy = mask & static_cast<AlterMode>(TSAlterMode::DUPLICATE_POLICY);
+  bool update_labels = mask & static_cast<AlterMode>(TSAlterMode::LABELS);
+
+  if (update_retention || update_chunk_size || update_duplicate_policy) {
+    metadata.retention_time = update_retention ? option.retention_time : metadata.retention_time;
+    metadata.chunk_size = update_chunk_size ? option.chunk_size : metadata.chunk_size;
+    metadata.duplicate_policy = update_duplicate_policy ? option.duplicate_policy : metadata.duplicate_policy;
+    std::string bytes;
+    metadata.Encode(&bytes);
+    if (auto s = batch->Put(metadata_cf_handle_, ns_key, bytes); !s.ok()) return s;
+  }
+  if (update_labels) {
+    LabelKVList prev_labels;
+    if (auto s = getLabelKVList(ctx, ns_key, metadata, &prev_labels); !s.ok()) return s;
+
+    std::unordered_map<std::string, std::pair<std::string, bool>> labels_map;  // True : (key,val) should be updated
+    for (auto &label : option.labels) {
+      labels_map.insert(std::make_pair(label.k, std::make_pair(label.v, true)));
+    }
+    for (auto &label : prev_labels) {
+      if (auto it = labels_map.find(label.k); it != labels_map.end()) {
+        it->second.second = it->second.first != label.v;
+        if (it->second.second) {  // Remove reverse index key. Val is updated later.
+          auto rev_index_key = TSRevLabelKey(namespace_, label.k, label.v, user_key).Encode();
+          if (auto s = batch->Delete(index_cf_handle_, rev_index_key); !s.ok()) return s;
+        }  // Else key-val pair unchanged
+      } else {  // Remove label.
+        auto internal_key = internalKeyFromLabelKey(ns_key, metadata, label.k);
+        if (auto s = batch->Delete(internal_key); !s.ok()) return s;
+
+        auto rev_index_key = TSRevLabelKey(namespace_, label.k, label.v, user_key).Encode();
+        if (auto s = batch->Delete(index_cf_handle_, rev_index_key); !s.ok()) return s;
+      }
+    }
+
+    for (auto &[k, v] : labels_map) {
+      if (v.second) {  // Update label and insert reverse-index
+        auto internal_key = internalKeyFromLabelKey(ns_key, metadata, k);
+        if (auto s = batch->Put(internal_key, v.first); !s.ok()) return s;
+
+        auto rev_index_key = TSRevLabelKey(namespace_, k, v.first, user_key).Encode();
+        if (auto s = batch->Put(index_cf_handle_, rev_index_key, Slice()); !s.ok()) return s;
+      }
+    }
+  }
+  return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+}
+
 rocksdb::Status TimeSeries::Add(engine::Context &ctx, const Slice &user_key, TSSample sample,
                                 const TSCreateOption &option, AddResult *res, const DuplicatePolicy *on_dup_policy) {
   std::string ns_key = AppendNamespacePrefix(user_key);

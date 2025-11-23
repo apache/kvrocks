@@ -179,7 +179,7 @@ rocksdb::Status TDigest::Quantile(engine::Context& ctx, const Slice& digest_name
     return status;
   }
 
-  auto dump_centroids = DummyCentroids(metadata, centroids);
+  auto dump_centroids = DummyCentroids<false>(metadata, centroids);
 
   auto quantile_results = std::vector<double>();
   quantile_results.reserve(qs.size());

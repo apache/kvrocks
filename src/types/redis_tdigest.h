@@ -35,113 +35,102 @@
 namespace redis {
 
 // TODO: It should be replaced by a iteration of the rocksdb iterator
+template <bool Reverse>
 class DummyCentroids {
  public:
-  class BaseIterator {
-   public:
-    virtual ~BaseIterator() = default;
-    virtual bool Next() = 0;
-    virtual bool Prev() = 0;
-    virtual bool Valid() const = 0;
-    virtual std::unique_ptr<BaseIterator> Clone() const = 0;
-    virtual StatusOr<Centroid> GetCentroid() const = 0;
-  };
-
   DummyCentroids(const TDigestMetadata& meta_data, const std::vector<Centroid>& centroids)
       : meta_data_(meta_data), centroids_(centroids) {}
-  class Iterator : public BaseIterator {
+  class Iterator {
    public:
-    Iterator(std::vector<Centroid>::const_iterator&& iter, const std::vector<Centroid>& centroids)
-        : iter_(iter), centroids_(centroids) {}
-    std::unique_ptr<BaseIterator> Clone() const override {
-      if (iter_ != centroids_.cend()) {
-        return std::make_unique<Iterator>(std::next(centroids_.cbegin(), std::distance(centroids_.cbegin(), iter_)),
-                                          centroids_);
+    using IterType = std::conditional_t<Reverse, std::vector<Centroid>::const_reverse_iterator,
+                                        std::vector<Centroid>::const_iterator>;
+
+    Iterator(IterType iter, const std::vector<Centroid>& centroids) : iter_(iter), centroids_(centroids) {}
+    std::unique_ptr<Iterator> Clone() const {
+      if constexpr (Reverse) {
+        if (iter_ != centroids_.crend()) {
+          return std::make_unique<Iterator>(std::next(centroids_.crbegin(), std::distance(centroids_.crbegin(), iter_)),
+                                            centroids_);
+        }
+        return std::make_unique<Iterator>(centroids_.crend(), centroids_);
+      } else {
+        if (iter_ != centroids_.cend()) {
+          return std::make_unique<Iterator>(std::next(centroids_.cbegin(), std::distance(centroids_.cbegin(), iter_)),
+                                            centroids_);
+        }
+        return std::make_unique<Iterator>(centroids_.cend(), centroids_);
       }
-      return std::make_unique<Iterator>(centroids_.cend(), centroids_);
     }
-    bool Next() override {
+    bool Next() {
       if (Valid()) {
         std::advance(iter_, 1);
       }
-      return iter_ != centroids_.cend();
+      if constexpr (Reverse) {
+        return iter_ != centroids_.crend();
+      } else {
+        return iter_ != centroids_.cend();
+      }
     }
 
     // The Prev function can only be called for item is not cend,
     // because we must guarantee the iterator to be inside the valid range before iteration.
-    bool Prev() override {
-      if (Valid() && iter_ != centroids_.cbegin()) {
-        std::advance(iter_, -1);
+    bool Prev() {
+      if constexpr (Reverse) {
+        if (Valid() && iter_ != centroids_.crbegin()) {
+          std::advance(iter_, -1);
+        }
+      } else {
+        if (Valid() && iter_ != centroids_.cbegin()) {
+          std::advance(iter_, -1);
+        }
       }
       return Valid();
     }
-    bool Valid() const override { return iter_ != centroids_.cend(); }
-    StatusOr<Centroid> GetCentroid() const override {
-      if (iter_ == centroids_.cend()) {
-        return {::Status::NotOK, "invalid iterator during decoding tdigest centroid"};
+    bool Valid() const {
+      if constexpr (Reverse) {
+        return iter_ != centroids_.crend();
+      } else {
+        return iter_ != centroids_.cend();
+      }
+    }
+    StatusOr<Centroid> GetCentroid() const {
+      if constexpr (Reverse) {
+        if (iter_ == centroids_.crend()) {
+          return {::Status::NotOK, "invalid iterator during decoding tdigest centroid"};
+        }
+      } else {
+        if (iter_ == centroids_.cend()) {
+          return {::Status::NotOK, "invalid iterator during decoding tdigest centroid"};
+        }
       }
       return *iter_;
     }
 
    private:
-    std::vector<Centroid>::const_iterator iter_;
+    IterType iter_;
     const std::vector<Centroid>& centroids_;
   };
 
-  class ReverseIterator final : public BaseIterator {
-   public:
-    ReverseIterator(std::vector<Centroid>::const_reverse_iterator&& iter, const std::vector<Centroid>& centroids)
-        : iter_(iter), centroids_(centroids) {}
-    std::unique_ptr<BaseIterator> Clone() const override {
-      if (iter_ != centroids_.crend()) {
-        return std::make_unique<ReverseIterator>(
-            std::next(centroids_.crbegin(), std::distance(centroids_.crbegin(), iter_)), centroids_);
-      }
-      return std::make_unique<ReverseIterator>(centroids_.crend(), centroids_);
+  std::unique_ptr<Iterator> Begin() const {
+    if constexpr (Reverse) {
+      return std::make_unique<Iterator>(centroids_.crbegin(), centroids_);
+    } else {
+      return std::make_unique<Iterator>(centroids_.cbegin(), centroids_);
     }
-    bool Next() override {
-      if (Valid()) {
-        std::advance(iter_, 1);
-      }
-      return iter_ != centroids_.crend();
-    }
-
-    bool Prev() override {
-      if (Valid() && iter_ != centroids_.crbegin()) {
-        std::advance(iter_, -1);
-      }
-      return Valid();
-    }
-    bool Valid() const override { return iter_ != centroids_.crend(); }
-    StatusOr<Centroid> GetCentroid() const override {
-      if (iter_ == centroids_.crend()) {
-        return {::Status::NotOK, "invalid iterator during decoding tdigest centroid"};
-      }
-      return *iter_;
-    }
-
-   private:
-    std::vector<Centroid>::const_reverse_iterator iter_;
-    const std::vector<Centroid>& centroids_;
-  };
-
-  std::unique_ptr<BaseIterator> Begin(const bool reverse = false) const {
-    if (reverse) {
-      return std::make_unique<ReverseIterator>(centroids_.crbegin(), centroids_);
-    }
-    return std::make_unique<Iterator>(centroids_.cbegin(), centroids_);
   }
-  std::unique_ptr<BaseIterator> End(const bool reverse = false) const {
+  std::unique_ptr<Iterator> End() const {
     if (centroids_.empty()) {
-      if (reverse) {
-        return std::make_unique<ReverseIterator>(centroids_.crend(), centroids_);
+      if constexpr (Reverse) {
+        return std::make_unique<Iterator>(centroids_.crend(), centroids_);
+      } else {
+        return std::make_unique<Iterator>(centroids_.cend(), centroids_);
       }
-      return std::make_unique<Iterator>(centroids_.cend(), centroids_);
     }
-    if (reverse) {
-      return std::make_unique<ReverseIterator>(std::prev(centroids_.crend()), centroids_);
+    if constexpr (Reverse) {
+      return std::make_unique<Iterator>(std::prev(centroids_.crend()), centroids_);
+    } else {
+      return std::make_unique<Iterator>(std::prev(centroids_.cend()), centroids_);
     }
-    return std::make_unique<Iterator>(std::prev(centroids_.cend()), centroids_);
   }
   double TotalWeight() const { return static_cast<double>(meta_data_.total_weight); }
   double Min() const { return meta_data_.minimum; }
@@ -280,7 +269,7 @@ rocksdb::Status TDigest::Rank(engine::Context& ctx, const Slice& digest_name, co
     return status;
   }
 
-  auto dump_centroids = DummyCentroids(metadata, centroids);
+  auto dump_centroids = DummyCentroids<Reverse>(metadata, centroids);
   auto status = TDigestRank<Reverse>(dump_centroids, inputs, result);
   if (!status) {
     return rocksdb::Status::InvalidArgument(status.Msg());

@@ -211,7 +211,7 @@ inline Status TDigestRank(TD&& td, const std::vector<double>& inputs, std::vecto
     }
   }
 
-  auto iter = td.Begin(Reverse);
+  auto iter = td.Begin();
   double cumulative_weight = 0;
   while (iter->Valid() && !is_end()) {
     auto centroid = GET_OR_RET(iter->GetCentroid());

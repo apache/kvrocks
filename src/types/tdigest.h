@@ -171,7 +171,7 @@ struct DoubleComparator {
   bool operator()(const double& a, const double& b) const { return DoubleCompare(a, b) == -1; }
 };
 
-template <typename TD, bool Reverse>
+template <bool Reverse, typename TD>
 inline Status TDigestRank(TD&& td, const std::vector<double>& inputs, std::vector<int>& result) {
   std::map<double, size_t, DoubleComparator> value_to_index;
   for (size_t i = 0; i < inputs.size(); ++i) {

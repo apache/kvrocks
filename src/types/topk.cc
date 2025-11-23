@@ -223,7 +223,7 @@ void BlockSplitTopK::Add(const std::string &item, uint32_t increment) {
       if (heap[0].count == max_count || heap[0].count + 1 == max_count) {
         heap[0].fp = fp;
         heap[0].itemlen = itemlen;
-        delete heap[0].item;
+        delete[] heap[0].item;
         heap[0].item = new char[itemlen];
         memcpy(heap[0].item, data, itemlen);
 

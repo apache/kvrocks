@@ -112,8 +112,8 @@ struct HashFieldValue {
   // Get TTL in milliseconds, -1 if no expiration, -2 should be used by caller if field doesn't exist
   int64_t TTLMS() const {
     if (expire == 0) return -1;
-    int64_t now = static_cast<int64_t>(util::GetTimeStampMS());
-    int64_t ttl = static_cast<int64_t>(expire) - now;
+    auto now = static_cast<int64_t>(util::GetTimeStampMS());
+    auto ttl = static_cast<int64_t>(expire) - now;
     return ttl > 0 ? ttl : -2;  // -2 indicates expired
   }
 

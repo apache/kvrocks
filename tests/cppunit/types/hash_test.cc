@@ -68,6 +68,7 @@ TEST_F(RedisHashTest, GetAndSet) {
 TEST_F(RedisHashTest, MGetAndMSet) {
   uint64_t ret = 0;
   std::vector<FieldValue> fvs;
+  fvs.reserve(fields_.size());
   for (size_t i = 0; i < fields_.size(); i++) {
     fvs.emplace_back(fields_[i].ToString(), values_[i].ToString());
   }
@@ -93,6 +94,7 @@ TEST_F(RedisHashTest, MSetAndDeleteRepeated) {
   std::vector<std::string> fields{"f1", "f1", "f2", "f3"};
   std::vector<std::string> values{"v1", "v11", "v2", "v3"};
   std::vector<FieldValue> fvs;
+  fvs.reserve(fields.size());
   for (size_t i = 0; i < fields.size(); i++) {
     fvs.emplace_back(fields[i], values[i]);
   }
@@ -235,6 +237,7 @@ TEST_F(RedisHashTest, HIncrByFloat) {
 TEST_F(RedisHashTest, HRangeByLex) {
   uint64_t ret = 0;
   std::vector<FieldValue> fvs;
+  fvs.reserve(4 + 26);
   for (size_t i = 0; i < 4; i++) {
     fvs.emplace_back("key" + std::to_string(i), "value" + std::to_string(i));
   }

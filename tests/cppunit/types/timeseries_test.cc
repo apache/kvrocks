@@ -495,6 +495,26 @@ TEST_F(TimeSeriesTest, Twa) {
   s = ts_db_->Range(*ctx_, "s:c", range_opt, &res);
   EXPECT_EQ(res[0].ts, 0);
   EXPECT_NEAR(res[0].v, 17, 1e-5);
+
+  // Test with EMPTY filter
+  samples = {{100, 25}, {1000, 12}};
+  res.clear();
+  results2.clear();
+  redis::TSRangeOption range_opt2;
+  range_opt2.aggregator.type = redis::TSAggregatorType::TWA;
+  range_opt2.start_ts = 0;
+  range_opt2.end_ts = TSSample::MAX_TIMESTAMP;
+  range_opt2.aggregator.bucket_duration = 100;
+  range_opt2.is_return_empty = true;
+  EXPECT_TRUE((ts_db_->MAdd(*ctx_, "s:c", samples, &results2)).ok());
+  std::vector<std::pair<uint64_t, double>> results = {
+      {0, 17.7941176},   {100, 24.27777},  {200, 22.833333},  {300, 21.388888},  {400, 19.944444}, {500, 18.5},
+      {600, 17.0555555}, {700, 15.611111}, {800, 14.1666666}, {900, 12.7222222}, {1000, 12}};
+  EXPECT_TRUE((ts_db_->Range(*ctx_, "s:c", range_opt2, &res)).ok());
+  for (size_t i = 0; i < results.size(); i++) {
+    EXPECT_EQ(res[i].ts, results[i].first);
+    EXPECT_NEAR(res[i].v, results[i].second, 1e-4);
+  }
 }
 
 TEST_F(TimeSeriesTest, Get) {

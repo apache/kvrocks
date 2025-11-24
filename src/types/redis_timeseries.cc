@@ -72,7 +72,7 @@ struct Reducer {
                                           [](const TSSample &a, const TSSample &b) { return a.v < b.v; });
     return max->v - min->v;
   }
-  static inline double Twa(nonstd::span<const TSSample> samples) {
+  static inline double Area(nonstd::span<const TSSample> samples) {
     // Intra bucket area is 0 for single element.
     double result = 0;
     for (size_t i = 1; i < samples.size(); i++) {
@@ -86,25 +86,6 @@ struct Reducer {
 
 std::vector<TSSample> AggregateSamplesByRangeOption(std::vector<TSSample> samples, const TSRangeOption &option) {
   const auto &aggregator = option.aggregator;
-  // Retrieve prev_sample and next_sample from samples
-  TSSample prev_sample, next_sample;
-  bool is_twa_aggregator = aggregator.type == TSAggregatorType::TWA, prev_available = false, next_available = false;
-  if (is_twa_aggregator) {
-    const bool discard_boundaries = !option.filter_by_ts.empty() || option.filter_by_value.has_value();
-    next_sample = samples.back();
-    samples.pop_back();
-    prev_sample = samples.back();
-    samples.pop_back();
-    // When FILTER_BY_TS/FILTER_BY_VALUE is enabled, discard out-of-boundary samples.
-    prev_available = discard_boundaries ? false : (samples.front().ts != prev_sample.ts);
-    next_available = discard_boundaries ? false : (samples.back().ts != next_sample.ts);
-  }
-  std::vector<TSSample> res;
-  if (aggregator.type == TSAggregatorType::NONE || samples.empty()) {
-    res = std::move(samples);
-    return res;
-  }
-  auto spans = aggregator.SplitSamplesToBuckets(samples);
 
   auto get_bucket_ts = [&](uint64_t left) -> uint64_t {
     using BucketTimestampType = TSRangeOption::BucketTimestampType;
@@ -120,7 +101,114 @@ std::vector<TSSample> AggregateSamplesByRangeOption(std::vector<TSSample> sample
     }
     return 0;
   };
+  /// Computes area of polygon from start of the current bucket to the first sample of the current span.
+  /// Total Area = Area of bottom rectangle + Area of above triangle.
+  auto front_area = [](uint64_t bucket_left, const TSSample &prev, const TSSample &curr) {
+    auto x = static_cast<double>(bucket_left - prev.ts);  // Distance from
+    auto y = static_cast<double>(curr.ts - prev.ts);
+    auto z = curr.v - prev.v;
+    auto triangle_area = (z * (y - (x * x) / y)) / 2;
+    auto rect_area = static_cast<double>(y - x) * prev.v;
+    return triangle_area + rect_area;
+  };
+  /// Computes area of polygon from the last sample of the current span to the end of current bucket.
+  /// Total Area = Area of bottom rectangle + Area of above triangle.
+  auto end_area = [](uint64_t bucket_right, const TSSample &curr, const TSSample &next) {
+    auto x = static_cast<double>(bucket_right - curr.ts);
+    auto y = static_cast<double>(next.ts - curr.ts);
+    auto z = next.v - curr.v;
+    auto rect_area = x * curr.v;
+    auto triangle_area = (x * x * z) / (2 * y);
+    return triangle_area + rect_area;
+  };
+  // Computes the TWA of empty bucket from its neighbor samples.
+  auto empty_bucket_twa = [&front_area](const TSSample &left_nb, uint64_t bucket_left, uint64_t bucket_right,
+                                        const TSSample &right_nb) {
+    // Area of empty bucket = Area from left_nb to bucket_right - Area from left_nb to bucket_left
+    auto f_area = front_area(bucket_left, left_nb, right_nb);
+    auto s_area = front_area(bucket_right, left_nb, right_nb);
+    return (f_area - s_area) / static_cast<double>(bucket_right - bucket_left);
+  };
+
+  // Retrieve prev_sample and next_sample from samples when TWA aggregation.
+  TSSample prev_sample, next_sample;
+  bool is_twa_aggregator = aggregator.type == TSAggregatorType::TWA, prev_available = false, next_available = false;
+  if (is_twa_aggregator) {
+    const bool discard_boundaries = !option.filter_by_ts.empty() || option.filter_by_value.has_value();
+    next_sample = samples.back();
+    samples.pop_back();
+    prev_sample = samples.back();
+    samples.pop_back();
+    // When FILTER_BY_TS/FILTER_BY_VALUE is enabled, discard out-of-boundary samples.
+    prev_available = discard_boundaries ? false : !samples.empty() && (samples.front().ts != prev_sample.ts);
+    next_available = discard_boundaries ? false : !samples.empty() && (samples.back().ts != next_sample.ts);
+  }
+  std::vector<TSSample> res;
+  if (is_twa_aggregator && option.is_return_empty && samples.empty()) {
+    const bool early_return = prev_sample.ts == TSSample::MAX_TIMESTAMP || next_sample.ts == TSSample::MAX_TIMESTAMP ||
+                              prev_sample.ts == next_sample.ts;  // When filter entire range lies left or right to data.
+    if (early_return) {
+      res = std::move(samples);
+      return res;
+    }
+    // Both prev and next should be available. Total range should be in between the prev and next samples.
+    assert(prev_sample.ts <= option.start_ts && option.end_ts <= next_sample.ts);
+
+    uint64_t n_buckets_estimate = (option.end_ts - option.start_ts) / option.aggregator.bucket_duration;
+    res.reserve(n_buckets_estimate + 1);
+    uint64_t bucket_left = aggregator.CalculateAlignedBucketLeft(option.start_ts);
+    uint64_t bucket_right = aggregator.CalculateAlignedBucketRight(bucket_left);
+    for (size_t i = 0; i < n_buckets_estimate; i++) {
+      bucket_left = std::max(bucket_left, option.start_ts);
+      bucket_right = std::min(bucket_right, option.end_ts);
+      TSSample sample;
+      sample.ts = bucket_left;
+      sample.v = empty_bucket_twa(prev_sample, bucket_left, bucket_right, next_sample);
+      res.push_back(sample);
+      bucket_left = bucket_right;
+      bucket_right = aggregator.CalculateAlignedBucketRight(bucket_left);
+    }
+    // Process last bucket.
+    TSSample sample;
+    sample.ts = bucket_left;
+    if (bucket_left == option.end_ts) {  // Calculate last sample.
+      double y_diff = next_sample.v - prev_sample.v;
+      double x_diff = static_cast<double>(next_sample.ts - prev_sample.ts);
+      double x_prime_diff = static_cast<double>(option.end_ts - prev_sample.ts);
+      double y_prime_diff = (x_prime_diff * y_diff) / x_diff;
+      sample.v = y_prime_diff + prev_sample.v;
+    } else {
+      sample.v = empty_bucket_twa(prev_sample, bucket_left, bucket_right, next_sample);
+    }
+    res.push_back(sample);
+    return res;
+  } else if (aggregator.type == TSAggregatorType::NONE || samples.empty()) {
+    res = std::move(samples);
+    return res;
+  }
+
+  auto spans = aggregator.SplitSamplesToBuckets(samples);
   res.reserve(spans.size());
+
+  auto non_empty_left_bucket_idx = [&spans](size_t curr) {
+    while (--curr && spans[curr].empty());
+    return curr;
+  };
+  auto non_empty_right_bucket_idx = [&spans](size_t curr) {
+    while (++curr < spans.size() && spans[curr].empty());
+    return curr;
+  };
+
+  std::vector<std::pair<TSSample, TSSample>> neighbors;
+  neighbors.reserve(spans.size());
+  for (size_t i = 0; i < spans.size(); i++) {
+    TSSample prev = (i != 0) ? spans[non_empty_left_bucket_idx(i)].back() : prev_sample;
+    TSSample next = (i != (spans.size() - 1)) ? spans[non_empty_right_bucket_idx(i)].front() : next_sample;
+    neighbors.emplace_back(prev, next);
+    assert(spans[i].empty() ||
+           (neighbors[i].first.ts <= spans[i].front().ts && spans[i].back().ts <= neighbors[i].second.ts));
+  }  // Should follow: neighbors[i].first <= span[i].front() <= span[i].back() <= neighbors[i].second;
+
   uint64_t bucket_left = aggregator.CalculateAlignedBucketLeft(samples.front().ts);
   for (size_t i = 0; i < spans.size(); i++) {
     if (option.count_limit && res.size() >= option.count_limit) {
@@ -134,9 +222,16 @@ std::vector<TSSample> AggregateSamplesByRangeOption(std::vector<TSSample> sample
     if (option.is_return_empty && spans[i].empty()) {
       switch (aggregator.type) {
         case TSAggregatorType::SUM:
-        case TSAggregatorType::TWA:
         case TSAggregatorType::COUNT:
           sample.v = 0;
+          break;
+        case TSAggregatorType::TWA:
+          if ((i == 0 && !prev_available) || (i == spans.size() - 1 && !next_available)) {
+            sample.v = TSSample::NAN_VALUE;
+          } else {
+            auto bucket_right = aggregator.CalculateAlignedBucketRight(bucket_left);
+            sample.v = empty_bucket_twa(neighbors[i].first, bucket_left, bucket_right, neighbors[i].second);
+          }
           break;
         case TSAggregatorType::LAST:
           if (i == 0 || spans[i - 1].empty()) {
@@ -153,67 +248,21 @@ std::vector<TSSample> AggregateSamplesByRangeOption(std::vector<TSSample> sample
 
       if (is_twa_aggregator) {
         auto bucket_right = aggregator.CalculateAlignedBucketRight(bucket_left);
-
-        /// Computes area of polygon from start of the current bucket to the first sample of the current span.
-        /// Total Area = Area of bottom rectangle + Area of above triangle.
-        auto front_area = [](uint64_t bucket_left, const TSSample &prev, const TSSample &curr) {
-          auto x = static_cast<double>(bucket_left - prev.ts);  // Distance from
-          auto y = static_cast<double>(curr.ts - prev.ts);
-          auto z = curr.v - prev.v;
-          auto triangle_area = (z * (y - (x * x) / y)) / 2;
-          auto rect_area = static_cast<double>(y - x) * prev.v;
-          return triangle_area + rect_area;
-        };
-        /// Computes area of polygon from the last sample of the current span to the end of current bucket.
-        /// Total Area = Area of bottom rectangle + Area of above triangle.
-        auto end_area = [](uint64_t bucket_right, const TSSample &curr, const TSSample &next) {
-          auto x = static_cast<double>(bucket_right - curr.ts);
-          auto y = static_cast<double>(next.ts - curr.ts);
-          auto z = next.v - curr.v;
-          auto rect_area = x * curr.v;
-          auto triangle_area = (x * x * z) / (2 * y);
-          return triangle_area + rect_area;
-        };
-        auto non_empty_left_bucket = [&spans](size_t curr) {
-          while (--curr && spans[curr].empty());
-          return curr;
-        };
-        auto non_empty_right_bucket = [&spans](size_t curr) {
-          while (++curr < spans.size() && spans[curr].empty());
-          return curr;
-        };
-
-        // Cut left and right empty regions.
+        // Cut left and right empty regions. In case of first and last bucket.
         bucket_left = std::max(bucket_left, option.start_ts);
         bucket_right = std::min(bucket_right, option.end_ts);
         uint64_t l = bucket_left, r = bucket_right;
-        double area = 0.0;
-        if (spans.size() == 1) {
-          area += prev_available ? front_area(bucket_left, prev_sample, spans[i].front()) : 0;
-          area += next_available ? end_area(bucket_right, spans[i].back(), next_sample) : 0;
-          l = prev_available ? bucket_left : spans[i].front().ts;
-          r = next_available ? bucket_right : spans[i].back().ts;
-          // Edge case: single bucket with only one element.
-          area += (!prev_available && !next_available && spans[i].size() == 1) ? spans[i][0].v : 0;
-        } else if (i == 0) {
-          size_t p = non_empty_right_bucket(i);
-          area += spans[i].back().ts != bucket_right ? end_area(bucket_right, spans[i].back(), spans[p].front()) : 0;
-          area += prev_available ? front_area(bucket_left, prev_sample, spans[i].front()) : 0;
-          l = prev_available ? bucket_left : spans[i].front().ts;
-        } else if (i == (spans.size() - 1)) {
-          size_t p = non_empty_left_bucket(i);
-          area += spans[i].front().ts != bucket_left ? front_area(bucket_left, spans[p].back(), spans[i].front()) : 0;
-          area += next_available ? end_area(bucket_right, spans[i].back(), next_sample) : 0;
-          // Edge case: when last bucket contains one sample and its timestamp equals bucket boundary.
-          area += (spans[i].size() == 1 && spans[i].front().ts == bucket_left && !next_available) ? spans[i][0].v : 0;
-          r = next_available ? bucket_right : spans[i].back().ts;
-        } else {
-          size_t x = non_empty_left_bucket(i), y = non_empty_right_bucket(i);
-          area += spans[i].front().ts != bucket_left ? front_area(bucket_left, spans[x].back(), spans[i].front()) : 0;
-          area += spans[i].back().ts != bucket_right ? end_area(bucket_right, spans[i].back(), spans[y].front()) : 0;
-        }
-        sample.v += area;
-        sample.v /= std::max(static_cast<double>(r - l), 1.0);
+        // Front area available iff prev_sample < bucket_left < span[i].front(). Similarly for end_area.
+        bool front_available = (spans[i].front().ts != bucket_left) && (neighbors[i].first.ts <= bucket_left);
+        bool back_available = (spans[i].back().ts != bucket_right) && (bucket_right <= neighbors[i].second.ts);
+        double area = 0;
+        area += front_available ? front_area(bucket_left, neighbors[i].first, spans[i].front()) : 0.0;
+        area += back_available ? end_area(bucket_right, spans[i].back(), neighbors[i].second) : 0.0;
+        // Edge case: If single bucket and it contains only one element.
+        area += !front_available && !back_available && spans[i].size() == 1 ? spans[i][0].v : 0;
+        l = front_available ? bucket_left : spans[i].front().ts;
+        r = back_available ? bucket_right : spans[i].back().ts;
+        sample.v = (sample.v + area) / std::max(static_cast<double>(r - l), 1.0);
       }
     } else {
       continue;
@@ -900,7 +949,7 @@ double TSAggregator::AggregateSamplesValue(nonstd::span<const TSSample> samples)
       res = Reducer::VarS(samples);
       break;
     case TSAggregatorType::TWA:
-      res = Reducer::Twa(samples);
+      res = Reducer::Area(samples);
       break;
     default:
       unreachable();
@@ -1207,8 +1256,13 @@ rocksdb::Status TimeSeries::rangeCommon(engine::Context &ctx, const Slice &ns_ke
   }
 
   if (is_twa_aggregator) {
-    // prev_sample might not get initialized, if first element is in first bucket.
-    prev_sample = prev_sample.ts == TSSample::MAX_TIMESTAMP ? temp_results.front() : prev_sample;
+    // If the first element of the series is in first bucket, prev_sample might not get initialized. Similarly if the
+    // last element in the series is in last bucket, next_sample might not get initialized. If the series is empty,
+    // prev_sample and next_sample points to infinity (MAX_TIMESTAMP)
+    prev_sample =
+        prev_sample.ts == TSSample::MAX_TIMESTAMP && !temp_results.empty() ? temp_results.front() : prev_sample;
+    next_sample =
+        next_sample.ts == TSSample::MAX_TIMESTAMP && !temp_results.empty() ? temp_results.back() : next_sample;
     temp_results.push_back(prev_sample);
     temp_results.push_back(next_sample);
   }

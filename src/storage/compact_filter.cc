@@ -30,6 +30,7 @@
 #include "storage/redis_metadata.h"
 #include "time_util.h"
 #include "types/redis_bitmap.h"
+#include "types/redis_hash.h"
 #include "types/redis_timeseries.h"
 
 namespace engine {
@@ -110,8 +111,8 @@ rocksdb::CompactionFilter::Decision SubKeyFilter::FilterBlobByKey([[maybe_unused
           ikey.GetKey(), s.Msg());
     return rocksdb::CompactionFilter::Decision::kKeep;
   }
-  // bitmap and timeseries will be checked in Filter
-  if (metadata.Type() == kRedisBitmap || metadata.Type() == kRedisTimeSeries) {
+  // bitmap, timeseries, and hash (for per-field expiration) will be checked in Filter
+  if (metadata.Type() == kRedisBitmap || metadata.Type() == kRedisTimeSeries || metadata.Type() == kRedisHash) {
     return rocksdb::CompactionFilter::Decision::kUndetermined;
   }
 
@@ -152,6 +153,27 @@ bool SubKeyFilter::Filter([[maybe_unused]] int level, const Slice &key, const Sl
       return false;
     }
     return expired;
+  }
+
+  // Check for hash field expiration
+  if (metadata.Type() == kRedisHash) {
+    // First check if metadata (key-level) is expired
+    if (IsMetadataExpired(ikey, metadata)) {
+      return true;
+    }
+    // Then check per-field expiration
+    // Use lazy deletion with 5 minute buffer similar to metadata expiration
+    uint64_t lazy_expired_ts = util::GetTimeStampMS() - 300000;
+    HashFieldValue field_value;
+    if (!HashFieldValue::Decode(value.ToString(), &field_value)) {
+      // Failed to decode, keep the field
+      return false;
+    }
+    // Check if field has expiration and if it's expired (with lazy delete buffer)
+    if (field_value.expire > 0 && field_value.expire <= lazy_expired_ts) {
+      return true;
+    }
+    return false;
   }
 
   return IsMetadataExpired(ikey, metadata) || (metadata.Type() == kRedisBitmap && redis::Bitmap::IsEmptySegment(value));

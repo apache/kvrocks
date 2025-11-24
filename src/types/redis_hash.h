@@ -22,6 +22,7 @@
 
 #include <rocksdb/status.h>
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -29,6 +30,7 @@
 #include "encoding.h"
 #include "storage/redis_db.h"
 #include "storage/redis_metadata.h"
+#include "time_util.h"
 
 struct FieldValue {
   std::string field;
@@ -38,6 +40,90 @@ struct FieldValue {
 };
 
 enum class HashFetchType { kAll = 0, kOnlyKey = 1, kOnlyValue = 2 };
+
+// Hash field value encoding flags
+// Bit 0: has expiration timestamp
+constexpr uint8_t HASH_FIELD_FLAG_EXPIRE = 0x01;
+// Magic byte to identify new encoding format (must not conflict with typical value first bytes)
+constexpr uint8_t HASH_FIELD_ENCODING_VERSION = 0xFF;
+
+// HashFieldValue handles encoding/decoding of hash field values with optional expiration
+// Legacy format (backward compatible): [raw value]
+// New format: [1-byte version=0xFF][1-byte flags][8-byte expire timestamp if flag set][value]
+struct HashFieldValue {
+  std::string value;
+  uint64_t expire = 0;  // 0 means no expiration, otherwise millisecond timestamp
+
+  HashFieldValue() = default;
+  explicit HashFieldValue(std::string v, uint64_t exp = 0) : value(std::move(v)), expire(exp) {}
+
+  // Encode the field value with optional expiration
+  void Encode(std::string *dst) const {
+    if (expire == 0) {
+      // No expiration - store as raw value for backward compatibility
+      dst->assign(value);
+    } else {
+      // Has expiration - use new format
+      dst->clear();
+      PutFixed8(dst, HASH_FIELD_ENCODING_VERSION);
+      PutFixed8(dst, HASH_FIELD_FLAG_EXPIRE);
+      PutFixed64(dst, expire);
+      dst->append(value);
+    }
+  }
+
+  // Decode the field value, extracting expiration if present
+  // Returns true if decoding succeeded
+  static bool Decode(const std::string &input, HashFieldValue *out) {
+    if (input.empty()) {
+      out->value.clear();
+      out->expire = 0;
+      return true;
+    }
+
+    // Check for new encoding format
+    if (static_cast<uint8_t>(input[0]) == HASH_FIELD_ENCODING_VERSION && input.size() >= 2) {
+      rocksdb::Slice slice(input);
+      slice.remove_prefix(1);  // Skip version byte
+
+      uint8_t flags = 0;
+      if (!GetFixed8(&slice, &flags)) return false;
+
+      if (flags & HASH_FIELD_FLAG_EXPIRE) {
+        if (!GetFixed64(&slice, &out->expire)) return false;
+      } else {
+        out->expire = 0;
+      }
+      out->value = slice.ToString();
+    } else {
+      // Legacy format - raw value, no expiration
+      out->value = input;
+      out->expire = 0;
+    }
+    return true;
+  }
+
+  // Check if the field has expired
+  bool IsExpired() const {
+    if (expire == 0) return false;
+    return expire <= util::GetTimeStampMS();
+  }
+
+  // Get TTL in milliseconds, -1 if no expiration, -2 should be used by caller if field doesn't exist
+  int64_t TTLMS() const {
+    if (expire == 0) return -1;
+    int64_t now = static_cast<int64_t>(util::GetTimeStampMS());
+    int64_t ttl = static_cast<int64_t>(expire) - now;
+    return ttl > 0 ? ttl : -2;  // -2 indicates expired
+  }
+
+  // Get TTL in seconds
+  int64_t TTL() const {
+    int64_t ttl_ms = TTLMS();
+    if (ttl_ms < 0) return ttl_ms;
+    return (ttl_ms + 999) / 1000;  // Round up to seconds
+  }
+};
 
 namespace redis {
 
@@ -68,6 +154,22 @@ class Hash : public SubKeyScanner {
                        std::vector<std::string> *values = nullptr);
   rocksdb::Status RandField(engine::Context &ctx, const Slice &user_key, int64_t command_count,
                             std::vector<FieldValue> *field_values, HashFetchType type = HashFetchType::kOnlyKey);
+
+  // Per-field expiration methods
+  // Set expiration on fields, returns result codes per field:
+  // -2 = field doesn't exist, 1 = expiration set, 0 = expiration not set (e.g., invalid expire time)
+  rocksdb::Status ExpireFields(engine::Context &ctx, const Slice &user_key, uint64_t expire_ms,
+                               const std::vector<Slice> &fields, std::vector<int64_t> *results);
+
+  // Get TTL for fields in seconds, returns per field:
+  // -2 = field doesn't exist, -1 = field exists but no TTL, >= 0 = TTL in seconds
+  rocksdb::Status TTLFields(engine::Context &ctx, const Slice &user_key, const std::vector<Slice> &fields,
+                            std::vector<int64_t> *results);
+
+  // Remove expiration from fields, returns result codes per field:
+  // -2 = field doesn't exist, -1 = field exists but no TTL, 1 = expiration removed
+  rocksdb::Status PersistFields(engine::Context &ctx, const Slice &user_key, const std::vector<Slice> &fields,
+                                std::vector<int64_t> *results);
 
  private:
   rocksdb::Status GetMetadata(engine::Context &ctx, const Slice &ns_key, HashMetadata *metadata);

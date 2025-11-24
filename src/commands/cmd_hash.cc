@@ -481,6 +481,199 @@ class CommandHRandField : public Commander {
   bool no_parameters_ = true;
 };
 
+// HEXPIRE key seconds FIELDS numfields field [field ...]
+// Set expiration (TTL) on hash fields
+class CommandHExpire : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    // HEXPIRE key seconds FIELDS numfields field [field ...]
+    // Minimum: HEXPIRE key seconds FIELDS 1 field = 6 args
+    if (args.size() < 6) {
+      return {Status::RedisParseErr, errWrongNumOfArguments};
+    }
+
+    auto ttl_result = ParseInt<int64_t>(args[2], 10);
+    if (!ttl_result) {
+      return {Status::RedisParseErr, errValueNotInteger};
+    }
+    if (*ttl_result < 0) {
+      return {Status::RedisParseErr, "invalid expire time, must be >= 0"};
+    }
+    ttl_seconds_ = static_cast<uint64_t>(*ttl_result);
+
+    // Check for FIELDS keyword
+    if (!util::EqualICase(args[3], "FIELDS")) {
+      return {Status::RedisParseErr, "mandatory argument FIELDS is missing or not in the right position"};
+    }
+
+    auto num_fields_result = ParseInt<int64_t>(args[4], 10);
+    if (!num_fields_result) {
+      return {Status::RedisParseErr, errValueNotInteger};
+    }
+    if (*num_fields_result <= 0) {
+      return {Status::RedisParseErr, "numfields must be a positive integer"};
+    }
+    auto num_fields = static_cast<size_t>(*num_fields_result);
+
+    // Check we have the right number of fields
+    if (args.size() != 5 + num_fields) {
+      return {Status::RedisParseErr, "number of fields does not match numfields"};
+    }
+
+    for (size_t i = 5; i < args.size(); i++) {
+      fields_.emplace_back(args[i]);
+    }
+
+    return Commander::Parse(args);
+  }
+
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    redis::Hash hash_db(srv->storage, conn->GetNamespace());
+    std::vector<int64_t> results;
+
+    // Calculate absolute expiration timestamp in milliseconds
+    uint64_t expire_ms = ttl_seconds_ * 1000 + util::GetTimeStampMS();
+
+    auto s = hash_db.ExpireFields(ctx, args_[1], expire_ms, fields_, &results);
+    if (!s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+
+    // Return array of results
+    std::vector<std::string> result_strings;
+    result_strings.reserve(results.size());
+    for (const auto &r : results) {
+      result_strings.emplace_back(redis::Integer(r));
+    }
+    *output = redis::Array(result_strings);
+    return Status::OK();
+  }
+
+ private:
+  uint64_t ttl_seconds_ = 0;
+  std::vector<Slice> fields_;
+};
+
+// HTTL key FIELDS numfields field [field ...]
+// Get TTL (time to live) in seconds for hash fields
+class CommandHTTL : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    // HTTL key FIELDS numfields field [field ...]
+    // Minimum: HTTL key FIELDS 1 field = 5 args
+    if (args.size() < 5) {
+      return {Status::RedisParseErr, errWrongNumOfArguments};
+    }
+
+    // Check for FIELDS keyword
+    if (!util::EqualICase(args[2], "FIELDS")) {
+      return {Status::RedisParseErr, "mandatory argument FIELDS is missing or not in the right position"};
+    }
+
+    auto num_fields_result = ParseInt<int64_t>(args[3], 10);
+    if (!num_fields_result) {
+      return {Status::RedisParseErr, errValueNotInteger};
+    }
+    if (*num_fields_result <= 0) {
+      return {Status::RedisParseErr, "numfields must be a positive integer"};
+    }
+    auto num_fields = static_cast<size_t>(*num_fields_result);
+
+    // Check we have the right number of fields
+    if (args.size() != 4 + num_fields) {
+      return {Status::RedisParseErr, "number of fields does not match numfields"};
+    }
+
+    for (size_t i = 4; i < args.size(); i++) {
+      fields_.emplace_back(args[i]);
+    }
+
+    return Commander::Parse(args);
+  }
+
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    redis::Hash hash_db(srv->storage, conn->GetNamespace());
+    std::vector<int64_t> results;
+
+    auto s = hash_db.TTLFields(ctx, args_[1], fields_, &results);
+    if (!s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+
+    // Return array of TTL values
+    std::vector<std::string> result_strings;
+    result_strings.reserve(results.size());
+    for (const auto &r : results) {
+      result_strings.emplace_back(redis::Integer(r));
+    }
+    *output = redis::Array(result_strings);
+    return Status::OK();
+  }
+
+ private:
+  std::vector<Slice> fields_;
+};
+
+// HPERSIST key FIELDS numfields field [field ...]
+// Remove expiration from hash fields
+class CommandHPersist : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    // HPERSIST key FIELDS numfields field [field ...]
+    // Minimum: HPERSIST key FIELDS 1 field = 5 args
+    if (args.size() < 5) {
+      return {Status::RedisParseErr, errWrongNumOfArguments};
+    }
+
+    // Check for FIELDS keyword
+    if (!util::EqualICase(args[2], "FIELDS")) {
+      return {Status::RedisParseErr, "mandatory argument FIELDS is missing or not in the right position"};
+    }
+
+    auto num_fields_result = ParseInt<int64_t>(args[3], 10);
+    if (!num_fields_result) {
+      return {Status::RedisParseErr, errValueNotInteger};
+    }
+    if (*num_fields_result <= 0) {
+      return {Status::RedisParseErr, "numfields must be a positive integer"};
+    }
+    auto num_fields = static_cast<size_t>(*num_fields_result);
+
+    // Check we have the right number of fields
+    if (args.size() != 4 + num_fields) {
+      return {Status::RedisParseErr, "number of fields does not match numfields"};
+    }
+
+    for (size_t i = 4; i < args.size(); i++) {
+      fields_.emplace_back(args[i]);
+    }
+
+    return Commander::Parse(args);
+  }
+
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    redis::Hash hash_db(srv->storage, conn->GetNamespace());
+    std::vector<int64_t> results;
+
+    auto s = hash_db.PersistFields(ctx, args_[1], fields_, &results);
+    if (!s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+
+    // Return array of results
+    std::vector<std::string> result_strings;
+    result_strings.reserve(results.size());
+    for (const auto &r : results) {
+      result_strings.emplace_back(redis::Integer(r));
+    }
+    *output = redis::Array(result_strings);
+    return Status::OK();
+  }
+
+ private:
+  std::vector<Slice> fields_;
+};
+
 REDIS_REGISTER_COMMANDS(Hash, MakeCmdAttr<CommandHGet>("hget", 3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandHIncrBy>("hincrby", 4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandHIncrByFloat>("hincrbyfloat", 4, "write", 1, 1, 1),
@@ -498,6 +691,9 @@ REDIS_REGISTER_COMMANDS(Hash, MakeCmdAttr<CommandHGet>("hget", 3, "read-only", 1
                         MakeCmdAttr<CommandHGetAll>("hgetall", 2, "read-only slow", 1, 1, 1),
                         MakeCmdAttr<CommandHScan>("hscan", -3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandHRangeByLex>("hrangebylex", -4, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandHRandField>("hrandfield", -2, "read-only slow", 1, 1, 1), )
+                        MakeCmdAttr<CommandHRandField>("hrandfield", -2, "read-only slow", 1, 1, 1),
+                        MakeCmdAttr<CommandHExpire>("hexpire", -6, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandHTTL>("httl", -5, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandHPersist>("hpersist", -5, "write", 1, 1, 1), )
 
 }  // namespace redis

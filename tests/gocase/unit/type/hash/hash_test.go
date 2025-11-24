@@ -989,6 +989,185 @@ var testHash = func(t *testing.T, configs util.KvrocksServerConfigs) {
 			// TODO: Add test to verify randomness of the selected random fields
 		})
 
+		// Hash field expiration tests
+		t.Run("HEXPIRE basic functionality", func(t *testing.T) {
+			testKey := "hexpire-test"
+			require.NoError(t, rdb.Del(ctx, testKey).Err())
+			require.NoError(t, rdb.HSet(ctx, testKey, "field1", "value1", "field2", "value2", "field3", "value3").Err())
+
+			// Set expiration on two fields
+			result := rdb.Do(ctx, "HEXPIRE", testKey, "60", "FIELDS", "2", "field1", "field2")
+			require.NoError(t, result.Err())
+			vals, err := result.Slice()
+			require.NoError(t, err)
+			require.Len(t, vals, 2)
+			require.EqualValues(t, 1, vals[0]) // field1 expired successfully
+			require.EqualValues(t, 1, vals[1]) // field2 expired successfully
+		})
+
+		t.Run("HEXPIRE non-existent field", func(t *testing.T) {
+			testKey := "hexpire-test-nonexistent"
+			require.NoError(t, rdb.Del(ctx, testKey).Err())
+			require.NoError(t, rdb.HSet(ctx, testKey, "field1", "value1").Err())
+
+			result := rdb.Do(ctx, "HEXPIRE", testKey, "60", "FIELDS", "2", "field1", "nonexistent")
+			require.NoError(t, result.Err())
+			vals, err := result.Slice()
+			require.NoError(t, err)
+			require.Len(t, vals, 2)
+			require.EqualValues(t, 1, vals[0])  // field1 expired successfully
+			require.EqualValues(t, -2, vals[1]) // nonexistent field
+		})
+
+		t.Run("HEXPIRE non-existent key", func(t *testing.T) {
+			result := rdb.Do(ctx, "HEXPIRE", "nonexistent-key", "60", "FIELDS", "1", "field1")
+			require.NoError(t, result.Err())
+			vals, err := result.Slice()
+			require.NoError(t, err)
+			require.Len(t, vals, 1)
+			require.EqualValues(t, -2, vals[0]) // key doesn't exist
+		})
+
+		t.Run("HTTL basic functionality", func(t *testing.T) {
+			testKey := "httl-test"
+			require.NoError(t, rdb.Del(ctx, testKey).Err())
+			require.NoError(t, rdb.HSet(ctx, testKey, "field1", "value1", "field2", "value2").Err())
+
+			// Initially no TTL
+			result := rdb.Do(ctx, "HTTL", testKey, "FIELDS", "2", "field1", "field2")
+			require.NoError(t, result.Err())
+			vals, err := result.Slice()
+			require.NoError(t, err)
+			require.Len(t, vals, 2)
+			require.EqualValues(t, -1, vals[0]) // no TTL
+			require.EqualValues(t, -1, vals[1]) // no TTL
+
+			// Set expiration
+			rdb.Do(ctx, "HEXPIRE", testKey, "60", "FIELDS", "1", "field1")
+
+			// Check TTL
+			result = rdb.Do(ctx, "HTTL", testKey, "FIELDS", "2", "field1", "field2")
+			require.NoError(t, result.Err())
+			vals, err = result.Slice()
+			require.NoError(t, err)
+			require.Len(t, vals, 2)
+			ttl1, ok := vals[0].(int64)
+			require.True(t, ok)
+			require.GreaterOrEqual(t, ttl1, int64(59)) // TTL should be around 60
+			require.LessOrEqual(t, ttl1, int64(61))
+			require.EqualValues(t, -1, vals[1]) // field2 has no TTL
+		})
+
+		t.Run("HTTL non-existent field", func(t *testing.T) {
+			testKey := "httl-test-nonexistent"
+			require.NoError(t, rdb.Del(ctx, testKey).Err())
+			require.NoError(t, rdb.HSet(ctx, testKey, "field1", "value1").Err())
+
+			result := rdb.Do(ctx, "HTTL", testKey, "FIELDS", "2", "field1", "nonexistent")
+			require.NoError(t, result.Err())
+			vals, err := result.Slice()
+			require.NoError(t, err)
+			require.Len(t, vals, 2)
+			require.EqualValues(t, -1, vals[0])  // field1 exists, no TTL
+			require.EqualValues(t, -2, vals[1]) // nonexistent field
+		})
+
+		t.Run("HPERSIST basic functionality", func(t *testing.T) {
+			testKey := "hpersist-test"
+			require.NoError(t, rdb.Del(ctx, testKey).Err())
+			require.NoError(t, rdb.HSet(ctx, testKey, "field1", "value1", "field2", "value2").Err())
+
+			// Set expiration
+			rdb.Do(ctx, "HEXPIRE", testKey, "60", "FIELDS", "1", "field1")
+
+			// Remove expiration
+			result := rdb.Do(ctx, "HPERSIST", testKey, "FIELDS", "2", "field1", "field2")
+			require.NoError(t, result.Err())
+			vals, err := result.Slice()
+			require.NoError(t, err)
+			require.Len(t, vals, 2)
+			require.EqualValues(t, 1, vals[0])  // field1 expiration removed
+			require.EqualValues(t, -1, vals[1]) // field2 had no TTL
+
+			// Verify TTL is gone
+			result = rdb.Do(ctx, "HTTL", testKey, "FIELDS", "1", "field1")
+			require.NoError(t, result.Err())
+			vals, err = result.Slice()
+			require.NoError(t, err)
+			require.EqualValues(t, -1, vals[0]) // no TTL
+		})
+
+		t.Run("HPERSIST non-existent field", func(t *testing.T) {
+			testKey := "hpersist-test-nonexistent"
+			require.NoError(t, rdb.Del(ctx, testKey).Err())
+			require.NoError(t, rdb.HSet(ctx, testKey, "field1", "value1").Err())
+
+			result := rdb.Do(ctx, "HPERSIST", testKey, "FIELDS", "2", "field1", "nonexistent")
+			require.NoError(t, result.Err())
+			vals, err := result.Slice()
+			require.NoError(t, err)
+			require.Len(t, vals, 2)
+			require.EqualValues(t, -1, vals[0])  // field1 exists but no TTL
+			require.EqualValues(t, -2, vals[1]) // nonexistent field
+		})
+
+		t.Run("Expired field is not returned by HGET", func(t *testing.T) {
+			testKey := "hget-expired-test"
+			require.NoError(t, rdb.Del(ctx, testKey).Err())
+			require.NoError(t, rdb.HSet(ctx, testKey, "field1", "value1").Err())
+
+			// Set expiration to 1 second
+			rdb.Do(ctx, "HEXPIRE", testKey, "1", "FIELDS", "1", "field1")
+
+			// Wait for expiration
+			time.Sleep(2 * time.Second)
+
+			// Field should be expired
+			val := rdb.HGet(ctx, testKey, "field1")
+			require.Error(t, val.Err())
+		})
+
+		t.Run("Expired field is not returned by HGETALL", func(t *testing.T) {
+			testKey := "hgetall-expired-test"
+			require.NoError(t, rdb.Del(ctx, testKey).Err())
+			require.NoError(t, rdb.HSet(ctx, testKey, "field1", "value1", "field2", "value2").Err())
+
+			// Set expiration on field1 to 1 second
+			rdb.Do(ctx, "HEXPIRE", testKey, "1", "FIELDS", "1", "field1")
+
+			// Wait for expiration
+			time.Sleep(2 * time.Second)
+
+			// Only field2 should be returned
+			result := rdb.HGetAll(ctx, testKey)
+			require.NoError(t, result.Err())
+			vals := result.Val()
+			require.Len(t, vals, 1)
+			require.Equal(t, "value2", vals["field2"])
+		})
+
+		t.Run("HEXPIRE/HTTL/HPERSIST wrong arguments", func(t *testing.T) {
+			testKey := "wrong-args-test"
+			require.NoError(t, rdb.Del(ctx, testKey).Err())
+			require.NoError(t, rdb.HSet(ctx, testKey, "field1", "value1").Err())
+
+			// HEXPIRE without FIELDS keyword
+			result := rdb.Do(ctx, "HEXPIRE", testKey, "60", "WRONG", "1", "field1")
+			require.Error(t, result.Err())
+
+			// HTTL without FIELDS keyword
+			result = rdb.Do(ctx, "HTTL", testKey, "WRONG", "1", "field1")
+			require.Error(t, result.Err())
+
+			// HPERSIST without FIELDS keyword
+			result = rdb.Do(ctx, "HPERSIST", testKey, "WRONG", "1", "field1")
+			require.Error(t, result.Err())
+
+			// Wrong number of fields
+			result = rdb.Do(ctx, "HEXPIRE", testKey, "60", "FIELDS", "3", "field1", "field2")
+			require.Error(t, result.Err())
+		})
+
 	}
 }
 

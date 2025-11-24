@@ -270,8 +270,7 @@ rocksdb::Status TDigest::Rank(engine::Context& ctx, const Slice& digest_name, co
   }
 
   auto dump_centroids = DummyCentroids<Reverse>(metadata, centroids);
-  auto status = TDigestRank<Reverse>(dump_centroids, inputs, result);
-  if (!status) {
+  if (auto status = TDigestRank<Reverse>(dump_centroids, inputs, result); !status) {
     return rocksdb::Status::InvalidArgument(status.Msg());
   }
   return rocksdb::Status::OK();

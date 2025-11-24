@@ -59,6 +59,8 @@ rocksdb::Status TopK::IncrBy(engine::Context &ctx, const Slice &user_key, const 
   s = getTopKData(ctx, ns_key, topk_metadata, &topk);
   if (!s.ok()) return s;
 
+  std::vector<bool> is_dirty_buckets(topk_metadata.width * topk_metadata.depth, false);
+  std::vector<bool> is_dirty_heaps(topk_metadata.top_k, false);
   topk.Add(items.data_, incr);
 
   s = setTopkData(ctx, ns_key, topk_metadata, topk);
@@ -96,7 +98,7 @@ rocksdb::Status TopK::List(engine::Context &ctx, const Slice &user_key, std::vec
 
   auto heap_buckets = topk.List();
   for (auto &bucket : heap_buckets) {
-    items.emplace_back(bucket.item, bucket.itemlen);
+    items.emplace_back(bucket.item);
   }
 
   return rocksdb::Status::OK();
@@ -140,7 +142,10 @@ rocksdb::Status TopK::createTopK(engine::Context &ctx, const Slice &ns_key, uint
   s = batch->Put(metadata_cf_handle_, ns_key, top_k_meta_bytes);
   if (!s.ok()) return s;
 
-  s = setTopkData(ctx, ns_key, *metadata, block_split_top_k);
+  // is dirty vector to optimize writes
+  std::vector<bool> is_dirty_buckets(width * depth, true);
+  std::vector<bool> is_dirty_heaps(k, true);
+  s = setTopkData(ctx, ns_key, *metadata, block_split_top_k, is_dirty_buckets, is_dirty_heaps);
   if (!s.ok()) return s;
 
   return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
@@ -154,25 +159,40 @@ rocksdb::Status TopK::getTopKData(engine::Context &ctx, const Slice &ns_key, con
     rocksdb::Status s = storage_->Get(ctx, ctx.GetReadOptions(), tk_key, &pinnable_value);
     if (!s.ok()) return s;
     if (i == 0) {
-      if (pinnable_value.size() != metadata.width * metadata.depth * sizeof(Bucket)) {
-        return rocksdb::Status::Corruption("TopK data corrupted: buckets size mismatch");
-      }
-      memcpy(topk->buckets, pinnable_value.data(), pinnable_value.size());
-    } else if (i == 1) {
-      if (pinnable_value.size() != metadata.top_k * sizeof(HeapBucket)) {
-        return rocksdb::Status::Corruption("TopK data corrupted: heap size mismatch");
-      }
-      memcpy(topk->heap, pinnable_value.data(), pinnable_value.size());
-      for (uint32_t j = 0; j < metadata.top_k; j++) {
-        std::string hb_key = getHBKey(ns_key, metadata, i, j);
-        rocksdb::PinnableSlice hb_value;
-        rocksdb::Status s = storage_->Get(ctx, ctx.GetReadOptions(), hb_key, &hb_value);
-        if (!s.ok()) return s;
-        if (hb_value.size() != topk->heap[j].itemlen) {
-          return rocksdb::Status::Corruption("TopK data corrupted: heap bucket size mismatch");
+      // get buckets of topk structure
+      for (uint32_t j = 0; j < metadata.width * metadata.depth; j++) {
+        for (uint8_t k = 0; k < 2; k++) {
+          std::string bk_key = getSubKey(ns_key, metadata, i, j, k);
+          rocksdb::PinnableSlice bk_value;
+          rocksdb::Status s = storage_->Get(ctx, ctx.GetReadOptions(), bk_key, &bk_value);
+          if (!s.ok()) return s;
+          
+          int dep = j / metadata.width;
+          int wid = j % metadata.width;
+          if (k == 0) {
+            topk->buckets[dep][wid].fp = static_cast<uint32_t>(std::stoul(pinnable_value.data()));
+          } else {
+            topk->buckets[dep][wid].count = static_cast<uint32_t>(std::stoul(pinnable_value.data()));
+          }
         }
-        topk->heap[j].item = new char[topk->heap[j].itemlen];
-        memcpy(topk->heap[j].item, hb_value.data(), hb_value.size());
+      }
+    } else if (i == 1) {
+      // get heapbucket of topk structure
+      for (uint32_t j = 0; j < metadata.top_k; j++) {
+        for (uint8_t k = 0; k < 3; k++) {
+          std::string hb_key = getSubKey(ns_key, metadata, i, j, k);
+          rocksdb::PinnableSlice hb_value;
+          rocksdb::Status s = storage_->Get(ctx, ctx.GetReadOptions(), hb_key, &hb_value);
+          if (!s.ok()) return s;
+
+          if (k == 0) {
+            topk->heap[j].count = static_cast<uint32_t>(std::stoul(pinnable_value.data()));
+          } else if (k == 1) {
+            topk->heap[j].fp = static_cast<uint32_t>(std::stoul(pinnable_value.data()));
+          } else {
+            topk->heap[j].item = hb_value.data();
+          }
+        }
       }
     } else {
       topk->heap_size = static_cast<int>(std::stoul(pinnable_value.data()));
@@ -182,30 +202,56 @@ rocksdb::Status TopK::getTopKData(engine::Context &ctx, const Slice &ns_key, con
 }
 
 rocksdb::Status TopK::setTopkData(engine::Context &ctx, const Slice &ns_key, const TopKMetadata &metadata,
-                                  const BlockSplitTopK &topk) {
+                                  const BlockSplitTopK &topk, const std::vector<bool> &is_dirty_buckets, 
+                                  const std::vector<bool> &is_dirty_heaps) {
   auto batch = storage_->GetWriteBatchBase();
-  WriteBatchLogData log_data(kRedisTopK, {"setTopkData"});
-  rocksdb::Status s = batch->PutLogData(log_data.Encode());
-  if (!s.ok()) return s;
 
   for (uint8_t i = 0; i < 3; i++) {
-    std::string tk_key = getTKKey(ns_key, metadata, i);
-    std::string tk_value;
     if (i == 0) {
-      tk_value.assign(reinterpret_cast<const char *>(topk.buckets), metadata.width * metadata.depth * sizeof(Bucket));
+      for (uint32_t j = 0; j < metadata.width * metadata.depth; j++) {
+        if (!is_dirty_buckets[j]) {
+          continue;
+        }
+        for (uint32_t k = 0; k < 2; k++) {
+          std::string sub_key = getSubKey(ns_key, metadata, i, j, k);
+          std::string sub_value;
+          int dep = j / metadata.width;
+          int wid = j % metadata.width;
+          if (k == 0) {
+            sub_value = std::to_string(topk.buckets[dep][wid].fp);
+          } else {
+            sub_value = std::to_string(topk.buckets[dep][wid].count);
+          }
+          rocksdb::Status s = batch->Put(sub_key, sub_value);
+          if (!s.ok()) return s;
+        }
+      }
     } else if (i == 1) {
-      tk_value.assign(reinterpret_cast<const char *>(topk.heap), metadata.top_k * sizeof(HeapBucket));
       for (uint32_t j = 0; j < metadata.top_k; j++) {
-        std::string hb_key = getHBKey(ns_key, metadata, i, j);
-        std::string hb_value(topk.heap[j].item, topk.heap[j].itemlen);
-        s = batch->Put(hb_key, hb_value);
-        if (!s.ok()) return s;
+        if (!is_dirty_heaps[j]) {
+          continue;
+        }
+        for (uint8_t k = 0; k < 3; k++) {
+          std::string sub_key = getSubKey(ns_key, metadata, i, j, k);
+          std::string sub_value;
+          if (k == 0) {
+            sub_value = std::to_string(topk.heap[j].count);
+          } else if (k == 1) {
+            sub_value = std::to_string(topk.heap[j].fp);
+          } else {
+            sub_value = topk.heap[j].item;
+          }
+          rocksdb::Status s = batch->Put(sub_key, sub_value);
+          if (!s.ok()) return s;
+        }
       }
     } else {
+      std::string tk_key = getTKKey(ns_key, metadata, i);
+      std::string tk_value;
       tk_value = std::to_string(topk.heap_size);
+      rocksdb::Status s = batch->Put(tk_key, tk_value);
+      if (!s.ok()) return s;
     }
-    rocksdb::Status s = batch->Put(tk_key, tk_value);
-    if (!s.ok()) return s;
   }
 
   return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
@@ -218,10 +264,11 @@ std::string TopK::getTKKey(const Slice &ns_key, const TopKMetadata &metadata, ui
   return bf_key;
 }
 
-std::string TopK::getHBKey(const Slice &ns_key, const TopKMetadata &metadata, uint8_t topk_index, uint32_t hp_index) {
+std::string TopK::getSubKey(const Slice &ns_key, const TopKMetadata &metadata, uint8_t topk_index, uint32_t sub_index, uint8_t index) {
   std::string sub_key;
   PutFixed8(&sub_key, topk_index);
-  PutFixed32(&sub_key, hp_index);
+  PutFixed32(&sub_key, sub_index);
+  PutFixed8(&sub_key, index);
   return InternalKey(ns_key, sub_key, metadata.version, storage_->IsSlotIdEncoded()).Encode();
 }
 

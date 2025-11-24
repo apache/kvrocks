@@ -56,11 +56,12 @@ class TopK : public SubKeyScanner {
   rocksdb::Status getTopKData(engine::Context &ctx, const Slice &ns_key, const TopKMetadata &metadata,
                               BlockSplitTopK *topk);
   rocksdb::Status setTopkData(engine::Context &ctx, const Slice &ns_key, const TopKMetadata &metadata,
-                              const BlockSplitTopK &topk);
+                              const BlockSplitTopK &topk, const std::vector<bool> &is_dirty_buckets,
+                              const std::vector<bool> &is_dirty_heaps);
 
   std::string getTKKey(const Slice &ns_key, const TopKMetadata &metadata, uint8_t index);
 
-  std::string getHBKey(const Slice &ns_key, const TopKMetadata &metadata, uint8_t topk_index, uint32_t hp_index);
+  std::string getSubKey(const Slice &ns_key, const TopKMetadata &metadata, uint8_t topk_index, uint32_t sub_index, uint8_t index);
 };
 
 }  // namespace redis

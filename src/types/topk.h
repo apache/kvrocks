@@ -23,6 +23,7 @@
 #include <stdint.h>
 
 #include <cmath>
+#include <memory>
 #include <queue>
 #include <string>
 #include <vector>
@@ -33,9 +34,17 @@ using CounterT = uint32_t;
 
 struct HeapBucket {
   uint32_t fp;
-  uint32_t itemlen;
-  char *item;
   CounterT count;
+  std::string item;
+
+  HeapBucket& operator=(const HeapBucket& other) {
+    if (this != &other) {
+      fp = other.fp;
+      count = other.count;
+      item = other.item;
+      return *this;
+    }
+  }
 };
 
 struct Bucket {
@@ -48,8 +57,8 @@ class BlockSplitTopK {
   BlockSplitTopK() = delete;
   BlockSplitTopK(const BlockSplitTopK &) = delete;
   BlockSplitTopK &operator=(const BlockSplitTopK &) = delete;
-  BlockSplitTopK(BlockSplitTopK &&) = default;
-  BlockSplitTopK &operator=(BlockSplitTopK &&) = default;
+  BlockSplitTopK(BlockSplitTopK &&) = delete;
+  BlockSplitTopK &operator=(BlockSplitTopK &&) = delete;
 
   explicit BlockSplitTopK(uint32_t k, uint32_t width, uint32_t depth, double decay)
       : k(k),
@@ -57,29 +66,21 @@ class BlockSplitTopK {
         depth(depth),
         decay(decay),
         heap_size(0),
-        buckets(new Bucket[width * depth]),
-        heap(new HeapBucket[k]) {
-    std::fill_n(buckets, width * depth, Bucket{0, 0});
-    std::fill_n(heap, k, HeapBucket{0, 0, nullptr, 0});
+        buckets(depth, std::vector<Bucket>(width, Bucket{0, 0})),
+        heap(k, HeapBucket{0, 0, ""}) {
     for (int i = 0; i < TOPK_DECAY_LOOKUP_TABLE; ++i) {
       lookup_table[i] = pow(decay, i);
     }
   }
 
-  ~BlockSplitTopK() {
-    for (size_t i = 0; i < k; ++i) {
-      delete[] heap[i].item;
-    }
-    delete[] buckets;
-    delete[] heap;
-  }
+  ~BlockSplitTopK() {}
 
   void Add(const std::string &item, uint32_t increment);
   bool Query(const std::string &item) const;
   std::vector<HeapBucket> List();
 
-  void HeapifyDown(int start) const;
-  void HeapifyUp(int start) const;
+  void HeapifyDown(int start);
+  void HeapifyUp(int start);
   int CheckExistInHeap(const std::string &item) const;
   static int CmpHeapBucketCount(const HeapBucket &a, const HeapBucket &b);
 
@@ -90,7 +91,7 @@ class BlockSplitTopK {
 
   int heap_size;
 
-  Bucket *buckets;
-  HeapBucket *heap;
+  std::vector<std::vector<Bucket>> buckets;
+  std::vector<HeapBucket> heap;
   double lookup_table[TOPK_DECAY_LOOKUP_TABLE];
 };

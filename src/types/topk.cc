@@ -98,7 +98,7 @@ static uint32_t TopkHash(const void *item, int itemlen, uint32_t i) { return Mur
 constexpr uint32_t GA = 1919;
 
 /* ---------------------------------------------------------------------- */
-void BlockSplitTopK::HeapifyDown(int start) const {
+void BlockSplitTopK::HeapifyDown(int start) {
   int child = start;
 
   // check whether larger than children
@@ -114,10 +114,9 @@ void BlockSplitTopK::HeapifyDown(int start) const {
     return;
   }
 
-  HeapBucket top;
-  memcpy(&top, &heap[start], sizeof(HeapBucket));
+  HeapBucket top = heap[start];
   do {
-    memcpy(&heap[start], &heap[child], sizeof(HeapBucket));
+    heap[start] = heap[child];
     start = child;
 
     if ((heap_size - 2) / 2 < child) {
@@ -129,10 +128,10 @@ void BlockSplitTopK::HeapifyDown(int start) const {
       ++child;
     }
   } while (heap[child].count < top.count);
-  memcpy(&heap[start], &top, sizeof(HeapBucket));
+  heap[start] = top;
 }
 
-void BlockSplitTopK::HeapifyUp(int start) const {
+void BlockSplitTopK::HeapifyUp(int start) {
   int parent = start;
 
   // check whether smaller than parent
@@ -145,10 +144,9 @@ void BlockSplitTopK::HeapifyUp(int start) const {
     return;
   }
 
-  HeapBucket bottom;
-  memcpy(&bottom, &heap[start], sizeof(HeapBucket));
+  HeapBucket bottom = heap[start];
   do {
-    memcpy(&heap[start], &heap[parent], sizeof(HeapBucket));
+    heap[start] = heap[parent];
     start = parent;
 
     if (start == 0) {
@@ -156,14 +154,12 @@ void BlockSplitTopK::HeapifyUp(int start) const {
     }
     parent = (parent - 1) / 2;
   } while (heap[parent].count > bottom.count);
-  memcpy(&heap[start], &bottom, sizeof(HeapBucket));
+  heap[start] = bottom;
 }
 
 int BlockSplitTopK::CheckExistInHeap(const std::string &item) const {
-  uint32_t itemlen = item.size();
-  const char *data = item.c_str();
   for (int i = heap_size - 1; i >= 0; --i) {
-    if (heap[i].itemlen == itemlen && memcmp(heap[i].item, data, itemlen) == 0) {
+    if (heap[i].item == item) {
       return i;
     }
   }
@@ -185,32 +181,31 @@ void BlockSplitTopK::Add(const std::string &item, uint32_t increment) {
   for (size_t i = 0; i < depth; ++i) {
     uint32_t loc = TopkHash(data, (int)itemlen, i) % width;
 
-    loc += i * width;
-    if (buckets[loc].count == 0) {
-      buckets[loc].fp = fp;
-      buckets[loc].count = increment;
-      max_count = std::max(max_count, buckets[loc].count);
-    } else if (buckets[loc].fp == fp && location != -1) {
-      buckets[loc].count += increment;
-      max_count = std::max(max_count, buckets[loc].count);
+    if (buckets[i][loc].count == 0) {
+      buckets[i][loc].fp = fp;
+      buckets[i][loc].count = increment;
+      max_count = std::max(max_count, buckets[i][loc].count);
+    } else if (buckets[i][loc].fp == fp && location != -1) {
+      buckets[i][loc].count += increment;
+      max_count = std::max(max_count, buckets[i][loc].count);
     } else {
       // decay
       uint32_t local_incr = increment;
       for (; local_incr > 0; --local_incr) {
         double decay = 0.0;
-        if (buckets[loc].count < TOPK_DECAY_LOOKUP_TABLE) {
-          decay = lookup_table[buckets[loc].count];
+        if (buckets[i][loc].count < TOPK_DECAY_LOOKUP_TABLE) {
+          decay = lookup_table[buckets[i][loc].count];
         } else {
-          decay = pow(lookup_table[TOPK_DECAY_LOOKUP_TABLE - 1], (buckets[loc].count / (TOPK_DECAY_LOOKUP_TABLE - 1))) *
-                  lookup_table[buckets[loc].count % (TOPK_DECAY_LOOKUP_TABLE - 1)];
+          decay = pow(lookup_table[TOPK_DECAY_LOOKUP_TABLE - 1], (buckets[i][loc].count / (TOPK_DECAY_LOOKUP_TABLE - 1))) *
+                  lookup_table[buckets[i][loc].count % (TOPK_DECAY_LOOKUP_TABLE - 1)];
         }
         double chance = rand() / (double)RAND_MAX;
         if (chance < decay) {
-          --buckets[loc].count;
-          if (buckets[loc].count == 0) {
-            buckets[loc].fp = fp;
-            buckets[loc].count = 1;
-            max_count = std::max(max_count, buckets[loc].count);
+          --buckets[i][loc].count;
+          if (buckets[i][loc].count == 0) {
+            buckets[i][loc].fp = fp;
+            buckets[i][loc].count = 1;
+            max_count = std::max(max_count, buckets[i][loc].count);
             break;
           }
         }
@@ -222,10 +217,7 @@ void BlockSplitTopK::Add(const std::string &item, uint32_t increment) {
     if (location == -1) {
       if (heap[0].count == max_count || heap[0].count + 1 == max_count) {
         heap[0].fp = fp;
-        heap[0].itemlen = itemlen;
-        delete[] heap[0].item;
-        heap[0].item = new char[itemlen];
-        memcpy(heap[0].item, data, itemlen);
+        heap[0].item = item;
 
         heap[0].count = max_count;
 
@@ -237,9 +229,7 @@ void BlockSplitTopK::Add(const std::string &item, uint32_t increment) {
     }
   } else {
     heap[heap_size].fp = fp;
-    heap[heap_size].itemlen = itemlen;
-    heap[heap_size].item = new char[itemlen];
-    memcpy(heap[heap_size].item, data, itemlen);
+    heap[heap_size].item = item;
     heap[heap_size].count = max_count;
 
     HeapifyUp((int)heap_size);

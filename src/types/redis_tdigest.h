@@ -44,25 +44,6 @@ class DummyCentroids {
    public:
     using IterType = std::conditional_t<Reverse, std::vector<Centroid>::const_reverse_iterator,
                                         std::vector<Centroid>::const_iterator>;
-
-    template <typename Container>
-    decltype(auto) get_cbegin_iter(Container centroids) const {
-      if constexpr (Reverse) {
-        return centroids.crbegin();
-      } else {
-        return centroids.cbegin();
-      }
-    }
-
-    template <typename Container>
-    decltype(auto) get_cend_iter(Container centroids) const {
-      if constexpr (Reverse) {
-        return centroids.crend();
-      } else {
-        return centroids.cend();
-      }
-    }
-
     Iterator(IterType iter, const std::vector<Centroid>& centroids) : iter_(iter), centroids_(centroids) {}
     std::unique_ptr<Iterator> Clone() const {
       if (iter_ != get_cend_iter(centroids_)) {
@@ -97,6 +78,23 @@ class DummyCentroids {
    private:
     IterType iter_;
     const std::vector<Centroid>& centroids_;
+    template <typename Container>
+    decltype(auto) get_cbegin_iter(const Container& centroids) const {
+      if constexpr (Reverse) {
+        return centroids.crbegin();
+      } else {
+        return centroids.cbegin();
+      }
+    }
+
+    template <typename Container>
+    decltype(auto) get_cend_iter(const Container& centroids) const {
+      if constexpr (Reverse) {
+        return centroids.crend();
+      } else {
+        return centroids.cend();
+      }
+    }
   };
 
   std::unique_ptr<Iterator> Begin() const {

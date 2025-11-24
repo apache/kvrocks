@@ -46,30 +46,30 @@ class DummyCentroids {
                                         std::vector<Centroid>::const_iterator>;
     Iterator(IterType iter, const std::vector<Centroid>& centroids) : iter_(iter), centroids_(centroids) {}
     std::unique_ptr<Iterator> Clone() const {
-      if (iter_ != get_cend_iter(centroids_)) {
+      if (iter_ != getCendIter(centroids_)) {
         return std::make_unique<Iterator>(
-            std::next(get_cbegin_iter(centroids_), std::distance(get_cbegin_iter(centroids_), iter_)), centroids_);
+            std::next(getCbeginIter(centroids_), std::distance(getCbeginIter(centroids_), iter_)), centroids_);
       }
-      return std::make_unique<Iterator>(get_cend_iter(centroids_), centroids_);
+      return std::make_unique<Iterator>(getCendIter(centroids_), centroids_);
     }
     bool Next() {
       if (Valid()) {
         std::advance(iter_, 1);
       }
-      return iter_ != get_cend_iter(centroids_);
+      return iter_ != getCendIter(centroids_);
     }
 
     // The Prev function can only be called for item is not cend,
     // because we must guarantee the iterator to be inside the valid range before iteration.
     bool Prev() {
-      if (Valid() && iter_ != get_cend_iter(centroids_)) {
+      if (Valid() && iter_ != getCendIter(centroids_)) {
         std::advance(iter_, -1);
       }
       return Valid();
     }
-    bool Valid() const { return iter_ != get_cend_iter(centroids_); }
+    bool Valid() const { return iter_ != getCendIter(centroids_); }
     StatusOr<Centroid> GetCentroid() const {
-      if (iter_ == get_cend_iter(centroids_)) {
+      if (iter_ == getCendIter(centroids_)) {
         return {::Status::NotOK, "invalid iterator during decoding tdigest centroid"};
       }
       return *iter_;
@@ -79,7 +79,7 @@ class DummyCentroids {
     IterType iter_;
     const std::vector<Centroid>& centroids_;
     template <typename Container>
-    decltype(auto) get_cbegin_iter(const Container& centroids) const {
+    decltype(auto) getCbeginIter(const Container& centroids) const {
       if constexpr (Reverse) {
         return centroids.crbegin();
       } else {
@@ -88,7 +88,7 @@ class DummyCentroids {
     }
 
     template <typename Container>
-    decltype(auto) get_cend_iter(const Container& centroids) const {
+    decltype(auto) getCendIter(const Container& centroids) const {
       if constexpr (Reverse) {
         return centroids.crend();
       } else {

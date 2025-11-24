@@ -45,63 +45,51 @@ class DummyCentroids {
     using IterType = std::conditional_t<Reverse, std::vector<Centroid>::const_reverse_iterator,
                                         std::vector<Centroid>::const_iterator>;
 
+    template <typename Container>
+    decltype(auto) get_cbegin_iter(Container centroids) const {
+      if constexpr (Reverse) {
+        return centroids.crbegin();
+      } else {
+        return centroids.cbegin();
+      }
+    }
+
+    template <typename Container>
+    decltype(auto) get_cend_iter(Container centroids) const {
+      if constexpr (Reverse) {
+        return centroids.crend();
+      } else {
+        return centroids.cend();
+      }
+    }
+
     Iterator(IterType iter, const std::vector<Centroid>& centroids) : iter_(iter), centroids_(centroids) {}
     std::unique_ptr<Iterator> Clone() const {
-      if constexpr (Reverse) {
-        if (iter_ != centroids_.crend()) {
-          return std::make_unique<Iterator>(std::next(centroids_.crbegin(), std::distance(centroids_.crbegin(), iter_)),
-                                            centroids_);
-        }
-        return std::make_unique<Iterator>(centroids_.crend(), centroids_);
-      } else {
-        if (iter_ != centroids_.cend()) {
-          return std::make_unique<Iterator>(std::next(centroids_.cbegin(), std::distance(centroids_.cbegin(), iter_)),
-                                            centroids_);
-        }
-        return std::make_unique<Iterator>(centroids_.cend(), centroids_);
+      if (iter_ != get_cend_iter(centroids_)) {
+        return std::make_unique<Iterator>(
+            std::next(get_cbegin_iter(centroids_), std::distance(get_cbegin_iter(centroids_), iter_)), centroids_);
       }
+      return std::make_unique<Iterator>(get_cend_iter(centroids_), centroids_);
     }
     bool Next() {
       if (Valid()) {
         std::advance(iter_, 1);
       }
-      if constexpr (Reverse) {
-        return iter_ != centroids_.crend();
-      } else {
-        return iter_ != centroids_.cend();
-      }
+      return iter_ != get_cend_iter(centroids_);
     }
 
     // The Prev function can only be called for item is not cend,
     // because we must guarantee the iterator to be inside the valid range before iteration.
     bool Prev() {
-      if constexpr (Reverse) {
-        if (Valid() && iter_ != centroids_.crbegin()) {
-          std::advance(iter_, -1);
-        }
-      } else {
-        if (Valid() && iter_ != centroids_.cbegin()) {
-          std::advance(iter_, -1);
-        }
+      if (Valid() && iter_ != get_cend_iter(centroids_)) {
+        std::advance(iter_, -1);
       }
       return Valid();
     }
-    bool Valid() const {
-      if constexpr (Reverse) {
-        return iter_ != centroids_.crend();
-      } else {
-        return iter_ != centroids_.cend();
-      }
-    }
+    bool Valid() const { return iter_ != get_cend_iter(centroids_); }
     StatusOr<Centroid> GetCentroid() const {
-      if constexpr (Reverse) {
-        if (iter_ == centroids_.crend()) {
-          return {::Status::NotOK, "invalid iterator during decoding tdigest centroid"};
-        }
-      } else {
-        if (iter_ == centroids_.cend()) {
-          return {::Status::NotOK, "invalid iterator during decoding tdigest centroid"};
-        }
+      if (iter_ == get_cend_iter(centroids_)) {
+        return {::Status::NotOK, "invalid iterator during decoding tdigest centroid"};
       }
       return *iter_;
     }

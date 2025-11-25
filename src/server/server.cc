@@ -1214,21 +1214,25 @@ Server::InfoEntries Server::GetReplicationInfo() {
     entries.emplace_back("slave_priority", config_->slave_priority);
   }
 
-  int idx = 0;
-  rocksdb::SequenceNumber latest_seq = storage->LatestSeqNumber();
-
+  std::vector<std::tuple<std::string, uint32_t, uint64_t>> slave_repl_seq;
   {
     std::shared_lock<std::shared_mutex> guard(slave_threads_mu_);
     entries.emplace_back("connected_slaves", slave_threads_.size());
     for (const auto &slave : slave_threads_) {
       if (slave->IsStopped()) continue;
 
-      entries.emplace_back(
-          "slave" + std::to_string(idx),
-          fmt::format("ip={},port={},offset={},lag={}", slave->GetConn()->GetAnnounceIP(),
-                      slave->GetConn()->GetAnnouncePort(), slave->GetAckSeq(), latest_seq - slave->GetAckSeq()));
-      ++idx;
+      slave_repl_seq.emplace_back(slave->GetConn()->GetAnnounceIP(), slave->GetConn()->GetAnnouncePort(),
+                                  slave->GetAckSeq());
     }
+  }
+
+  int idx = 0;
+  rocksdb::SequenceNumber latest_seq = storage->LatestSeqNumber();
+  for (const auto &slave : slave_repl_seq) {
+    auto [ip, port, offset] = slave;
+    entries.emplace_back("slave" + std::to_string(idx),
+                         fmt::format("ip={},port={},offset={},lag={}", ip, port, offset, latest_seq - offset));
+    ++idx;
   }
 
   entries.emplace_back("master_repl_offset", latest_seq);

@@ -268,7 +268,7 @@ rocksdb::Status Database::Keys(engine::Context &ctx, const std::string &prefix, 
   while (true) {
     ns_prefix.empty() ? iter->SeekToFirst() : iter->Seek(ns_prefix);
     for (; iter->Valid(); iter->Next()) {
-      if (!ns_prefix.empty() && !iter->key().starts_with(ns_prefix)) {
+      if (!ns_prefix.empty() && !iter->key().starts_with(ns_prefix) && !storage_->IsScanning()) {
         break;
       }
       auto [_, user_key] = ExtractNamespaceKey(iter->key(), storage_->IsSlotIdEncoded());

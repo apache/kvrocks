@@ -167,6 +167,16 @@ func testTimeSeries(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.Equal(t, int64(2), vals[11])
 	})
 
+	t.Run("TS.ALTER Verify Updates", func(t *testing.T) {
+		require.NoError(t, rdb.Do(ctx, "ts.create", key, "retention", "3600", "chunk_size", "1024",
+			"LABELS", "type", "runtime", "compiler", "gcc", "machine", "gcc").Err())
+
+		require.NoError(t, rdb.Do(ctx, "ts.alter", key, "retention", "200").Err())
+		vals, err := rdb.Do(ctx, "ts.info", key).Slice()
+		require.NoError(t, err)
+		require.Equal(t, int64(200), vals[9])
+	})
+
 	t.Run("TS.ADD Basic Add", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, key).Err())
 		require.NoError(t, rdb.Do(ctx, "ts.create", key).Err())

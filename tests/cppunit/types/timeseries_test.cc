@@ -53,6 +53,82 @@ TEST_F(TimeSeriesTest, Create) {
   EXPECT_EQ(s.ToString(), "Invalid argument: key already exists");
 }
 
+TEST_F(TimeSeriesTest, Alter) {
+  redis::TSCreateOption option;
+  option.retention_time = 3600;
+  option.chunk_size = 1024;
+  option.labels = {{"type", "runtime"}, {"compiler", "gcc"}, {"machine", "Linux"}};
+  key_ = "pa";
+
+  EXPECT_TRUE(ts_db_->Create(*ctx_, key_, option).ok());
+
+  redis::TSInfoResult res;
+  option.retention_time = 200;
+  EXPECT_TRUE(ts_db_->Alter(*ctx_, key_, option, static_cast<uint8_t>(redis::TSAlterMode::RETENTION)).ok());
+  EXPECT_TRUE(ts_db_->Info(*ctx_, key_, &res).ok());
+  EXPECT_EQ(res.metadata.retention_time, 200);
+  EXPECT_EQ(res.metadata.chunk_size, 1024);
+  EXPECT_EQ(res.labels.size(), 3);
+
+  // Update chunk size and verify other fields are unaffected.
+  option.chunk_size = 128;
+  EXPECT_TRUE(ts_db_->Alter(*ctx_, key_, option, static_cast<uint8_t>(redis::TSAlterMode::CHUNK_SIZE)).ok());
+  ts_db_->Info(*ctx_, key_, &res);
+  EXPECT_EQ(res.metadata.retention_time, 200);
+  EXPECT_EQ(res.metadata.chunk_size, 128);
+  EXPECT_EQ(res.labels.size(), 3);
+
+  // Verify records are properly inserted.
+  std::vector<TSSample> samples = {{10, 23}, {12, 24.5}};
+  std::vector<TSChunk::AddResult> results;
+  results.resize(samples.size());
+  EXPECT_TRUE(ts_db_->MAdd(*ctx_, key_, samples, &results).ok());
+  EXPECT_EQ(results[0].sample.ts, 10);
+  EXPECT_EQ(results[1].sample.ts, 12);
+
+  // Update labels and verify
+  res.labels.clear();
+  option.labels = {{"compiler", "gcc_12"}, {"version", "123"}};
+  EXPECT_TRUE(ts_db_->Alter(*ctx_, key_, option, static_cast<uint8_t>(redis::TSAlterMode::LABELS)).ok());
+  EXPECT_TRUE(ts_db_->Info(*ctx_, key_, &res).ok());
+  EXPECT_EQ(res.metadata.retention_time, 200);
+  EXPECT_EQ(res.metadata.chunk_size, 128);
+  EXPECT_EQ(res.labels.size(), 2);
+  redis::LabelKVPair first = {"version", "123"}, second = {"compiler", "gcc_12"};
+  EXPECT_TRUE(std::find_if(res.labels.begin(), res.labels.end(), [first](const auto &label) {
+                return first.k == label.k && first.v == label.v;
+              }) != res.labels.end());
+  EXPECT_TRUE(std::find_if(res.labels.begin(), res.labels.end(), [second](const auto &label) {
+                return second.k == label.k && second.v == label.v;
+              }) != res.labels.end());
+
+  // Verify reverse-indexes are properly updated.
+  key_ = "pavani";
+  redis::TSCreateOption second_option;
+  second_option.labels = {{"compiler", "gcc_12"}, {"Desktop", "Lubuntu"}};
+  EXPECT_TRUE(ts_db_->Create(*ctx_, key_, second_option).ok());
+
+  redis::TSMGetOption::FilterOption filters;
+  filters.labels_equals = {{"compiler", {"gcc_12"}}};
+  std::vector<std::string> query_res;
+  EXPECT_TRUE(ts_db_->QueryIndex(*ctx_, filters, &query_res).ok());
+  EXPECT_EQ(query_res.size(), 2);
+  EXPECT_TRUE(std::find(query_res.begin(), query_res.end(), "pa") != query_res.end());
+  EXPECT_TRUE(std::find(query_res.begin(), query_res.end(), "pavani") != query_res.end());
+
+  // old labels should be deleted.
+  filters.labels_equals.clear();
+  filters.labels_equals = {{"machine", {"Linux"}}};
+  query_res.clear();
+  EXPECT_TRUE(ts_db_->QueryIndex(*ctx_, filters, &query_res).ok());
+  EXPECT_TRUE(query_res.empty());
+
+  key_ = "pavni";
+  auto s = ts_db_->Alter(*ctx_, key_, option, 1);
+  EXPECT_FALSE(s.ok());
+  EXPECT_EQ(s.ToString(), "Invalid argument: key not exists");
+}
+
 TEST_F(TimeSeriesTest, Add) {
   redis::TSCreateOption option;
   option.retention_time = 3600;

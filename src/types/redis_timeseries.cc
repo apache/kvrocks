@@ -173,8 +173,8 @@ std::vector<TSSample> AggregateSamplesByRangeOption(std::vector<TSSample> sample
     sample.ts = bucket_left;
     if (bucket_left == option.end_ts) {  // Calculate last sample.
       double y_diff = next_sample.v - prev_sample.v;
-      double x_diff = static_cast<double>(next_sample.ts - prev_sample.ts);
-      double x_prime_diff = static_cast<double>(option.end_ts - prev_sample.ts);
+      auto x_diff = static_cast<double>(next_sample.ts - prev_sample.ts);
+      auto x_prime_diff = static_cast<double>(option.end_ts - prev_sample.ts);
       double y_prime_diff = (x_prime_diff * y_diff) / x_diff;
       sample.v = y_prime_diff + prev_sample.v;
     } else {
@@ -251,7 +251,6 @@ std::vector<TSSample> AggregateSamplesByRangeOption(std::vector<TSSample> sample
         // Cut left and right empty regions. In case of first and last bucket.
         bucket_left = std::max(bucket_left, option.start_ts);
         bucket_right = std::min(bucket_right, option.end_ts);
-        uint64_t l = bucket_left, r = bucket_right;
         // Front area available iff prev_sample < bucket_left < span[i].front(). Similarly for end_area.
         bool front_available = (spans[i].front().ts != bucket_left) && (neighbors[i].first.ts <= bucket_left);
         bool back_available = (spans[i].back().ts != bucket_right) && (bucket_right <= neighbors[i].second.ts);
@@ -260,8 +259,8 @@ std::vector<TSSample> AggregateSamplesByRangeOption(std::vector<TSSample> sample
         area += back_available ? end_area(bucket_right, spans[i].back(), neighbors[i].second) : 0.0;
         // Edge case: If single bucket and it contains only one element.
         area += !front_available && !back_available && spans[i].size() == 1 ? spans[i][0].v : 0;
-        l = front_available ? bucket_left : spans[i].front().ts;
-        r = back_available ? bucket_right : spans[i].back().ts;
+        uint64_t l = front_available ? bucket_left : spans[i].front().ts;
+        uint64_t r = back_available ? bucket_right : spans[i].back().ts;
         sample.v = (sample.v + area) / std::max(static_cast<double>(r - l), 1.0);
       }
     } else {

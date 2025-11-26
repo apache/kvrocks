@@ -1215,11 +1215,11 @@ Server::InfoEntries Server::GetReplicationInfo() {
   }
 
   int idx = 0;
-  rocksdb::SequenceNumber latest_seq = storage->LatestSeqNumber();
 
   {
     std::shared_lock<std::shared_mutex> guard(slave_threads_mu_);
     entries.emplace_back("connected_slaves", slave_threads_.size());
+    rocksdb::SequenceNumber latest_seq = storage->LatestSeqNumber();
     for (const auto &slave : slave_threads_) {
       if (slave->IsStopped()) continue;
 
@@ -1231,9 +1231,8 @@ Server::InfoEntries Server::GetReplicationInfo() {
                       slave_ack_seq >= latest_seq ? 0 : latest_seq - slave_ack_seq));
       ++idx;
     }
+    entries.emplace_back("master_repl_offset", latest_seq);
   }
-
-  entries.emplace_back("master_repl_offset", latest_seq);
 
   return entries;
 }

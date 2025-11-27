@@ -101,33 +101,23 @@ std::vector<TSSample> AggregateSamplesByRangeOption(std::vector<TSSample> sample
     }
     return 0;
   };
-  /// Computes area of polygon from start of the current bucket to the first sample of the current span.
-  /// Total Area = Area of bottom rectangle + Area of above triangle.
-  auto front_area = [](uint64_t bucket_left, const TSSample &prev, const TSSample &curr) {
-    auto x = static_cast<double>(bucket_left - prev.ts);  // Distance from
-    auto y = static_cast<double>(curr.ts - prev.ts);
-    auto z = curr.v - prev.v;
-    auto triangle_area = (z * (y - (x * x) / y)) / 2;
-    auto rect_area = static_cast<double>(y - x) * prev.v;
-    return triangle_area + rect_area;
-  };
-  /// Computes area of polygon from the last sample of the current span to the end of current bucket.
-  /// Total Area = Area of bottom rectangle + Area of above triangle.
-  auto end_area = [](uint64_t bucket_right, const TSSample &curr, const TSSample &next) {
-    auto x = static_cast<double>(bucket_right - curr.ts);
-    auto y = static_cast<double>(next.ts - curr.ts);
-    auto z = next.v - curr.v;
-    auto rect_area = x * curr.v;
-    auto triangle_area = (x * x * z) / (2 * y);
-    return triangle_area + rect_area;
+  // Linear interpolation.
+  auto interpolate_sample = [](const TSSample &left_nb, uint64_t ts, const TSSample &right_nb) {
+    auto y_diff = right_nb.v - left_nb.v;
+    auto x_diff = static_cast<double>(right_nb.ts - left_nb.ts);
+    auto x_diff_prime = static_cast<double>(ts - left_nb.ts);
+    auto y_diff_prime = (x_diff_prime * y_diff) / x_diff;
+    TSSample sample;
+    sample.ts = ts;
+    sample.v = y_diff_prime + left_nb.v;
+    return sample;
   };
   // Computes the TWA of empty bucket from its neighbor samples.
-  auto empty_bucket_twa = [&front_area](const TSSample &left_nb, uint64_t bucket_left, uint64_t bucket_right,
-                                        const TSSample &right_nb) {
-    // Area of empty bucket = Area from left_nb to bucket_right - Area from left_nb to bucket_left
-    auto f_area = front_area(bucket_left, left_nb, right_nb);
-    auto s_area = front_area(bucket_right, left_nb, right_nb);
-    return (f_area - s_area) / static_cast<double>(bucket_right - bucket_left);
+  auto empty_bucket_twa = [&interpolate_sample](const TSSample &left_nb, uint64_t bucket_left, uint64_t bucket_right,
+                                                const TSSample &right_nb) {
+    auto left = interpolate_sample(left_nb, bucket_left, right_nb);
+    auto right = interpolate_sample(left_nb, bucket_right, right_nb);
+    return Reducer::Area(std::array<TSSample, 2>{left, right}) / static_cast<double>(bucket_right - bucket_left);
   };
 
   // Retrieve prev_sample and next_sample from samples when TWA aggregation.
@@ -151,8 +141,6 @@ std::vector<TSSample> AggregateSamplesByRangeOption(std::vector<TSSample> sample
       res = std::move(samples);
       return res;
     }
-    // Both prev and next should be available. Total range should be in between the prev and next samples.
-    assert(prev_sample.ts <= option.start_ts && option.end_ts <= next_sample.ts);
 
     uint64_t n_buckets_estimate = (option.end_ts - option.start_ts) / option.aggregator.bucket_duration;
     res.reserve(n_buckets_estimate + 1);
@@ -172,11 +160,7 @@ std::vector<TSSample> AggregateSamplesByRangeOption(std::vector<TSSample> sample
     TSSample sample;
     sample.ts = bucket_left;
     if (bucket_left == option.end_ts) {  // Calculate last sample.
-      double y_diff = next_sample.v - prev_sample.v;
-      auto x_diff = static_cast<double>(next_sample.ts - prev_sample.ts);
-      auto x_prime_diff = static_cast<double>(option.end_ts - prev_sample.ts);
-      double y_prime_diff = (x_prime_diff * y_diff) / x_diff;
-      sample.v = y_prime_diff + prev_sample.v;
+      sample.v = interpolate_sample(prev_sample, option.end_ts, next_sample).v;
     } else {
       sample.v = empty_bucket_twa(prev_sample, bucket_left, bucket_right, next_sample);
     }
@@ -205,9 +189,7 @@ std::vector<TSSample> AggregateSamplesByRangeOption(std::vector<TSSample> sample
     TSSample prev = (i != 0) ? spans[non_empty_left_bucket_idx(i)].back() : prev_sample;
     TSSample next = (i != (spans.size() - 1)) ? spans[non_empty_right_bucket_idx(i)].front() : next_sample;
     neighbors.emplace_back(prev, next);
-    assert(spans[i].empty() ||
-           (neighbors[i].first.ts <= spans[i].front().ts && spans[i].back().ts <= neighbors[i].second.ts));
-  }  // Should follow: neighbors[i].first <= span[i].front() <= span[i].back() <= neighbors[i].second;
+  }
 
   uint64_t bucket_left = aggregator.CalculateAlignedBucketLeft(samples.front().ts);
   for (size_t i = 0; i < spans.size(); i++) {
@@ -255,12 +237,20 @@ std::vector<TSSample> AggregateSamplesByRangeOption(std::vector<TSSample> sample
         bool front_available = (spans[i].front().ts != bucket_left) && (neighbors[i].first.ts <= bucket_left);
         bool back_available = (spans[i].back().ts != bucket_right) && (bucket_right <= neighbors[i].second.ts);
         double area = 0;
-        area += front_available ? front_area(bucket_left, neighbors[i].first, spans[i].front()) : 0.0;
-        area += back_available ? end_area(bucket_right, spans[i].back(), neighbors[i].second) : 0.0;
+        uint64_t l = spans[i].front().ts;
+        uint64_t r = spans[i].back().ts;
+        if (front_available) {
+          TSSample left_sample = interpolate_sample(neighbors[i].first, bucket_left, spans[i].front());
+          area += Reducer::Area(std::array<TSSample, 2>{left_sample, spans[i].front()});
+          l = bucket_left;
+        }
+        if (back_available) {
+          TSSample right_sample = interpolate_sample(spans[i].back(), bucket_right, neighbors[i].second);
+          area += Reducer::Area(std::array<TSSample, 2>{spans[i].back(), right_sample});
+          r = bucket_right;
+        }
         // Edge case: If single bucket and it contains only one element.
         area += !front_available && !back_available && spans[i].size() == 1 ? spans[i][0].v : 0;
-        uint64_t l = front_available ? bucket_left : spans[i].front().ts;
-        uint64_t r = back_available ? bucket_right : spans[i].back().ts;
         sample.v = (sample.v + area) / std::max(static_cast<double>(r - l), 1.0);
       }
     } else {

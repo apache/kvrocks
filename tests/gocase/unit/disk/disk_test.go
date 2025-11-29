@@ -157,4 +157,49 @@ func TestDisk(t *testing.T) {
 		_, err = rdb.MemoryUsage(ctx, "nonexistentkey").Result()
 		require.ErrorIs(t, err, redis.Nil)
 	})
+
+	t.Run("Disk usage Stream with XACKDEL", func(t *testing.T) {
+		key := "stream_xackdel_disk"
+		group := "g1"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.XGroupCreateMkStream(ctx, key, group, "0").Err())
+
+		approximateSize := 0
+		var ids []string
+		for i := 0; i < 1000; i++ {
+			id, err := rdb.XAdd(ctx, &redis.XAddArgs{Stream: key, Values: map[string]interface{}{"k": strings.Repeat("v", 100)}}).Result()
+			require.NoError(t, err)
+			ids = append(ids, id)
+			// Key + ID + Value overhead
+			approximateSize += len(key) + len(id) + 100 + 20 // rough estimate
+		}
+
+		// Read to create PEL entries
+		rdb.XReadGroup(ctx, &redis.XReadGroupArgs{Group: group, Consumer: "c1", Streams: []string{key, ">"}, Count: 1000})
+
+		// Trigger compaction and wait
+		rdb.Do(ctx, "compact")
+		time.Sleep(2 * time.Second)
+
+		valBefore, err := rdb.Do(ctx, "Disk", "usage", key).Int()
+		require.NoError(t, err)
+		require.Greater(t, valBefore, 0)
+
+		// XACKDEL half of them with DELREF to ensure they are fully gone
+		args := []interface{}{"XACKDEL", key, group, "DELREF", "IDS", len(ids) / 2}
+		for i := 0; i < len(ids)/2; i++ {
+			args = append(args, ids[i])
+		}
+		_, err = rdb.Do(ctx, args...).Result()
+		require.NoError(t, err)
+
+		rdb.Do(ctx, "compact")
+		time.Sleep(2 * time.Second)
+
+		valAfter, err := rdb.Do(ctx, "Disk", "usage", key).Int()
+		require.NoError(t, err)
+
+		// Should be significantly smaller
+		require.Less(t, valAfter, valBefore)
+	})
 }

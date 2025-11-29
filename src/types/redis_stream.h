@@ -33,6 +33,8 @@ using rocksdb::Slice;
 
 namespace redis {
 
+enum class StreamAckDelStrategy { KeepRef, DelRef, Acked };
+
 class Stream : public SubKeyScanner {
  public:
   explicit Stream(engine::Storage *storage, const std::string &ns)
@@ -53,6 +55,9 @@ class Stream : public SubKeyScanner {
                                 uint64_t *deleted_cnt);
   rocksdb::Status DeletePelEntries(engine::Context &ctx, const Slice &stream_name, const std::string &group_name,
                                    const std::vector<StreamEntryID> &entry_ids, uint64_t *acknowledged);
+  rocksdb::Status AckDelEntries(engine::Context &ctx, const Slice &stream_name, const std::string &group_name,
+                                const std::vector<StreamEntryID> &entry_ids, StreamAckDelStrategy strategy,
+                                std::vector<int> *results);
   rocksdb::Status ClaimPelEntries(engine::Context &ctx, const Slice &stream_name, const std::string &group_name,
                                   const std::string &consumer_name, uint64_t min_idle_time_ms,
                                   const std::vector<StreamEntryID> &entry_ids, const StreamClaimOptions &options,

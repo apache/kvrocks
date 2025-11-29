@@ -94,6 +94,82 @@ class CommandXAck : public Commander {
   std::vector<StreamEntryID> entry_ids_;
 };
 
+class CommandXAckDel : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() < 6) {
+      return {Status::RedisParseErr, errWrongNumOfArguments};
+    }
+    stream_name_ = args[1];
+    group_name_ = args[2];
+
+    size_t i = 3;
+    std::string arg = util::ToUpper(args[i]);
+    if (arg == "KEEPREF") {
+      strategy_ = redis::StreamAckDelStrategy::KeepRef;
+      i++;
+    } else if (arg == "DELREF") {
+      strategy_ = redis::StreamAckDelStrategy::DelRef;
+      i++;
+    } else if (arg == "ACKED") {
+      strategy_ = redis::StreamAckDelStrategy::Acked;
+      i++;
+    }
+
+    if (i >= args.size() || util::ToUpper(args[i]) != "IDS") {
+      return {Status::RedisParseErr, "syntax error, expect IDS"};
+    }
+    i++;
+
+    if (i >= args.size()) {
+      return {Status::RedisParseErr, "syntax error, expect numids"};
+    }
+
+    auto parse_result = ParseInt<uint64_t>(args[i], 10);
+    if (!parse_result) {
+      return {Status::RedisParseErr, errValueNotInteger};
+    }
+    uint64_t numids = *parse_result;
+    i++;
+
+    if (args.size() - i != numids) {
+      return {Status::RedisParseErr, "syntax error, numids does not match number of IDs"};
+    }
+
+    for (; i < args.size(); ++i) {
+      redis::StreamEntryID id;
+      auto s = redis::ParseStreamEntryID(args[i], &id);
+      if (!s.IsOK()) return s;
+      entry_ids_.push_back(id);
+    }
+
+    return Status::OK();
+  }
+
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    redis::Stream stream_db(srv->storage, conn->GetNamespace());
+    std::vector<int> results;
+
+    auto s = stream_db.AckDelEntries(ctx, stream_name_, group_name_, entry_ids_, strategy_, &results);
+    if (!s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+
+    output->append(redis::MultiLen(results.size()));
+    for (int result : results) {
+      output->append(redis::Integer(result));
+    }
+
+    return Status::OK();
+  }
+
+ private:
+  std::string stream_name_;
+  std::string group_name_;
+  redis::StreamAckDelStrategy strategy_ = redis::StreamAckDelStrategy::KeepRef;
+  std::vector<redis::StreamEntryID> entry_ids_;
+};
+
 class CommandXAdd : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
@@ -1880,6 +1956,7 @@ class CommandXSetId : public Commander {
 };
 
 REDIS_REGISTER_COMMANDS(Stream, MakeCmdAttr<CommandXAck>("xack", -4, "write no-dbsize-check", 1, 1, 1),
+                        MakeCmdAttr<CommandXAckDel>("xackdel", -5, "write no-dbsize-check", 1, 1, 1),
                         MakeCmdAttr<CommandXAdd>("xadd", -5, "write", 1, 1, 1),
                         MakeCmdAttr<CommandXDel>("xdel", -3, "write no-dbsize-check", 1, 1, 1),
                         MakeCmdAttr<CommandXClaim>("xclaim", -6, "write", 1, 1, 1),

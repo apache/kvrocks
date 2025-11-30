@@ -72,8 +72,7 @@ class Stream : public SubKeyScanner {
   rocksdb::Status Range(engine::Context &ctx, const Slice &stream_name, const StreamRangeOptions &options,
                         std::vector<StreamEntry> *entries);
   rocksdb::Status RangeWithPending(engine::Context &ctx, const Slice &stream_name, StreamRangeOptions &options,
-                                   std::vector<StreamEntry> *entries, std::string &group_name,
-                                   std::string &consumer_name, bool noack, bool latest);
+                                   std::vector<StreamEntry> *entries, const StreamReadGroupReadOptions &read_options);
   rocksdb::Status Trim(engine::Context &ctx, const Slice &stream_name, const StreamTrimOptions &options,
                        uint64_t *delete_cnt);
   rocksdb::Status GetMetadata(engine::Context &ctx, const Slice &stream_name, StreamMetadata *metadata);

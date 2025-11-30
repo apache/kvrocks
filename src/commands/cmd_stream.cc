@@ -19,7 +19,6 @@
  */
 
 #include <algorithm>
-#include <limits>
 #include <memory>
 #include <stdexcept>
 
@@ -54,9 +53,20 @@ CommandKeyRange ParseStreamReadRange(const std::vector<std::string> &args, uint3
 void AddStreamEntriesToResponse(std::string *output, const std::vector<StreamEntry> &entries) {
   output->append(redis::MultiLen(entries.size()));
   for (const auto &entry : entries) {
-    output->append(redis::MultiLen(2));
-    output->append(redis::BulkString(entry.key));
-    output->append(redis::ArrayOfBulkStrings(entry.values));
+    // Check if this entry has CLAIM metadata (idle_ms >= 0 means it was claimed)
+    if (entry.idle_ms >= 0) {
+      // Extended format for CLAIM: [id, [fields...], idle_ms, delivery_count]
+      output->append(redis::MultiLen(4));
+      output->append(redis::BulkString(entry.key));
+      output->append(redis::ArrayOfBulkStrings(entry.values));
+      output->append(redis::Integer(entry.idle_ms));
+      output->append(redis::Integer(entry.delivery_count));
+    } else {
+      // Standard format: [id, [fields...]]
+      output->append(redis::MultiLen(2));
+      output->append(redis::BulkString(entry.key));
+      output->append(redis::ArrayOfBulkStrings(entry.values));
+    }
   }
 }
 
@@ -1411,6 +1421,8 @@ class CommandXRead : public Commander,
   int blocked_default_count_ = 1000;
   bool with_count_ = false;
   bool block_ = false;
+  bool noack_ = false;
+  int64_t min_idle_time_ms_ = -1;
 
   void unblockAll() { srv_->UnblockOnStreams(streams_, conn_); }
 };
@@ -1475,6 +1487,24 @@ class CommandXReadGroup : public Commander,
 
       if (arg == "noack") {
         noack_ = true;
+        ++i;
+        continue;
+      }
+
+      if (arg == "claim") {
+        if (i + 1 >= args.size()) {
+          return {Status::RedisParseErr, errInvalidSyntax};
+        }
+        auto parse_result = ParseInt<int64_t>(args[i + 1], 10);
+        if (!parse_result) {
+          return {Status::RedisParseErr, errValueNotInteger};
+        }
+        if (*parse_result < 0) {
+          return {Status::RedisParseErr, "min-idle-time must be non-negative"};
+        }
+        min_idle_time_ms_ = *parse_result;
+        i += 2;
+        continue;
       }
 
       ++i;
@@ -1527,8 +1557,14 @@ class CommandXReadGroup : public Commander,
       options.exclude_end = false;
 
       std::vector<StreamEntry> result;
-      auto s = stream_db.RangeWithPending(ctx, streams_[i], options, &result, group_name_, consumer_name_, noack_,
-                                          latest_marks_[i]);
+      redis::StreamReadGroupReadOptions read_options;
+      read_options.group_name = group_name_;
+      read_options.consumer_name = consumer_name_;
+      read_options.noack = noack_;
+      read_options.latest = latest_marks_[i];
+      read_options.min_idle_time_ms = min_idle_time_ms_;
+
+      auto s = stream_db.RangeWithPending(ctx, streams_[i], options, &result, read_options);
       if (!s.ok() && !s.IsNotFound()) {
         return {Status::RedisExecErr, s.ToString()};
       }
@@ -1573,13 +1609,21 @@ class CommandXReadGroup : public Commander,
       output->append(redis::BulkString(result.name));
       output->append(redis::MultiLen(result.entries.size()));
       for (const auto &entry : result.entries) {
-        output->append(redis::MultiLen(2));
+        if (entry.idle_ms >= 0) {
+          output->append(redis::MultiLen(4));
+        } else {
+          output->append(redis::MultiLen(2));
+        }
         output->append(redis::BulkString(entry.key));
         if (entry.values.size() == 0 && !latest_marks_[id]) {
           output->append(conn->NilString());
-          continue;
+        } else {
+          output->append(conn->MultiBulkString(entry.values));
         }
-        output->append(conn->MultiBulkString(entry.values));
+        if (entry.idle_ms >= 0) {
+          output->append(redis::Integer(entry.idle_ms));
+          output->append(redis::Integer(entry.delivery_count));
+        }
       }
       ++id;
     }
@@ -1650,8 +1694,14 @@ class CommandXReadGroup : public Commander,
       options.exclude_end = false;
 
       std::vector<StreamEntry> result;
-      auto s = stream_db.RangeWithPending(ctx, streams_[i], options, &result, group_name_, consumer_name_, noack_,
-                                          latest_marks_[i]);
+      redis::StreamReadGroupReadOptions read_options;
+      read_options.group_name = group_name_;
+      read_options.consumer_name = consumer_name_;
+      read_options.noack = noack_;
+      read_options.latest = latest_marks_[i];
+      read_options.min_idle_time_ms = min_idle_time_ms_;
+
+      auto s = stream_db.RangeWithPending(ctx, streams_[i], options, &result, read_options);
       if (!s.ok() && !s.IsNotFound()) {
         conn_->Reply(redis::Error({Status::NotOK, s.ToString()}));
         return;
@@ -1716,6 +1766,7 @@ class CommandXReadGroup : public Commander,
   std::string group_name_;
   std::string consumer_name_;
   bool noack_ = false;
+  int64_t min_idle_time_ms_ = -1;
 
   Server *srv_ = nullptr;
   Connection *conn_ = nullptr;

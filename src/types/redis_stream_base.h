@@ -124,7 +124,13 @@ struct StreamEntry {
   std::string key;
   std::vector<std::string> values;
 
+  // Optional metadata for CLAIM reply extension
+  int64_t idle_ms = -1;         // Milliseconds since last delivery
+  uint64_t delivery_count = 0;  // Number of times previously delivered
+
   StreamEntry(std::string k, std::vector<std::string> vv) : key(std::move(k)), values(std::move(vv)) {}
+  StreamEntry(std::string k, std::vector<std::string> vv, int64_t idle, uint64_t count)
+      : key(std::move(k)), values(std::move(vv)), idle_ms(idle), delivery_count(count) {}
 };
 
 struct StreamTrimOptions {
@@ -265,6 +271,14 @@ struct StreamGetPendingEntryResult {
 struct StreamNACK {
   StreamEntryID id;
   StreamPelEntry pel_entry;
+};
+
+struct StreamReadGroupReadOptions {
+  std::string group_name;
+  std::string consumer_name;
+  bool noack = false;
+  bool latest = false;
+  int64_t min_idle_time_ms = -1;
 };
 
 Status IncrementStreamEntryID(StreamEntryID *id);

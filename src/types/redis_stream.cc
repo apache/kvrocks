@@ -1428,8 +1428,8 @@ rocksdb::Status Stream::Range(engine::Context &ctx, const Slice &stream_name, co
 }
 
 rocksdb::Status Stream::RangeWithPending(engine::Context &ctx, const Slice &stream_name, StreamRangeOptions &options,
-                                         std::vector<StreamEntry> *entries, std::string &group_name,
-                                         std::string &consumer_name, bool noack, bool latest) {
+                                         std::vector<StreamEntry> *entries,
+                                         const StreamReadGroupReadOptions &read_options) {
   entries->clear();
 
   if (options.with_count && options.count == 0) {
@@ -1452,12 +1452,13 @@ rocksdb::Status Stream::RangeWithPending(engine::Context &ctx, const Slice &stre
     return s.IsNotFound() ? rocksdb::Status::OK() : s;
   }
 
-  std::string group_key = internalKeyFromGroupName(ns_key, metadata, group_name);
+  std::string group_key = internalKeyFromGroupName(ns_key, metadata, read_options.group_name);
   std::string get_group_value;
   s = storage_->Get(ctx, ctx.GetReadOptions(), stream_cf_handle_, group_key, &get_group_value);
   if (!s.ok()) return s;
 
-  std::string consumer_key = internalKeyFromConsumerName(ns_key, metadata, group_name, consumer_name);
+  std::string consumer_key =
+      internalKeyFromConsumerName(ns_key, metadata, read_options.group_name, read_options.consumer_name);
   std::string get_consumer_value;
   s = storage_->Get(ctx, ctx.GetReadOptions(), stream_cf_handle_, consumer_key, &get_consumer_value);
   if (!s.ok() && !s.IsNotFound()) {
@@ -1465,7 +1466,8 @@ rocksdb::Status Stream::RangeWithPending(engine::Context &ctx, const Slice &stre
   }
   if (s.IsNotFound()) {
     int created_number = 0;
-    s = createConsumerWithoutLock(ctx, stream_name, group_name, consumer_name, &created_number);
+    s = createConsumerWithoutLock(ctx, stream_name, read_options.group_name, read_options.consumer_name,
+                                  &created_number);
     if (!s.ok()) {
       return s;
     }
@@ -1487,7 +1489,8 @@ rocksdb::Status Stream::RangeWithPending(engine::Context &ctx, const Slice &stre
   consumer_metadata.last_attempted_interaction_ms = now_ms;
   consumer_metadata.last_successful_interaction_ms = now_ms;
 
-  if (latest) {
+  if (read_options.latest && read_options.min_idle_time_ms < 0) {
+    // No CLAIM, just consume new messages
     options.start = consumergroup_metadata.last_delivered_id;
     s = range(ctx, ns_key, metadata, options, entries);
     if (!s.ok()) {
@@ -1503,9 +1506,9 @@ rocksdb::Status Stream::RangeWithPending(engine::Context &ctx, const Slice &stre
       if (id > maxid) {
         maxid = id;
       }
-      if (!noack) {
-        std::string pel_key = internalPelKeyFromGroupAndEntryId(ns_key, metadata, group_name, id);
-        StreamPelEntry pel_entry = {now_ms, 1, consumer_name};
+      if (!read_options.noack) {
+        std::string pel_key = internalPelKeyFromGroupAndEntryId(ns_key, metadata, read_options.group_name, id);
+        StreamPelEntry pel_entry = {now_ms, 1, read_options.consumer_name};
         std::string pel_value = encodeStreamPelEntryValue(pel_entry);
         s = batch->Put(stream_cf_handle_, pel_key, pel_value);
         if (!s.ok()) return s;
@@ -1517,23 +1520,142 @@ rocksdb::Status Stream::RangeWithPending(engine::Context &ctx, const Slice &stre
     if (maxid > consumergroup_metadata.last_delivered_id) {
       consumergroup_metadata.last_delivered_id = maxid;
     }
-  } else {
-    std::string prefix_key = internalPelKeyFromGroupAndEntryId(ns_key, metadata, group_name, options.start);
-    std::string end_key = internalPelKeyFromGroupAndEntryId(ns_key, metadata, group_name, StreamEntryID::Maximum());
+  } else if (read_options.min_idle_time_ms >= 0) {
+    // CLAIM option: First try to claim idle pending entries
+    std::string prefix_key =
+        internalPelKeyFromGroupAndEntryId(ns_key, metadata, read_options.group_name, StreamEntryID::Minimum());
+    std::string end_key =
+        internalPelKeyFromGroupAndEntryId(ns_key, metadata, read_options.group_name, StreamEntryID::Maximum());
 
-    rocksdb::ReadOptions read_options = ctx.DefaultScanOptions();
+    rocksdb::ReadOptions read_options_db = ctx.DefaultScanOptions();
     rocksdb::Slice upper_bound(end_key);
-    read_options.iterate_upper_bound = &upper_bound;
+    read_options_db.iterate_upper_bound = &upper_bound;
     rocksdb::Slice lower_bound(prefix_key);
-    read_options.iterate_lower_bound = &lower_bound;
+    read_options_db.iterate_lower_bound = &lower_bound;
 
-    auto iter = util::UniqueIterator(ctx, read_options, stream_cf_handle_);
+    auto iter = util::UniqueIterator(ctx, read_options_db, stream_cf_handle_);
     uint64_t count = 0;
     for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
       std::string tmp_group_name;
       StreamEntryID entry_id = groupAndEntryIdFromPelInternalKey(iter->key(), tmp_group_name);
       StreamPelEntry pel_entry = decodeStreamPelEntryValue(iter->value().ToString());
-      if (pel_entry.consumer_name != consumer_name) continue;
+
+      if (now_ms - pel_entry.last_delivery_time_ms < static_cast<uint64_t>(read_options.min_idle_time_ms)) {
+        continue;
+      }
+
+      std::string raw_value;
+      rocksdb::Status st = getEntryRawValue(ctx, ns_key, metadata, entry_id, &raw_value);
+      if (!st.ok()) {
+        if (st.IsNotFound()) continue;  // Entry might have been deleted
+        return st;
+      }
+
+      std::vector<std::string> values;
+      auto rv = DecodeRawStreamEntryValue(raw_value, &values);
+      if (!rv.IsOK()) {
+        return rocksdb::Status::InvalidArgument(rv.Msg());
+      }
+      // Include CLAIM metadata: idle_ms and delivery_count
+      int64_t idle_ms = now_ms - pel_entry.last_delivery_time_ms;
+      entries->emplace_back(entry_id.ToString(), std::move(values), idle_ms, pel_entry.last_delivery_count);
+
+      // Claim the entry
+      if (pel_entry.consumer_name != read_options.consumer_name) {
+        // Update old consumer's pending count
+        std::string old_consumer_key =
+            internalKeyFromConsumerName(ns_key, metadata, read_options.group_name, pel_entry.consumer_name);
+        std::string get_old_consumer_value;
+        s = storage_->Get(ctx, ctx.GetReadOptions(), stream_cf_handle_, old_consumer_key, &get_old_consumer_value);
+        if (s.ok()) {
+          StreamConsumerMetadata old_consumer_metadata = decodeStreamConsumerMetadataValue(get_old_consumer_value);
+          if (old_consumer_metadata.pending_number > 0) {
+            old_consumer_metadata.pending_number -= 1;
+            s = batch->Put(stream_cf_handle_, old_consumer_key,
+                           encodeStreamConsumerMetadataValue(old_consumer_metadata));
+            if (!s.ok()) return s;
+          }
+        }
+
+        pel_entry.consumer_name = read_options.consumer_name;
+        consumer_metadata.pending_number += 1;
+      }
+
+      pel_entry.last_delivery_count += 1;
+      pel_entry.last_delivery_time_ms = now_ms;
+      s = batch->Put(stream_cf_handle_, iter->key(), encodeStreamPelEntryValue(pel_entry));
+      if (!s.ok()) return s;
+
+      ++count;
+      if (count >= options.count) break;
+    }
+    if (auto s = iter->status(); !s.ok()) {
+      return s;
+    }
+
+    // If latest=true and we haven't reached the count, also consume new messages
+    if (read_options.latest && count < options.count) {
+      options.start = consumergroup_metadata.last_delivered_id;
+      std::vector<StreamEntry> new_entries;
+      StreamRangeOptions new_options = options;
+      new_options.count = options.count - count;
+      s = range(ctx, ns_key, metadata, new_options, &new_entries);
+      if (!s.ok()) {
+        return s;
+      }
+      StreamEntryID maxid = {0, 0};
+      for (const auto &entry : new_entries) {
+        StreamEntryID id;
+        Status st = ParseStreamEntryID(entry.key, &id);
+        if (!st.IsOK()) {
+          return rocksdb::Status::InvalidArgument(st.Msg());
+        }
+        if (id > maxid) {
+          maxid = id;
+        }
+        if (!read_options.noack) {
+          std::string pel_key = internalPelKeyFromGroupAndEntryId(ns_key, metadata, read_options.group_name, id);
+          StreamPelEntry pel_entry = {now_ms, 1, read_options.consumer_name};
+          std::string pel_value = encodeStreamPelEntryValue(pel_entry);
+          s = batch->Put(stream_cf_handle_, pel_key, pel_value);
+          if (!s.ok()) return s;
+          consumergroup_metadata.entries_read += 1;
+          consumergroup_metadata.pending_number += 1;
+          consumer_metadata.pending_number += 1;
+        }
+        // New messages in CLAIM mode should also have 4-element format with idle_ms=0, delivery_count=0
+        entries->emplace_back(entry.key, std::move(entry.values), 0, 0);
+      }
+      if (maxid > consumergroup_metadata.last_delivered_id) {
+        consumergroup_metadata.last_delivered_id = maxid;
+      }
+    }
+  } else {
+    // No CLAIM, read from pending list
+    std::string prefix_key =
+        internalPelKeyFromGroupAndEntryId(ns_key, metadata, read_options.group_name, options.start);
+    std::string end_key =
+        internalPelKeyFromGroupAndEntryId(ns_key, metadata, read_options.group_name, StreamEntryID::Maximum());
+
+    rocksdb::ReadOptions read_options_db = ctx.DefaultScanOptions();
+    rocksdb::Slice upper_bound(end_key);
+    read_options_db.iterate_upper_bound = &upper_bound;
+    rocksdb::Slice lower_bound(prefix_key);
+    read_options_db.iterate_lower_bound = &lower_bound;
+
+    auto iter = util::UniqueIterator(ctx, read_options_db, stream_cf_handle_);
+    uint64_t count = 0;
+    for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+      std::string tmp_group_name;
+      StreamEntryID entry_id = groupAndEntryIdFromPelInternalKey(iter->key(), tmp_group_name);
+
+      // Skip entry if exclude_start is true and it matches options.start
+      if (options.exclude_start && entry_id == options.start) {
+        continue;
+      }
+
+      StreamPelEntry pel_entry = decodeStreamPelEntryValue(iter->value().ToString());
+      if (pel_entry.consumer_name != read_options.consumer_name) continue;
       std::string raw_value;
       rocksdb::Status st = getEntryRawValue(ctx, ns_key, metadata, entry_id, &raw_value);
       if (!st.ok() && !st.IsNotFound()) {

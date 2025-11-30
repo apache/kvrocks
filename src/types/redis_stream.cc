@@ -1757,9 +1757,47 @@ rocksdb::Status Stream::GetPendingEntries(engine::Context &ctx, StreamPendingOpt
   std::string prefix_key = internalPelKeyFromGroupAndEntryId(ns_key, metadata, group_name, options.start_id);
   std::string end_key = internalPelKeyFromGroupAndEntryId(ns_key, metadata, group_name, options.end_id);
 
+  if (options.start_id == options.end_id) {
+    std::string value;
+    s = storage_->Get(ctx, ctx.GetReadOptions(), stream_cf_handle_, prefix_key, &value);
+    if (!s.ok()) {
+      return s.IsNotFound() ? rocksdb::Status::OK() : s;
+    }
+
+    StreamPelEntry pel_entry = decodeStreamPelEntryValue(value);
+    if (options.with_time && util::GetTimeStampMS() - pel_entry.last_delivery_time_ms < options.idle_time) {
+      return rocksdb::Status::OK();
+    }
+
+    if (options.with_consumer && options.consumer != pel_entry.consumer_name) {
+      return rocksdb::Status::OK();
+    }
+
+    if (options.with_count) {
+      ext_results.push_back(
+          {options.start_id,
+           {pel_entry.last_delivery_time_ms, pel_entry.last_delivery_count, pel_entry.consumer_name}});
+    } else {
+      pending_infos.last_entry_id = options.start_id;
+      pending_infos.first_entry_id = options.start_id;
+      pending_infos.pending_number = 1;
+
+      std::string consumer_key = internalKeyFromConsumerName(ns_key, metadata, group_name, pel_entry.consumer_name);
+      std::string get_consumer_value;
+      s = storage_->Get(ctx, ctx.GetReadOptions(), stream_cf_handle_, consumer_key, &get_consumer_value);
+      if (!s.ok() && !s.IsNotFound()) {
+        return s;
+      }
+      if (s.IsNotFound()) {
+        return rocksdb::Status::OK();
+      }
+      StreamConsumerMetadata consumer_metadata = decodeStreamConsumerMetadataValue(get_consumer_value);
+      pending_infos.consumer_infos.emplace_back(pel_entry.consumer_name, consumer_metadata.pending_number);
+    }
+    return rocksdb::Status::OK();
+  }
+
   rocksdb::ReadOptions read_options = ctx.DefaultScanOptions();
-  rocksdb::Slice upper_bound(end_key);
-  read_options.iterate_upper_bound = &upper_bound;
   rocksdb::Slice lower_bound(prefix_key);
   read_options.iterate_lower_bound = &lower_bound;
 
@@ -1769,7 +1807,18 @@ rocksdb::Status Stream::GetPendingEntries(engine::Context &ctx, StreamPendingOpt
   StreamEntryID last_entry_id{StreamEntryID::Minimum()};
   uint64_t ext_result_count = 0;
   uint64_t summary_result_count = 0;
+  rocksdb::Slice end_key_slice(end_key);
   for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+    if (options.exclude_start && iter->key() == prefix_key) {
+      continue;
+    }
+    int cmp = iter->key().compare(end_key_slice);
+    if (options.exclude_end && cmp >= 0) {
+      break;
+    }
+    if (!options.exclude_end && cmp > 0) {
+      break;
+    }
     if (options.with_count && options.count <= ext_result_count) {
       break;
     }

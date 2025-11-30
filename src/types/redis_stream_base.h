@@ -242,6 +242,8 @@ struct StreamAutoClaimResult {
 struct StreamPendingOptions {
   uint64_t idle_time = 0;
   bool with_time = false;
+  bool exclude_start = false;
+  bool exclude_end = false;
 
   StreamEntryID start_id{StreamEntryID::Minimum()};
   StreamEntryID end_id{StreamEntryID::Maximum()};

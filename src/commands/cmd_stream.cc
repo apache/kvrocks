@@ -861,6 +861,10 @@ class CommandXPending : public Commander {
       start_id = GET_OR_RET(parser.TakeStr());
       end_id = GET_OR_RET(parser.TakeStr());
       if (start_id != "-") {
+        if (start_id[0] == '(') {
+          options_.exclude_start = true;
+          start_id = start_id.substr(1);
+        }
         auto s = ParseStreamEntryID(start_id, &options_.start_id);
         if (!s.IsOK()) {
           return s;
@@ -868,7 +872,11 @@ class CommandXPending : public Commander {
       }
 
       if (end_id != "+") {
-        auto s = ParseStreamEntryID(start_id, &options_.end_id);
+        if (end_id[0] == '(') {
+          options_.exclude_end = true;
+          end_id = end_id.substr(1);
+        }
+        auto s = ParseStreamEntryID(end_id, &options_.end_id);
         if (!s.IsOK()) {
           return s;
         }

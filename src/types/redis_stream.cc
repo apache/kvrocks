@@ -1557,8 +1557,8 @@ rocksdb::Status Stream::RangeWithPending(engine::Context &ctx, const Slice &stre
         return rocksdb::Status::InvalidArgument(rv.Msg());
       }
       // Include CLAIM metadata: idle_ms and delivery_count
-      int64_t idle_ms = now_ms - pel_entry.last_delivery_time_ms;
-      entries->emplace_back(entry_id.ToString(), std::move(values), idle_ms, pel_entry.last_delivery_count);
+      // Include CLAIM metadata: idle_ms and delivery_count
+      int64_t idle_ms = static_cast<int64_t>(now_ms - pel_entry.last_delivery_time_ms);
 
       // Claim the entry
       if (pel_entry.consumer_name != read_options.consumer_name) {
@@ -1582,6 +1582,7 @@ rocksdb::Status Stream::RangeWithPending(engine::Context &ctx, const Slice &stre
       }
 
       pel_entry.last_delivery_count += 1;
+      entries->emplace_back(entry_id.ToString(), std::move(values), idle_ms, pel_entry.last_delivery_count);
       pel_entry.last_delivery_time_ms = now_ms;
       s = batch->Put(stream_cf_handle_, iter->key(), encodeStreamPelEntryValue(pel_entry));
       if (!s.ok()) return s;

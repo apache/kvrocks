@@ -43,43 +43,79 @@ func testXReadGroup(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.NoError(t, rdb.Del(ctx, streamName).Err())
 		require.NoError(t, rdb.XGroupCreateMkStream(ctx, streamName, groupName, "0").Err())
 
-		id1 := rdb.XAdd(ctx, &redis.XAddArgs{Stream: streamName, Values: []string{"k", "v1"}}).Val()
+		// Add messages
+		// Message 1: multiple key-values
+		id1 := rdb.XAdd(ctx, &redis.XAddArgs{Stream: streamName, Values: []string{"k1", "v1", "k2", "v2"}}).Val()
+		// Message 2: single key-value
+		id2 := rdb.XAdd(ctx, &redis.XAddArgs{Stream: streamName, Values: []string{"k3", "v3"}}).Val()
 
-		// Consumer 1 reads it
-		_, err := rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
-			Group:    groupName,
-			Consumer: consumerName1,
-			Streams:  []string{streamName, ">"},
-			Count:    1,
-		}).Result()
+		// Consumer 1 reads them using Do to verify the raw standard format (2 elements)
+		// XREADGROUP GROUP mygroup consumer1 COUNT 2 STREAMS mystream >
+		resRaw, err := rdb.Do(ctx, "XREADGROUP", "GROUP", groupName, consumerName1, "COUNT", "2", "STREAMS", streamName, ">").Result()
 		require.NoError(t, err)
 
-		time.Sleep(100 * time.Millisecond)
+		streamsRaw := resRaw.([]interface{})
+		require.Len(t, streamsRaw, 1)
+		streamRaw := streamsRaw[0].([]interface{})
+		messagesRaw := streamRaw[1].([]interface{})
+		require.Len(t, messagesRaw, 2)
 
-		// Consumer 2 tries to claim it with 50ms idle time
-		// XREADGROUP GROUP mygroup consumer2 COUNT 1 CLAIM 50 STREAMS mystream >
-		res, err := rdb.Do(ctx, "XREADGROUP", "GROUP", groupName, consumerName2, "COUNT", "1", "CLAIM", "50", "STREAMS", streamName, ">").Result()
+		msg1Raw := messagesRaw[0].([]interface{})
+		require.Len(t, msg1Raw, 2, "Standard XREADGROUP message should have 2 elements: id, fields")
+
+		msg2Raw := messagesRaw[1].([]interface{})
+		require.Len(t, msg2Raw, 2, "Standard XREADGROUP message should have 2 elements: id, fields")
+
+		// Sleep to satisfy min-idle-time of 1ms
+		time.Sleep(2 * time.Millisecond)
+
+		// Consumer 2 claims them with 1ms idle time
+		// XREADGROUP GROUP mygroup consumer2 COUNT 2 CLAIM 1 STREAMS mystream >
+		res, err := rdb.Do(ctx, "XREADGROUP", "GROUP", groupName, consumerName2, "COUNT", "2", "CLAIM", "1", "STREAMS", streamName, ">").Result()
 		require.NoError(t, err)
 
 		// Verify response structure
-		// Expected: [[streamName, [[id, [k, v1], idle, count]]]]
-		// Note: The exact types depend on the go-redis parsing of interface{}
-		
 		streams := res.([]interface{})
 		require.Len(t, streams, 1)
-		
+
 		stream := streams[0].([]interface{})
 		require.Equal(t, streamName, stream[0])
-		
+
 		messages := stream[1].([]interface{})
-		require.Len(t, messages, 1)
-		
-		msg := messages[0].([]interface{})
-		require.Len(t, msg, 4, "Message should have 4 elements: id, fields, idle, count")
-		
-		require.Equal(t, id1, msg[0])
-		// msg[1] is fields, msg[2] is idle, msg[3] is count
-		
+		require.Len(t, messages, 2)
+
+		// Verify Message 1
+		msg1 := messages[0].([]interface{})
+		require.Len(t, msg1, 4, "Message should have 4 elements: id, fields, idle, count")
+		require.Equal(t, id1, msg1[0])
+
+		fields1 := msg1[1].([]interface{})
+		require.Len(t, fields1, 4) // k1, v1, k2, v2
+		require.Equal(t, "k1", fields1[0])
+		require.Equal(t, "v1", fields1[1])
+		require.Equal(t, "k2", fields1[2])
+		require.Equal(t, "v2", fields1[3])
+
+		// Idle time check
+		// Note: The user example shows idle time and count as strings.
+		// We handle both string and int64 to be safe, or check what we get.
+		// For now, we just assert they are present.
+		// Idle time check
+		require.NotNil(t, msg1[2]) // idle
+		idleTime := msg1[2].(int64)
+		require.GreaterOrEqual(t, idleTime, int64(2), "Idle time should be >= 2ms")
+		require.NotNil(t, msg1[3]) // count
+
+		// Verify Message 2
+		msg2 := messages[1].([]interface{})
+		require.Len(t, msg2, 4)
+		require.Equal(t, id2, msg2[0])
+
+		fields2 := msg2[1].([]interface{})
+		require.Len(t, fields2, 2)
+		require.Equal(t, "k3", fields2[0])
+		require.Equal(t, "v3", fields2[1])
+
 		// Verify ownership change
 		pending, err := rdb.XPendingExt(ctx, &redis.XPendingExtArgs{
 			Stream: streamName,
@@ -89,16 +125,21 @@ func testXReadGroup(t *testing.T, configs util.KvrocksServerConfigs) {
 			Count:  10,
 		}).Result()
 		require.NoError(t, err)
-		
-		found := false
+
+		found1 := false
+		found2 := false
 		for _, p := range pending {
 			if p.ID == id1 {
 				require.Equal(t, consumerName2, p.Consumer)
-				found = true
-				break
+				found1 = true
+			}
+			if p.ID == id2 {
+				require.Equal(t, consumerName2, p.Consumer)
+				found2 = true
 			}
 		}
-		require.True(t, found, "Message should be claimed by consumer2")
+		require.True(t, found1, "Message 1 should be claimed by consumer2")
+		require.True(t, found2, "Message 2 should be claimed by consumer2")
 	})
 
 	t.Run("XREADGROUP CLAIM ordering guarantees", func(t *testing.T) {
@@ -283,7 +324,7 @@ func testXReadGroup(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.Equal(t, id1, msg[0])
 		// msg[3] should be delivery count
 		deliveryCount := msg[3].(int64)
-		require.Equal(t, int64(1), deliveryCount, "Delivery count should be 1 (from first delivery)")
+		require.Equal(t, int64(2), deliveryCount, "Delivery count should be 2 (1 from read + 1 from claim)")
 
 		// Verify with XPENDING
 		pending, err := rdb.XPendingExt(ctx, &redis.XPendingExtArgs{
@@ -297,5 +338,67 @@ func testXReadGroup(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.Len(t, pending, 1)
 		require.Equal(t, int64(2), pending[0].RetryCount, "PEL delivery count should be 2 after claim")
 	})
-}
 
+	t.Run("XREADGROUP CLAIM with multiple retries", func(t *testing.T) {
+		streamName := "mystream_retries"
+		groupName := "mygroup_retries"
+		consumerName1 := "consumer1"
+		consumerName2 := "consumer2"
+
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+		require.NoError(t, rdb.XGroupCreateMkStream(ctx, streamName, groupName, "0").Err())
+
+		id1 := rdb.XAdd(ctx, &redis.XAddArgs{Stream: streamName, Values: []string{"k", "v1"}}).Val()
+
+		// 1. Consumer1 reads it (delivery count = 1)
+		_, err := rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    groupName,
+			Consumer: consumerName1,
+			Streams:  []string{streamName, ">"},
+			Count:    1,
+		}).Result()
+		require.NoError(t, err)
+
+		time.Sleep(50 * time.Millisecond)
+
+		// 2. Consumer2 claims it (PEL count becomes 2)
+		res, err := rdb.Do(ctx, "XREADGROUP", "GROUP", groupName, consumerName2, "COUNT", "1", "CLAIM", "20", "STREAMS", streamName, ">").Result()
+		require.NoError(t, err)
+
+		streams := res.([]interface{})
+		stream := streams[0].([]interface{})
+		messages := stream[1].([]interface{})
+		msg := messages[0].([]interface{})
+		require.Equal(t, id1, msg[0])
+		// Expect count 2
+		require.Equal(t, int64(2), msg[3].(int64), "Delivery count should be 2 after first claim")
+		require.GreaterOrEqual(t, msg[2].(int64), int64(50), "Idle time should be >= 50ms")
+
+		time.Sleep(50 * time.Millisecond)
+
+		// 3. Consumer1 claims it back (PEL count becomes 3)
+		res, err = rdb.Do(ctx, "XREADGROUP", "GROUP", groupName, consumerName1, "COUNT", "1", "CLAIM", "20", "STREAMS", streamName, ">").Result()
+		require.NoError(t, err)
+
+		streams = res.([]interface{})
+		stream = streams[0].([]interface{})
+		messages = stream[1].([]interface{})
+		msg = messages[0].([]interface{})
+		require.Equal(t, id1, msg[0])
+		// Expect count 3
+		require.Equal(t, int64(3), msg[3].(int64), "Delivery count should be 3 after second claim")
+		require.GreaterOrEqual(t, msg[2].(int64), int64(50), "Idle time should be >= 50ms")
+
+		// 4. Verify PEL has count 3
+		pending, err := rdb.XPendingExt(ctx, &redis.XPendingExtArgs{
+			Stream: streamName,
+			Group:  groupName,
+			Start:  "-",
+			End:    "+",
+			Count:  10,
+		}).Result()
+		require.NoError(t, err)
+		require.Len(t, pending, 1)
+		require.Equal(t, int64(3), pending[0].RetryCount)
+	})
+}

@@ -310,6 +310,20 @@ def package_source(release_version: str, release_candidate_number: Optional[int]
         run(shasum, '-a', '512', tarball, stdout=f)
 
 
+
+def find_test_file(pattern: str) -> Optional[str]:
+    basedir = Path(__file__).parent.absolute() / 'tests' / 'gocase'
+    
+    # Search in tests/gocase
+    for root, dirs, files in os.walk(basedir):
+        for file in files:
+            full_path = Path(root) / file
+            rel_path = full_path.relative_to(basedir)
+            if str(rel_path).endswith(pattern):
+                return str(rel_path)
+    return None
+
+
 def test_cpp(dir: str, rest: List[str]) -> None:
     basedir = Path(dir).absolute()
     unittest = basedir / 'unittest'
@@ -317,7 +331,7 @@ def test_cpp(dir: str, rest: List[str]) -> None:
     run(str(unittest), *rest, cwd=str(basedir), verbose=True)
 
 
-def test_go(dir: str, cli_path: str, rest: List[str]) -> None:
+def test_go(dir: str, cli_path: str, rest: List[str], test_target: str = './...') -> None:
     go = find_command('go', msg='go is required for testing')
     find_command(cli_path, msg='redis-cli is required for testing')
 
@@ -326,7 +340,7 @@ def test_go(dir: str, cli_path: str, rest: List[str]) -> None:
     workspace = basedir / 'workspace'
 
     args = [
-        'test', '-timeout=1800s', '-bench=.', './...',
+        'test', '-timeout=1800s', '-bench=.', test_target,
         f'-binPath={binpath}',
         f'-cliPath={cli_path}',
         f'-workspace={workspace}',
@@ -334,6 +348,61 @@ def test_go(dir: str, cli_path: str, rest: List[str]) -> None:
     ]
 
     run(go, *args, cwd=str(basedir), verbose=True)
+
+
+def run_test(args: List[str]) -> None:
+    if not args or args[0] in ['-h', '--help']:
+        print("""usage: x.py test [cpp|go|FILE] [ARGS...]
+
+Subcommands:
+  cpp                    Test kvrocks via cpp unit tests
+  go                     Test kvrocks via go test cases
+  FILE                   Run specific go test file
+
+Examples:
+  # Run all go tests
+  ./x.py test go
+
+  # Run all tests in a specific file
+  ./x.py test stream/stream_test.go
+
+  # Run specific test matching a pattern
+  ./x.py test stream/stream_test.go -run TestStream/XADD
+
+  # Run tests with additional flags
+  ./x.py test stream/stream_test.go -v -count=1
+
+  # Run cpp unit tests
+  ./x.py test cpp""")
+        return
+
+    command = args[0]
+    rest = args[1:]
+
+    if command == 'cpp':
+        parser = ArgumentParser()
+        parser.add_argument('dir', metavar='BUILD_DIR', nargs='?', default='build')
+        parser.add_argument('rest', nargs=REMAINDER)
+        parsed = parser.parse_args(rest)
+        test_cpp(parsed.dir, parsed.rest)
+    elif command == 'go':
+        parser = ArgumentParser()
+        parser.add_argument('dir', metavar='BUILD_DIR', nargs='?', default='build')
+        parser.add_argument('--cli-path', default='redis-cli')
+        parser.add_argument('rest', nargs=REMAINDER)
+        parsed = parser.parse_args(rest)
+        test_go(parsed.dir, parsed.cli_path, parsed.rest)
+    else:
+        # Assume command is a file path
+        test_file = command
+        
+        # Try to find the file
+        target = find_test_file(test_file)
+        if target:
+             test_go('build', 'redis-cli', rest, test_target=target)
+        else:
+             print(f"Could not find test file matching: {test_file}")
+             sys.exit(1)
 
 
 if __name__ == '__main__':
@@ -444,29 +513,8 @@ if __name__ == '__main__':
         help="Test against a specific kvrocks build",
         formatter_class=ArgumentDefaultsHelpFormatter,
     )
-    parser_test.set_defaults(func=parser_test.print_help)
-    parser_test_subparsers = parser_test.add_subparsers()
-
-    parser_test_cpp = parser_test_subparsers.add_parser(
-        'cpp',
-        description="Test kvrocks via cpp unit tests",
-        help="Test kvrocks via cpp unit tests",
-    )
-    parser_test_cpp.add_argument('dir', metavar='BUILD_DIR', nargs='?', default='build',
-                                 help="directory including kvrocks build files")
-    parser_test_cpp.add_argument('rest', nargs=REMAINDER, help="the rest of arguments to forward to cpp unittest")
-    parser_test_cpp.set_defaults(func=test_cpp)
-
-    parser_test_go = parser_test_subparsers.add_parser(
-        'go',
-        description="Test kvrocks via go test cases",
-        help="Test kvrocks via go test cases",
-    )
-    parser_test_go.add_argument('dir', metavar='BUILD_DIR', nargs='?', default='build',
-                                help="directory including kvrocks build files")
-    parser_test_go.add_argument('--cli-path', default='redis-cli', help="path of redis-cli to test kvrocks")
-    parser_test_go.add_argument('rest', nargs=REMAINDER, help="the rest of arguments to forward to go test")
-    parser_test_go.set_defaults(func=test_go)
+    parser_test.add_argument('args', nargs=REMAINDER, help="Arguments for test command")
+    parser_test.set_defaults(func=lambda **kwargs: run_test(kwargs['args']))
 
     parser_prepare = subparsers.add_parser(
         'prepare',

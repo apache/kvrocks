@@ -937,14 +937,14 @@ func TestStreamOffset(t *testing.T) {
 		groupName := "test-group"
 		consumerName := "test-consumer"
 		require.NoError(t, rdb.Del(ctx, streamName).Err())
-		//No such stream
+		// No such stream
 		require.Error(t, rdb.XGroupCreateConsumer(ctx, streamName, groupName, consumerName).Err())
 		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
 			Stream: streamName,
 			ID:     "1-0",
 			Values: []string{"data", "a"},
 		}).Err())
-		//no such group
+		// no such group
 		require.Error(t, rdb.XGroupCreateConsumer(ctx, streamName, groupName, consumerName).Err())
 		require.NoError(t, rdb.XGroupCreate(ctx, streamName, groupName, "$").Err())
 
@@ -959,7 +959,7 @@ func TestStreamOffset(t *testing.T) {
 		groupName := "test-group"
 		consumerName := "test-consumer"
 		require.NoError(t, rdb.Del(ctx, streamName).Err())
-		//No such stream
+		// No such stream
 		require.Error(t, rdb.XGroupCreateConsumer(ctx, streamName, groupName, consumerName).Err())
 		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
 			Stream: streamName,
@@ -967,7 +967,7 @@ func TestStreamOffset(t *testing.T) {
 			Values: []string{"data", "a"},
 		}).Err())
 
-		//no such group
+		// no such group
 		expectedError := fmt.Sprintf("NOGROUP No such consumer group %s for key name %s", groupName, streamName)
 		require.EqualError(t, rdb.XGroupCreateConsumer(ctx, streamName, groupName, consumerName).Err(), expectedError)
 		require.EqualError(t, rdb.XGroupDelConsumer(ctx, streamName, groupName, consumerName).Err(), expectedError)
@@ -1070,14 +1070,14 @@ func TestStreamOffset(t *testing.T) {
 		streamName := "test-stream"
 		groupName := "test-group"
 		require.NoError(t, rdb.Del(ctx, streamName).Err())
-		//No such stream
+		// No such stream
 		require.Error(t, rdb.XGroupSetID(ctx, streamName, groupName, "$").Err())
 		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
 			Stream: streamName,
 			ID:     "1-0",
 			Values: []string{"data", "a"},
 		}).Err())
-		//No such group
+		// No such group
 		require.EqualError(t, rdb.XGroupSetID(ctx, streamName, groupName, "$").Err(),
 			fmt.Sprintf("NOGROUP No such consumer group %s for key name %s", groupName, streamName))
 		require.NoError(t, rdb.XGroupCreate(ctx, streamName, groupName, "$").Err())
@@ -1344,8 +1344,10 @@ func TestStreamOffset(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, []redis.XStream{{
 			Stream: streamName,
-			Messages: []redis.XMessage{{ID: "1-0", Values: map[string]interface{}{"field1": "data1"}},
-				{ID: "2-0", Values: map[string]interface{}{"field2": "data2"}}},
+			Messages: []redis.XMessage{
+				{ID: "1-0", Values: map[string]interface{}{"field1": "data1"}},
+				{ID: "2-0", Values: map[string]interface{}{"field2": "data2"}},
+			},
 		}}, r)
 
 		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
@@ -1375,8 +1377,10 @@ func TestStreamOffset(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, []redis.XStream{{
 			Stream: streamName,
-			Messages: []redis.XMessage{{ID: "1-0", Values: map[string]interface{}{"field1": "data1"}},
-				{ID: "2-0", Values: map[string]interface{}{"field2": "data2"}}},
+			Messages: []redis.XMessage{
+				{ID: "1-0", Values: map[string]interface{}{"field1": "data1"}},
+				{ID: "2-0", Values: map[string]interface{}{"field2": "data2"}},
+			},
 		}}, r)
 
 		c := srv.NewClient()
@@ -1691,7 +1695,6 @@ func TestStreamOffset(t *testing.T) {
 	})
 
 	t.Run("XAUTOCLAIM can claim PEL items from another consume", func(t *testing.T) {
-
 		streamName := "mystream"
 		groupName := "mygroup"
 		var id1 string
@@ -2360,6 +2363,138 @@ func TestStreamOffset(t *testing.T) {
 		require.EqualValues(t, 2, pendingEntry.RetryCount)
 		require.Greater(t, pendingEntry.Idle, time.Millisecond)
 		require.Less(t, pendingEntry.Idle, 10*time.Second)
+	})
+
+	t.Run("XPending test", func(t *testing.T) {
+		key := "stream_xpending_bug"
+		group := "group1"
+
+		// Create stream and group
+		require.NoError(t, rdb.XGroupCreateMkStream(ctx, key, group, "0").Err())
+
+		// Add 5 messages
+		id1, err := rdb.XAdd(ctx, &redis.XAddArgs{Stream: key, Values: map[string]interface{}{"k": "v1"}}).Result()
+		require.NoError(t, err)
+		id2, err := rdb.XAdd(ctx, &redis.XAddArgs{Stream: key, Values: map[string]interface{}{"k": "v2"}}).Result()
+		require.NoError(t, err)
+		id3, err := rdb.XAdd(ctx, &redis.XAddArgs{Stream: key, Values: map[string]interface{}{"k": "v3"}}).Result()
+		require.NoError(t, err)
+		id4, err := rdb.XAdd(ctx, &redis.XAddArgs{Stream: key, Values: map[string]interface{}{"k": "v4"}}).Result()
+		require.NoError(t, err)
+		id5, err := rdb.XAdd(ctx, &redis.XAddArgs{Stream: key, Values: map[string]interface{}{"k": "v5"}}).Result()
+		require.NoError(t, err)
+
+		// Read to make them pending
+		_, err = rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    group,
+			Consumer: "c1",
+			Streams:  []string{key, ">"},
+			Count:    10,
+		}).Result()
+		require.NoError(t, err)
+
+		// Test 1: XPENDING key group - + 10 (all entries)
+		res, err := rdb.XPendingExt(ctx, &redis.XPendingExtArgs{
+			Stream: key,
+			Group:  group,
+			Start:  "-",
+			End:    "+",
+			Count:  10,
+		}).Result()
+		require.NoError(t, err)
+		require.Len(t, res, 5)
+		require.Equal(t, id1, res[0].ID)
+		require.Equal(t, id5, res[4].ID)
+
+		// Test 2: start_id == end_id (single entry)
+		res, err = rdb.XPendingExt(ctx, &redis.XPendingExtArgs{
+			Stream: key,
+			Group:  group,
+			Start:  id1,
+			End:    id1,
+			Count:  10,
+		}).Result()
+		require.NoError(t, err)
+		require.Len(t, res, 1)
+		require.Equal(t, id1, res[0].ID)
+
+		// Test 3: explicit range id1 to id3
+		res, err = rdb.XPendingExt(ctx, &redis.XPendingExtArgs{
+			Stream: key,
+			Group:  group,
+			Start:  id1,
+			End:    id3,
+			Count:  10,
+		}).Result()
+		require.NoError(t, err)
+		require.Len(t, res, 3)
+		require.Equal(t, id1, res[0].ID)
+		require.Equal(t, id2, res[1].ID)
+		require.Equal(t, id3, res[2].ID)
+
+		// Test 4: explicit range id2 to id4
+		res, err = rdb.XPendingExt(ctx, &redis.XPendingExtArgs{
+			Stream: key,
+			Group:  group,
+			Start:  id2,
+			End:    id4,
+			Count:  10,
+		}).Result()
+		require.NoError(t, err)
+		require.Len(t, res, 3)
+		require.Equal(t, id2, res[0].ID)
+		require.Equal(t, id3, res[1].ID)
+		require.Equal(t, id4, res[2].ID)
+
+		// Test 5: single entry in the middle
+		res, err = rdb.XPendingExt(ctx, &redis.XPendingExtArgs{
+			Stream: key,
+			Group:  group,
+			Start:  id3,
+			End:    id3,
+			Count:  10,
+		}).Result()
+		require.NoError(t, err)
+		require.Len(t, res, 1)
+		require.Equal(t, id3, res[0].ID)
+
+		// Test 6: last entry only
+		res, err = rdb.XPendingExt(ctx, &redis.XPendingExtArgs{
+			Stream: key,
+			Group:  group,
+			Start:  id5,
+			End:    id5,
+			Count:  10,
+		}).Result()
+		require.NoError(t, err)
+		require.Len(t, res, 1)
+		require.Equal(t, id5, res[0].ID)
+
+		// Test 7: range from id3 to end
+		res, err = rdb.XPendingExt(ctx, &redis.XPendingExtArgs{
+			Stream: key,
+			Group:  group,
+			Start:  id3,
+			End:    "+",
+			Count:  10,
+		}).Result()
+		require.NoError(t, err)
+		require.Len(t, res, 3)
+		require.Equal(t, id3, res[0].ID)
+		require.Equal(t, id5, res[2].ID)
+
+		// Test 8: range from start to id2
+		res, err = rdb.XPendingExt(ctx, &redis.XPendingExtArgs{
+			Stream: key,
+			Group:  group,
+			Start:  "-",
+			End:    id2,
+			Count:  10,
+		}).Result()
+		require.NoError(t, err)
+		require.Len(t, res, 2)
+		require.Equal(t, id1, res[0].ID)
+		require.Equal(t, id2, res[1].ID)
 	})
 }
 

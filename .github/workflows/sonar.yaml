@@ -33,8 +33,8 @@ jobs:
           repository: ${{ github.event.workflow_run.head_repository.full_name }}
           ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
-      - name: Install sonar-scanner and build-wrapper
-        uses: SonarSource/sonarcloud-github-c-cpp@v3
+      - name: Install Build Wrapper
+        uses: SonarSource/sonarqube-scan-action/install-build-wrapper@v6.0.0
       - name: 'Download code coverage'
         uses: actions/github-script@v7
         with:
@@ -66,18 +66,22 @@ jobs:
         with:
           python-version: 3.x
 
-      - name: Run sonar-scanner
+      - name: Extract PR number
+        run: |
+          PR_NUMBER=$(jq -r '.number | select (.!=null)' sonarcloud-data/github-event.json)
+          echo "PR_NUMBER=$PR_NUMBER" >> "$GITHUB_ENV"
+          echo "The PR number is ${PR_NUMBER:-<none>}"
+
+      - name: SonarQube Scan
+        uses: SonarSource/sonarqube-scan-action@v6.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONARCLOUD_TOKEN }}
-        run: |
-          PR_NUMBER=$(jq -r '.number | select (.!=null)' sonarcloud-data/github-event.json)
-          echo "The PR number is $PR_NUMBER"
-
-          sonar-scanner \
-            --define sonar.cfamily.build-wrapper-output="sonarcloud-data" \
-            --define sonar.coverageReportPaths=sonarcloud-data/coverage.xml \
-            --define sonar.projectKey=apache_kvrocks \
-            --define sonar.organization=apache \
-            --define sonar.scm.revision=${{ github.event.workflow_run.head_sha }} \
-            --define sonar.pullrequest.key=$PR_NUMBER
+        with:
+          args: >
+            -Dsonar.cfamily.build-wrapper-output="sonarcloud-data"
+            -Dsonar.coverageReportPaths=sonarcloud-data/coverage.xml
+            -Dsonar.projectKey=apache_kvrocks
+            -Dsonar.organization=apache
+            -Dsonar.scm.revision=${{ github.event.workflow_run.head_sha }}
+            -Dsonar.pullrequest.key=${{ env.PR_NUMBER }}

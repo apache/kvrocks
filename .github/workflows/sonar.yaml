@@ -79,7 +79,7 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONARCLOUD_TOKEN }}
         with:
           args: >
-            -Dsonar.cfamily.build-wrapper-output="sonarcloud-data"
+            -Dsonar.cfamily.build-wrapper-output=sonarcloud-data
             -Dsonar.coverageReportPaths=sonarcloud-data/coverage.xml
             -Dsonar.projectKey=apache_kvrocks
             -Dsonar.organization=apache

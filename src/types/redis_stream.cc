@@ -1759,7 +1759,12 @@ rocksdb::Status Stream::GetPendingEntries(engine::Context &ctx, StreamPendingOpt
 
   rocksdb::ReadOptions read_options = ctx.DefaultScanOptions();
   // Make upper_bound exclusive by appending to end_key, so iteration includes end_key
-  std::string upper_bound_key = end_key + std::string("\x00", 1);
+  std::string upper_bound_key;
+  if (options.exclude_end) {
+    upper_bound_key = end_key;
+  } else {
+    upper_bound_key = end_key + std::string("\x00", 1);
+  }
   rocksdb::Slice upper_bound(upper_bound_key);
   read_options.iterate_upper_bound = &upper_bound;
   rocksdb::Slice lower_bound(prefix_key);
@@ -1777,6 +1782,10 @@ rocksdb::Status Stream::GetPendingEntries(engine::Context &ctx, StreamPendingOpt
     }
     std::string tmp_group_name;
     StreamEntryID entry_id = groupAndEntryIdFromPelInternalKey(iter->key(), tmp_group_name);
+
+    if (options.exclude_start && entry_id == options.start_id) {
+      continue;
+    }
 
     if (first_entry_id > entry_id) {
       first_entry_id = entry_id;

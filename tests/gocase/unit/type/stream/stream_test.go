@@ -2496,6 +2496,47 @@ func TestStreamOffset(t *testing.T) {
 		require.Equal(t, id1, res[0].ID)
 		require.Equal(t, id2, res[1].ID)
 	})
+
+	t.Run("XPending exclusive ranges", func(t *testing.T) {
+		key := "xpending_exclusive"
+		group := "group1"
+		consumer := "c1"
+
+		require.NoError(t, rdb.XGroupCreateMkStream(ctx, key, group, "0").Err())
+		id1, _ := rdb.XAdd(ctx, &redis.XAddArgs{Stream: key, ID: "1-0", Values: []interface{}{"k", "v"}}).Result()
+		id2, _ := rdb.XAdd(ctx, &redis.XAddArgs{Stream: key, ID: "2-0", Values: []interface{}{"k", "v"}}).Result()
+		id3, _ := rdb.XAdd(ctx, &redis.XAddArgs{Stream: key, ID: "3-0", Values: []interface{}{"k", "v"}}).Result()
+
+		rdb.XReadGroup(ctx, &redis.XReadGroupArgs{Group: group, Consumer: consumer, Streams: []string{key, ">"}, Count: 3})
+
+		// Helper to get IDs using Do for raw arguments
+		getIDs := func(start, end string) []string {
+			val, err := rdb.Do(ctx, "XPENDING", key, group, start, end, 10).Result()
+			require.NoError(t, err)
+
+			// Parse result
+			resSlice, ok := val.([]interface{})
+			require.True(t, ok)
+			ids := make([]string, 0)
+			for _, item := range resSlice {
+				itemSlice := item.([]interface{})
+				ids = append(ids, itemSlice[0].(string))
+			}
+			return ids
+		}
+
+		// (1-0 +
+		ids := getIDs("("+id1, "+")
+		require.Equal(t, []string{id2, id3}, ids)
+
+		// - (3-0
+		ids = getIDs("-", "("+id3)
+		require.Equal(t, []string{id1, id2}, ids)
+
+		// (1-0 (3-0
+		ids = getIDs("("+id1, "("+id3)
+		require.Equal(t, []string{id2}, ids)
+	})
 }
 
 func parseStreamEntryID(id string) (ts int64, seqNum int64) {

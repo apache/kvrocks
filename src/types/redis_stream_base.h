@@ -253,6 +253,8 @@ struct StreamPendingOptions {
   std::string consumer;
   std::string stream_name;
   std::string group_name;
+  bool exclude_start = false;
+  bool exclude_end = false;
 };
 
 struct StreamGetPendingEntryResult {

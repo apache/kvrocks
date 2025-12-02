@@ -103,8 +103,7 @@ struct HashFieldValue {
     }
 
     // Check for new encoding format - requires both marker bytes
-    if (input.size() >= 3 &&
-        static_cast<uint8_t>(input[0]) == HASH_FIELD_ENCODING_MARKER_1 &&
+    if (input.size() >= 3 && static_cast<uint8_t>(input[0]) == HASH_FIELD_ENCODING_MARKER_1 &&
         static_cast<uint8_t>(input[1]) == HASH_FIELD_ENCODING_MARKER_2) {
       input.remove_prefix(2);  // Skip both marker bytes
 

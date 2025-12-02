@@ -50,53 +50,58 @@ constexpr uint8_t HASH_FIELD_ENCODING_VERSION = 0xFF;
 // HashFieldValue handles encoding/decoding of hash field values with optional expiration
 // Legacy format (backward compatible): [raw value]
 // New format: [1-byte version=0xFF][1-byte flags][8-byte expire timestamp if flag set][value]
+//
+// This is a zero-copy view into the encoded data - the value field references the original
+// data without copying. The lifetime of the HashFieldValue must not exceed the lifetime
+// of the data it was decoded from.
 struct HashFieldValue {
-  std::string value;
+  rocksdb::Slice value;
   uint64_t expire = 0;  // 0 means no expiration, otherwise millisecond timestamp
 
   HashFieldValue() = default;
-  explicit HashFieldValue(std::string v, uint64_t exp = 0) : value(std::move(v)), expire(exp) {}
+  explicit HashFieldValue(rocksdb::Slice v, uint64_t exp = 0) : value(v), expire(exp) {}
 
   // Encode the field value with optional expiration
+  // This constructor is for encoding - takes ownership of the string
   void Encode(std::string *dst) const {
     if (expire == 0) {
       // No expiration - store as raw value for backward compatibility
-      dst->assign(value);
+      dst->assign(value.data(), value.size());
     } else {
       // Has expiration - use new format
       dst->clear();
       PutFixed8(dst, HASH_FIELD_ENCODING_VERSION);
       PutFixed8(dst, HASH_FIELD_FLAG_EXPIRE);
       PutFixed64(dst, expire);
-      dst->append(value);
+      dst->append(value.data(), value.size());
     }
   }
 
-  // Decode the field value, extracting expiration if present
+  // Decode the field value, extracting expiration if present (zero-copy view)
+  // The output HashFieldValue will reference the input data without copying.
   // Returns true if decoding succeeded
-  static bool Decode(const std::string &input, HashFieldValue *out) {
+  static bool Decode(rocksdb::Slice input, HashFieldValue *out) {
     if (input.empty()) {
-      out->value.clear();
+      out->value = rocksdb::Slice();
       out->expire = 0;
       return true;
     }
 
     // Check for new encoding format
     if (static_cast<uint8_t>(input[0]) == HASH_FIELD_ENCODING_VERSION && input.size() >= 2) {
-      rocksdb::Slice slice(input);
-      slice.remove_prefix(1);  // Skip version byte
+      input.remove_prefix(1);  // Skip version byte
 
       uint8_t flags = 0;
-      if (!GetFixed8(&slice, &flags)) return false;
+      if (!GetFixed8(&input, &flags)) return false;
 
       if (flags & HASH_FIELD_FLAG_EXPIRE) {
-        if (!GetFixed64(&slice, &out->expire)) return false;
+        if (!GetFixed64(&input, &out->expire)) return false;
       } else {
         out->expire = 0;
       }
-      out->value = slice.ToString();
+      out->value = input;  // Zero-copy view into remaining data
     } else {
-      // Legacy format - raw value, no expiration
+      // Legacy format - raw value, no expiration (zero-copy view)
       out->value = input;
       out->expire = 0;
     }

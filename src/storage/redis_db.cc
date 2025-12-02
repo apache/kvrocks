@@ -587,7 +587,7 @@ rocksdb::Status SubKeyScanner::Scan(engine::Context &ctx, RedisType type, const 
 
     if (type == kRedisHash) {
       HashFieldValue field_value;
-      bool ok = HashFieldValue::Decode(iter->value().ToString(), &field_value);
+      bool ok = HashFieldValue::Decode(iter->value(), &field_value);
       if (!ok) {
         return rocksdb::Status::InvalidArgument("Failed to decode hash field value");
       }

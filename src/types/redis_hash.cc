@@ -68,7 +68,7 @@ rocksdb::Status Hash::Get(engine::Context &ctx, const Slice &user_key, const Sli
   if (field_value.IsExpired()) {
     return rocksdb::Status::NotFound();
   }
-  *value = std::move(field_value.value);
+  *value = field_value.value.ToString();
   return rocksdb::Status::OK();
 }
 
@@ -99,7 +99,7 @@ rocksdb::Status Hash::IncrBy(engine::Context &ctx, const Slice &user_key, const 
       if (field_value.IsExpired()) {
         s = rocksdb::Status::NotFound();
       } else {
-        auto parse_result = ParseInt<int64_t>(field_value.value, 10);
+        auto parse_result = ParseInt<int64_t>(field_value.value.ToString(), 10);
         if (!parse_result) {
           return rocksdb::Status::InvalidArgument(parse_result.Msg());
         }
@@ -166,7 +166,7 @@ rocksdb::Status Hash::IncrByFloat(engine::Context &ctx, const Slice &user_key, c
       if (field_value.IsExpired()) {
         s = rocksdb::Status::NotFound();
       } else {
-        auto value_stat = ParseFloat(field_value.value);
+        auto value_stat = ParseFloat(field_value.value.ToString());
         if (!value_stat || (!field_value.value.empty() && isspace(field_value.value[0]))) {
           return rocksdb::Status::InvalidArgument("value is not a number");
         }
@@ -239,14 +239,14 @@ rocksdb::Status Hash::MGet(engine::Context &ctx, const Slice &user_key, const st
     if (statuses_vector[i].ok()) {
       // Decode field value and check expiration
       HashFieldValue field_value;
-      if (!HashFieldValue::Decode(values_vector[i].ToString(), &field_value)) {
+      if (!HashFieldValue::Decode(values_vector[i], &field_value)) {
         return rocksdb::Status::Corruption("failed to decode hash field value");
       }
       if (field_value.IsExpired()) {
         values->emplace_back("");
         statuses->emplace_back(rocksdb::Status::NotFound());
       } else {
-        values->emplace_back(std::move(field_value.value));
+        values->emplace_back(field_value.value.data(), field_value.value.size());
         statuses->emplace_back(statuses_vector[i]);
       }
     } else {
@@ -445,7 +445,7 @@ rocksdb::Status Hash::GetAll(engine::Context &ctx, const Slice &user_key, std::v
   for (iter->Seek(prefix_key); iter->Valid() && iter->key().starts_with(prefix_key); iter->Next()) {
     // Decode and check expiration for all fetch types
     HashFieldValue field_value;
-    if (!HashFieldValue::Decode(iter->value().ToString(), &field_value)) {
+    if (!HashFieldValue::Decode(iter->value(), &field_value)) {
       continue;  // Skip corrupted values
     }
     if (field_value.IsExpired()) {
@@ -456,10 +456,10 @@ rocksdb::Status Hash::GetAll(engine::Context &ctx, const Slice &user_key, std::v
       InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
       field_values->emplace_back(ikey.GetSubKey().ToString(), "");
     } else if (type == HashFetchType::kOnlyValue) {
-      field_values->emplace_back("", std::move(field_value.value));
+      field_values->emplace_back("", field_value.value.ToString());
     } else {
       InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
-      field_values->emplace_back(ikey.GetSubKey().ToString(), std::move(field_value.value));
+      field_values->emplace_back(ikey.GetSubKey().ToString(), field_value.value.ToString());
     }
   }
   return rocksdb::Status::OK();
@@ -551,10 +551,10 @@ rocksdb::Status Hash::ExpireFields(engine::Context &ctx, const Slice &user_key, 
       continue;
     }
 
-    // Set new expiration
-    field_value.expire = expire_ms;
+    // Set new expiration - create a new HashFieldValue with the value and new expiration
+    HashFieldValue new_field_value(field_value.value, expire_ms);
     std::string encoded_value;
-    field_value.Encode(&encoded_value);
+    new_field_value.Encode(&encoded_value);
     s = batch->Put(sub_key, encoded_value);
     if (!s.ok()) return s;
     results->push_back(1);  // Expiration set successfully
@@ -656,10 +656,10 @@ rocksdb::Status Hash::PersistFields(engine::Context &ctx, const Slice &user_key,
       continue;
     }
 
-    // Remove expiration
-    field_value.expire = 0;
+    // Remove expiration - create a new HashFieldValue with the value and no expiration
+    HashFieldValue new_field_value(field_value.value, 0);
     std::string encoded_value;
-    field_value.Encode(&encoded_value);
+    new_field_value.Encode(&encoded_value);
     s = batch->Put(sub_key, encoded_value);
     if (!s.ok()) return s;
     has_updates = true;

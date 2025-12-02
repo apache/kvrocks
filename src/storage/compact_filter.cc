@@ -165,7 +165,7 @@ bool SubKeyFilter::Filter([[maybe_unused]] int level, const Slice &key, const Sl
     // Use lazy deletion with 5 minute buffer similar to metadata expiration
     uint64_t lazy_expired_ts = util::GetTimeStampMS() - 300000;
     HashFieldValue field_value;
-    if (!HashFieldValue::Decode(value.ToString(), &field_value)) {
+    if (!HashFieldValue::Decode(value, &field_value)) {
       // Failed to decode, keep the field
       return false;
     }

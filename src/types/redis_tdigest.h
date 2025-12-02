@@ -75,11 +75,8 @@ class DummyCentroids {
       return *iter_;
     }
 
-   private:
-    IterType iter_;
-    const std::vector<Centroid>& centroids_;
     template <typename Container>
-    decltype(auto) getCbeginIter(const Container& centroids) const {
+    static decltype(auto) getCbeginIter(const Container& centroids) {
       if constexpr (Reverse) {
         return centroids.crbegin();
       } else {
@@ -88,35 +85,27 @@ class DummyCentroids {
     }
 
     template <typename Container>
-    decltype(auto) getCendIter(const Container& centroids) const {
+    static decltype(auto) getCendIter(const Container& centroids) {
       if constexpr (Reverse) {
         return centroids.crend();
       } else {
         return centroids.cend();
       }
     }
+
+   private:
+    IterType iter_;
+    const std::vector<Centroid>& centroids_;
   };
 
   std::unique_ptr<Iterator> Begin() const {
-    if constexpr (Reverse) {
-      return std::make_unique<Iterator>(centroids_.crbegin(), centroids_);
-    } else {
-      return std::make_unique<Iterator>(centroids_.cbegin(), centroids_);
-    }
+    return std::make_unique<Iterator>(Iterator::getCbeginIter(centroids_), centroids_);
   }
   std::unique_ptr<Iterator> End() const {
     if (centroids_.empty()) {
-      if constexpr (Reverse) {
-        return std::make_unique<Iterator>(centroids_.crend(), centroids_);
-      } else {
-        return std::make_unique<Iterator>(centroids_.cend(), centroids_);
-      }
+      return std::make_unique<Iterator>(Iterator::getCendIter(centroids_), centroids_);
     }
-    if constexpr (Reverse) {
-      return std::make_unique<Iterator>(std::prev(centroids_.crend()), centroids_);
-    } else {
-      return std::make_unique<Iterator>(std::prev(centroids_.cend()), centroids_);
-    }
+    return std::make_unique<Iterator>(std::prev(Iterator::getCendIter(centroids_)), centroids_);
   }
   double TotalWeight() const { return static_cast<double>(meta_data_.total_weight); }
   double Min() const { return meta_data_.minimum; }

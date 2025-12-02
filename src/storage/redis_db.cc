@@ -584,6 +584,18 @@ rocksdb::Status SubKeyScanner::Scan(engine::Context &ctx, RedisType type, const 
       break;
     }
     InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
+
+    if (type == kRedisHash) {
+      HashFieldValue field_value;
+      bool ok = HashFieldValue::Decode(iter->value().ToString(), &field_value);
+      if (!ok) {
+        return rocksdb::Status::InvalidArgument("Failed to decode hash field value");
+      }
+      if (field_value.IsExpired()) {
+        continue;
+      }
+    }
+
     keys->emplace_back(ikey.GetSubKey().ToString());
     if (values != nullptr) {
       values->emplace_back(iter->value().ToString());

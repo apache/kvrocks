@@ -792,6 +792,64 @@ var testHash = func(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.Equal(t, "lang1", res[0])
 	})
 
+	t.Run("HSCAN with expired fields", func(t *testing.T) {
+		testKey := "hscan-expired-test"
+		require.NoError(t, rdb.Del(ctx, testKey).Err())
+
+		// Create hash with 5 fields
+		require.NoError(t, rdb.HSet(ctx, testKey, "field1", "value1", "field2", "value2", "field3", "value3", "field4", "value4", "field5", "value5").Err())
+
+		// Set expiration on field2 and field4 to 1 second
+		rdb.Do(ctx, "HEXPIRE", testKey, "1", "FIELDS", "2", "field2", "field4")
+
+		// Wait for expiration
+		time.Sleep(2 * time.Second)
+
+		// HSCAN should not return expired fields
+		res, _, err := rdb.HScan(ctx, testKey, 0, "", 100).Result()
+		require.NoError(t, err)
+
+		// Convert result to a map for easier checking
+		resultMap := make(map[string]string)
+		for i := 0; i < len(res); i += 2 {
+			resultMap[res[i]] = res[i+1]
+		}
+
+		// Should only have field1, field3, and field5
+		require.Len(t, resultMap, 3)
+		require.Equal(t, "value1", resultMap["field1"])
+		require.Equal(t, "value3", resultMap["field3"])
+		require.Equal(t, "value5", resultMap["field5"])
+		require.NotContains(t, resultMap, "field2") // expired
+		require.NotContains(t, resultMap, "field4") // expired
+	})
+
+	t.Run("HSCAN with NOVALUES and expired fields", func(t *testing.T) {
+		testKey := "hscan-novalues-expired-test"
+		require.NoError(t, rdb.Del(ctx, testKey).Err())
+
+		// Create hash with 5 fields
+		require.NoError(t, rdb.HSet(ctx, testKey, "field1", "value1", "field2", "value2", "field3", "value3", "field4", "value4", "field5", "value5").Err())
+
+		// Set expiration on field2 and field4 to 1 second
+		rdb.Do(ctx, "HEXPIRE", testKey, "1", "FIELDS", "2", "field2", "field4")
+
+		// Wait for expiration
+		time.Sleep(2 * time.Second)
+
+		// HSCAN with NOVALUES should not return expired fields
+		res, _, err := rdb.HScanNoValues(ctx, testKey, 0, "", 100).Result()
+		require.NoError(t, err)
+
+		// Should only have field1, field3, and field5
+		require.Len(t, res, 3)
+		require.Contains(t, res, "field1")
+		require.Contains(t, res, "field3")
+		require.Contains(t, res, "field5")
+		require.NotContains(t, res, "field2") // expired
+		require.NotContains(t, res, "field4") // expired
+	})
+
 	for _, size := range []int64{10, 512} {
 		t.Run(fmt.Sprintf("Hash fuzzing #1 - %d fields", size), func(t *testing.T) {
 			for times := 0; times < 10; times++ {
@@ -1068,7 +1126,7 @@ var testHash = func(t *testing.T, configs util.KvrocksServerConfigs) {
 			vals, err := result.Slice()
 			require.NoError(t, err)
 			require.Len(t, vals, 2)
-			require.EqualValues(t, -1, vals[0])  // field1 exists, no TTL
+			require.EqualValues(t, -1, vals[0]) // field1 exists, no TTL
 			require.EqualValues(t, -2, vals[1]) // nonexistent field
 		})
 
@@ -1107,7 +1165,7 @@ var testHash = func(t *testing.T, configs util.KvrocksServerConfigs) {
 			vals, err := result.Slice()
 			require.NoError(t, err)
 			require.Len(t, vals, 2)
-			require.EqualValues(t, -1, vals[0])  // field1 exists but no TTL
+			require.EqualValues(t, -1, vals[0]) // field1 exists but no TTL
 			require.EqualValues(t, -2, vals[1]) // nonexistent field
 		})
 

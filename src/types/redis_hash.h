@@ -32,6 +32,18 @@
 #include "storage/redis_metadata.h"
 #include "time_util.h"
 
+enum class FieldExpireResult : int64_t {
+  kFieldNotFound = -2,
+  kExpireNotSet = 0,
+  kExpireSet = 1,
+};
+
+enum class FieldPersistResult : int64_t {
+  kFieldNotFound = -2,
+  kNotVolatile = -1,
+  kPersisted = 1,
+};
+
 struct FieldValue {
   std::string field;
   std::string value;
@@ -161,20 +173,23 @@ class Hash : public SubKeyScanner {
                             std::vector<FieldValue> *field_values, HashFetchType type = HashFetchType::kOnlyKey);
 
   // Per-field expiration methods
-  // Set expiration on fields, returns result codes per field:
-  // -2 = field doesn't exist, 1 = expiration set, 0 = expiration not set (e.g., invalid expire time)
+  // Sets the expiration for one or more fields in a hash.
+  // Returns a vector of `FieldExpireResult` indicating the outcome for each field.
   rocksdb::Status ExpireFields(engine::Context &ctx, const Slice &user_key, uint64_t expire_ms,
-                               const std::vector<Slice> &fields, std::vector<int64_t> *results);
+                               const std::vector<Slice> &fields, std::vector<FieldExpireResult> *results);
 
-  // Get TTL for fields in seconds, returns per field:
-  // -2 = field doesn't exist, -1 = field exists but no TTL, >= 0 = TTL in seconds
+  // Get TTL for fields in seconds.
+  // For each field, returns:
+  // -2 if the field does not exist.
+  // -1 if the field exists but has no associated expiration.
+  // A non-negative value representing the TTL in seconds.
   rocksdb::Status TTLFields(engine::Context &ctx, const Slice &user_key, const std::vector<Slice> &fields,
                             std::vector<int64_t> *results);
 
-  // Remove expiration from fields, returns result codes per field:
-  // -2 = field doesn't exist, -1 = field exists but no TTL, 1 = expiration removed
+  // Removes the expiration from one or more fields in a hash.
+  // Returns a vector of `FieldPersistResult` indicating the outcome for each field.
   rocksdb::Status PersistFields(engine::Context &ctx, const Slice &user_key, const std::vector<Slice> &fields,
-                                std::vector<int64_t> *results);
+                                std::vector<FieldPersistResult> *results);
 
  private:
   rocksdb::Status GetMetadata(engine::Context &ctx, const Slice &ns_key, HashMetadata *metadata);

@@ -464,13 +464,13 @@ TEST_F(RedisHashTest, ExpireFields) {
 
   // Expire two fields
   std::vector<Slice> fields_to_expire = {fields_[0], fields_[1]};
-  std::vector<int64_t> results;
+  std::vector<FieldExpireResult> results;
   uint64_t expire_time = util::GetTimeStampMS() + 60000;  // 60 seconds
   auto s = hash_->ExpireFields(*ctx_, key_, expire_time, fields_to_expire, &results);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(results.size(), 2);
-  EXPECT_EQ(results[0], 1);  // First field expired successfully
-  EXPECT_EQ(results[1], 1);  // Second field expired successfully
+  EXPECT_EQ(results[0], FieldExpireResult::kExpireSet);  // First field expired successfully
+  EXPECT_EQ(results[1], FieldExpireResult::kExpireSet);  // Second field expired successfully
 
   // Try to expire non-existent field
   std::vector<Slice> non_existent = {Slice("non_existent_field")};
@@ -478,7 +478,7 @@ TEST_F(RedisHashTest, ExpireFields) {
   s = hash_->ExpireFields(*ctx_, key_, expire_time, non_existent, &results);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(results.size(), 1);
-  EXPECT_EQ(results[0], -2);  // Field doesn't exist
+  EXPECT_EQ(results[0], FieldExpireResult::kFieldNotFound);  // Field doesn't exist
 
   s = hash_->Del(*ctx_, key_);
 }
@@ -503,7 +503,8 @@ TEST_F(RedisHashTest, TTLFields) {
   // Set expiration on first field
   std::vector<Slice> first_field = {fields_[0]};
   uint64_t expire_time = util::GetTimeStampMS() + 30000;  // 30 seconds
-  s = hash_->ExpireFields(*ctx_, key_, expire_time, first_field, &results);
+  std::vector<FieldExpireResult> expire_results;
+  s = hash_->ExpireFields(*ctx_, key_, expire_time, first_field, &expire_results);
   EXPECT_TRUE(s.ok());
 
   // Get TTL again
@@ -536,38 +537,38 @@ TEST_F(RedisHashTest, PersistFields) {
 
   // Set expiration on first two fields
   std::vector<Slice> fields_to_expire = {fields_[0], fields_[1]};
-  std::vector<int64_t> results;
+  std::vector<FieldExpireResult> expire_results;
   uint64_t expire_time = util::GetTimeStampMS() + 60000;
-  auto s = hash_->ExpireFields(*ctx_, key_, expire_time, fields_to_expire, &results);
+  auto s = hash_->ExpireFields(*ctx_, key_, expire_time, fields_to_expire, &expire_results);
   EXPECT_TRUE(s.ok());
 
   // Persist the first field
   std::vector<Slice> first_field = {fields_[0]};
-  results.clear();
-  s = hash_->PersistFields(*ctx_, key_, first_field, &results);
+  std::vector<FieldPersistResult> persist_results;
+  s = hash_->PersistFields(*ctx_, key_, first_field, &persist_results);
   EXPECT_TRUE(s.ok());
-  EXPECT_EQ(results.size(), 1);
-  EXPECT_EQ(results[0], 1);  // Expiration removed
+  EXPECT_EQ(persist_results.size(), 1);
+  EXPECT_EQ(persist_results[0], FieldPersistResult::kPersisted);  // Expiration removed
 
   // Check TTL - should be -1 now
-  results.clear();
-  s = hash_->TTLFields(*ctx_, key_, first_field, &results);
+  std::vector<int64_t> ttl_results;
+  s = hash_->TTLFields(*ctx_, key_, first_field, &ttl_results);
   EXPECT_TRUE(s.ok());
-  EXPECT_EQ(results[0], -1);
+  EXPECT_EQ(ttl_results[0], -1);
 
   // Try to persist a field without TTL
   std::vector<Slice> third_field = {fields_[2]};
-  results.clear();
-  s = hash_->PersistFields(*ctx_, key_, third_field, &results);
+  persist_results.clear();
+  s = hash_->PersistFields(*ctx_, key_, third_field, &persist_results);
   EXPECT_TRUE(s.ok());
-  EXPECT_EQ(results[0], -1);  // Field exists but has no TTL
+  EXPECT_EQ(persist_results[0], FieldPersistResult::kNotVolatile);  // Field exists but has no TTL
 
   // Try to persist non-existent field
   std::vector<Slice> non_existent = {Slice("non_existent_field")};
-  results.clear();
-  s = hash_->PersistFields(*ctx_, key_, non_existent, &results);
+  persist_results.clear();
+  s = hash_->PersistFields(*ctx_, key_, non_existent, &persist_results);
   EXPECT_TRUE(s.ok());
-  EXPECT_EQ(results[0], -2);  // Field doesn't exist
+  EXPECT_EQ(persist_results[0], FieldPersistResult::kFieldNotFound);  // Field doesn't exist
 
   s = hash_->Del(*ctx_, key_);
 }
@@ -580,7 +581,7 @@ TEST_F(RedisHashTest, GetExpiredField) {
 
   // Set expiration in the past (already expired)
   std::vector<Slice> fields = {Slice("field1")};
-  std::vector<int64_t> results;
+  std::vector<FieldExpireResult> results;
   uint64_t expire_time = util::GetTimeStampMS() - 1000;  // Already expired
   s = hash_->ExpireFields(*ctx_, key_, expire_time, fields, &results);
   EXPECT_TRUE(s.ok());
@@ -603,7 +604,7 @@ TEST_F(RedisHashTest, MGetWithExpiredFields) {
 
   // Expire the first field
   std::vector<Slice> first_field = {fields_[0]};
-  std::vector<int64_t> results;
+  std::vector<FieldExpireResult> results;
   uint64_t expire_time = util::GetTimeStampMS() - 1000;  // Already expired
   auto s = hash_->ExpireFields(*ctx_, key_, expire_time, first_field, &results);
   EXPECT_TRUE(s.ok());
@@ -630,7 +631,7 @@ TEST_F(RedisHashTest, GetAllWithExpiredFields) {
 
   // Expire the first field
   std::vector<Slice> first_field = {fields_[0]};
-  std::vector<int64_t> results;
+  std::vector<FieldExpireResult> results;
   uint64_t expire_time = util::GetTimeStampMS() - 1000;  // Already expired
   auto s = hash_->ExpireFields(*ctx_, key_, expire_time, first_field, &results);
   EXPECT_TRUE(s.ok());

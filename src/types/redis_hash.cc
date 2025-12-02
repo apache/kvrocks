@@ -510,7 +510,7 @@ rocksdb::Status Hash::RandField(engine::Context &ctx, const Slice &user_key, int
 }
 
 rocksdb::Status Hash::ExpireFields(engine::Context &ctx, const Slice &user_key, uint64_t expire_ms,
-                                   const std::vector<Slice> &fields, std::vector<int64_t> *results) {
+                                   const std::vector<Slice> &fields, std::vector<FieldExpireResult> *results) {
   results->clear();
   results->reserve(fields.size());
 
@@ -519,7 +519,7 @@ rocksdb::Status Hash::ExpireFields(engine::Context &ctx, const Slice &user_key, 
   rocksdb::Status s = GetMetadata(ctx, ns_key, &metadata);
   if (!s.ok()) {
     // Key doesn't exist - all fields don't exist
-    results->assign(fields.size(), -2);
+    results->assign(fields.size(), FieldExpireResult::kFieldNotFound);
     return s.IsNotFound() ? rocksdb::Status::OK() : s;
   }
 
@@ -534,7 +534,7 @@ rocksdb::Status Hash::ExpireFields(engine::Context &ctx, const Slice &user_key, 
     s = storage_->Get(ctx, ctx.GetReadOptions(), sub_key, &raw_value);
 
     if (s.IsNotFound()) {
-      results->push_back(-2);  // Field doesn't exist
+      results->push_back(FieldExpireResult::kFieldNotFound);  // Field doesn't exist
       continue;
     }
     if (!s.ok()) return s;
@@ -547,7 +547,7 @@ rocksdb::Status Hash::ExpireFields(engine::Context &ctx, const Slice &user_key, 
 
     // Check if field is already expired
     if (field_value.IsExpired()) {
-      results->push_back(-2);  // Treat as non-existent
+      results->push_back(FieldExpireResult::kFieldNotFound);  // Treat as non-existent
       continue;
     }
 
@@ -557,7 +557,7 @@ rocksdb::Status Hash::ExpireFields(engine::Context &ctx, const Slice &user_key, 
     new_field_value.Encode(&encoded_value);
     s = batch->Put(sub_key, encoded_value);
     if (!s.ok()) return s;
-    results->push_back(1);  // Expiration set successfully
+    results->push_back(FieldExpireResult::kExpireSet);  // Expiration set successfully
   }
 
   return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
@@ -608,7 +608,7 @@ rocksdb::Status Hash::TTLFields(engine::Context &ctx, const Slice &user_key, con
 }
 
 rocksdb::Status Hash::PersistFields(engine::Context &ctx, const Slice &user_key, const std::vector<Slice> &fields,
-                                    std::vector<int64_t> *results) {
+                                    std::vector<FieldPersistResult> *results) {
   results->clear();
   results->reserve(fields.size());
 
@@ -617,7 +617,7 @@ rocksdb::Status Hash::PersistFields(engine::Context &ctx, const Slice &user_key,
   rocksdb::Status s = GetMetadata(ctx, ns_key, &metadata);
   if (!s.ok()) {
     // Key doesn't exist - all fields don't exist
-    results->assign(fields.size(), -2);
+    results->assign(fields.size(), FieldPersistResult::kFieldNotFound);
     return s.IsNotFound() ? rocksdb::Status::OK() : s;
   }
 
@@ -633,7 +633,7 @@ rocksdb::Status Hash::PersistFields(engine::Context &ctx, const Slice &user_key,
     s = storage_->Get(ctx, ctx.GetReadOptions(), sub_key, &raw_value);
 
     if (s.IsNotFound()) {
-      results->push_back(-2);  // Field doesn't exist
+      results->push_back(FieldPersistResult::kFieldNotFound);  // Field doesn't exist
       continue;
     }
     if (!s.ok()) return s;
@@ -646,13 +646,13 @@ rocksdb::Status Hash::PersistFields(engine::Context &ctx, const Slice &user_key,
 
     // Check if field is already expired
     if (field_value.IsExpired()) {
-      results->push_back(-2);  // Treat as non-existent
+      results->push_back(FieldPersistResult::kFieldNotFound);  // Treat as non-existent
       continue;
     }
 
     // Check if field has expiration
     if (field_value.expire == 0) {
-      results->push_back(-1);  // Field exists but has no TTL
+      results->push_back(FieldPersistResult::kNotVolatile);  // Field exists but has no TTL
       continue;
     }
 
@@ -663,7 +663,7 @@ rocksdb::Status Hash::PersistFields(engine::Context &ctx, const Slice &user_key,
     s = batch->Put(sub_key, encoded_value);
     if (!s.ok()) return s;
     has_updates = true;
-    results->push_back(1);  // Expiration removed successfully
+    results->push_back(FieldPersistResult::kPersisted);  // Expiration removed successfully
   }
 
   if (has_updates) {

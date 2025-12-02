@@ -529,7 +529,7 @@ class CommandHExpire : public Commander {
 
   Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
     redis::Hash hash_db(srv->storage, conn->GetNamespace());
-    std::vector<int64_t> results;
+    std::vector<FieldExpireResult> results;
 
     // Calculate absolute expiration timestamp in milliseconds
     uint64_t expire_ms = ttl_seconds_ * 1000 + util::GetTimeStampMS();
@@ -543,7 +543,7 @@ class CommandHExpire : public Commander {
     std::vector<std::string> result_strings;
     result_strings.reserve(results.size());
     for (const auto &r : results) {
-      result_strings.emplace_back(redis::Integer(r));
+      result_strings.emplace_back(redis::Integer(static_cast<int64_t>(r)));
     }
     *output = redis::Array(result_strings);
     return Status::OK();
@@ -653,7 +653,7 @@ class CommandHPersist : public Commander {
 
   Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
     redis::Hash hash_db(srv->storage, conn->GetNamespace());
-    std::vector<int64_t> results;
+    std::vector<FieldPersistResult> results;
 
     auto s = hash_db.PersistFields(ctx, args_[1], fields_, &results);
     if (!s.ok()) {
@@ -664,7 +664,7 @@ class CommandHPersist : public Commander {
     std::vector<std::string> result_strings;
     result_strings.reserve(results.size());
     for (const auto &r : results) {
-      result_strings.emplace_back(redis::Integer(r));
+      result_strings.emplace_back(redis::Integer(static_cast<int64_t>(r)));
     }
     *output = redis::Array(result_strings);
     return Status::OK();

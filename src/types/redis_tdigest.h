@@ -34,6 +34,26 @@
 
 namespace redis {
 
+namespace detail {
+template <bool Reverse, typename Container>
+inline decltype(auto) GetCbeginIter(const Container& centroids) {
+  if constexpr (Reverse) {
+    return centroids.crbegin();
+  } else {
+    return centroids.cbegin();
+  }
+}
+
+template <bool Reverse, typename Container>
+inline decltype(auto) GetCendIter(const Container& centroids) {
+  if constexpr (Reverse) {
+    return centroids.crend();
+  } else {
+    return centroids.cend();
+  }
+}
+}  // namespace detail
+
 // TODO: It should be replaced by a iteration of the rocksdb iterator
 template <bool Reverse>
 class DummyCentroids {
@@ -46,51 +66,34 @@ class DummyCentroids {
                                         std::vector<Centroid>::const_iterator>;
     Iterator(IterType iter, const std::vector<Centroid>& centroids) : iter_(iter), centroids_(centroids) {}
     std::unique_ptr<Iterator> Clone() const {
-      if (iter_ != GetCendIter(centroids_)) {
-        return std::make_unique<Iterator>(
-            std::next(GetCbeginIter(centroids_), std::distance(GetCbeginIter(centroids_), iter_)), centroids_);
+      if (iter_ != detail::GetCendIter<Reverse>(centroids_)) {
+        return std::make_unique<Iterator>(std::next(detail::GetCbeginIter<Reverse>(centroids_),
+                                                    std::distance(detail::GetCbeginIter<Reverse>(centroids_), iter_)),
+                                          centroids_);
       }
-      return std::make_unique<Iterator>(GetCendIter(centroids_), centroids_);
+      return std::make_unique<Iterator>(detail::GetCendIter<Reverse>(centroids_), centroids_);
     }
     bool Next() {
       if (Valid()) {
         std::advance(iter_, 1);
       }
-      return iter_ != GetCendIter(centroids_);
+      return iter_ != detail::GetCendIter<Reverse>(centroids_);
     }
 
     // The Prev function can only be called for item is not cend,
     // because we must guarantee the iterator to be inside the valid range before iteration.
     bool Prev() {
-      if (Valid() && iter_ != GetCendIter(centroids_)) {
+      if (Valid() && iter_ != detail::GetCendIter<Reverse>(centroids_)) {
         std::advance(iter_, -1);
       }
       return Valid();
     }
-    bool Valid() const { return iter_ != GetCendIter(centroids_); }
+    bool Valid() const { return iter_ != detail::GetCendIter<Reverse>(centroids_); }
     StatusOr<Centroid> GetCentroid() const {
-      if (iter_ == GetCendIter(centroids_)) {
+      if (iter_ == detail::GetCendIter<Reverse>(centroids_)) {
         return {::Status::NotOK, "invalid iterator during decoding tdigest centroid"};
       }
       return *iter_;
-    }
-
-    template <typename Container>
-    static decltype(auto) GetCbeginIter(const Container& centroids) {
-      if constexpr (Reverse) {
-        return centroids.crbegin();
-      } else {
-        return centroids.cbegin();
-      }
-    }
-
-    template <typename Container>
-    static decltype(auto) GetCendIter(const Container& centroids) {
-      if constexpr (Reverse) {
-        return centroids.crend();
-      } else {
-        return centroids.cend();
-      }
     }
 
    private:
@@ -99,13 +102,13 @@ class DummyCentroids {
   };
 
   std::unique_ptr<Iterator> Begin() const {
-    return std::make_unique<Iterator>(Iterator::GetCbeginIter(centroids_), centroids_);
+    return std::make_unique<Iterator>(detail::GetCbeginIter<Reverse>(centroids_), centroids_);
   }
   std::unique_ptr<Iterator> End() const {
     if (centroids_.empty()) {
-      return std::make_unique<Iterator>(Iterator::GetCendIter(centroids_), centroids_);
+      return std::make_unique<Iterator>(detail::GetCendIter<Reverse>(centroids_), centroids_);
     }
-    return std::make_unique<Iterator>(std::prev(Iterator::GetCendIter(centroids_)), centroids_);
+    return std::make_unique<Iterator>(std::prev(detail::GetCendIter<Reverse>(centroids_)), centroids_);
   }
   double TotalWeight() const { return static_cast<double>(meta_data_.total_weight); }
   double Min() const { return meta_data_.minimum; }

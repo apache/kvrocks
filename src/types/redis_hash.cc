@@ -418,7 +418,7 @@ rocksdb::Status Hash::RangeByLex(engine::Context &ctx, const Slice &user_key, co
     }
     if (spec.offset >= 0 && pos++ < spec.offset) continue;
 
-    field_values->emplace_back(ikey.GetSubKey().ToString(), std::move(field_value.value));
+    field_values->emplace_back(ikey.GetSubKey().ToString(), field_value.value.ToString());
     if (spec.count > 0 && field_values->size() >= static_cast<unsigned>(spec.count)) break;
   }
   return rocksdb::Status::OK();

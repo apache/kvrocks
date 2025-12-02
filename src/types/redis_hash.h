@@ -56,12 +56,14 @@ enum class HashFetchType { kAll = 0, kOnlyKey = 1, kOnlyValue = 2 };
 // Hash field value encoding flags
 // Bit 0: has expiration timestamp
 constexpr uint8_t HASH_FIELD_FLAG_EXPIRE = 0x01;
-// Magic byte to identify new encoding format (must not conflict with typical value first bytes)
-constexpr uint8_t HASH_FIELD_ENCODING_VERSION = 0xFF;
+// Magic bytes to identify new encoding format
+// Using two bytes makes it extremely unlikely to conflict with existing binary values
+constexpr uint8_t HASH_FIELD_ENCODING_MARKER_1 = 0xFF;
+constexpr uint8_t HASH_FIELD_ENCODING_MARKER_2 = 0xFE;
 
 // HashFieldValue handles encoding/decoding of hash field values with optional expiration
 // Legacy format (backward compatible): [raw value]
-// New format: [1-byte version=0xFF][1-byte flags][8-byte expire timestamp if flag set][value]
+// New format: [0xFF][0xFE][1-byte flags][8-byte expire timestamp if flag set][value]
 //
 // This is a zero-copy view into the encoded data - the value field references the original
 // data without copying. The lifetime of the HashFieldValue must not exceed the lifetime
@@ -80,9 +82,10 @@ struct HashFieldValue {
       // No expiration - store as raw value for backward compatibility
       dst->assign(value.data(), value.size());
     } else {
-      // Has expiration - use new format
+      // Has expiration - use new format with two-byte marker for unambiguous detection
       dst->clear();
-      PutFixed8(dst, HASH_FIELD_ENCODING_VERSION);
+      PutFixed8(dst, HASH_FIELD_ENCODING_MARKER_1);
+      PutFixed8(dst, HASH_FIELD_ENCODING_MARKER_2);
       PutFixed8(dst, HASH_FIELD_FLAG_EXPIRE);
       PutFixed64(dst, expire);
       dst->append(value.data(), value.size());
@@ -99,9 +102,11 @@ struct HashFieldValue {
       return true;
     }
 
-    // Check for new encoding format
-    if (static_cast<uint8_t>(input[0]) == HASH_FIELD_ENCODING_VERSION && input.size() >= 2) {
-      input.remove_prefix(1);  // Skip version byte
+    // Check for new encoding format - requires both marker bytes
+    if (input.size() >= 3 &&
+        static_cast<uint8_t>(input[0]) == HASH_FIELD_ENCODING_MARKER_1 &&
+        static_cast<uint8_t>(input[1]) == HASH_FIELD_ENCODING_MARKER_2) {
+      input.remove_prefix(2);  // Skip both marker bytes
 
       uint8_t flags = 0;
       if (!GetFixed8(&input, &flags)) return false;

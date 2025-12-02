@@ -417,7 +417,7 @@ TEST_F(RedisHashTest, HashFieldValueEncoding) {
   HashFieldValue fv2("test_value", expire_time);
   std::string encoded2;
   fv2.Encode(&encoded2);
-  EXPECT_GT(encoded2.size(), 10);  // Should have version + flags + timestamp + value
+  EXPECT_GT(encoded2.size(), 11);  // Should have 2 marker bytes + flags + timestamp + value
 
   // Test decoding new format
   HashFieldValue decoded2;
@@ -425,6 +425,30 @@ TEST_F(RedisHashTest, HashFieldValueEncoding) {
   EXPECT_EQ(decoded2.value, "test_value");
   EXPECT_EQ(decoded2.expire, expire_time);
   EXPECT_FALSE(decoded2.IsExpired());
+
+  // Test that binary values starting with 0xFF are correctly treated as legacy format
+  std::string binary_value_with_ff;
+  binary_value_with_ff.push_back('\xFF');
+  binary_value_with_ff.append("binary_data");
+  HashFieldValue fv_binary(binary_value_with_ff, 0);
+  std::string encoded_binary;
+  fv_binary.Encode(&encoded_binary);
+  EXPECT_EQ(encoded_binary, binary_value_with_ff);  // Should be raw value
+
+  HashFieldValue decoded_binary;
+  EXPECT_TRUE(HashFieldValue::Decode(encoded_binary, &decoded_binary));
+  EXPECT_EQ(decoded_binary.value, binary_value_with_ff);
+  EXPECT_EQ(decoded_binary.expire, 0);
+
+  // Test that the two-byte marker correctly distinguishes from single 0xFF
+  std::string ambiguous_value;
+  ambiguous_value.push_back('\xFF');
+  ambiguous_value.push_back('\xAA');  // Not 0xFE, so should be treated as legacy
+  ambiguous_value.append("data");
+  HashFieldValue decoded_ambiguous;
+  EXPECT_TRUE(HashFieldValue::Decode(ambiguous_value, &decoded_ambiguous));
+  EXPECT_EQ(decoded_ambiguous.value, ambiguous_value);
+  EXPECT_EQ(decoded_ambiguous.expire, 0);
 
   // Test expired field
   HashFieldValue fv3("expired_value", util::GetTimeStampMS() - 1000);  // Already expired

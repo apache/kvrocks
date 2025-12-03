@@ -124,7 +124,8 @@ rocksdb::Status Hash::IncrBy(engine::Context &ctx, const Slice &user_key, const 
   if (!s.ok()) return s;
 
   // Encode new value preserving expiration
-  HashFieldValue new_field_value(std::to_string(*new_value), field_expire);
+  std::string new_value_str = std::to_string(*new_value);
+  HashFieldValue new_field_value(new_value_str, field_expire);
   std::string encoded_value;
   new_field_value.Encode(&encoded_value);
   s = batch->Put(sub_key, encoded_value);
@@ -188,7 +189,8 @@ rocksdb::Status Hash::IncrByFloat(engine::Context &ctx, const Slice &user_key, c
   if (!s.ok()) return s;
 
   // Encode new value preserving expiration
-  HashFieldValue new_field_value(std::to_string(*new_value), field_expire);
+  std::string new_value_str = std::to_string(*new_value);
+  HashFieldValue new_field_value(new_value_str, field_expire);
   std::string encoded_value;
   new_field_value.Encode(&encoded_value);
   s = batch->Put(sub_key, encoded_value);

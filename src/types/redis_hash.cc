@@ -396,7 +396,7 @@ rocksdb::Status Hash::RangeByLex(engine::Context &ctx, const Slice &user_key, co
   for (; iter->Valid() && iter->key().starts_with(prefix_key); (!spec.reversed ? iter->Next() : iter->Prev())) {
     // Decode and check expiration
     HashFieldValue field_value;
-    if (!HashFieldValue::Decode(iter->value().ToString(), &field_value)) {
+    if (!HashFieldValue::Decode(iter->value(), &field_value)) {
       continue;  // Skip corrupted values
     }
     if (field_value.IsExpired()) {

@@ -242,27 +242,9 @@ rocksdb::Status TDigest::mergeNodes(engine::Context& ctx, const std::string& ns_
 
 rocksdb::Status TDigest::Rank(engine::Context& ctx, const Slice& digest_name, const std::vector<double>& inputs,
                               std::vector<int>& result) {
-  auto ns_key = AppendNamespacePrefix(digest_name);
   TDigestMetadata metadata;
-  {
-    LockGuard guard(storage_->GetLockManager(), ns_key);
-
-    if (auto status = getMetaDataByNsKey(ctx, ns_key, &metadata); !status.ok()) {
-      return status;
-    }
-
-    if (metadata.total_observations == 0) {
-      result.resize(inputs.size(), -2);
-      return rocksdb::Status::OK();
-    }
-
-    if (auto status = mergeNodes(ctx, ns_key, &metadata); !status.ok()) {
-      return status;
-    }
-  }
-
   std::vector<Centroid> centroids;
-  if (auto status = dumpCentroids(ctx, ns_key, metadata, &centroids); !status.ok()) {
+  if (auto status = prepareRankData(this, ctx, digest_name, inputs, result, metadata, centroids); !status.ok()) {
     return status;
   }
 
@@ -273,10 +255,9 @@ rocksdb::Status TDigest::Rank(engine::Context& ctx, const Slice& digest_name, co
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status TDigest::RevRank(engine::Context& ctx, const Slice& digest_name, const std::vector<double>& inputs,
-                                 std::vector<int>& result) {
+rocksdb::Status prepareRankData(engine::Context& ctx, const Slice& digest_name, const std::vector<double>& inputs,
+                                std::vector<int>& result, TDigestMetadata& metadata, std::vector<Centroid>& centroids) {
   auto ns_key = AppendNamespacePrefix(digest_name);
-  TDigestMetadata metadata;
   {
     LockGuard guard(storage_->GetLockManager(), ns_key);
 
@@ -286,16 +267,21 @@ rocksdb::Status TDigest::RevRank(engine::Context& ctx, const Slice& digest_name,
 
     if (metadata.total_observations == 0) {
       result.resize(inputs.size(), -2);
-      return rocksdb::Status::OK();
+      return rocksdb::Status::OK();  // 特殊返回值表示已处理
     }
 
     if (auto status = mergeNodes(ctx, ns_key, &metadata); !status.ok()) {
       return status;
     }
   }
+  return dumpCentroids(ctx, ns_key, metadata, &centroids);
+}
 
+rocksdb::Status TDigest::RevRank(engine::Context& ctx, const Slice& digest_name, const std::vector<double>& inputs,
+                                 std::vector<int>& result) {
+  TDigestMetadata metadata;
   std::vector<Centroid> centroids;
-  if (auto status = dumpCentroids(ctx, ns_key, metadata, &centroids); !status.ok()) {
+  if (auto status = prepareRankData(this, ctx, digest_name, inputs, result, metadata, centroids); !status.ok()) {
     return status;
   }
 

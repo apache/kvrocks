@@ -267,7 +267,7 @@ rocksdb::Status prepareRankData(engine::Context& ctx, const Slice& digest_name, 
 
     if (metadata.total_observations == 0) {
       result.resize(inputs.size(), -2);
-      return rocksdb::Status::OK();  // 特殊返回值表示已处理
+      return rocksdb::Status::OK();  
     }
 
     if (auto status = mergeNodes(ctx, ns_key, &metadata); !status.ok()) {

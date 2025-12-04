@@ -65,40 +65,6 @@ inline decltype(auto) GetCendIter(const Container& centroids) {
     return centroids.cend();
   }
 }
-
-template <bool Reverse>
-rocksdb::Status RankImpl(TDigest* self, engine::Context& ctx, const Slice& digest_name,
-                         const std::vector<double>& inputs, std::vector<int>& result) {
-  auto ns_key = self->AppendNamespacePrefix(digest_name);
-  TDigestMetadata metadata;
-  {
-    LockGuard guard(self->storage_->GetLockManager(), ns_key);
-
-    if (auto status = self->getMetaDataByNsKey(ctx, ns_key, &metadata); !status.ok()) {
-      return status;
-    }
-
-    if (metadata.total_observations == 0) {
-      result.resize(inputs.size(), -2);
-      return rocksdb::Status::OK();
-    }
-
-    if (auto status = self->mergeNodes(ctx, ns_key, &metadata); !status.ok()) {
-      return status;
-    }
-  }
-
-  std::vector<Centroid> centroids;
-  if (auto status = self->dumpCentroids(ctx, ns_key, metadata, &centroids); !status.ok()) {
-    return status;
-  }
-
-  auto dump_centroids = DummyCentroids<Reverse>(metadata, centroids);
-  if (auto status = TDigestRank<Reverse>(dump_centroids, inputs, result); !status) {
-    return rocksdb::Status::InvalidArgument(status.Msg());
-  }
-  return rocksdb::Status::OK();
-}
 }  // namespace
 
 // TODO: It should be replaced by a iteration of the rocksdb iterator

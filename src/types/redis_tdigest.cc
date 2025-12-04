@@ -240,8 +240,9 @@ rocksdb::Status TDigest::mergeNodes(engine::Context& ctx, const std::string& ns_
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status TDigest::prepareRankData(engine::Context& ctx, const Slice& digest_name, const std::vector<double>& inputs,
-                                std::vector<int>& result, TDigestMetadata& metadata, std::vector<Centroid>& centroids) {
+rocksdb::Status TDigest::prepareRankData(engine::Context& ctx, const Slice& digest_name,
+                                         const std::vector<double>& inputs, std::vector<int>& result,
+                                         TDigestMetadata& metadata, std::vector<Centroid>& centroids) {
   auto ns_key = AppendNamespacePrefix(digest_name);
   {
     LockGuard guard(storage_->GetLockManager(), ns_key);
@@ -252,7 +253,7 @@ rocksdb::Status TDigest::prepareRankData(engine::Context& ctx, const Slice& dige
 
     if (metadata.total_observations == 0) {
       result.resize(inputs.size(), -2);
-      return rocksdb::Status::OK();  
+      return rocksdb::Status::OK();
     }
 
     if (auto status = mergeNodes(ctx, ns_key, &metadata); !status.ok()) {
@@ -276,7 +277,6 @@ rocksdb::Status TDigest::Rank(engine::Context& ctx, const Slice& digest_name, co
   }
   return rocksdb::Status::OK();
 }
-
 
 rocksdb::Status TDigest::RevRank(engine::Context& ctx, const Slice& digest_name, const std::vector<double>& inputs,
                                  std::vector<int>& result) {

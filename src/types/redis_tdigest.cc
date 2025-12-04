@@ -47,6 +47,126 @@
 
 namespace redis {
 
+namespace {
+template <bool Reverse, typename Container>
+inline decltype(auto) GetCbeginIter(const Container& centroids) {
+  if constexpr (Reverse) {
+    return centroids.crbegin();
+  } else {
+    return centroids.cbegin();
+  }
+}
+
+template <bool Reverse, typename Container>
+inline decltype(auto) GetCendIter(const Container& centroids) {
+  if constexpr (Reverse) {
+    return centroids.crend();
+  } else {
+    return centroids.cend();
+  }
+}
+
+template <bool Reverse>
+rocksdb::Status RankImpl(TDigest* self, engine::Context& ctx, const Slice& digest_name,
+                         const std::vector<double>& inputs, std::vector<int>& result) {
+  auto ns_key = self->AppendNamespacePrefix(digest_name);
+  TDigestMetadata metadata;
+  {
+    LockGuard guard(self->storage_->GetLockManager(), ns_key);
+
+    if (auto status = self->getMetaDataByNsKey(ctx, ns_key, &metadata); !status.ok()) {
+      return status;
+    }
+
+    if (metadata.total_observations == 0) {
+      result.resize(inputs.size(), -2);
+      return rocksdb::Status::OK();
+    }
+
+    if (auto status = self->mergeNodes(ctx, ns_key, &metadata); !status.ok()) {
+      return status;
+    }
+  }
+
+  std::vector<Centroid> centroids;
+  if (auto status = self->dumpCentroids(ctx, ns_key, metadata, &centroids); !status.ok()) {
+    return status;
+  }
+
+  auto dump_centroids = DummyCentroids<Reverse>(metadata, centroids);
+  if (auto status = TDigestRank<Reverse>(dump_centroids, inputs, result); !status) {
+    return rocksdb::Status::InvalidArgument(status.Msg());
+  }
+  return rocksdb::Status::OK();
+}
+}  // namespace
+
+// TODO: It should be replaced by a iteration of the rocksdb iterator
+template <bool Reverse>
+class DummyCentroids {
+ public:
+  DummyCentroids(const TDigestMetadata& meta_data, const std::vector<Centroid>& centroids)
+      : meta_data_(meta_data), centroids_(centroids) {}
+  class Iterator {
+   public:
+    using IterType = std::conditional_t<Reverse, std::vector<Centroid>::const_reverse_iterator,
+                                        std::vector<Centroid>::const_iterator>;
+    Iterator(IterType iter, const std::vector<Centroid>& centroids) : iter_(iter), centroids_(centroids) {}
+    std::unique_ptr<Iterator> Clone() const {
+      if (iter_ != GetCendIter<Reverse>(centroids_)) {
+        return std::make_unique<Iterator>(
+            std::next(GetCbeginIter<Reverse>(centroids_), std::distance(GetCbeginIter<Reverse>(centroids_), iter_)),
+            centroids_);
+      }
+      return std::make_unique<Iterator>(GetCendIter<Reverse>(centroids_), centroids_);
+    }
+    bool Next() {
+      if (Valid()) {
+        std::advance(iter_, 1);
+      }
+      return iter_ != GetCendIter<Reverse>(centroids_);
+    }
+
+    // The Prev function can only be called for item is not cend,
+    // because we must guarantee the iterator to be inside the valid range before iteration.
+    bool Prev() {
+      if (Valid() && iter_ != GetCendIter<Reverse>(centroids_)) {
+        std::advance(iter_, -1);
+      }
+      return Valid();
+    }
+    bool Valid() const { return iter_ != GetCendIter<Reverse>(centroids_); }
+    StatusOr<Centroid> GetCentroid() const {
+      if (iter_ == GetCendIter<Reverse>(centroids_)) {
+        return {::Status::NotOK, "invalid iterator during decoding tdigest centroid"};
+      }
+      return *iter_;
+    }
+
+   private:
+    IterType iter_;
+    const std::vector<Centroid>& centroids_;
+  };
+
+  std::unique_ptr<Iterator> Begin() const {
+    return std::make_unique<Iterator>(GetCbeginIter<Reverse>(centroids_), centroids_);
+  }
+  std::unique_ptr<Iterator> End() const {
+    if (centroids_.empty()) {
+      return std::make_unique<Iterator>(GetCendIter<Reverse>(centroids_), centroids_);
+    }
+    return std::make_unique<Iterator>(std::prev(GetCendIter<Reverse>(centroids_)), centroids_);
+  }
+  double TotalWeight() const { return static_cast<double>(meta_data_.total_weight); }
+  double Min() const { return meta_data_.minimum; }
+  double Max() const { return meta_data_.maximum; }
+  uint64_t Size() const { return meta_data_.merged_nodes; }
+
+ private:
+  const TDigestMetadata& meta_data_;
+  const std::vector<Centroid>& centroids_;
+};
+
 uint32_t constexpr kMaxElements = 1 * 1024;  // 1k doubles
 
 rocksdb::Status TDigest::Create(engine::Context& ctx, const Slice& digest_name, const TDigestCreateOptions& options,
@@ -577,5 +697,71 @@ std::string TDigest::internalSegmentGuardPrefixKey(const TDigestMetadata& metada
   std::string prefix_key;
   PutFixed8(&prefix_key, static_cast<uint8_t>(seg));
   return InternalKey(ns_key, prefix_key, metadata.version, storage_->IsSlotIdEncoded()).Encode();
+}
+
+rocksdb::Status TDigest::Rank(engine::Context& ctx, const Slice& digest_name, const std::vector<double>& inputs,
+                              std::vector<int>& result) {
+  auto ns_key = AppendNamespacePrefix(digest_name);
+  TDigestMetadata metadata;
+  {
+    LockGuard guard(storage_->GetLockManager(), ns_key);
+
+    if (auto status = getMetaDataByNsKey(ctx, ns_key, &metadata); !status.ok()) {
+      return status;
+    }
+
+    if (metadata.total_observations == 0) {
+      result.resize(inputs.size(), -2);
+      return rocksdb::Status::OK();
+    }
+
+    if (auto status = mergeNodes(ctx, ns_key, &metadata); !status.ok()) {
+      return status;
+    }
+  }
+
+  std::vector<Centroid> centroids;
+  if (auto status = dumpCentroids(ctx, ns_key, metadata, &centroids); !status.ok()) {
+    return status;
+  }
+
+  auto dump_centroids = DummyCentroids<false>(metadata, centroids);
+  if (auto status = TDigestRank<false>(dump_centroids, inputs, result); !status) {
+    return rocksdb::Status::InvalidArgument(status.Msg());
+  }
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status TDigest::RevRank(engine::Context& ctx, const Slice& digest_name, const std::vector<double>& inputs,
+                                 std::vector<int>& result) {
+  auto ns_key = AppendNamespacePrefix(digest_name);
+  TDigestMetadata metadata;
+  {
+    LockGuard guard(storage_->GetLockManager(), ns_key);
+
+    if (auto status = getMetaDataByNsKey(ctx, ns_key, &metadata); !status.ok()) {
+      return status;
+    }
+
+    if (metadata.total_observations == 0) {
+      result.resize(inputs.size(), -2);
+      return rocksdb::Status::OK();
+    }
+
+    if (auto status = mergeNodes(ctx, ns_key, &metadata); !status.ok()) {
+      return status;
+    }
+  }
+
+  std::vector<Centroid> centroids;
+  if (auto status = dumpCentroids(ctx, ns_key, metadata, &centroids); !status.ok()) {
+    return status;
+  }
+
+  auto dump_centroids = DummyCentroids<true>(metadata, centroids);
+  if (auto status = TDigestRank<true>(dump_centroids, inputs, result); !status) {
+    return rocksdb::Status::InvalidArgument(status.Msg());
+  }
+  return rocksdb::Status::OK();
 }
 }  // namespace redis

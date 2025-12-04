@@ -34,92 +34,6 @@
 
 namespace redis {
 
-namespace detail {
-template <bool Reverse, typename Container>
-inline decltype(auto) GetCbeginIter(const Container& centroids) {
-  if constexpr (Reverse) {
-    return centroids.crbegin();
-  } else {
-    return centroids.cbegin();
-  }
-}
-
-template <bool Reverse, typename Container>
-inline decltype(auto) GetCendIter(const Container& centroids) {
-  if constexpr (Reverse) {
-    return centroids.crend();
-  } else {
-    return centroids.cend();
-  }
-}
-}  // namespace detail
-
-// TODO: It should be replaced by a iteration of the rocksdb iterator
-template <bool Reverse>
-class DummyCentroids {
- public:
-  DummyCentroids(const TDigestMetadata& meta_data, const std::vector<Centroid>& centroids)
-      : meta_data_(meta_data), centroids_(centroids) {}
-  class Iterator {
-   public:
-    using IterType = std::conditional_t<Reverse, std::vector<Centroid>::const_reverse_iterator,
-                                        std::vector<Centroid>::const_iterator>;
-    Iterator(IterType iter, const std::vector<Centroid>& centroids) : iter_(iter), centroids_(centroids) {}
-    std::unique_ptr<Iterator> Clone() const {
-      if (iter_ != detail::GetCendIter<Reverse>(centroids_)) {
-        return std::make_unique<Iterator>(std::next(detail::GetCbeginIter<Reverse>(centroids_),
-                                                    std::distance(detail::GetCbeginIter<Reverse>(centroids_), iter_)),
-                                          centroids_);
-      }
-      return std::make_unique<Iterator>(detail::GetCendIter<Reverse>(centroids_), centroids_);
-    }
-    bool Next() {
-      if (Valid()) {
-        std::advance(iter_, 1);
-      }
-      return iter_ != detail::GetCendIter<Reverse>(centroids_);
-    }
-
-    // The Prev function can only be called for item is not cend,
-    // because we must guarantee the iterator to be inside the valid range before iteration.
-    bool Prev() {
-      if (Valid() && iter_ != detail::GetCendIter<Reverse>(centroids_)) {
-        std::advance(iter_, -1);
-      }
-      return Valid();
-    }
-    bool Valid() const { return iter_ != detail::GetCendIter<Reverse>(centroids_); }
-    StatusOr<Centroid> GetCentroid() const {
-      if (iter_ == detail::GetCendIter<Reverse>(centroids_)) {
-        return {::Status::NotOK, "invalid iterator during decoding tdigest centroid"};
-      }
-      return *iter_;
-    }
-
-   private:
-    IterType iter_;
-    const std::vector<Centroid>& centroids_;
-  };
-
-  std::unique_ptr<Iterator> Begin() const {
-    return std::make_unique<Iterator>(detail::GetCbeginIter<Reverse>(centroids_), centroids_);
-  }
-  std::unique_ptr<Iterator> End() const {
-    if (centroids_.empty()) {
-      return std::make_unique<Iterator>(detail::GetCendIter<Reverse>(centroids_), centroids_);
-    }
-    return std::make_unique<Iterator>(std::prev(detail::GetCendIter<Reverse>(centroids_)), centroids_);
-  }
-  double TotalWeight() const { return static_cast<double>(meta_data_.total_weight); }
-  double Min() const { return meta_data_.minimum; }
-  double Max() const { return meta_data_.maximum; }
-  uint64_t Size() const { return meta_data_.merged_nodes; }
-
- private:
-  const TDigestMetadata& meta_data_;
-  const std::vector<Centroid>& centroids_;
-};
-
 inline constexpr uint32_t kTDigestMaxCompression = 1000;  // limit the compression to 1k
 
 struct CentroidWithKey {
@@ -164,9 +78,10 @@ class TDigest : public SubKeyScanner {
 
   rocksdb::Status Merge(engine::Context& ctx, const Slice& dest_digest, const std::vector<std::string>& source_digests,
                         const TDigestMergeOptions& options);
-  template <bool Reverse>
   rocksdb::Status Rank(engine::Context& ctx, const Slice& digest_name, const std::vector<double>& inputs,
                        std::vector<int>& result);
+  rocksdb::Status RevRank(engine::Context& ctx, const Slice& digest_name, const std::vector<double>& inputs,
+                          std::vector<int>& result);
   rocksdb::Status GetMetaData(engine::Context& context, const Slice& digest_name, TDigestMetadata* metadata);
 
  private:
@@ -219,39 +134,4 @@ class TDigest : public SubKeyScanner {
   rocksdb::Status decodeCentroidFromKeyValue(const rocksdb::Slice& key, const rocksdb::Slice& value,
                                              Centroid* centroid) const;
 };
-
-template <bool Reverse>
-rocksdb::Status TDigest::Rank(engine::Context& ctx, const Slice& digest_name, const std::vector<double>& inputs,
-                              std::vector<int>& result) {
-  auto ns_key = AppendNamespacePrefix(digest_name);
-  TDigestMetadata metadata;
-  {
-    LockGuard guard(storage_->GetLockManager(), ns_key);
-
-    if (auto status = getMetaDataByNsKey(ctx, ns_key, &metadata); !status.ok()) {
-      return status;
-    }
-
-    if (metadata.total_observations == 0) {
-      result.resize(inputs.size(), -2);
-      return rocksdb::Status::OK();
-    }
-
-    if (auto status = mergeNodes(ctx, ns_key, &metadata); !status.ok()) {
-      return status;
-    }
-  }
-
-  std::vector<Centroid> centroids;
-  if (auto status = dumpCentroids(ctx, ns_key, metadata, &centroids); !status.ok()) {
-    return status;
-  }
-
-  auto dump_centroids = DummyCentroids<Reverse>(metadata, centroids);
-  if (auto status = TDigestRank<Reverse>(dump_centroids, inputs, result); !status) {
-    return rocksdb::Status::InvalidArgument(status.Msg());
-  }
-  return rocksdb::Status::OK();
-}
-
 }  // namespace redis

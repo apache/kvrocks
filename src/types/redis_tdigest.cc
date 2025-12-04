@@ -274,6 +274,72 @@ rocksdb::Status TDigest::mergeNodes(engine::Context& ctx, const std::string& ns_
   return rocksdb::Status::OK();
 }
 
+rocksdb::Status TDigest::Rank(engine::Context& ctx, const Slice& digest_name, const std::vector<double>& inputs,
+                              std::vector<int>& result) {
+  auto ns_key = AppendNamespacePrefix(digest_name);
+  TDigestMetadata metadata;
+  {
+    LockGuard guard(storage_->GetLockManager(), ns_key);
+
+    if (auto status = getMetaDataByNsKey(ctx, ns_key, &metadata); !status.ok()) {
+      return status;
+    }
+
+    if (metadata.total_observations == 0) {
+      result.resize(inputs.size(), -2);
+      return rocksdb::Status::OK();
+    }
+
+    if (auto status = mergeNodes(ctx, ns_key, &metadata); !status.ok()) {
+      return status;
+    }
+  }
+
+  std::vector<Centroid> centroids;
+  if (auto status = dumpCentroids(ctx, ns_key, metadata, &centroids); !status.ok()) {
+    return status;
+  }
+
+  auto dump_centroids = DummyCentroids<false>(metadata, centroids);
+  if (auto status = TDigestRank<false>(dump_centroids, inputs, result); !status) {
+    return rocksdb::Status::InvalidArgument(status.Msg());
+  }
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status TDigest::RevRank(engine::Context& ctx, const Slice& digest_name, const std::vector<double>& inputs,
+                                 std::vector<int>& result) {
+  auto ns_key = AppendNamespacePrefix(digest_name);
+  TDigestMetadata metadata;
+  {
+    LockGuard guard(storage_->GetLockManager(), ns_key);
+
+    if (auto status = getMetaDataByNsKey(ctx, ns_key, &metadata); !status.ok()) {
+      return status;
+    }
+
+    if (metadata.total_observations == 0) {
+      result.resize(inputs.size(), -2);
+      return rocksdb::Status::OK();
+    }
+
+    if (auto status = mergeNodes(ctx, ns_key, &metadata); !status.ok()) {
+      return status;
+    }
+  }
+
+  std::vector<Centroid> centroids;
+  if (auto status = dumpCentroids(ctx, ns_key, metadata, &centroids); !status.ok()) {
+    return status;
+  }
+
+  auto dump_centroids = DummyCentroids<true>(metadata, centroids);
+  if (auto status = TDigestRank<true>(dump_centroids, inputs, result); !status) {
+    return rocksdb::Status::InvalidArgument(status.Msg());
+  }
+  return rocksdb::Status::OK();
+}
+
 rocksdb::Status TDigest::Quantile(engine::Context& ctx, const Slice& digest_name, const std::vector<double>& qs,
                                   TDigestQuantitleResult* result) {
   auto ns_key = AppendNamespacePrefix(digest_name);
@@ -697,71 +763,5 @@ std::string TDigest::internalSegmentGuardPrefixKey(const TDigestMetadata& metada
   std::string prefix_key;
   PutFixed8(&prefix_key, static_cast<uint8_t>(seg));
   return InternalKey(ns_key, prefix_key, metadata.version, storage_->IsSlotIdEncoded()).Encode();
-}
-
-rocksdb::Status TDigest::Rank(engine::Context& ctx, const Slice& digest_name, const std::vector<double>& inputs,
-                              std::vector<int>& result) {
-  auto ns_key = AppendNamespacePrefix(digest_name);
-  TDigestMetadata metadata;
-  {
-    LockGuard guard(storage_->GetLockManager(), ns_key);
-
-    if (auto status = getMetaDataByNsKey(ctx, ns_key, &metadata); !status.ok()) {
-      return status;
-    }
-
-    if (metadata.total_observations == 0) {
-      result.resize(inputs.size(), -2);
-      return rocksdb::Status::OK();
-    }
-
-    if (auto status = mergeNodes(ctx, ns_key, &metadata); !status.ok()) {
-      return status;
-    }
-  }
-
-  std::vector<Centroid> centroids;
-  if (auto status = dumpCentroids(ctx, ns_key, metadata, &centroids); !status.ok()) {
-    return status;
-  }
-
-  auto dump_centroids = DummyCentroids<false>(metadata, centroids);
-  if (auto status = TDigestRank<false>(dump_centroids, inputs, result); !status) {
-    return rocksdb::Status::InvalidArgument(status.Msg());
-  }
-  return rocksdb::Status::OK();
-}
-
-rocksdb::Status TDigest::RevRank(engine::Context& ctx, const Slice& digest_name, const std::vector<double>& inputs,
-                                 std::vector<int>& result) {
-  auto ns_key = AppendNamespacePrefix(digest_name);
-  TDigestMetadata metadata;
-  {
-    LockGuard guard(storage_->GetLockManager(), ns_key);
-
-    if (auto status = getMetaDataByNsKey(ctx, ns_key, &metadata); !status.ok()) {
-      return status;
-    }
-
-    if (metadata.total_observations == 0) {
-      result.resize(inputs.size(), -2);
-      return rocksdb::Status::OK();
-    }
-
-    if (auto status = mergeNodes(ctx, ns_key, &metadata); !status.ok()) {
-      return status;
-    }
-  }
-
-  std::vector<Centroid> centroids;
-  if (auto status = dumpCentroids(ctx, ns_key, metadata, &centroids); !status.ok()) {
-    return status;
-  }
-
-  auto dump_centroids = DummyCentroids<true>(metadata, centroids);
-  if (auto status = TDigestRank<true>(dump_centroids, inputs, result); !status) {
-    return rocksdb::Status::InvalidArgument(status.Msg());
-  }
-  return rocksdb::Status::OK();
 }
 }  // namespace redis

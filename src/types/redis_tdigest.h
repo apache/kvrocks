@@ -33,7 +33,6 @@
 #include "tdigest.h"
 
 namespace redis {
-
 inline constexpr uint32_t kTDigestMaxCompression = 1000;  // limit the compression to 1k
 
 struct CentroidWithKey {

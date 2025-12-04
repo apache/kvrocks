@@ -240,22 +240,7 @@ rocksdb::Status TDigest::mergeNodes(engine::Context& ctx, const std::string& ns_
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status TDigest::Rank(engine::Context& ctx, const Slice& digest_name, const std::vector<double>& inputs,
-                              std::vector<int>& result) {
-  TDigestMetadata metadata;
-  std::vector<Centroid> centroids;
-  if (auto status = prepareRankData(this, ctx, digest_name, inputs, result, metadata, centroids); !status.ok()) {
-    return status;
-  }
-
-  auto dump_centroids = DummyCentroids<false>(metadata, centroids);
-  if (auto status = TDigestRank<false>(dump_centroids, inputs, result); !status) {
-    return rocksdb::Status::InvalidArgument(status.Msg());
-  }
-  return rocksdb::Status::OK();
-}
-
-rocksdb::Status prepareRankData(engine::Context& ctx, const Slice& digest_name, const std::vector<double>& inputs,
+rocksdb::Status TDigest::prepareRankData(engine::Context& ctx, const Slice& digest_name, const std::vector<double>& inputs,
                                 std::vector<int>& result, TDigestMetadata& metadata, std::vector<Centroid>& centroids) {
   auto ns_key = AppendNamespacePrefix(digest_name);
   {
@@ -277,11 +262,27 @@ rocksdb::Status prepareRankData(engine::Context& ctx, const Slice& digest_name, 
   return dumpCentroids(ctx, ns_key, metadata, &centroids);
 }
 
+rocksdb::Status TDigest::Rank(engine::Context& ctx, const Slice& digest_name, const std::vector<double>& inputs,
+                              std::vector<int>& result) {
+  TDigestMetadata metadata;
+  std::vector<Centroid> centroids;
+  if (auto status = prepareRankData(ctx, digest_name, inputs, result, metadata, centroids); !status.ok()) {
+    return status;
+  }
+
+  auto dump_centroids = DummyCentroids<false>(metadata, centroids);
+  if (auto status = TDigestRank<false>(dump_centroids, inputs, result); !status) {
+    return rocksdb::Status::InvalidArgument(status.Msg());
+  }
+  return rocksdb::Status::OK();
+}
+
+
 rocksdb::Status TDigest::RevRank(engine::Context& ctx, const Slice& digest_name, const std::vector<double>& inputs,
                                  std::vector<int>& result) {
   TDigestMetadata metadata;
   std::vector<Centroid> centroids;
-  if (auto status = prepareRankData(this, ctx, digest_name, inputs, result, metadata, centroids); !status.ok()) {
+  if (auto status = prepareRankData(ctx, digest_name, inputs, result, metadata, centroids); !status.ok()) {
     return status;
   }
 

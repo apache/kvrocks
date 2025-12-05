@@ -132,8 +132,7 @@ class TDigest : public SubKeyScanner {
   static std::string internalValueFromCentroid(const Centroid& centroid);
   rocksdb::Status decodeCentroidFromKeyValue(const rocksdb::Slice& key, const rocksdb::Slice& value,
                                              Centroid* centroid) const;
-  rocksdb::Status prepareRankData(engine::Context& ctx, const Slice& digest_name, const std::vector<double>& inputs,
-                                  std::vector<int>& result, TDigestMetadata& metadata,
+  rocksdb::Status prepareRankData(engine::Context& ctx, const Slice& digest_name, TDigestMetadata& metadata,
                                   std::vector<Centroid>& centroids);
 };
 }  // namespace redis

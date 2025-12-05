@@ -252,7 +252,6 @@ rocksdb::Status TDigest::prepareRankData(engine::Context& ctx, const Slice& dige
     }
 
     if (metadata.total_observations == 0) {
-      result.resize(inputs.size(), -2);
       return rocksdb::Status::OK();
     }
 
@@ -271,6 +270,11 @@ rocksdb::Status TDigest::Rank(engine::Context& ctx, const Slice& digest_name, co
     return status;
   }
 
+  if (metadata.total_observations == 0) {
+    result.resize(inputs.size(), -2);
+    return rocksdb::Status::OK();
+  }
+
   auto dump_centroids = DummyCentroids<false>(metadata, centroids);
   if (auto status = TDigestRank<false>(dump_centroids, inputs, result); !status) {
     return rocksdb::Status::InvalidArgument(status.Msg());
@@ -284,6 +288,11 @@ rocksdb::Status TDigest::RevRank(engine::Context& ctx, const Slice& digest_name,
   std::vector<Centroid> centroids;
   if (auto status = prepareRankData(ctx, digest_name, inputs, result, metadata, centroids); !status.ok()) {
     return status;
+  }
+
+  if (metadata.total_observations == 0) {
+    result.resize(inputs.size(), -2);
+    return rocksdb::Status::OK();
   }
 
   auto dump_centroids = DummyCentroids<true>(metadata, centroids);

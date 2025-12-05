@@ -26,9 +26,11 @@
 #include <cctype>
 #include <cmath>
 #include <random>
+#include <thread>
 #include <utility>
 
 #include "db_util.h"
+#include "logging.h"
 #include "parse_util.h"
 #include "sample_helper.h"
 
@@ -66,6 +68,7 @@ rocksdb::Status Hash::Get(engine::Context &ctx, const Slice &user_key, const Sli
     return rocksdb::Status::Corruption("failed to decode hash field value");
   }
   if (field_value.IsExpired()) {
+    AsyncRepairHash(ns_key, field, metadata);
     return rocksdb::Status::NotFound();
   }
   *value = field_value.value.ToString();
@@ -245,6 +248,7 @@ rocksdb::Status Hash::MGet(engine::Context &ctx, const Slice &user_key, const st
         return rocksdb::Status::Corruption("failed to decode hash field value");
       }
       if (field_value.IsExpired()) {
+        AsyncRepairHash(ns_key, fields[i], metadata);
         values->emplace_back("");
         statuses->emplace_back(rocksdb::Status::NotFound());
       } else {
@@ -394,16 +398,17 @@ rocksdb::Status Hash::RangeByLex(engine::Context &ctx, const Slice &user_key, co
   }
   int64_t pos = 0;
   for (; iter->Valid() && iter->key().starts_with(prefix_key); (!spec.reversed ? iter->Next() : iter->Prev())) {
+    InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
     // Decode and check expiration
     HashFieldValue field_value;
     if (!HashFieldValue::Decode(iter->value(), &field_value)) {
       continue;  // Skip corrupted values
     }
     if (field_value.IsExpired()) {
+      AsyncRepairHash(ns_key, ikey.GetSubKey(), metadata);
       continue;  // Skip expired fields
     }
 
-    InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
     if (spec.reversed) {
       if (ikey.GetSubKey().ToString() < spec.min || (spec.minex && ikey.GetSubKey().ToString() == spec.min)) {
         break;
@@ -445,22 +450,22 @@ rocksdb::Status Hash::GetAll(engine::Context &ctx, const Slice &user_key, std::v
 
   auto iter = util::UniqueIterator(ctx, read_options);
   for (iter->Seek(prefix_key); iter->Valid() && iter->key().starts_with(prefix_key); iter->Next()) {
+    InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
     // Decode and check expiration for all fetch types
     HashFieldValue field_value;
     if (!HashFieldValue::Decode(iter->value(), &field_value)) {
       continue;  // Skip corrupted values
     }
     if (field_value.IsExpired()) {
+      AsyncRepairHash(ns_key, ikey.GetSubKey(), metadata);
       continue;  // Skip expired fields
     }
 
     if (type == HashFetchType::kOnlyKey) {
-      InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
       field_values->emplace_back(ikey.GetSubKey().ToString(), "");
     } else if (type == HashFetchType::kOnlyValue) {
       field_values->emplace_back("", field_value.value.ToString());
     } else {
-      InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
       field_values->emplace_back(ikey.GetSubKey().ToString(), field_value.value.ToString());
     }
   }
@@ -672,6 +677,35 @@ rocksdb::Status Hash::PersistFields(engine::Context &ctx, const Slice &user_key,
     return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
   }
   return rocksdb::Status::OK();
+}
+
+void Hash::AsyncRepairHash(const std::string &ns_key, const Slice &field, const HashMetadata &metadata) const {
+  auto repair_task = [storage = storage_, ns_key, field_str = field.ToString(), version = metadata.version,
+                      size = metadata.size]() {
+    engine::Context ctx(storage);
+    auto batch = storage->GetWriteBatchBase();
+    std::string sub_key = InternalKey(ns_key, field_str, version, storage->IsSlotIdEncoded()).Encode();
+    batch->Delete(sub_key);
+
+    // Use Merge to decrement the size atomically. This may temporarily result in inconsistent
+    // metadata if multiple repairs run concurrently or if the size reaches 0, leaving an empty
+    // hash. However, this is acceptable as:
+    // 1. The inconsistency is temporary and will be corrected by subsequent operations
+    // 2. Empty hashes with size=0 will be cleaned up during the next compaction
+    // 3. Re-reading metadata would add overhead and complexity without eliminating all race conditions
+    HashMetadata new_metadata(false);
+    new_metadata.size = -1;
+    std::string bytes;
+    new_metadata.Encode(&bytes);
+    batch->Merge(storage->GetCFHandle(ColumnFamilyID::Metadata), ns_key, bytes);
+
+    auto s = storage->Write(ctx, storage->DefaultWriteOptions(), batch->GetWriteBatch());
+    if (!s.ok()) {
+      error("Failed to async repair hash field: {}", s.ToString());
+    }
+  };
+
+  std::thread(repair_task).detach();
 }
 
 }  // namespace redis

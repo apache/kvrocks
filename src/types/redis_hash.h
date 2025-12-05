@@ -60,6 +60,7 @@ constexpr uint8_t HASH_FIELD_FLAG_EXPIRE = 0x01;
 // Using two bytes makes it extremely unlikely to conflict with existing binary values
 constexpr uint8_t HASH_FIELD_ENCODING_MARKER_1 = 0xFF;
 constexpr uint8_t HASH_FIELD_ENCODING_MARKER_2 = 0xFE;
+const std::string HASH_FIELD_STUB_VALUE = "\xFE";
 
 // HashFieldValue handles encoding/decoding of hash field values with optional expiration
 // Legacy format (backward compatible): [raw value]
@@ -197,6 +198,7 @@ class Hash : public SubKeyScanner {
 
  private:
   rocksdb::Status GetMetadata(engine::Context &ctx, const Slice &ns_key, HashMetadata *metadata);
+  void AsyncRepairHash(const std::string &ns_key, const Slice &field, const HashMetadata &metadata) const;
 
   friend struct FieldValueRetriever;
 };

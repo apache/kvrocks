@@ -171,7 +171,9 @@ bool SubKeyFilter::Filter([[maybe_unused]] int level, const Slice &key, const Sl
     }
     // Check if field has expiration and if it's expired (with lazy delete buffer)
     if (field_value.expire > 0 && field_value.expire <= lazy_expired_ts) {
-      return true;
+      *new_value = HASH_FIELD_STUB_VALUE;
+      *modified = true;
+      return false;
     }
     return false;
   }

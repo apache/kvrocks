@@ -89,6 +89,11 @@ struct TSAggregator {
   double AggregateSamplesValue(nonstd::span<const TSSample> samples) const;
 };
 
+struct TWABounds {
+  TSSample prev_sample;
+  TSSample next_sample;
+};
+
 struct TSDownStreamMeta {
   TSAggregator aggregator;
   uint64_t latest_bucket_idx;

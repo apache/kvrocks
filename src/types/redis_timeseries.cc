@@ -84,7 +84,8 @@ struct Reducer {
   }
 };
 
-std::vector<TSSample> AggregateSamplesByRangeOption(std::vector<TSSample> samples, const TSRangeOption &option) {
+std::vector<TSSample> AggregateSamplesByRangeOption(std::vector<TSSample> samples, const TSRangeOption &option,
+                                                    const TWABounds &twa_bounds) {
   const auto &aggregator = option.aggregator;
 
   auto get_bucket_ts = [&](uint64_t left) -> uint64_t {
@@ -120,15 +121,12 @@ std::vector<TSSample> AggregateSamplesByRangeOption(std::vector<TSSample> sample
     return Reducer::Area(std::array<TSSample, 2>{left, right}) / static_cast<double>(bucket_right - bucket_left);
   };
 
-  // Retrieve prev_sample and next_sample from samples when TWA aggregation.
   TSSample prev_sample, next_sample;
   bool is_twa_aggregator = aggregator.type == TSAggregatorType::TWA, prev_available = false, next_available = false;
   if (is_twa_aggregator) {
     const bool discard_boundaries = !option.filter_by_ts.empty() || option.filter_by_value.has_value();
-    next_sample = samples.back();
-    samples.pop_back();
-    prev_sample = samples.back();
-    samples.pop_back();
+    next_sample = twa_bounds.next_sample;
+    prev_sample = twa_bounds.prev_sample;
     // When FILTER_BY_TS/FILTER_BY_VALUE is enabled, discard out-of-boundary samples.
     prev_available = discard_boundaries ? false : !samples.empty() && (samples.front().ts != prev_sample.ts);
     next_available = discard_boundaries ? false : !samples.empty() && (samples.back().ts != next_sample.ts);
@@ -183,12 +181,18 @@ std::vector<TSSample> AggregateSamplesByRangeOption(std::vector<TSSample> sample
     return curr;
   };
 
-  std::vector<std::pair<TSSample, TSSample>> neighbors;
-  neighbors.reserve(spans.size());
-  for (size_t i = 0; i < spans.size(); i++) {
-    TSSample prev = (i != 0) ? spans[non_empty_left_bucket_idx(i)].back() : prev_sample;
-    TSSample next = (i != (spans.size() - 1)) ? spans[non_empty_right_bucket_idx(i)].front() : next_sample;
-    neighbors.emplace_back(prev, next);
+  size_t sz = spans.size() - 1;
+  std::vector<std::pair<TSSample, TSSample>> neighbors(spans.size());
+  neighbors[0].first = prev_sample;
+  neighbors[sz].second = next_sample;
+  if (spans.size() > 1) {
+    neighbors[0].second = spans[non_empty_right_bucket_idx(0)].front();
+    neighbors[sz].first = spans[non_empty_left_bucket_idx(sz)].back();
+  }
+  sz--;
+  for (size_t i = 1; i < spans.size() - 1; i++, sz--) {
+    neighbors[i].first = spans[i - 1].empty() ? neighbors[i - 1].first : spans[i - 1].back();
+    neighbors[sz].second = spans[sz + 1].empty() ? neighbors[sz + 1].second : spans[sz + 1].front();
   }
 
   uint64_t bucket_left = aggregator.CalculateAlignedBucketLeft(samples.front().ts);
@@ -1244,6 +1248,7 @@ rocksdb::Status TimeSeries::rangeCommon(engine::Context &ctx, const Slice &ns_ke
     }
   }
 
+  TWABounds twa_bounds;
   if (is_twa_aggregator) {
     // If the first element of the series is in first bucket, prev_sample might not get initialized. Similarly if the
     // last element in the series is in last bucket, next_sample might not get initialized. If the series is empty,
@@ -1252,12 +1257,12 @@ rocksdb::Status TimeSeries::rangeCommon(engine::Context &ctx, const Slice &ns_ke
         prev_sample.ts == TSSample::MAX_TIMESTAMP && !temp_results.empty() ? temp_results.front() : prev_sample;
     next_sample =
         next_sample.ts == TSSample::MAX_TIMESTAMP && !temp_results.empty() ? temp_results.back() : next_sample;
-    temp_results.push_back(prev_sample);
-    temp_results.push_back(next_sample);
+    twa_bounds.prev_sample = prev_sample;
+    twa_bounds.next_sample = next_sample;
   }
 
   // Process compaction logic
-  *res = AggregateSamplesByRangeOption(std::move(temp_results), option);
+  *res = AggregateSamplesByRangeOption(std::move(temp_results), option, twa_bounds);
 
   return rocksdb::Status::OK();
 }

@@ -202,14 +202,16 @@ class TDigestRankCommand : public Commander {
     TDigest tdigest(srv->storage, conn->GetNamespace());
     std::vector<int> result;
     result.reserve(origin_inputs_.size());
-    const auto s = [&]() {
-      if constexpr (Reverse) {
-        return tdigest.RevRank(ctx, key_name_, unique_inputs_, result);
-      } else {
-        return tdigest.Rank(ctx, key_name_, unique_inputs_, result);
-      }
-    }();
-    if (!s.ok()) {
+
+    if (const auto s =
+            [&]() {
+              if constexpr (Reverse) {
+                return tdigest.RevRank(ctx, key_name_, unique_inputs_, result);
+              } else {
+                return tdigest.Rank(ctx, key_name_, unique_inputs_, result);
+              }
+            }();
+        !s.ok()) {
       if (s.IsNotFound()) {
         return {Status::RedisExecErr, errKeyNotFound};
       }

@@ -68,7 +68,7 @@ rocksdb::Status Hash::Get(engine::Context &ctx, const Slice &user_key, const Sli
     return rocksdb::Status::Corruption("failed to decode hash field value");
   }
   if (field_value.IsExpired()) {
-    AsyncRepairHash(ns_key, field, metadata);
+    asyncRepairHash(ns_key, field, metadata);
     return rocksdb::Status::NotFound();
   }
   *value = field_value.value.ToString();
@@ -248,7 +248,7 @@ rocksdb::Status Hash::MGet(engine::Context &ctx, const Slice &user_key, const st
         return rocksdb::Status::Corruption("failed to decode hash field value");
       }
       if (field_value.IsExpired()) {
-        AsyncRepairHash(ns_key, fields[i], metadata);
+        asyncRepairHash(ns_key, fields[i], metadata);
         values->emplace_back("");
         statuses->emplace_back(rocksdb::Status::NotFound());
       } else {
@@ -405,7 +405,7 @@ rocksdb::Status Hash::RangeByLex(engine::Context &ctx, const Slice &user_key, co
       continue;  // Skip corrupted values
     }
     if (field_value.IsExpired()) {
-      AsyncRepairHash(ns_key, ikey.GetSubKey(), metadata);
+      asyncRepairHash(ns_key, ikey.GetSubKey(), metadata);
       continue;  // Skip expired fields
     }
 
@@ -457,7 +457,7 @@ rocksdb::Status Hash::GetAll(engine::Context &ctx, const Slice &user_key, std::v
       continue;  // Skip corrupted values
     }
     if (field_value.IsExpired()) {
-      AsyncRepairHash(ns_key, ikey.GetSubKey(), metadata);
+      asyncRepairHash(ns_key, ikey.GetSubKey(), metadata);
       continue;  // Skip expired fields
     }
 
@@ -679,9 +679,13 @@ rocksdb::Status Hash::PersistFields(engine::Context &ctx, const Slice &user_key,
   return rocksdb::Status::OK();
 }
 
-void Hash::AsyncRepairHash(const std::string &ns_key, const Slice &field, const HashMetadata &metadata) const {
+void Hash::asyncRepairHash(const std::string &ns_key, const Slice &field, const HashMetadata &metadata) const {
   auto repair_task = [storage = storage_, ns_key, field_str = field.ToString(), version = metadata.version,
                       size = metadata.size]() {
+    if (size == 0) {
+      return;
+    }
+
     engine::Context ctx(storage);
     auto batch = storage->GetWriteBatchBase();
     std::string sub_key = InternalKey(ns_key, field_str, version, storage->IsSlotIdEncoded()).Encode();

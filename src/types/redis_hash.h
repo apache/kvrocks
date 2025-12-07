@@ -198,7 +198,7 @@ class Hash : public SubKeyScanner {
 
  private:
   rocksdb::Status GetMetadata(engine::Context &ctx, const Slice &ns_key, HashMetadata *metadata);
-  void AsyncRepairHash(const std::string &ns_key, const Slice &field, const HashMetadata &metadata) const;
+  void asyncRepairHash(const std::string &ns_key, const Slice &field, const HashMetadata &metadata) const;
 
   friend struct FieldValueRetriever;
 };

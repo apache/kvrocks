@@ -48,6 +48,7 @@
 #include "rocksdb_crc32c.h"
 #include "server/server.h"
 #include "storage/batch_indexer.h"
+#include "storage/hash_merge_operator.h"
 #include "string_util.h"
 #include "table_properties_collector.h"
 #include "time_util.h"
@@ -338,6 +339,7 @@ Status Storage::Open(DBOpenMode mode) {
   subkey_opts.disable_auto_compactions = config_->rocks_db.disable_auto_compactions;
   subkey_opts.table_properties_collector_factories.emplace_back(
       NewCompactOnExpiredTableCollectorFactory(std::string(kPrimarySubkeyColumnFamilyName), 0.3));
+  subkey_opts.merge_operator = std::make_shared<HashMergeOperator>();
   SetBlobDB(&subkey_opts);
 
   rocksdb::BlockBasedTableOptions pubsub_table_opts = InitTableOptions();

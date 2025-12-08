@@ -171,6 +171,23 @@ struct DoubleComparator {
   bool operator()(const double& a, const double& b) const { return DoubleCompare(a, b) == -1; }
 };
 
+
+template <bool Reverse, typename TD>
+inline Status TDigestByRank(TD&& td, const std::vector<int>& inputs, std::vector<double>& result) {
+  // std::map<int, size_t> value_to_index;
+  //     for (size_t i = 0; i < inputs.size(); ++i) {
+  //   value_to_index[inputs[i]] = i;
+  // }
+
+  if (inputs.size() != result.size()) {
+    return Status{Status::InvalidArgument, "inputs and result size mismatch"};
+  }
+  if (td.Size() == 0) {
+    return Status{Status::InvalidArgument, "empty tdigest"};
+  }
+  return Status::OK();
+}
+
 template <bool Reverse, typename TD>
 inline Status TDigestRank(TD&& td, const std::vector<double>& inputs, std::vector<int>& result) {
   std::map<double, size_t, DoubleComparator> value_to_index;

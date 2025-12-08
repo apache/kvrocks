@@ -61,9 +61,9 @@ rocksdb::Status TopK::IncrBy(engine::Context &ctx, const Slice &user_key, const 
 
   std::vector<bool> is_dirty_buckets(topk_metadata.width * topk_metadata.depth, false);
   std::vector<bool> is_dirty_heaps(topk_metadata.top_k, false);
-  topk.Add(items.data_, incr);
+  topk.Add(items.data_, incr, is_dirty_buckets, is_dirty_heaps);
 
-  s = setTopkData(ctx, ns_key, topk_metadata, topk);
+  s = setTopkData(ctx, ns_key, topk_metadata, topk, is_dirty_buckets, is_dirty_heaps);
   if (!s.ok()) return s;
 
   return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
@@ -154,10 +154,6 @@ rocksdb::Status TopK::createTopK(engine::Context &ctx, const Slice &ns_key, uint
 rocksdb::Status TopK::getTopKData(engine::Context &ctx, const Slice &ns_key, const TopKMetadata &metadata,
                                   BlockSplitTopK *topk) {
   for (uint8_t i = 0; i < 3; i++) {
-    std::string tk_key = getTKKey(ns_key, metadata, i);
-    rocksdb::PinnableSlice pinnable_value;
-    rocksdb::Status s = storage_->Get(ctx, ctx.GetReadOptions(), tk_key, &pinnable_value);
-    if (!s.ok()) return s;
     if (i == 0) {
       // get buckets of topk structure
       for (uint32_t j = 0; j < metadata.width * metadata.depth; j++) {
@@ -166,13 +162,13 @@ rocksdb::Status TopK::getTopKData(engine::Context &ctx, const Slice &ns_key, con
           rocksdb::PinnableSlice bk_value;
           rocksdb::Status s = storage_->Get(ctx, ctx.GetReadOptions(), bk_key, &bk_value);
           if (!s.ok()) return s;
-          
-          int dep = j / metadata.width;
-          int wid = j % metadata.width;
+
+          uint32_t dep = j / metadata.width;
+          uint32_t wid = j % metadata.width;
           if (k == 0) {
-            topk->buckets[dep][wid].fp = static_cast<uint32_t>(std::stoul(pinnable_value.data()));
+            topk->buckets[dep][wid].fp = static_cast<uint32_t>(std::stoul(bk_value.data()));
           } else {
-            topk->buckets[dep][wid].count = static_cast<uint32_t>(std::stoul(pinnable_value.data()));
+            topk->buckets[dep][wid].count = static_cast<uint32_t>(std::stoul(bk_value.data()));
           }
         }
       }
@@ -186,15 +182,19 @@ rocksdb::Status TopK::getTopKData(engine::Context &ctx, const Slice &ns_key, con
           if (!s.ok()) return s;
 
           if (k == 0) {
-            topk->heap[j].count = static_cast<uint32_t>(std::stoul(pinnable_value.data()));
+            topk->heap[j].count = static_cast<uint32_t>(std::stoul(hb_value.data()));
           } else if (k == 1) {
-            topk->heap[j].fp = static_cast<uint32_t>(std::stoul(pinnable_value.data()));
+            topk->heap[j].fp = static_cast<uint32_t>(std::stoul(hb_value.data()));
           } else {
             topk->heap[j].item = hb_value.data();
           }
         }
       }
     } else {
+      std::string tk_key = getTKKey(ns_key, metadata, i);
+      rocksdb::PinnableSlice pinnable_value;
+      rocksdb::Status s = storage_->Get(ctx, ctx.GetReadOptions(), tk_key, &pinnable_value);
+      if (!s.ok()) return s;
       topk->heap_size = static_cast<int>(std::stoul(pinnable_value.data()));
     }
   }
@@ -202,7 +202,7 @@ rocksdb::Status TopK::getTopKData(engine::Context &ctx, const Slice &ns_key, con
 }
 
 rocksdb::Status TopK::setTopkData(engine::Context &ctx, const Slice &ns_key, const TopKMetadata &metadata,
-                                  const BlockSplitTopK &topk, const std::vector<bool> &is_dirty_buckets, 
+                                  const BlockSplitTopK &topk, const std::vector<bool> &is_dirty_buckets,
                                   const std::vector<bool> &is_dirty_heaps) {
   auto batch = storage_->GetWriteBatchBase();
 
@@ -215,8 +215,8 @@ rocksdb::Status TopK::setTopkData(engine::Context &ctx, const Slice &ns_key, con
         for (uint32_t k = 0; k < 2; k++) {
           std::string sub_key = getSubKey(ns_key, metadata, i, j, k);
           std::string sub_value;
-          int dep = j / metadata.width;
-          int wid = j % metadata.width;
+          uint32_t dep = j / metadata.width;
+          uint32_t wid = j % metadata.width;
           if (k == 0) {
             sub_value = std::to_string(topk.buckets[dep][wid].fp);
           } else {
@@ -264,7 +264,8 @@ std::string TopK::getTKKey(const Slice &ns_key, const TopKMetadata &metadata, ui
   return bf_key;
 }
 
-std::string TopK::getSubKey(const Slice &ns_key, const TopKMetadata &metadata, uint8_t topk_index, uint32_t sub_index, uint8_t index) {
+std::string TopK::getSubKey(const Slice &ns_key, const TopKMetadata &metadata, uint8_t topk_index, uint32_t sub_index,
+                            uint8_t index) {
   std::string sub_key;
   PutFixed8(&sub_key, topk_index);
   PutFixed32(&sub_key, sub_index);

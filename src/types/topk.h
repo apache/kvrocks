@@ -37,14 +37,45 @@ struct HeapBucket {
   CounterT count;
   std::string item;
 
-  HeapBucket& operator=(const HeapBucket& other) {
+  HeapBucket() = default;
+
+  HeapBucket(uint32_t fp, CounterT count, std::string item) : fp(fp), count(count), item(std::move(item)) {}
+
+  HeapBucket(const HeapBucket &other) {
     if (this != &other) {
       fp = other.fp;
       count = other.count;
       item = other.item;
-      return *this;
     }
   }
+
+  HeapBucket(const HeapBucket &&other) noexcept {
+    if (this != &other) {
+      fp = other.fp;
+      count = other.count;
+      item = other.item;
+    }
+  }
+
+  HeapBucket &operator=(const HeapBucket &other) {
+    if (this != &other) {
+      fp = other.fp;
+      count = other.count;
+      item = other.item;
+    }
+    return *this;
+  }
+
+  HeapBucket &operator=(const HeapBucket &&other) noexcept {
+    if (this != &other) {
+      fp = other.fp;
+      count = other.count;
+      item = other.item;
+    }
+    return *this;
+  }
+
+  ~HeapBucket() = default;
 };
 
 struct Bucket {
@@ -73,14 +104,15 @@ class BlockSplitTopK {
     }
   }
 
-  ~BlockSplitTopK() {}
+  ~BlockSplitTopK() = default;
 
-  void Add(const std::string &item, uint32_t increment);
+  void Add(const std::string &item, uint32_t increment, std::vector<bool> &is_dirty_buckets,
+           std::vector<bool> &is_dirty_heaps);
   bool Query(const std::string &item) const;
   std::vector<HeapBucket> List();
 
-  void HeapifyDown(int start);
-  void HeapifyUp(int start);
+  void HeapifyDown(int start, std::vector<bool> &is_dirty_heaps);
+  void HeapifyUp(int start, std::vector<bool> &is_dirty_heaps);
   int CheckExistInHeap(const std::string &item) const;
   static int CmpHeapBucketCount(const HeapBucket &a, const HeapBucket &b);
 

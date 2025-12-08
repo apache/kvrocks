@@ -98,7 +98,7 @@ static uint32_t TopkHash(const void *item, int itemlen, uint32_t i) { return Mur
 constexpr uint32_t GA = 1919;
 
 /* ---------------------------------------------------------------------- */
-void BlockSplitTopK::HeapifyDown(int start) {
+void BlockSplitTopK::HeapifyDown(int start, std::vector<bool> &is_dirty_heaps) {
   int child = start;
 
   // check whether larger than children
@@ -117,6 +117,7 @@ void BlockSplitTopK::HeapifyDown(int start) {
   HeapBucket top = heap[start];
   do {
     heap[start] = heap[child];
+    is_dirty_heaps[start] = true;
     start = child;
 
     if ((heap_size - 2) / 2 < child) {
@@ -129,9 +130,10 @@ void BlockSplitTopK::HeapifyDown(int start) {
     }
   } while (heap[child].count < top.count);
   heap[start] = top;
+  is_dirty_heaps[start] = true;
 }
 
-void BlockSplitTopK::HeapifyUp(int start) {
+void BlockSplitTopK::HeapifyUp(int start, std::vector<bool> &is_dirty_heaps) {
   int parent = start;
 
   // check whether smaller than parent
@@ -147,6 +149,7 @@ void BlockSplitTopK::HeapifyUp(int start) {
   HeapBucket bottom = heap[start];
   do {
     heap[start] = heap[parent];
+    is_dirty_heaps[start] = true;
     start = parent;
 
     if (start == 0) {
@@ -155,6 +158,7 @@ void BlockSplitTopK::HeapifyUp(int start) {
     parent = (parent - 1) / 2;
   } while (heap[parent].count > bottom.count);
   heap[start] = bottom;
+  is_dirty_heaps[start] = true;
 }
 
 int BlockSplitTopK::CheckExistInHeap(const std::string &item) const {
@@ -170,7 +174,8 @@ int BlockSplitTopK::CmpHeapBucketCount(const HeapBucket &a, const HeapBucket &b)
   return a.count < b.count ? 1 : a.count > b.count ? -1 : 0;
 }
 
-void BlockSplitTopK::Add(const std::string &item, uint32_t increment) {
+void BlockSplitTopK::Add(const std::string &item, uint32_t increment, std::vector<bool> &is_dirty_buckets,
+                         std::vector<bool> &is_dirty_heaps) {
   uint32_t itemlen = item.size();
   const char *data = item.c_str();
   CounterT max_count = 0;
@@ -184,10 +189,12 @@ void BlockSplitTopK::Add(const std::string &item, uint32_t increment) {
     if (buckets[i][loc].count == 0) {
       buckets[i][loc].fp = fp;
       buckets[i][loc].count = increment;
+      is_dirty_buckets[i * width + loc] = true;
       max_count = std::max(max_count, buckets[i][loc].count);
     } else if (buckets[i][loc].fp == fp && location != -1) {
       buckets[i][loc].count += increment;
       max_count = std::max(max_count, buckets[i][loc].count);
+      is_dirty_buckets[i * width + loc] = true;
     } else {
       // decay
       uint32_t local_incr = increment;
@@ -196,8 +203,9 @@ void BlockSplitTopK::Add(const std::string &item, uint32_t increment) {
         if (buckets[i][loc].count < TOPK_DECAY_LOOKUP_TABLE) {
           decay = lookup_table[buckets[i][loc].count];
         } else {
-          decay = pow(lookup_table[TOPK_DECAY_LOOKUP_TABLE - 1], (buckets[i][loc].count / (TOPK_DECAY_LOOKUP_TABLE - 1))) *
-                  lookup_table[buckets[i][loc].count % (TOPK_DECAY_LOOKUP_TABLE - 1)];
+          decay =
+              pow(lookup_table[TOPK_DECAY_LOOKUP_TABLE - 1], (buckets[i][loc].count / (TOPK_DECAY_LOOKUP_TABLE - 1))) *
+              lookup_table[buckets[i][loc].count % (TOPK_DECAY_LOOKUP_TABLE - 1)];
         }
         double chance = rand() / (double)RAND_MAX;
         if (chance < decay) {
@@ -205,6 +213,7 @@ void BlockSplitTopK::Add(const std::string &item, uint32_t increment) {
           if (buckets[i][loc].count == 0) {
             buckets[i][loc].fp = fp;
             buckets[i][loc].count = 1;
+            is_dirty_buckets[i * width + loc] = true;
             max_count = std::max(max_count, buckets[i][loc].count);
             break;
           }
@@ -220,19 +229,21 @@ void BlockSplitTopK::Add(const std::string &item, uint32_t increment) {
         heap[0].item = item;
 
         heap[0].count = max_count;
-
-        HeapifyDown(0);
+        is_dirty_heaps[0] = true;
+        HeapifyDown(0, is_dirty_heaps);
       }
     } else {
       heap[location].count += increment;
-      HeapifyDown(location);
+      HeapifyDown(location, is_dirty_heaps);
     }
   } else {
     heap[heap_size].fp = fp;
     heap[heap_size].item = item;
     heap[heap_size].count = max_count;
 
-    HeapifyUp((int)heap_size);
+    is_dirty_heaps[heap_size] = true;
+
+    HeapifyUp((int)heap_size, is_dirty_heaps);
     heap_size++;
   }
 }

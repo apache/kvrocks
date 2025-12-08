@@ -61,7 +61,8 @@ class TopK : public SubKeyScanner {
 
   std::string getTKKey(const Slice &ns_key, const TopKMetadata &metadata, uint8_t index);
 
-  std::string getSubKey(const Slice &ns_key, const TopKMetadata &metadata, uint8_t topk_index, uint32_t sub_index, uint8_t index);
+  std::string getSubKey(const Slice &ns_key, const TopKMetadata &metadata, uint8_t topk_index, uint32_t sub_index,
+                        uint8_t index);
 };
 
 }  // namespace redis

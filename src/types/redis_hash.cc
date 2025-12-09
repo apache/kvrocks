@@ -687,26 +687,45 @@ void Hash::asyncRepairHash(const std::string &ns_key, const Slice &field, const 
     }
 
     engine::Context ctx(storage);
-    auto batch = storage->GetWriteBatchBase();
     std::string sub_key = InternalKey(ns_key, field_str, version, storage->IsSlotIdEncoded()).Encode();
-    batch->Delete(sub_key);
 
-    // Use Merge to decrement the size atomically. This may temporarily result in inconsistent
-    // metadata if multiple repairs run concurrently or if the size reaches 0, leaving an empty
-    // hash. However, this is acceptable as:
-    // 1. The inconsistency is temporary and will be corrected by subsequent operations
-    // 2. Empty hashes with size=0 will be cleaned up during the next compaction
-    // 3. Re-reading metadata would add overhead and complexity without eliminating all race conditions
-    HashMetadata new_metadata(false);
-    new_metadata.size = -1;
-    std::string bytes;
-    new_metadata.Encode(&bytes);
-    batch->Merge(storage->GetCFHandle(ColumnFamilyID::Metadata), ns_key, bytes);
+    // Use a retry loop to implement optimistic locking. This is to atomically
+    // decrement the hash size and prevent a race condition when multiple threads
+    // are repairing the same hash.
+    for (int i = 0; i < 10; ++i) {
+      HashMetadata current_metadata(false);
+      std::string metadata_bytes;
+      auto s = storage->Get(ctx, ctx.GetReadOptions(), storage->GetCFHandle(ColumnFamilyID::Metadata), ns_key,
+                            &metadata_bytes);
+      if (!s.ok()) {
+        // If metadata is not found, another repair might have cleaned it up. Stop.
+        if (s.IsNotFound()) return;
+        // For other errors, log and stop.
+        error("Failed to get metadata for async repair: {}", s.ToString());
+        return;
+      }
+      if (!current_metadata.Decode(metadata_bytes).ok()) {
+        error("Failed to decode metadata for async repair");
+        return;
+      }
 
-    auto s = storage->Write(ctx, storage->DefaultWriteOptions(), batch->GetWriteBatch());
-    if (!s.ok()) {
-      error("Failed to async repair hash field: {}", s.ToString());
+      // If size is already 0, no need to decrement.
+      if (current_metadata.size == 0) return;
+
+      auto batch = storage->GetWriteBatchBase();
+      batch->Delete(sub_key);
+
+      current_metadata.size -= 1;
+      std::string bytes;
+      current_metadata.Encode(&bytes);
+      batch->Put(storage->GetCFHandle(ColumnFamilyID::Metadata), ns_key, bytes);
+
+      s = storage->Write(ctx, storage->DefaultWriteOptions(), batch->GetWriteBatch());
+      if (s.ok()) {
+        return;
+      }
     }
+    error("Failed to async repair hash field after multiple retries");
   };
 
   std::thread(repair_task).detach();

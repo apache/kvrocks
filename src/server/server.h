@@ -197,6 +197,8 @@ class Server {
   void AdjustWorkerThreads();
 
   Status AddMaster(const std::string &host, uint32_t port, bool force_reconnect);
+
+  TaskRunner *GetTaskRunner() { return &task_runner_; }
   Status RemoveMaster();
   Status AddSlave(redis::Connection *conn, rocksdb::SequenceNumber next_repl_seq);
   void DisconnectSlaves();
@@ -434,6 +436,9 @@ class Server {
   std::thread cron_thread_;
   std::thread compaction_checker_thread_;
   TaskRunner task_runner_;
+
+ public:
+  TaskRunner *GetTaskRunner() { return &task_runner_; }
   std::vector<std::unique_ptr<WorkerThread>> worker_threads_;
   std::unique_ptr<ReplicationThread> replication_thread_;
   tbb::concurrent_queue<std::unique_ptr<WorkerThread>> recycle_worker_threads_;

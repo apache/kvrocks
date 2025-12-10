@@ -29,6 +29,7 @@
 #include <thread>
 #include <utility>
 
+#include "common/task_runner.h"
 #include "db_util.h"
 #include "logging.h"
 #include "parse_util.h"
@@ -680,6 +681,7 @@ rocksdb::Status Hash::PersistFields(engine::Context &ctx, const Slice &user_key,
 }
 
 void Hash::asyncRepairHash(const std::string &ns_key, const Slice &field, const HashMetadata &metadata) const {
+  // Use the server's task runner to schedule the repair task instead of spawning a thread.
   auto repair_task = [storage = storage_, ns_key, field_str = field.ToString(), version = metadata.version,
                       size = metadata.size]() {
     if (size == 0) {
@@ -689,18 +691,13 @@ void Hash::asyncRepairHash(const std::string &ns_key, const Slice &field, const 
     engine::Context ctx(storage);
     std::string sub_key = InternalKey(ns_key, field_str, version, storage->IsSlotIdEncoded()).Encode();
 
-    // Use a retry loop to implement optimistic locking. This is to atomically
-    // decrement the hash size and prevent a race condition when multiple threads
-    // are repairing the same hash.
     for (int i = 0; i < 10; ++i) {
       HashMetadata current_metadata(false);
       std::string metadata_bytes;
       auto s = storage->Get(ctx, ctx.GetReadOptions(), storage->GetCFHandle(ColumnFamilyID::Metadata), ns_key,
                             &metadata_bytes);
       if (!s.ok()) {
-        // If metadata is not found, another repair might have cleaned it up. Stop.
         if (s.IsNotFound()) return;
-        // For other errors, log and stop.
         error("Failed to get metadata for async repair: {}", s.ToString());
         return;
       }
@@ -708,8 +705,6 @@ void Hash::asyncRepairHash(const std::string &ns_key, const Slice &field, const 
         error("Failed to decode metadata for async repair");
         return;
       }
-
-      // If size is already 0, no need to decrement.
       if (current_metadata.size == 0) return;
 
       auto batch = storage->GetWriteBatchBase();
@@ -728,7 +723,10 @@ void Hash::asyncRepairHash(const std::string &ns_key, const Slice &field, const 
     error("Failed to async repair hash field after multiple retries");
   };
 
-  std::thread(repair_task).detach();
+  // Use the server's task runner and TryPublish
+  if (server_ && server_->GetTaskRunner()) {
+    server_->GetTaskRunner()->TryPublish(std::move(repair_task));
+  }
 }
 
 }  // namespace redis

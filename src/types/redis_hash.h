@@ -28,6 +28,7 @@
 
 #include "common/range_spec.h"
 #include "encoding.h"
+#include "server/server.h"
 #include "storage/redis_db.h"
 #include "storage/redis_metadata.h"
 #include "time_util.h"
@@ -151,7 +152,8 @@ namespace redis {
 
 class Hash : public SubKeyScanner {
  public:
-  Hash(engine::Storage *storage, const std::string &ns) : SubKeyScanner(storage, ns) {}
+  Hash(engine::Storage *storage, const std::string &ns, Server *server = nullptr)
+      : SubKeyScanner(storage, ns), server_(server) {}
 
   rocksdb::Status Size(engine::Context &ctx, const Slice &user_key, uint64_t *size);
   rocksdb::Status Get(engine::Context &ctx, const Slice &user_key, const Slice &field, std::string *value);
@@ -199,6 +201,7 @@ class Hash : public SubKeyScanner {
  private:
   rocksdb::Status GetMetadata(engine::Context &ctx, const Slice &ns_key, HashMetadata *metadata);
   void asyncRepairHash(const std::string &ns_key, const Slice &field, const HashMetadata &metadata) const;
+  Server *server_ = nullptr;
 
   friend struct FieldValueRetriever;
 };

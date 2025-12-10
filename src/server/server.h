@@ -438,7 +438,6 @@ class Server {
   TaskRunner task_runner_;
 
  public:
-  TaskRunner *GetTaskRunner() { return &task_runner_; }
   std::vector<std::unique_ptr<WorkerThread>> worker_threads_;
   std::unique_ptr<ReplicationThread> replication_thread_;
   tbb::concurrent_queue<std::unique_ptr<WorkerThread>> recycle_worker_threads_;

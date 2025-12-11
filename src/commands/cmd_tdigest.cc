@@ -282,8 +282,13 @@ class TDigestByRankCommand : public Commander {
 
     std::vector<std::string> ranks;
     ranks.reserve(origin_inputs_.size());
+    auto is_resp3 = conn->GetProtocolVersion() == RESP::v3;
     for (const auto &v : origin_inputs_) {
-      ranks.push_back(redis::Double(redis::RESP::v3, result[unique_inputs_order_[v]]));
+      if (is_resp3) {
+        ranks.push_back(redis::Double(redis::RESP::v3, result[unique_inputs_order_[v]]));
+      } else {
+        ranks.push_back(redis::BulkString(fmt::format("{}", result[unique_inputs_order_[v]])));
+      }
     }
     *output = redis::Array(ranks);
     return Status::OK();

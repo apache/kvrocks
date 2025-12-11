@@ -250,7 +250,7 @@ class TDigestByRankCommand : public Commander {
     unique_inputs_.reserve(unique_inputs_set.size());
     size_t i = 0;
     for (const auto &input : unique_inputs_set) {
-      auto value = ParseInt(input);
+      auto value = ParseInt<int>(input);
       if (!value) {
         return {Status::RedisParseErr, errValueNotInteger};
       }

@@ -238,7 +238,6 @@ class CommandTDigestRevRank : public TDigestRankCommand<true> {};
 
 class CommandTDigestRank : public TDigestRankCommand<false> {};
 
-
 template <bool Reverse>
 class TDigestByRankCommand : public Commander {
  public:
@@ -280,12 +279,12 @@ class TDigestByRankCommand : public Commander {
       }
       return {Status::RedisExecErr, s.ToString()};
     }
+
     std::vector<std::string> ranks;
     ranks.reserve(origin_inputs_.size());
-    // for (const auto &v : origin_inputs_) {
-    //       ranks.push_back(redis::Double(redis::RESP::v3, result[unique_inputs_order_[v]]));
-    // }
-    ranks.push_back(redis::Double(redis::RESP::v3, 2));
+    for (const auto &v : origin_inputs_) {
+      ranks.push_back(redis::Double(redis::RESP::v3, result[unique_inputs_order_[v]]));
+    }
     *output = redis::Array(ranks);
     return Status::OK();
   }
@@ -297,7 +296,7 @@ class TDigestByRankCommand : public Commander {
   std::vector<std::string> origin_inputs_;
 };
 
-class CommandTDigestByRevRank: public TDigestByRankCommand<true> {};
+class CommandTDigestByRevRank : public TDigestByRankCommand<true> {};
 
 class CommandTDigestByRank : public TDigestByRankCommand<false> {};
 

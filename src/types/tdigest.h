@@ -171,19 +171,70 @@ struct DoubleComparator {
   bool operator()(const double& a, const double& b) const { return DoubleCompare(a, b) == -1; }
 };
 
-
 template <bool Reverse, typename TD>
 inline Status TDigestByRank(TD&& td, const std::vector<int>& inputs, std::vector<double>& result) {
-  // std::map<int, size_t> value_to_index;
-  //     for (size_t i = 0; i < inputs.size(); ++i) {
-  //   value_to_index[inputs[i]] = i;
-  // }
+  result.clear();
+  result.resize(inputs.size(), -2);
 
-  if (inputs.size() != result.size()) {
-    return Status{Status::InvalidArgument, "inputs and result size mismatch"};
+  std::map<int, size_t> rank_to_index;
+  for (size_t i = 0; i < inputs.size(); ++i) {
+    rank_to_index[inputs[i]] = i;
   }
-  if (td.Size() == 0) {
-    return Status{Status::InvalidArgument, "empty tdigest"};
+
+  using MapType = decltype(rank_to_index);
+  using IterType = std::conditional_t<Reverse, typename MapType::reverse_iterator, typename MapType::iterator>;
+  IterType it;
+  if constexpr (Reverse) {
+    it = rank_to_index.rbegin();
+  } else {
+    it = rank_to_index.begin();
+  }
+
+  auto is_end = [&it, &rank_to_index]() -> bool {
+    if constexpr (Reverse) {
+      return it == rank_to_index.rend();
+    } else {
+      return it == rank_to_index.end();
+    }
+  };
+
+  while (!is_end() && it->first == 0) {
+    if constexpr (Reverse) {
+      result[it->second] = td.Max();
+    } else {
+      result[it->second] = td.Min();
+    }
+    ++it;
+  }
+
+  if (is_end()) {
+    return Status::OK();
+  }
+
+  // Iterate through centroids to find values for remaining ranks
+  auto iter = td.Begin();
+  double cumulative_weight = 0;
+
+  while (iter->Valid() && !is_end()) {
+    auto centroid = GET_OR_RET(iter->GetCentroid());
+    cumulative_weight += centroid.weight;
+
+    // Process all ranks that fall within current cumulative weight
+    while (!is_end() && it->first < static_cast<int>(cumulative_weight)) {
+      result[it->second] = centroid.mean;
+      ++it;
+    }
+
+    iter->Next();
+  }
+
+  while (!is_end() && it->first >= static_cast<int>(td.TotalWeight())) {
+    result[it->second] = std::numeric_limits<double>::infinity();
+    ++it;
+  }
+
+  if (!is_end()) {
+    return Status{Status::InvalidArgument, "failed to process all ranks"};
   }
   return Status::OK();
 }

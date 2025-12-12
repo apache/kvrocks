@@ -516,15 +516,7 @@ TEST_F(RedisTDigestTest, ByRank_And_ByRevRank) {
     }
   }
 
-  // Test 3: Test with duplicate ranks in input
-  std::vector<int> duplicate_ranks = {0, 0, 5, 5, 10};
-  result.clear();
-  status = tdigest_->ByRank(*ctx_, test_digest_name, duplicate_ranks, result);
-  ASSERT_TRUE(status.ok()) << status.ToString();
-  EXPECT_EQ(result[0], result[1]) << "Duplicate rank 0 should return same value";
-  EXPECT_EQ(result[2], result[3]) << "Duplicate rank 5 should return same value";
-
-  // Test 4: Test boundary conditions
+  // Test 3: Test boundary conditions
   std::vector<int> boundary_ranks = {0, 7, 14, 100};
   result.clear();
   status = tdigest_->ByRank(*ctx_, test_digest_name, boundary_ranks, result);

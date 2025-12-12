@@ -240,7 +240,7 @@ jobs:
       RISCV_PATH: "/opt/riscv"
     steps:
       - name: Maximize build space
-        if: ${{ matrix.riscv_toolchain }}
+        if: ${{ startsWith(matrix.os, 'ubuntu') }}
         run: |
           # refer to https://github.com/easimon/maximize-build-space,
           # we take some ideas from this action but don't use it directly.

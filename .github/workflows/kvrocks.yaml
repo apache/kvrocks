@@ -240,7 +240,7 @@ jobs:
       RISCV_PATH: "/opt/riscv"
     steps:
       - name: Maximize build space
-        if: ${{ matrix.riscv_toolchain }}
+        if: ${{ startsWith(matrix.os, 'ubuntu') }}
         run: |
           # refer to https://github.com/easimon/maximize-build-space,
           # we take some ideas from this action but don't use it directly.
@@ -503,10 +503,9 @@ jobs:
           - name: ArchLinux
             image: archlinux:base
             compiler: gcc
-          # FIXME: disable it due to "No space left on device" issue
-          # - name: Rocky Linux 8
-          #   image: rockylinux:8
-          #   compiler: gcc
+          - name: Rocky Linux 8
+            image: rockylinux:8
+            compiler: gcc
           - name: Rocky Linux 9
             image: rockylinux:9
             compiler: gcc
@@ -521,7 +520,16 @@ jobs:
     runs-on: ubuntu-22.04
     container:
       image: ${{ matrix.image }}
+      volumes:
+        - /usr/local/lib/android:/usr-local-lib-android
+        - /usr/share/dotnet:/usr-share-dotnet
     steps:
+      - name: Maximize build space
+        run: |
+          df -h
+          rm -rf /usr-local-lib-android/*
+          rm -rf /usr-share-dotnet/*
+          df -h
       - name: Setup ArchLinux
         if: ${{ startsWith(matrix.image, 'archlinux') }}
         run: |

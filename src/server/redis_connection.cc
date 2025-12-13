@@ -68,9 +68,26 @@ Connection::~Connection() {
 }
 
 std::string Connection::ToString() {
-  return fmt::format("id={} addr={} fd={} name={} age={} idle={} flags={} namespace={} qbuf={} obuf={} cmd={}\n", id_,
-                     addr_, bufferevent_getfd(bev_), name_, GetAge(), GetIdleTime(), GetFlags(), ns_,
-                     evbuffer_get_length(Input()), evbuffer_get_length(Output()), last_cmd_);
+  // When redis-databases > 0 (SELECT compatibility mode), show db field instead of namespace
+  std::string db_or_ns_field;
+  std::string db_or_ns_value;
+
+  if (srv_->GetConfig()->redis_databases > 0) {
+    // Parse db number from namespace (format: "db001", "db002", etc.)
+    int db_num = 0;
+    if (ns_ != kDefaultNamespace && ns_.size() >= 3 && ns_.substr(0, 2) == "db") {
+      db_num = ParseInt<int>(ns_.substr(2), 10).ValueOr(0);
+    }
+    db_or_ns_field = "db";
+    db_or_ns_value = std::to_string(db_num);
+  } else {
+    db_or_ns_field = "namespace";
+    db_or_ns_value = ns_;
+  }
+
+  return fmt::format("id={} addr={} fd={} name={} age={} idle={} flags={} {}={} qbuf={} obuf={} cmd={}\n", id_, addr_,
+                     bufferevent_getfd(bev_), name_, GetAge(), GetIdleTime(), GetFlags(), db_or_ns_field,
+                     db_or_ns_value, evbuffer_get_length(Input()), evbuffer_get_length(Output()), last_cmd_);
 }
 
 void Connection::Close() {

@@ -174,6 +174,7 @@ struct Config {
   int migrate_batch_rate_limit_mb;
 
   bool redis_cursor_compatible = false;
+  int redis_databases = 0;
   bool resp3_enabled = false;
   int log_retention_days;
 

@@ -233,6 +233,7 @@ Config::Config() {
       {"log-retention-days", true, new IntField(&log_retention_days, -1, -1, INT_MAX)},
       {"persist-cluster-nodes-enabled", false, new YesNoField(&persist_cluster_nodes_enabled, true)},
       {"redis-cursor-compatible", false, new YesNoField(&redis_cursor_compatible, true)},
+      {"redis-select-compatible", true, new YesNoField(&redis_select_compatible, false)},
       {"resp3-enabled", false, new YesNoField(&resp3_enabled, true)},
       {"repl-namespace-enabled", false, new YesNoField(&repl_namespace_enabled, false)},
       {"proto-max-bulk-len", false,

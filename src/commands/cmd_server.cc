@@ -201,8 +201,36 @@ class CommandPing : public Commander {
 
 class CommandSelect : public Commander {
  public:
-  Status Execute([[maybe_unused]] engine::Context &ctx, [[maybe_unused]] Server *srv, [[maybe_unused]] Connection *conn,
+  Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, Connection *conn,
                  std::string *output) override {
+    Config *config = srv->GetConfig();
+
+    // If redis-select-compatible is not enabled, just return OK (default behavior)
+    if (!config->redis_select_compatible) {
+      *output = redis::RESP_OK;
+      return Status::OK();
+    }
+
+    // Build the token string as "db_index" (e.g., "0", "1", "2", ...)
+    auto &db_index = args_[1];
+    std::string ns;
+
+    // Use AuthenticateUser to validate the token/db_index and get the namespace
+    AuthResult result = srv->AuthenticateUser(db_index, &ns);
+    switch (result) {
+      case AuthResult::NO_REQUIRE_PASS:
+        return {Status::RedisExecErr, "redis-select-compatible enabled but no namespace mappings configured"};
+      case AuthResult::INVALID_PASSWORD:
+        return {Status::RedisExecErr, "DB index not configured in redis-select-compatible mode"};
+      case AuthResult::IS_ADMIN:
+        return {Status::RedisExecErr, "DB index cannot be admin password in redis-select-compatible mode"};
+      case AuthResult::IS_USER:
+        conn->BecomeUser();
+        break;
+    }
+
+    // Switch to the corresponding namespace
+    conn->SetNamespace(ns);
     *output = redis::RESP_OK;
     return Status::OK();
   }

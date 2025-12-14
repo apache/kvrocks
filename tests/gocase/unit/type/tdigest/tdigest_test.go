@@ -23,6 +23,7 @@ package tdigest
 
 import (
 	"context"
+	"math"
 	"strconv"
 	"testing"
 
@@ -72,6 +73,11 @@ func TestTDigest(t *testing.T) {
 	configOptions := []util.ConfigOptions{
 		{
 			Name:       "txn-context-enabled",
+			Options:    []string{"yes", "no"},
+			ConfigType: util.YesNo,
+		},
+		{
+			Name:       "resp3-enabled",
 			Options:    []string{"yes", "no"},
 			ConfigType: util.YesNo,
 		},
@@ -714,6 +720,54 @@ func tdigestTests(t *testing.T, configs util.KvrocksServerConfigs) {
 			rank, ok := v.(int64)
 			require.True(t, ok, "expected int64 but got %T at index %d", v, i)
 			require.EqualValues(t, expected[i], rank, "REVRANK mismatch at index %d", i)
+		}
+	})
+
+	t.Run("tdigest.byrank and tdigest.byrevrank on empty sketch", func(t *testing.T) {
+		key := "tdigest_byrank_on_empty_sketch"
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", key, "compression", "100").Err())
+		
+		// Test BYRANK on empty sketch
+		rsp := rdb.Do(ctx, "TDIGEST.BYRANK", key, "1", "2", "4", "5", "0", "1", "20")
+		require.NoError(t, rsp.Err())
+		vals, err := rsp.Slice()
+		require.NoError(t, err)
+		require.Len(t, vals, 7)
+		isRESP3 := configs["resp3-enabled"] == "yes"
+		if isRESP3 {
+			for i, v := range vals {
+				rank, ok := v.(float64)
+				require.True(t, ok, "expected float64 but got %T at index %d", v, i)
+				require.True(t, math.IsNaN(rank), "expected NaN but got %v at index %d", rank, i)
+			}
+		} else {
+			expected := []string{"nan", "nan", "nan", "nan", "nan", "nan", "nan"}
+			for i, v := range vals {
+				rank, ok := v.(string)
+				require.True(t, ok, "expected string but got %T at index %d", v, i)
+				require.EqualValues(t, expected[i], rank, "RANK mismatch at index %d", i)
+			}
+		}
+
+		// Test BYREVRANK on empty sketch
+		rsp = rdb.Do(ctx, "TDIGEST.BYREVRANK", key, "1", "2", "4", "5", "0", "1", "20")
+		require.NoError(t, rsp.Err())
+		vals, err = rsp.Slice()
+		require.NoError(t, err)
+		require.Len(t, vals, 7)
+		if isRESP3 {
+			for i, v := range vals {
+				rank, ok := v.(float64)
+				require.True(t, ok, "expected float64 but got %T at index %d", v, i)
+				require.True(t, math.IsNaN(rank), "expected NaN but got %v at index %d", rank, i)
+			}
+		} else {
+			expected := []string{"nan", "nan", "nan", "nan", "nan", "nan", "nan"}
+			for i, v := range vals {
+				rank, ok := v.(string)
+				require.True(t, ok, "expected string but got %T at index %d", v, i)
+				require.EqualValues(t, expected[i], rank, "REVRANK mismatch at index %d", i)
+			}
 		}
 	})
 }

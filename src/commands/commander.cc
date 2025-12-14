@@ -27,6 +27,10 @@ namespace redis {
 
 RegisterToCommandTable::RegisterToCommandTable(CommandCategory category,
                                                std::initializer_list<CommandAttributes> list) {
+  if (category == CommandCategory::Disabled) {
+    return;
+  }
+
   for (auto attr : list) {
     attr.category = category;
     CommandTable::redis_command_table.emplace_back(attr);

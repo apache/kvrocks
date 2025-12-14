@@ -214,7 +214,9 @@ void FeedSlaveThread::loop() {
     //    kMaxDelayUpdates than latest sequence.
     if (is_first_repl_batch || batches_bulk.size() >= max_delay_bytes_ || updates_in_batches >= max_delay_updates_ ||
         srv_->storage->LatestSeqNumber() - batch.sequence <= max_delay_updates_) {
-      if (shouldSendGetAck(batch.sequence)) {
+      // get the last sequence number of the batch, because WAIT uses
+      // the last sequence number to wake up the connection.
+      if (shouldSendGetAck(batch.sequence + batch.writeBatchPtr->Count() - 1)) {
         batches_bulk += redis::BulkString("_getack");
       }
 
@@ -680,6 +682,8 @@ ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(bufferevent *
           if (data_written) {
             sendReplConfAck(bev, force_ack);
           }
+          // We should reset the watermark to 0 to read the next RESP parts after reading a batch.
+          bufferevent_setwatermark(bev, EV_READ, 0, 0);
           return CBState::AGAIN;
         }
         incr_bulk_len_ = line.length > 0 ? std::strtoull(line.get() + 1, nullptr, 10) : 0;
@@ -714,6 +718,8 @@ ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(bufferevent *
           // when force_ack is false. As a result, if the last write did not trigger ack, the replication would not send
           // ack forever and the info command on master would report incorrect lag.
           sendReplConfAck(bev, force_ack);
+          // We should reset the watermark to 0 to read the next RESP parts after reading a batch.
+          bufferevent_setwatermark(bev, EV_READ, 0, 0);
           return CBState::AGAIN;
         }
 

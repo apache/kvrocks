@@ -46,23 +46,29 @@ function(FetchContent_MakeAvailableWithArgs dep)
   endif()
 endfunction()
 
-function(FetchContent_DeclareWithMirror dep url hash)
-  FetchContent_Declare(${dep}
-    URL ${DEPS_FETCH_PROXY}${url}
-    URL_HASH ${hash}
-  )
-endfunction()
-
 function(FetchContent_DeclareGitHubWithMirror dep repo tag hash)
-  FetchContent_DeclareWithMirror(${dep}
-    https://github.com/${repo}/archive/${tag}.zip
-    ${hash}
-  )
-endfunction()
+  set(_dep_fetch_url "${DEPS_FETCH_PROXY}https://github.com/${repo}/archive/${tag}.zip")
+  if(DEPS_FETCH_DIR)
+    get_filename_component(_deps_fetch_dir ${DEPS_FETCH_DIR} ABSOLUTE)
+    set(_dep_fetch_dst ${_deps_fetch_dir}/${dep}-${tag}.zip)
 
-function(FetchContent_DeclareGitHubTarWithMirror dep repo tag hash)
-  FetchContent_DeclareWithMirror(${dep}
-    https://github.com/${repo}/archive/${tag}.tar.gz
-    ${hash}
-  )
+    if(NOT EXISTS ${_dep_fetch_dst})
+      message("Downloading ${_dep_fetch_url} to ${_dep_fetch_dst}...")
+      file(DOWNLOAD ${_dep_fetch_url} ${_dep_fetch_dst} STATUS _dep_download_status)
+      list(GET _dep_download_status 0 _dep_download_status_code)
+      if(NOT _dep_download_status_code EQUAL 0)
+        message(FATAL_ERROR "Failed to download ${_dep_fetch_url} to ${_dep_fetch_dst}")
+      endif()
+    endif()
+
+    FetchContent_Declare(${dep}
+      URL ${_dep_fetch_dst}
+      URL_HASH ${hash}
+    )
+  else()
+    FetchContent_Declare(${dep}
+      URL ${_dep_fetch_url}
+      URL_HASH ${hash}
+    )
+  endif()
 endfunction()

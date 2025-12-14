@@ -47,56 +47,81 @@
 
 namespace redis {
 
+namespace {
+template <bool Reverse, typename Container>
+inline decltype(auto) GetCbeginIter(const Container& centroids) {
+  if constexpr (Reverse) {
+    return centroids.crbegin();
+  } else {
+    return centroids.cbegin();
+  }
+}
+
+template <bool Reverse, typename Container>
+inline decltype(auto) GetCendIter(const Container& centroids) {
+  if constexpr (Reverse) {
+    return centroids.crend();
+  } else {
+    return centroids.cend();
+  }
+}
+}  // namespace
+
 // TODO: It should be replaced by a iteration of the rocksdb iterator
+template <bool Reverse>
 class DummyCentroids {
  public:
   DummyCentroids(const TDigestMetadata& meta_data, const std::vector<Centroid>& centroids)
       : meta_data_(meta_data), centroids_(centroids) {}
   class Iterator {
    public:
-    Iterator(std::vector<Centroid>::const_iterator&& iter, const std::vector<Centroid>& centroids)
-        : iter_(iter), centroids_(centroids) {}
+    using IterType = std::conditional_t<Reverse, std::vector<Centroid>::const_reverse_iterator,
+                                        std::vector<Centroid>::const_iterator>;
+    Iterator(IterType iter, const std::vector<Centroid>& centroids) : iter_(iter), centroids_(centroids) {}
     std::unique_ptr<Iterator> Clone() const {
-      if (iter_ != centroids_.cend()) {
-        return std::make_unique<Iterator>(std::next(centroids_.cbegin(), std::distance(centroids_.cbegin(), iter_)),
-                                          centroids_);
+      if (iter_ != GetCendIter<Reverse>(centroids_)) {
+        return std::make_unique<Iterator>(
+            std::next(GetCbeginIter<Reverse>(centroids_), std::distance(GetCbeginIter<Reverse>(centroids_), iter_)),
+            centroids_);
       }
-      return std::make_unique<Iterator>(centroids_.cend(), centroids_);
+      return std::make_unique<Iterator>(GetCendIter<Reverse>(centroids_), centroids_);
     }
     bool Next() {
       if (Valid()) {
         std::advance(iter_, 1);
       }
-      return iter_ != centroids_.cend();
+      return iter_ != GetCendIter<Reverse>(centroids_);
     }
 
     // The Prev function can only be called for item is not cend,
     // because we must guarantee the iterator to be inside the valid range before iteration.
     bool Prev() {
-      if (Valid() && iter_ != centroids_.cbegin()) {
+      if (Valid() && iter_ != GetCendIter<Reverse>(centroids_)) {
         std::advance(iter_, -1);
       }
       return Valid();
     }
-    bool Valid() const { return iter_ != centroids_.cend(); }
+    bool Valid() const { return iter_ != GetCendIter<Reverse>(centroids_); }
     StatusOr<Centroid> GetCentroid() const {
-      if (iter_ == centroids_.cend()) {
+      if (iter_ == GetCendIter<Reverse>(centroids_)) {
         return {::Status::NotOK, "invalid iterator during decoding tdigest centroid"};
       }
       return *iter_;
     }
 
    private:
-    std::vector<Centroid>::const_iterator iter_;
+    IterType iter_;
     const std::vector<Centroid>& centroids_;
   };
 
-  std::unique_ptr<Iterator> Begin() { return std::make_unique<Iterator>(centroids_.cbegin(), centroids_); }
-  std::unique_ptr<Iterator> End() {
+  std::unique_ptr<Iterator> Begin() const {
+    return std::make_unique<Iterator>(GetCbeginIter<Reverse>(centroids_), centroids_);
+  }
+  std::unique_ptr<Iterator> End() const {
     if (centroids_.empty()) {
-      return std::make_unique<Iterator>(centroids_.cend(), centroids_);
+      return std::make_unique<Iterator>(GetCendIter<Reverse>(centroids_), centroids_);
     }
-    return std::make_unique<Iterator>(std::prev(centroids_.cend()), centroids_);
+    return std::make_unique<Iterator>(std::prev(GetCendIter<Reverse>(centroids_)), centroids_);
   }
   double TotalWeight() const { return static_cast<double>(meta_data_.total_weight); }
   double Min() const { return meta_data_.minimum; }
@@ -186,6 +211,96 @@ rocksdb::Status TDigest::Add(engine::Context& ctx, const Slice& digest_name, con
   return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
+rocksdb::Status TDigest::mergeNodes(engine::Context& ctx, const std::string& ns_key, TDigestMetadata* metadata) {
+  if (metadata->unmerged_nodes == 0) {
+    return rocksdb::Status::OK();
+  }
+
+  auto batch = storage_->GetWriteBatchBase();
+  WriteBatchLogData log_data(kRedisTDigest);
+  if (auto status = batch->PutLogData(log_data.Encode()); !status.ok()) {
+    return status;
+  }
+
+  if (auto status = mergeCurrentBuffer(ctx, ns_key, batch, metadata); !status.ok()) {
+    return status;
+  }
+
+  std::string metadata_bytes;
+  metadata->Encode(&metadata_bytes);
+  if (auto status = batch->Put(metadata_cf_handle_, ns_key, metadata_bytes); !status.ok()) {
+    return status;
+  }
+
+  if (auto status = storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch()); !status.ok()) {
+    return status;
+  }
+
+  ctx.RefreshLatestSnapshot();
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status TDigest::prepareRankData(engine::Context& ctx, const Slice& digest_name, TDigestMetadata& metadata,
+                                         std::vector<Centroid>& centroids) {
+  auto ns_key = AppendNamespacePrefix(digest_name);
+  {
+    LockGuard guard(storage_->GetLockManager(), ns_key);
+
+    if (auto status = getMetaDataByNsKey(ctx, ns_key, &metadata); !status.ok()) {
+      return status;
+    }
+
+    if (metadata.total_observations == 0) {
+      return rocksdb::Status::OK();
+    }
+
+    if (auto status = mergeNodes(ctx, ns_key, &metadata); !status.ok()) {
+      return status;
+    }
+  }
+  return dumpCentroids(ctx, ns_key, metadata, &centroids);
+}
+
+rocksdb::Status TDigest::Rank(engine::Context& ctx, const Slice& digest_name, const std::vector<double>& inputs,
+                              std::vector<int>& result) {
+  TDigestMetadata metadata;
+  std::vector<Centroid> centroids;
+  if (auto status = prepareRankData(ctx, digest_name, metadata, centroids); !status.ok()) {
+    return status;
+  }
+
+  if (metadata.total_observations == 0) {
+    result.resize(inputs.size(), -2);
+    return rocksdb::Status::OK();
+  }
+
+  auto dump_centroids = DummyCentroids<false>(metadata, centroids);
+  if (auto status = TDigestRank<false>(dump_centroids, inputs, result); !status) {
+    return rocksdb::Status::InvalidArgument(status.Msg());
+  }
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status TDigest::RevRank(engine::Context& ctx, const Slice& digest_name, const std::vector<double>& inputs,
+                                 std::vector<int>& result) {
+  TDigestMetadata metadata;
+  std::vector<Centroid> centroids;
+  if (auto status = prepareRankData(ctx, digest_name, metadata, centroids); !status.ok()) {
+    return status;
+  }
+
+  if (metadata.total_observations == 0) {
+    result.resize(inputs.size(), -2);
+    return rocksdb::Status::OK();
+  }
+
+  auto dump_centroids = DummyCentroids<true>(metadata, centroids);
+  if (auto status = TDigestRank<true>(dump_centroids, inputs, result); !status) {
+    return rocksdb::Status::InvalidArgument(status.Msg());
+  }
+  return rocksdb::Status::OK();
+}
+
 rocksdb::Status TDigest::Quantile(engine::Context& ctx, const Slice& digest_name, const std::vector<double>& qs,
                                   TDigestQuantitleResult* result) {
   auto ns_key = AppendNamespacePrefix(digest_name);
@@ -201,28 +316,8 @@ rocksdb::Status TDigest::Quantile(engine::Context& ctx, const Slice& digest_name
       return rocksdb::Status::OK();
     }
 
-    if (metadata.unmerged_nodes > 0) {
-      auto batch = storage_->GetWriteBatchBase();
-      WriteBatchLogData log_data(kRedisTDigest);
-      if (auto status = batch->PutLogData(log_data.Encode()); !status.ok()) {
-        return status;
-      }
-
-      if (auto status = mergeCurrentBuffer(ctx, ns_key, batch, &metadata); !status.ok()) {
-        return status;
-      }
-
-      std::string metadata_bytes;
-      metadata.Encode(&metadata_bytes);
-      if (auto status = batch->Put(metadata_cf_handle_, ns_key, metadata_bytes); !status.ok()) {
-        return status;
-      }
-
-      if (auto status = storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch()); !status.ok()) {
-        return status;
-      }
-
-      ctx.RefreshLatestSnapshot();
+    if (auto status = mergeNodes(ctx, ns_key, &metadata); !status.ok()) {
+      return status;
     }
   }
 
@@ -231,7 +326,7 @@ rocksdb::Status TDigest::Quantile(engine::Context& ctx, const Slice& digest_name
     return status;
   }
 
-  auto dump_centroids = DummyCentroids(metadata, centroids);
+  auto dump_centroids = DummyCentroids<false>(metadata, centroids);
 
   auto quantile_results = std::vector<double>();
   quantile_results.reserve(qs.size());

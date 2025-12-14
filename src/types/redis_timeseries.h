@@ -253,6 +253,14 @@ enum class TSCreateRuleResult : uint8_t {
   kSrcEqDst = 6,
 };
 
+enum class TSAlterMode : uint8_t {
+  RETENTION = 1,
+  CHUNK_SIZE = 1 << 1,
+  DUPLICATE_POLICY = 1 << 2,
+  IGNORE = 1 << 3,
+  LABELS = 1 << 4,
+};
+
 std::vector<TSSample> GroupSamplesAndReduce(const std::vector<std::vector<TSSample>> &all_samples,
                                             TSMRangeOption::GroupReducerType reducer_type);
 
@@ -267,6 +275,7 @@ class TimeSeries : public SubKeyScanner {
   TimeSeries(engine::Storage *storage, const std::string &ns)
       : SubKeyScanner(storage, ns), index_cf_handle_(storage->GetCFHandle(ColumnFamilyID::Index)) {}
   rocksdb::Status Create(engine::Context &ctx, const Slice &user_key, const TSCreateOption &option);
+  rocksdb::Status Alter(engine::Context &ctx, const Slice &user_key, const TSCreateOption &option, uint8_t mask);
   rocksdb::Status Add(engine::Context &ctx, const Slice &user_key, TSSample sample, const TSCreateOption &option,
                       AddResult *res, const DuplicatePolicy *on_dup_policy = nullptr);
   rocksdb::Status MAdd(engine::Context &ctx, const Slice &user_key, std::vector<TSSample> samples,
@@ -282,11 +291,14 @@ class TimeSeries : public SubKeyScanner {
   rocksdb::Status MGet(engine::Context &ctx, const TSMGetOption &option, bool is_return_latest,
                        std::vector<TSMGetResult> *res);
   rocksdb::Status MRange(engine::Context &ctx, const TSMRangeOption &option, std::vector<TSMRangeResult> *res);
+  rocksdb::Status MRevRange(engine::Context &ctx, const TSMRangeOption &option, std::vector<TSMRangeResult> *res);
   rocksdb::Status IncrBy(engine::Context &ctx, const Slice &user_key, TSSample sample, const TSCreateOption &option,
                          AddResult *res);
   rocksdb::Status Del(engine::Context &ctx, const Slice &user_key, uint64_t from, uint64_t to, uint64_t *deleted);
   rocksdb::Status IsTSSubKeyExpired(const TimeSeriesMetadata &metadata, const Slice &key, const Slice &value,
                                     bool &expired);
+  rocksdb::Status QueryIndex(engine::Context &ctx, const TSMGetOption::FilterOption &filter_option,
+                             std::vector<std::string> *res);
 
   static bool ExtractTSSubType(const InternalKey &ikey, TSSubkeyType *type);
 

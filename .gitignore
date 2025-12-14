@@ -11,6 +11,12 @@
 *.gch
 *.pch
 
+# Linker files
+*.ilk
+
+# Debugger Files
+*.pdb
+
 # Compiled Dynamic libraries
 *.so
 *.dylib
@@ -31,19 +37,18 @@
 *.out
 *.app
 
-*.pyc
-*.swp
-*.swo
+# debug information files
+*.dwo
+
+# for macOS
 .DS_Store
-version.h
 
-.idea
-.vscode
-.cache
+# for IDEs
+/.idea/
+/.vscode/
+/.cache/
 
-compactdb
-testdb
-
-build
-cmake-build-*
-build-*
+# for build directories
+/build/
+/cmake-build-*/
+/build-*/

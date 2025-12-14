@@ -239,6 +239,17 @@ jobs:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE20: true
       RISCV_PATH: "/opt/riscv"
     steps:
+      - name: Maximize build space
+        if: ${{ startsWith(matrix.os, 'ubuntu') }}
+        run: |
+          # refer to https://github.com/easimon/maximize-build-space,
+          # we take some ideas from this action but don't use it directly.
+          sudo df -h
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo df -h
+
       - name: Setup macOS
         if: ${{ startsWith(matrix.os, 'macos') }}
         run: |
@@ -272,6 +283,7 @@ jobs:
           sudo mkdir -p $RISCV_PATH
           wget "${{ matrix.riscv_toolchain_url }}" -O riscv-toolchain.tar.xz
           sudo tar -xvf riscv-toolchain.tar.xz -C $RISCV_PATH --strip-components=1
+          rm riscv-toolchain.tar.xz
           sudo sed -i "s|libdir='/mnt/riscv/riscv64-unknown-linux-gnu/lib'|libdir='$RISCV_PATH/riscv64-unknown-linux-gnu/lib'|g" \
             $RISCV_PATH/riscv64-unknown-linux-gnu/lib/libatomic.la
           echo "PATH=$RISCV_PATH/bin:$PATH" >> $GITHUB_ENV
@@ -317,8 +329,8 @@ jobs:
         run: pip install gcovr==5.0 # 5.1 is not supported
         if: ${{ matrix.sonarcloud }}
 
-      - name: Install sonar-scanner and build-wrapper
-        uses: SonarSource/sonarcloud-github-c-cpp@v3
+      - name: Install Build Wrapper
+        uses: SonarSource/sonarqube-scan-action/install-build-wrapper@v6.0.0
         if: ${{ matrix.sonarcloud }}
 
       - name: Build Kvrocks
@@ -508,7 +520,16 @@ jobs:
     runs-on: ubuntu-22.04
     container:
       image: ${{ matrix.image }}
+      volumes:
+        - /usr/local/lib/android:/usr-local-lib-android
+        - /usr/share/dotnet:/usr-share-dotnet
     steps:
+      - name: Maximize build space
+        run: |
+          df -h
+          rm -rf /usr-local-lib-android/*
+          rm -rf /usr-share-dotnet/*
+          df -h
       - name: Setup ArchLinux
         if: ${{ startsWith(matrix.image, 'archlinux') }}
         run: |

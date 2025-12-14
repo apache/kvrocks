@@ -315,7 +315,6 @@ class CommandTSCreateBase : public KeywordCommandBase {
     return Status::OK();
   }
 
- private:
   TSCreateOption create_option_;
 };
 
@@ -339,6 +338,52 @@ class CommandTSCreate : public CommandTSCreateBase {
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
     *output = redis::RESP_OK;
     return Status::OK();
+  }
+};
+
+class CommandTSAlter : public CommandTSCreateBase {
+ public:
+  CommandTSAlter() { registerDefaultHandlers(); }
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() < 2) {
+      return {Status::RedisParseErr, errWrongNumOfArguments};
+    }
+    CommandTSCreateBase::setSkipNum(2);
+    return CommandTSCreateBase::Parse(args);
+  }
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    auto sc = CommandTSCreateBase::Execute(ctx, srv, conn, output);
+    if (!sc.IsOK()) return sc;
+
+    auto timeseries_db = TimeSeries(srv->storage, conn->GetNamespace());
+    auto s = timeseries_db.Alter(ctx, args_[1], getCreateOption(), mask_);
+    if (!s.ok() && s.IsInvalidArgument()) return {Status::RedisExecErr, errKeyNotFound};
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+    *output = redis::RESP_OK;
+    return Status::OK();
+  }
+
+ private:
+  uint8_t mask_ = 0;
+
+  void registerDefaultHandlers() override {
+    using AlterMode = std::underlying_type<TSAlterMode>::type;
+    registerHandler("RETENTION", [this](TSOptionsParser &parser) {
+      mask_ |= static_cast<AlterMode>(TSAlterMode::RETENTION);
+      return handleRetention(parser, create_option_.retention_time);
+    });
+    registerHandler("CHUNK_SIZE", [this](TSOptionsParser &parser) {
+      mask_ |= static_cast<AlterMode>(TSAlterMode::CHUNK_SIZE);
+      return handleChunkSize(parser, create_option_.chunk_size);
+    });
+    registerHandler("DUPLICATE_POLICY", [this](TSOptionsParser &parser) {
+      mask_ |= static_cast<AlterMode>(TSAlterMode::DUPLICATE_POLICY);
+      return handleDuplicatePolicy(parser, create_option_.duplicate_policy);
+    });
+    registerHandler("LABELS", [this](TSOptionsParser &parser) {
+      mask_ |= static_cast<AlterMode>(TSAlterMode::LABELS);
+      return handleLabels(parser, create_option_.labels);
+    });
   }
 };
 
@@ -983,7 +1028,7 @@ class CommandTSMRange : public CommandTSRangeBase, public CommandTSMGetBase {
     }
     auto timeseries_db = TimeSeries(srv->storage, conn->GetNamespace());
     std::vector<TSMRangeResult> results;
-    auto s = timeseries_db.MRange(ctx, option_, &results);
+    auto s = executeCommand(ctx, timeseries_db, &results);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
     std::vector<std::string> reply;
@@ -1058,8 +1103,22 @@ class CommandTSMRange : public CommandTSRangeBase, public CommandTSMGetBase {
     return Status::OK();
   }
 
- private:
   TSMRangeOption option_;
+
+ private:
+  virtual rocksdb::Status executeCommand(engine::Context &ctx, TimeSeries &ts, std::vector<TSMRangeResult> *results) {
+    return ts.MRange(ctx, option_, results);
+  }
+};
+
+class CommandTSMRevRange : public CommandTSMRange {
+ public:
+  CommandTSMRevRange() = default;
+
+ private:
+  rocksdb::Status executeCommand(engine::Context &ctx, TimeSeries &ts, std::vector<TSMRangeResult> *results) override {
+    return ts.MRevRange(ctx, option_, results);
+  }
 };
 
 class CommandTSIncrByDecrBy : public CommandTSCreateBase {
@@ -1173,7 +1232,47 @@ class CommandTSDel : public Commander {
   uint64_t end_ts_ = TSSample::MAX_TIMESTAMP;
 };
 
+class CommandTSQueryIndex : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() < 2) {
+      return {Status::RedisParseErr, "wrong number of arguments for 'ts.queryindex' command"};
+    }
+    CommandParser parser(args, 1);
+    // Parse filterExpr
+    auto filter_parser = TSMQueryFilterParser(filter_option_);
+    while (parser.Good()) {
+      auto s = filter_parser.Parse(parser.TakeStr().GetValue());
+      if (!s.IsOK()) return s;
+    }
+    return filter_parser.Check();
+  }
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    if (srv->GetConfig()->cluster_enabled) {
+      return {Status::RedisExecErr, "TS.QueryIndex is not supported in cluster mode"};
+    }
+    auto timeseries_db = TimeSeries(srv->storage, conn->GetNamespace());
+    std::vector<std::string> results;
+    auto s = timeseries_db.QueryIndex(ctx, getQueryIndexOption(), &results);
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+    std::vector<std::string> reply;
+    reply.reserve(results.size());
+    for (auto &result : results) {
+      reply.push_back(redis::BulkString(result));
+    }
+    *output = redis::Array(reply);
+    return Status::OK();
+  }
+
+ protected:
+  const TSMGetOption::FilterOption &getQueryIndexOption() const { return filter_option_; }
+
+ private:
+  TSMGetOption::FilterOption filter_option_;
+};
+
 REDIS_REGISTER_COMMANDS(Timeseries, MakeCmdAttr<CommandTSCreate>("ts.create", -2, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandTSAlter>("ts.alter", -2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandTSAdd>("ts.add", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandTSMAdd>("ts.madd", -4, "write", 1, -3, 1),
                         MakeCmdAttr<CommandTSRange>("ts.range", -4, "read-only", 1, 1, 1),
@@ -1183,8 +1282,10 @@ REDIS_REGISTER_COMMANDS(Timeseries, MakeCmdAttr<CommandTSCreate>("ts.create", -2
                         MakeCmdAttr<CommandTSCreateRule>("ts.createrule", -6, "write", 1, 2, 1),
                         MakeCmdAttr<CommandTSMGet>("ts.mget", -3, "read-only", NO_KEY),
                         MakeCmdAttr<CommandTSMRange>("ts.mrange", -5, "read-only", NO_KEY),
+                        MakeCmdAttr<CommandTSMRevRange>("ts.mrevrange", -5, "read-only", NO_KEY),
                         MakeCmdAttr<CommandTSIncrByDecrBy>("ts.incrby", -3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandTSIncrByDecrBy>("ts.decrby", -3, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandTSDel>("ts.del", -4, "write", 1, 1, 1), );
+                        MakeCmdAttr<CommandTSDel>("ts.del", -4, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandTSQueryIndex>("ts.queryindex", -2, "read-only", NO_KEY), );
 
 }  // namespace redis

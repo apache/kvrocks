@@ -29,6 +29,7 @@
 #include <vector>
 
 #include "cluster/cluster_defs.h"
+#include "cluster/cluster_failover.h"
 #include "commands/commander.h"
 #include "common/io_util.h"
 #include "fmt/format.h"
@@ -221,6 +222,9 @@ Status Cluster::SetClusterNodes(const std::string &nodes_str, int64_t version, b
   // Clear migrated and imported slot info
   migrated_slots_.clear();
   imported_slots_.clear();
+  if (srv_->cluster_failover) {
+    srv_->cluster_failover->ResetFailoverState();
+  }
 
   return Status::OK();
 }
@@ -447,6 +451,12 @@ Status Cluster::GetClusterInfo(std::string *cluster_infos) {
     std::string import_infos;
     srv_->slot_import->GetImportInfo(&import_infos);
     *cluster_infos += import_infos;
+
+    if (srv_->cluster_failover) {
+      std::string failover_info;
+      srv_->cluster_failover->GetFailoverInfo(&failover_info);
+      *cluster_infos += failover_info;
+    }
   }
 
   return Status::OK();
@@ -898,6 +908,10 @@ Status Cluster::CanExecByMySelf(const redis::CommandAttributes *attributes, cons
 
   uint64_t flags = attributes->GenerateFlags(cmd_tokens, *srv_->GetConfig());
 
+  if (srv_->cluster_failover && srv_->cluster_failover->IsWriteForbidden() && (flags & redis::kCmdWrite)) {
+    return {Status::RedisTryAgain, "Failover in progress"};
+  }
+
   if (myself_ && myself_ == slots_nodes_[slot]) {
     // We use central controller to manage the topology of the cluster.
     // Server can't change the topology directly, so we record the migrated slots
@@ -975,4 +989,52 @@ Status Cluster::Reset() {
   // unlink the cluster nodes file if exists
   unlink(srv_->GetConfig()->NodesFilePath().data());
   return Status::OK();
+}
+
+StatusOr<std::pair<std::string, int>> Cluster::GetNodeIPPort(const std::string &node_id) {
+  auto it = nodes_.find(node_id);
+  if (it == nodes_.end()) {
+    return {Status::NotOK, "Node not found"};
+  }
+  return std::make_pair(it->second->host, it->second->port);
+}
+
+Status Cluster::OnTakeOver() {
+  info("[Failover] OnTakeOver received myself_: {}", myself_ ? myself_->id : "null");
+  if (!myself_) {
+    return {Status::NotOK, "Cluster is not initialized"};
+  }
+  if (myself_->role == kClusterMaster) {
+    info("[Failover] OnTakeOver myself_ is master, return");
+    return Status::OK();
+  }
+
+  std::string old_master_id = myself_->master_id;
+  if (old_master_id.empty()) {
+    info("[Failover] OnTakeOver no master to takeover, return");
+    return {Status::NotOK, "No master to takeover"};
+  }
+
+  for (int i = 0; i < kClusterSlots; i++) {
+    if (slots_nodes_[i] && slots_nodes_[i]->id == old_master_id) {
+      imported_slots_.insert(i);
+    }
+  }
+  info("[Failover] OnTakeOver Success ");
+  return Status::OK();
+}
+
+void Cluster::SetMySlotsMigrated(const std::string &dst_ip_port) {
+  // It is called by failover thread.
+  auto exclusivity = srv_->WorkExclusivityGuard();
+
+  for (int i = 0; i < kClusterSlots; i++) {
+    if (slots_nodes_[i] == myself_) {
+      migrated_slots_[i] = dst_ip_port;
+    }
+  }
+}
+
+bool Cluster::IsSlotImported(int slot) const {
+  return imported_slots_.count(slot) > 0;
 }

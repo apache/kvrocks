@@ -37,6 +37,7 @@
 #endif
 
 #include "commands/blocking_commander.h"
+#include "cluster/redis_slot.h"
 #include "redis_connection.h"
 #include "scope_exit.h"
 #include "server.h"
@@ -480,6 +481,25 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
       continue;
     }
 
+    // Get slot for imported_slots_ check (needed for failover scenario)
+    int slot = -1;
+    if (config->cluster_enabled && (cmd_flags & kCmdWrite)) {
+      std::vector<int> key_indexes;
+      attributes->ForEachKeyRange(
+          [&](const std::vector<std::string> &, redis::CommandKeyRange key_range) {
+            key_range.ForEachKeyIndex([&](int i) { key_indexes.push_back(i); }, cmd_tokens.size());
+          },
+          cmd_tokens);
+      if (!key_indexes.empty()) {
+        for (auto i : key_indexes) {
+          if (i < static_cast<int>(cmd_tokens.size())) {
+            slot = GetSlotIdFromKey(cmd_tokens[i]);
+            break;
+          }
+        }
+      }
+    }
+
     if (config->cluster_enabled) {
       s = srv_->cluster->CanExecByMySelf(attributes, cmd_tokens, this);
       if (!s.IsOK()) {
@@ -502,8 +522,16 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     }
 
     if (config->slave_readonly && srv_->IsSlave() && (cmd_flags & kCmdWrite)) {
-      Reply(redis::Error({Status::RedisReadOnly, "You can't write against a read only slave."}));
-      continue;
+      // Allow write if slot is in imported_slots_ (failover scenario)
+      // The slot is already imported via OnTakeOver(), but topology hasn't been updated yet
+      bool allow_write = false;
+      if (config->cluster_enabled && slot >= 0) {
+        allow_write = srv_->cluster->IsSlotImported(slot);
+      }
+      if (!allow_write) {
+        Reply(redis::Error({Status::RedisReadOnly, "You can't write against a read only slave."}));
+        continue;
+      }
     }
 
     if ((cmd_flags & kCmdWrite) && !(cmd_flags & kCmdNoDBSizeCheck) && srv_->storage->ReachedDBSizeLimit()) {

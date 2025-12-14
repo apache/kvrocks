@@ -865,8 +865,16 @@ int RedisGenericCommand(lua_State *lua, int raise_error) {
   }
 
   if (config->slave_readonly && srv->IsSlave() && (cmd_flags & redis::kCmdWrite)) {
-    PushError(lua, "READONLY You can't write against a read only slave.");
-    return raise_error ? RaiseError(lua) : 1;
+    // Allow write if slot is in imported_slots_ (failover scenario)
+    // The slot is already imported via OnTakeOver(), but topology hasn't been updated yet
+    bool allow_write = false;
+    if (config->cluster_enabled && script_run_ctx && script_run_ctx->current_slot >= 0) {
+      allow_write = srv->cluster->IsSlotImported(script_run_ctx->current_slot);
+    }
+    if (!allow_write) {
+      PushError(lua, "READONLY You can't write against a read only slave.");
+      return raise_error ? RaiseError(lua) : 1;
+    }
   }
 
   if (!config->slave_serve_stale_data && srv->IsSlave() && cmd_name != "info" && cmd_name != "slaveof" &&

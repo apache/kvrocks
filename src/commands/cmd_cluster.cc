@@ -19,6 +19,7 @@
  */
 
 #include "cluster/cluster_defs.h"
+#include "cluster/cluster_failover.h"
 #include "cluster/slot_import.h"
 #include "cluster/sync_migrate_context.h"
 #include "commander.h"
@@ -237,7 +238,29 @@ class CommandClusterX : public Commander {
       return Status::OK();
     }
 
-    return {Status::RedisParseErr, "CLUSTERX command, CLUSTERX VERSION|MYID|SETNODEID|SETNODES|SETSLOT|MIGRATE"};
+    if (subcommand_ == "failover") {
+      if (args.size() != 3 && args.size() != 4) return {Status::RedisParseErr, errWrongNumOfArguments};
+
+      slave_node_id_ = args_[2];
+
+      if (args.size() == 4) {
+        auto parse_result = ParseInt<int>(args_[3], 10);
+        if (!parse_result) return {Status::RedisParseErr, "Invalid timeout"};
+        if (*parse_result < 0) return {Status::RedisParseErr, errTimeoutIsNegative};
+        failover_timeout_ = *parse_result;
+      } else {
+        failover_timeout_ = 1000;
+      }
+      return Status::OK();
+    }
+
+    if (subcommand_ == "takeover") {
+      if (args.size() != 2) return {Status::RedisParseErr, errWrongNumOfArguments};
+      return Status::OK();
+    }
+
+    return {Status::RedisParseErr,
+            "CLUSTERX command, CLUSTERX VERSION|MYID|SETNODEID|SETNODES|SETSLOT|MIGRATE|FAILOVER"};
   }
 
   Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
@@ -289,6 +312,20 @@ class CommandClusterX : public Commander {
       } else {
         return s;
       }
+    } else if (subcommand_ == "failover") {
+      Status s = srv->cluster_failover->Run(slave_node_id_, failover_timeout_);
+      if (s.IsOK()) {
+        *output = redis::RESP_OK;
+      } else {
+        return s;
+      }
+    } else if (subcommand_ == "takeover") {
+      Status s = srv->cluster->OnTakeOver();
+      if (s.IsOK()) {
+        *output = redis::RESP_OK;
+      } else {
+        return s;
+      }
     } else {
       return {Status::RedisExecErr, "Invalid cluster command options"};
     }
@@ -309,6 +346,8 @@ class CommandClusterX : public Commander {
   bool sync_migrate_ = false;
   int sync_migrate_timeout_ = 0;
   std::unique_ptr<SyncMigrateContext> sync_migrate_ctx_ = nullptr;
+  std::string slave_node_id_;
+  int failover_timeout_ = 0;
 };
 
 static uint64_t GenerateClusterFlag(uint64_t flags, const std::vector<std::string> &args) {

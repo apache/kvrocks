@@ -256,7 +256,7 @@ class TDigestByRankCommand : public Commander {
       }
       if (*value < 0) {
         return {Status::InvalidArgument, errInvalidRankValue};
-      } 
+      }
       unique_inputs_.push_back(*value);
       unique_inputs_order_[input] = i;
       ++i;

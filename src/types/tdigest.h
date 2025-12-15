@@ -174,7 +174,7 @@ struct DoubleComparator {
 template <bool Reverse, typename TD>
 inline Status TDigestByRank(TD&& td, const std::vector<int>& inputs, std::vector<double>& result) {
   result.clear();
-  result.resize(inputs.size(), -2);
+  result.resize(inputs.size(), std::numeric_limits<double>::quiet_NaN());
 
   std::map<int, size_t> rank_to_index;
   for (size_t i = 0; i < inputs.size(); ++i) {
@@ -202,6 +202,13 @@ inline Status TDigestByRank(TD&& td, const std::vector<int>& inputs, std::vector
       result[it->second] = std::numeric_limits<double>::infinity();
     }
     ++it;
+  }
+
+  // check if all results are valid
+  for (auto r : result) {
+    if (std::isnan(r)) {
+      return Status{Status::InvalidArgument, "invalid result when getting byrank or byrevrank"};
+    }
   }
   return Status::OK();
 }

@@ -960,7 +960,7 @@ func tdigestTests(t *testing.T, configs util.KvrocksServerConfigs) {
 				require.True(t, ok, "expected float64 but got %T at index %d", v, i)
 				expected := []float64{0, 0, 100, 99, 81, 75, 50, 46, 36, 36}
 				if i < 2 {
-					require.True(t, math.IsInf(rank, -1), "rank %d should be +Inf, got %v", i, rank)
+					require.True(t, math.IsInf(rank, -1), "rank %d should be -Inf, got %v", i, rank)
 				} else {
 					require.InDelta(t, expected[i], rank, 0.1, "BYREVRANK mismatch at index %d", i)
 				}

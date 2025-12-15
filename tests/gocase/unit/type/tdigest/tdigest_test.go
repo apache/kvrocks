@@ -917,7 +917,7 @@ func tdigestTests(t *testing.T, configs util.KvrocksServerConfigs) {
 		}
 	})
 
-	t.Run("tdigest.byrank and tdigest.byrevrank with duplicate values", func(t *testing.T) {
+	t.Run("tdigest.byrank and tdigest.byrevrank with unordered duplicate values", func(t *testing.T) {
 		key := "tdigest_byrank_unordered_dup_"
 		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", key, "compression", "100").Err())
 		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", key, "12", "100", "50", "36", "75", "81", "35.5", "46", "36", "8.8", "15", "4", "32.5", "12", "8.8", "7", "99", "1").Err())

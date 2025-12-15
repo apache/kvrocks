@@ -904,7 +904,7 @@ func tdigestTests(t *testing.T, configs util.KvrocksServerConfigs) {
 				if i < 6 {
 					require.InDelta(t, expected[i], rank, 0.1, "BYREVRANK mismatch at index %d", i)
 				} else {
-					require.True(t, math.IsInf(rank, -1), "rank %d should be +Inf, got %v", i, rank)
+					require.True(t, math.IsInf(rank, -1), "rank %d should be -Inf, got %v", i, rank)
 				}
 			}
 		} else {

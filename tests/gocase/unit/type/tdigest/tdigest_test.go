@@ -810,7 +810,7 @@ func tdigestTests(t *testing.T, configs util.KvrocksServerConfigs) {
 		if isRESP3 {
 			// Expected: rank 0 -> 1, rank 1 -> 2, rank 2 -> 3, rank 3 -> 4, rank 4 -> 5
 			// Expected: rank 5, 6 -> out of range (+inf)
-			expected := []float64{1.0, 2.0, 3.0, 4.0, 5.0, math.Inf(1), math.Inf(1)}
+			expected := []float64{1, 2, 3, 4, 5, math.Inf(1), math.Inf(1)}
 			for i, v := range vals {
 				rank, ok := v.(float64)
 				require.True(t, ok, "expected float64 but got %T at index %d", v, i)
@@ -829,8 +829,6 @@ func tdigestTests(t *testing.T, configs util.KvrocksServerConfigs) {
 			}
 		}
 
-		// Test BYREVRANK on non-empty sketch
-		// Test various ranks: 0, 1, 2, 3, 4, 5, 6 (some valid, some boundary, some invalid)
 		rsp = rdb.Do(ctx, "TDIGEST.BYREVRANK", key, "0", "1", "2", "3", "4", "5", "6")
 		require.NoError(t, rsp.Err())
 		vals, err = rsp.Slice()
@@ -840,7 +838,7 @@ func tdigestTests(t *testing.T, configs util.KvrocksServerConfigs) {
 		if isRESP3 {
 			// Expected: rank 0 -> 5, rank 1 -> 4, rank 2 -> 3, rank 3 -> 2, rank 4 -> 1
 			// Expected: rank 5, 6 -> out of range (-inf)
-			expected := []float64{5.0, 4.0, 3.0, 2.0, 1.0, math.Inf(-1), math.Inf(-1)}
+			expected := []float64{5, 4, 3, 2, 1, math.Inf(-1), math.Inf(-1)}
 			for i, v := range vals {
 				rank, ok := v.(float64)
 				require.True(t, ok, "expected float64 but got %T at index %d", v, i)
@@ -863,172 +861,116 @@ func tdigestTests(t *testing.T, configs util.KvrocksServerConfigs) {
 	t.Run("tdigest.byrank and tdigest.byrevrank with duplicate values", func(t *testing.T) {
 		key := "tdigest_byrank_duplicates"
 		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", key, "compression", "100").Err())
-
 		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", key, "1", "2", "2", "3", "3", "3").Err())
 		isRESP3 := configs["resp3-enabled"] == "yes"
 
-		// Test BYRANK with duplicates - TDigest may compress values, so we test general behavior
 		rsp := rdb.Do(ctx, "TDIGEST.BYRANK", key, "0", "1", "2", "3", "4", "5", "6", "7")
 		require.NoError(t, rsp.Err())
 		vals, err := rsp.Slice()
 		require.NoError(t, err)
 		require.Len(t, vals, 8)
-
+		// test BYRANK with duplicate values
 		if isRESP3 {
-			// With duplicates, TDigest approximation means we can't predict exact values
-			// But we can test that values are in reasonable ranges and boundaries work
 			for i, v := range vals {
 				rank, ok := v.(float64)
 				require.True(t, ok, "expected float64 but got %T at index %d", v, i)
-
-				if i < 6 { // ranks 0-5 should return valid values between 1-3
-					require.True(t, rank >= 1.0 && rank <= 3.0, "rank %d should be between 1-3, got %v", i, rank)
-				} else { // ranks 6-7 should be +inf (out of range)
+				expected := []float64{1, 2, 2, 3, 3, 3}
+				if i < 6 {
+					require.InDelta(t, expected[i], rank, 0.1, "BYRANK mismatch at index %d", i)
+				} else {
 					require.True(t, math.IsInf(rank, 1), "rank %d should be +Inf, got %v", i, rank)
 				}
 			}
+		} else {
+			expectedStrings := []string{"1", "2", "2", "3", "3", "3", "inf", "inf"}
+			for i, v := range vals {
+				rank, ok := v.(string)
+				require.True(t, ok, "expected string but got %T at index %d", v, i)
+				require.Equal(t, expectedStrings[i], rank, "BYRANK mismatch at index %d", i)
+			}
 		}
 
-		// Test BYREVRANK with duplicates
+		// test BYREVRANK with duplicate values
 		rsp = rdb.Do(ctx, "TDIGEST.BYREVRANK", key, "0", "1", "2", "3", "4", "5", "6", "7")
 		require.NoError(t, rsp.Err())
 		vals, err = rsp.Slice()
 		require.NoError(t, err)
 		require.Len(t, vals, 8)
-
 		if isRESP3 {
 			for i, v := range vals {
 				rank, ok := v.(float64)
 				require.True(t, ok, "expected float64 but got %T at index %d", v, i)
-
-				if i < 6 { // ranks 0-5 should return valid values between 1-3
-					require.True(t, rank >= 1.0 && rank <= 3.0, "revrank %d should be between 1-3, got %v", i, rank)
-				} else { // ranks 6-7 should be -inf (out of range)
-					require.True(t, math.IsInf(rank, -1), "revrank %d should be -Inf, got %v", i, rank)
+				expected := []float64{3, 3, 3, 2, 2, 1}
+				if i < 6 {
+					require.InDelta(t, expected[i], rank, 0.1, "BYREVRANK mismatch at index %d", i)
+				} else {
+					require.True(t, math.IsInf(rank, -1), "rank %d should be +Inf, got %v", i, rank)
 				}
+			}
+		} else {
+			expectedStrings := []string{"3", "3", "3", "2", "2", "1", "-inf", "-inf"}
+			for i, v := range vals {
+				rank, ok := v.(string)
+				require.True(t, ok, "expected string but got %T at index %d", v, i)
+				require.Equal(t, expectedStrings[i], rank, "BYREVRANK mismatch at index %d", i)
 			}
 		}
 	})
 
-	t.Run("tdigest.byrank and tdigest.byrevrank edge cases", func(t *testing.T) {
-		key := "tdigest_byrank_edge_cases"
+	t.Run("tdigest.byrank and tdigest.byrevrank with duplicate values", func(t *testing.T) {
+		key := "tdigest_byrank_unordered_dup_"
 		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", key, "compression", "100").Err())
-
-		// Add single value
-		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", key, "42").Err())
-
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", key, "12", "100", "50", "36", "75", "81", "35.5", "46", "36", "8.8", "15", "4", "32.5", "12", "8.8", "7", "99", "1").Err())
 		isRESP3 := configs["resp3-enabled"] == "yes"
 
-		// Test BYRANK with single value
-		rsp := rdb.Do(ctx, "TDIGEST.BYRANK", key, "0", "1", "2")
+		rsp := rdb.Do(ctx, "TDIGEST.BYRANK", key, "0", "1", "2", "3", "4", "5", "6", "7", "7", "5", "20", "100")
 		require.NoError(t, rsp.Err())
 		vals, err := rsp.Slice()
 		require.NoError(t, err)
-		require.Len(t, vals, 3)
-
+		require.Len(t, vals, 12)
 		if isRESP3 {
-			// rank 0 -> 42.0, rank 1+ -> +inf
 			for i, v := range vals {
 				rank, ok := v.(float64)
 				require.True(t, ok, "expected float64 but got %T at index %d", v, i)
-				if i == 0 {
-					require.InDelta(t, 42.0, rank, 0.1, "BYRANK single value mismatch at index %d", i)
+				expected := []float64{1, 4, 7, 8.8, 8.8, 12, 12, 15, 15, 12}
+				if i < 10 {
+					require.InDelta(t, expected[i], rank, 0.1, "BYRANK mismatch at index %d", i)
 				} else {
-					require.True(t, math.IsInf(rank, 1), "expected +Inf but got %v at index %d", rank, i)
-				}
-			}
-		}
-
-		// Test BYREVRANK with single value
-		rsp = rdb.Do(ctx, "TDIGEST.BYREVRANK", key, "0", "1", "2")
-		require.NoError(t, rsp.Err())
-		vals, err = rsp.Slice()
-		require.NoError(t, err)
-		require.Len(t, vals, 3)
-
-		if isRESP3 {
-			// rank 0 -> 42.0, rank 1+ -> -inf
-			for i, v := range vals {
-				rank, ok := v.(float64)
-				require.True(t, ok, "expected float64 but got %T at index %d", v, i)
-				if i == 0 {
-					require.InDelta(t, 42.0, rank, 0.1, "BYREVRANK single value mismatch at index %d", i)
-				} else {
-					require.True(t, math.IsInf(rank, -1), "expected -Inf but got %v at index %d", rank, i)
-				}
-			}
-		}
-	})
-
-	t.Run("tdigest.byrank and tdigest.byrevrank with large dataset", func(t *testing.T) {
-		key := "tdigest_byrank_large"
-		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", key, "compression", "100").Err())
-
-		// Add 100 values from 1 to 100 (smaller dataset for more predictable behavior)
-		values := make([]interface{}, 101) // +1 for key
-		values[0] = key
-		for i := 1; i <= 100; i++ {
-			values[i] = strconv.Itoa(i)
-		}
-		require.NoError(t, rdb.Do(ctx, append([]interface{}{"TDIGEST.ADD"}, values...)...).Err())
-
-		isRESP3 := configs["resp3-enabled"] == "yes"
-
-		// Test BYRANK with large dataset - test some key positions
-		rsp := rdb.Do(ctx, "TDIGEST.BYRANK", key, "0", "10", "50", "90", "99", "100", "101")
-		require.NoError(t, rsp.Err())
-		vals, err := rsp.Slice()
-		require.NoError(t, err)
-		require.Len(t, vals, 7)
-
-		if isRESP3 {
-			for i, v := range vals {
-				rank, ok := v.(float64)
-				require.True(t, ok, "expected float64 but got %T at index %d", v, i)
-
-				switch i {
-				case 0: // rank 0 -> around 1
-					require.True(t, rank >= 1.0 && rank <= 10.0, "rank 0 should be around 1-10, got %v", rank)
-				case 1: // rank 10 -> around 11
-					require.True(t, rank >= 5.0 && rank <= 20.0, "rank 10 should be around 5-20, got %v", rank)
-				case 2: // rank 50 -> around 51
-					require.True(t, rank >= 40.0 && rank <= 60.0, "rank 50 should be around 40-60, got %v", rank)
-				case 3: // rank 90 -> around 91
-					require.True(t, rank >= 80.0 && rank <= 100.0, "rank 90 should be around 80-100, got %v", rank)
-				case 4: // rank 99 -> around 100
-					require.True(t, rank >= 90.0 && rank <= 100.0, "rank 99 should be around 90-100, got %v", rank)
-				case 5, 6: // rank 100, 101 -> +inf (out of range)
 					require.True(t, math.IsInf(rank, 1), "rank %d should be +Inf, got %v", i, rank)
 				}
 			}
+		} else {
+			expectedStrings := []string{"1", "4", "7", "8.8", "8.8", "12", "12", "15", "15", "12", "inf", "inf"}
+			for i, v := range vals {
+				rank, ok := v.(string)
+				require.True(t, ok, "expected string but got %T at index %d", v, i)
+				require.Equal(t, expectedStrings[i], rank, "BYRANK mismatch at index %d", i)
+			}
 		}
 
-		// Test BYREVRANK with large dataset
-		rsp = rdb.Do(ctx, "TDIGEST.BYREVRANK", key, "0", "10", "50", "90", "99", "100", "101")
+		// test BYREVRANK with duplicate values
+		rsp = rdb.Do(ctx, "TDIGEST.BYREVRANK", key, "20", "75", "0", "1", "2", "3", "4", "5", "6", "7")
 		require.NoError(t, rsp.Err())
 		vals, err = rsp.Slice()
 		require.NoError(t, err)
-		require.Len(t, vals, 7)
-
+		require.Len(t, vals, 10)
 		if isRESP3 {
 			for i, v := range vals {
 				rank, ok := v.(float64)
 				require.True(t, ok, "expected float64 but got %T at index %d", v, i)
-
-				switch i {
-				case 0: // rank 0 -> around 100
-					require.True(t, rank >= 90.0 && rank <= 100.0, "revrank 0 should be around 90-100, got %v", rank)
-				case 1: // rank 10 -> around 90
-					require.True(t, rank >= 80.0 && rank <= 100.0, "revrank 10 should be around 80-100, got %v", rank)
-				case 2: // rank 50 -> around 50
-					require.True(t, rank >= 40.0 && rank <= 60.0, "revrank 50 should be around 40-60, got %v", rank)
-				case 3: // rank 90 -> around 10
-					require.True(t, rank >= 1.0 && rank <= 20.0, "revrank 90 should be around 1-20, got %v", rank)
-				case 4: // rank 99 -> around 1-10 (99th largest in 100 elements)
-					require.True(t, rank >= 1.0 && rank <= 10.0, "revrank 99 should be around 1-10, got %v", rank)
-				case 5, 6: // rank 100, 101 -> -inf (out of range)
-					require.True(t, math.IsInf(rank, -1), "revrank %d should be -Inf, got %v", i, rank)
+				expected := []float64{0, 0, 100, 99, 81, 75, 50, 46, 36, 36}
+				if i < 2 {
+					require.True(t, math.IsInf(rank, -1), "rank %d should be +Inf, got %v", i, rank)
+				} else {
+					require.InDelta(t, expected[i], rank, 0.1, "BYREVRANK mismatch at index %d", i)
 				}
+			}
+		} else {
+			expectedStrings := []string{"-inf", "-inf", "100", "99", "81", "75", "50", "46", "36", "36"}
+			for i, v := range vals {
+				rank, ok := v.(string)
+				require.True(t, ok, "expected string but got %T at index %d", v, i)
+				require.Equal(t, expectedStrings[i], rank, "BYREVRANK mismatch at index %d", i)
 			}
 		}
 	})

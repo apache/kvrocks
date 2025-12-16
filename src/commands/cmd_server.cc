@@ -226,8 +226,8 @@ class CommandSelect : public Commander {
     // DB 0 uses default namespace
     std::string ns = kDefaultNamespace;
     if (db_index > 0) {
-      // Use database index as namespace with format "db001", "db002", etc.
-      ns = fmt::format("db{:03d}", db_index);
+      // Use database index as namespace directly
+      ns = std::to_string(db_index);
     }
     conn->SetNamespace(ns);
     *output = redis::RESP_OK;

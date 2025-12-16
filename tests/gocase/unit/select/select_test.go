@@ -312,7 +312,7 @@ func TestAuthWithCompatibleMode(t *testing.T) {
 		}
 
 		// Test invalid DB index
-		util.ErrorRegexp(t, rdb.Do(ctx, "SELECT", 16).Err(), ".*Invalid DB index.*")
+		util.ErrorRegexp(t, rdb.Do(ctx, "SELECT", 16).Err(), ".*DB number is out of range.*")
 	})
 
 	t.Run("Authentication state should persist across database switches", func(t *testing.T) {

@@ -15,6 +15,7 @@
  * KIND, either express or implied.  See the License for the
  * specific language governing permissions and limitations
  * under the License.
+ *
  */
 
 package failover
@@ -66,6 +67,9 @@ const (
 	FailoverStateFailed     FailoverState = "failed"
 )
 
+// TestFailoverBasicFlow tests the basic failover process and custom timeout parameter.
+// Test Case 1.1: Basic Failover Flow - Master successfully transfers control to Slave
+// Test Case 1.2: Failover with Custom Timeout - Using custom timeout parameter
 func TestFailoverBasicFlow(t *testing.T) {
 	ctx := context.Background()
 
@@ -94,6 +98,7 @@ func TestFailoverBasicFlow(t *testing.T) {
 		return strings.Contains(info, "connected_slaves:1")
 	}, 10*time.Second, 100*time.Millisecond)
 
+	// Test Case 1.1: Basic Failover Flow
 	t.Run("FAILOVER - Basic failover flow", func(t *testing.T) {
 		// Write some data
 		require.NoError(t, masterClient.Set(ctx, "key1", "value1", 0).Err())
@@ -119,6 +124,7 @@ func TestFailoverBasicFlow(t *testing.T) {
 		require.Equal(t, "value2", slaveClient.Get(ctx, "key2").Val())
 	})
 
+	// Test Case 1.2: Failover with Custom Timeout
 	t.Run("FAILOVER - Failover with custom timeout", func(t *testing.T) {
 		// Reset failover state by updating topology
 		require.NoError(t, masterClient.Do(ctx, "clusterx", "SETNODES", clusterNodes, "2").Err())
@@ -134,6 +140,10 @@ func TestFailoverBasicFlow(t *testing.T) {
 	})
 }
 
+// TestFailoverFailureCases tests various failure scenarios and timeout values.
+// Test Case 2.1: Slave Node Not Found - Specified slave_node_id is not in cluster
+// Test Case 2.2: Slave Not Connected - Slave node exists but no replication connection
+// Test Case 3.5: Different Timeout Values - Testing various timeout values (0, 100, 10000)
 func TestFailoverFailureCases(t *testing.T) {
 	ctx := context.Background()
 
@@ -144,6 +154,7 @@ func TestFailoverFailureCases(t *testing.T) {
 	masterID := "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx00"
 	require.NoError(t, masterClient.Do(ctx, "clusterx", "SETNODEID", masterID).Err())
 
+	// Test Case 2.1: Slave Node Not Found
 	t.Run("FAILOVER - Failover to non-existent node", func(t *testing.T) {
 		clusterNodes := fmt.Sprintf("%s %s %d master - 0-16383", masterID, master.Host(), master.Port())
 		require.NoError(t, masterClient.Do(ctx, "clusterx", "SETNODES", clusterNodes, "1").Err())
@@ -153,6 +164,7 @@ func TestFailoverFailureCases(t *testing.T) {
 		waitForFailoverState(t, masterClient, FailoverStateFailed, 5*time.Second)
 	})
 
+	// Test Case 2.2: Slave Not Connected (node exists as master, not slave)
 	t.Run("FAILOVER - Failover to non-slave node", func(t *testing.T) {
 		slave := startServerWithSanitizedName(t, map[string]string{"cluster-enabled": "yes"})
 		defer func() { slave.Close() }()
@@ -171,6 +183,7 @@ func TestFailoverFailureCases(t *testing.T) {
 		waitForFailoverState(t, masterClient, FailoverStateFailed, 5*time.Second)
 	})
 
+	// Test Case 3.5: Invalid timeout value (negative)
 	t.Run("FAILOVER - Invalid timeout value", func(t *testing.T) {
 		slave := startServerWithSanitizedName(t, map[string]string{"cluster-enabled": "yes"})
 		defer func() { slave.Close() }()
@@ -188,6 +201,7 @@ func TestFailoverFailureCases(t *testing.T) {
 		require.Error(t, masterClient.Do(ctx, "clusterx", "failover", slaveID, "-1").Err())
 	})
 
+	// Test Case 3.5: Different Timeout Values (0, 100, 10000)
 	t.Run("FAILOVER - Different timeout values", func(t *testing.T) {
 		slave := startServerWithSanitizedName(t, map[string]string{"cluster-enabled": "yes"})
 		defer func() { slave.Close() }()
@@ -273,6 +287,9 @@ func TestFailoverFailureCases(t *testing.T) {
 	})
 }
 
+// TestFailoverConcurrency tests concurrent failover scenarios.
+// Test Case 3.1: Duplicate Failover - Cannot start failover when one is in progress
+// Test Case 3.2: Restart After Failure - Can restart failover after previous failure
 func TestFailoverConcurrency(t *testing.T) {
 	ctx := context.Background()
 
@@ -300,6 +317,7 @@ func TestFailoverConcurrency(t *testing.T) {
 		return strings.Contains(info, "connected_slaves:1")
 	}, 10*time.Second, 100*time.Millisecond)
 
+	// Test Case 3.1: Duplicate Failover
 	t.Run("FAILOVER - Cannot start failover when one is in progress", func(t *testing.T) {
 		require.Equal(t, "OK", masterClient.Do(ctx, "clusterx", "failover", slaveID).Val())
 
@@ -307,12 +325,20 @@ func TestFailoverConcurrency(t *testing.T) {
 		// Wait a bit to ensure first failover has started
 		time.Sleep(100 * time.Millisecond)
 		result := masterClient.Do(ctx, "clusterx", "failover", slaveID)
-		// The second call may return OK but won't start a new failover
+		// second failover may return an error indicating a failover is already in progress.
+		_, err := result.Result()
+		if err != nil {
+			require.Contains(t, err.Error(), "Failover is already in progress")
+		} else {
+			// should not reach here
+			require.Fail(t, "second failover should return error")
+		}
+
 		// We verify the first one completes successfully
 		waitForFailoverState(t, masterClient, FailoverStateSuccess, 10*time.Second)
-		_ = result // Use result to avoid unused variable
 	})
 
+	// Test Case 3.2: Restart After Failure
 	t.Run("FAILOVER - Can restart after failure", func(t *testing.T) {
 		// Reset state
 		require.NoError(t, masterClient.Do(ctx, "clusterx", "SETNODES", clusterNodes, "2").Err())
@@ -345,6 +371,9 @@ func TestFailoverConcurrency(t *testing.T) {
 	})
 }
 
+// TestFailoverWriteBlocking tests write and read request behavior during failover.
+// Test Case 3.3: Write Requests During Failover - Write requests return TRYAGAIN in blocking states
+// Test Case 3.4: Read Requests During Failover - Read requests are not blocked
 func TestFailoverWriteBlocking(t *testing.T) {
 	ctx := context.Background()
 
@@ -372,6 +401,7 @@ func TestFailoverWriteBlocking(t *testing.T) {
 		return strings.Contains(info, "connected_slaves:1")
 	}, 10*time.Second, 100*time.Millisecond)
 
+	// Test Case 3.3: Write Requests During Failover
 	t.Run("FAILOVER - Write requests blocked during failover", func(t *testing.T) {
 		// Write initial data
 		require.NoError(t, masterClient.Set(ctx, "testkey", "testvalue", 0).Err())
@@ -381,12 +411,10 @@ func TestFailoverWriteBlocking(t *testing.T) {
 
 		// Try to write during failover - should return TRYAGAIN in blocking states
 		// Poll for blocking state (pause_write, wait_sync, or switching)
-		var writeBlocked bool
 		for i := 0; i < 50; i++ {
 			time.Sleep(50 * time.Millisecond)
 			err := masterClient.Set(ctx, "testkey", "newvalue", 0).Err()
 			if err != nil && (strings.Contains(err.Error(), "TRYAGAIN") || strings.Contains(err.Error(), "Failover in progress")) {
-				writeBlocked = true
 				break
 			}
 			// Check if failover already completed
@@ -400,9 +428,9 @@ func TestFailoverWriteBlocking(t *testing.T) {
 
 		// After success, writes should return MOVED
 		require.ErrorContains(t, masterClient.Set(ctx, "testkey", "newvalue2", 0).Err(), "MOVED")
-		_ = writeBlocked // May be false if failover was very fast
 	})
 
+	// Test Case 3.4: Read Requests During Failover
 	t.Run("FAILOVER - Read requests not blocked during failover", func(t *testing.T) {
 		// Reset state
 		require.NoError(t, masterClient.Do(ctx, "clusterx", "SETNODES", clusterNodes, "2").Err())
@@ -421,8 +449,7 @@ func TestFailoverWriteBlocking(t *testing.T) {
 		for i := 0; i < 10; i++ {
 			time.Sleep(100 * time.Millisecond)
 			val := masterClient.Get(ctx, "readkey").Val()
-			// Value should be accessible (may return empty if already moved, but shouldn't error with TRYAGAIN)
-			_ = val
+			require.Equal(t, "readvalue", val)
 			// Check if failover completed
 			info := masterClient.ClusterInfo(ctx).Val()
 			if strings.Contains(info, "cluster_failover_state:success") {
@@ -433,6 +460,8 @@ func TestFailoverWriteBlocking(t *testing.T) {
 	})
 }
 
+// TestFailoverWithAuth tests failover with password authentication.
+// Test Case 1.4: Failover with Password Authentication - Cluster configured with requirepass
 func TestFailoverWithAuth(t *testing.T) {
 	ctx := context.Background()
 
@@ -475,6 +504,7 @@ func TestFailoverWithAuth(t *testing.T) {
 		return strings.Contains(info, "connected_slaves:1")
 	}, 10*time.Second, 100*time.Millisecond)
 
+	// Test Case 1.4: Failover with Password Authentication
 	t.Run("FAILOVER - Failover with authentication", func(t *testing.T) {
 		require.NoError(t, masterClient.Set(ctx, "authkey", "authvalue", 0).Err())
 
@@ -486,6 +516,8 @@ func TestFailoverWithAuth(t *testing.T) {
 	})
 }
 
+// TestFailoverStateQuery tests querying failover state information.
+// Test Case 4.1: CLUSTER INFO State Output - Query failover state and verify all state transitions
 func TestFailoverStateQuery(t *testing.T) {
 	ctx := context.Background()
 
@@ -513,6 +545,7 @@ func TestFailoverStateQuery(t *testing.T) {
 		return strings.Contains(info, "connected_slaves:1")
 	}, 10*time.Second, 100*time.Millisecond)
 
+	// Test Case 4.1: CLUSTER INFO State Output
 	t.Run("FAILOVER - Query failover state via CLUSTER INFO", func(t *testing.T) {
 		// Initial state should be none
 		info := masterClient.ClusterInfo(ctx).Val()
@@ -534,6 +567,7 @@ func TestFailoverStateQuery(t *testing.T) {
 		require.Contains(t, info, "cluster_failover_state:success")
 	})
 
+	// Test Case 4.1: All State Transitions
 	t.Run("FAILOVER - All state transitions", func(t *testing.T) {
 		// Reset state
 		require.NoError(t, masterClient.Do(ctx, "clusterx", "SETNODES", clusterNodes, "2").Err())
@@ -560,6 +594,8 @@ func TestFailoverStateQuery(t *testing.T) {
 	})
 }
 
+// TestFailoverTakeoverCommand tests the TAKEOVER command handling on slave.
+// Test Case 5.2: TAKEOVER Command Processing - Slave receives and processes TAKEOVER command
 func TestFailoverTakeoverCommand(t *testing.T) {
 	ctx := context.Background()
 
@@ -587,6 +623,7 @@ func TestFailoverTakeoverCommand(t *testing.T) {
 		return strings.Contains(info, "connected_slaves:1")
 	}, 10*time.Second, 100*time.Millisecond)
 
+	// Test Case 5.2: TAKEOVER Command Processing
 	t.Run("FAILOVER - TAKEOVER command on slave", func(t *testing.T) {
 		// Slave should accept TAKEOVER command
 		require.Equal(t, "OK", slaveClient.Do(ctx, "clusterx", "takeover").Val())
@@ -608,6 +645,8 @@ func TestFailoverTakeoverCommand(t *testing.T) {
 	})
 }
 
+// TestFailoverDataConsistency tests data consistency after failover.
+// Test Case 5.4: Data Consistency Verification - All data is replicated to new master without loss
 func TestFailoverDataConsistency(t *testing.T) {
 	ctx := context.Background()
 
@@ -635,6 +674,7 @@ func TestFailoverDataConsistency(t *testing.T) {
 		return strings.Contains(info, "connected_slaves:1")
 	}, 10*time.Second, 100*time.Millisecond)
 
+	// Test Case 5.4: Data Consistency Verification
 	t.Run("FAILOVER - Data consistency after failover", func(t *testing.T) {
 		// Write various types of data
 		require.NoError(t, masterClient.Set(ctx, "string_key", "string_value", 0).Err())
@@ -661,6 +701,8 @@ func TestFailoverDataConsistency(t *testing.T) {
 	})
 }
 
+// TestFailoverStateReset tests failover state reset after topology update.
+// Test Case 5.1: SETNODES Reset State - Controller updates topology and resets failover state
 func TestFailoverStateReset(t *testing.T) {
 	ctx := context.Background()
 
@@ -688,6 +730,7 @@ func TestFailoverStateReset(t *testing.T) {
 		return strings.Contains(info, "connected_slaves:1")
 	}, 10*time.Second, 100*time.Millisecond)
 
+	// Test Case 5.1: SETNODES Reset State
 	t.Run("FAILOVER - State reset after SETNODES", func(t *testing.T) {
 		// Start and complete failover
 		require.Equal(t, "OK", masterClient.Do(ctx, "clusterx", "failover", slaveID).Val())
@@ -729,11 +772,8 @@ func waitForFailoverState(t testing.TB, client *redis.Client, state FailoverStat
 	}, timeout, 100*time.Millisecond)
 }
 
-func requireFailoverState(t testing.TB, client *redis.Client, state FailoverState) {
-	info := client.ClusterInfo(context.Background()).Val()
-	require.Contains(t, info, fmt.Sprintf("cluster_failover_state:%s", state))
-}
-
+// TestFailoverSlaveNotConnected tests failover to a slave that is not connected.
+// Test Case 2.2: Slave Not Connected - Slave node exists in topology but no replication connection
 func TestFailoverSlaveNotConnected(t *testing.T) {
 	ctx := context.Background()
 
@@ -763,6 +803,8 @@ func TestFailoverSlaveNotConnected(t *testing.T) {
 	require.Contains(t, info, "cluster_failover_state:failed")
 }
 
+// TestFailoverWaitSyncTimeout tests failover timeout when waiting for replication sync.
+// Test Case 2.6: Wait Sync Timeout - waitReplicationSync exceeds timeout
 func TestFailoverWaitSyncTimeout(t *testing.T) {
 	ctx := context.Background()
 
@@ -804,6 +846,8 @@ func TestFailoverWaitSyncTimeout(t *testing.T) {
 	require.Contains(t, info, "cluster_failover_state:failed")
 }
 
+// TestFailoverAuthFailure tests failover with incorrect authentication.
+// Test Case 2.8: AUTH Failed - Password Incorrect - requirepass configured but password is wrong
 func TestFailoverAuthFailure(t *testing.T) {
 	ctx := context.Background()
 
@@ -854,6 +898,8 @@ func TestFailoverAuthFailure(t *testing.T) {
 	require.Contains(t, info, "cluster_failover_state:failed")
 }
 
+// TestFailoverStateTransitions tests observing various failover state transitions.
+// Test Case 4.1: State Transitions - Verify failover progresses through expected states
 func TestFailoverStateTransitions(t *testing.T) {
 	ctx := context.Background()
 
@@ -881,6 +927,7 @@ func TestFailoverStateTransitions(t *testing.T) {
 		return strings.Contains(info, "connected_slaves:1")
 	}, 10*time.Second, 100*time.Millisecond)
 
+	// Test Case 4.1: State Transitions
 	t.Run("FAILOVER - Verify all possible states appear", func(t *testing.T) {
 		// Start failover
 		require.Equal(t, "OK", masterClient.Do(ctx, "clusterx", "failover", slaveID).Val())

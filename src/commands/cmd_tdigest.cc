@@ -206,9 +206,9 @@ class TDigestRankCommand : public Commander {
     if (const auto s =
             [&]() {
               if constexpr (Reverse) {
-                return tdigest.RevRank(ctx, key_name_, unique_inputs_, result);
+                return tdigest.RevRank(ctx, key_name_, unique_inputs_, &result);
               } else {
-                return tdigest.Rank(ctx, key_name_, unique_inputs_, result);
+                return tdigest.Rank(ctx, key_name_, unique_inputs_, &result);
               }
             }();
         !s.ok()) {
@@ -271,9 +271,9 @@ class TDigestByRankCommand : public Commander {
     if (const auto s =
             [&]() {
               if constexpr (Reverse) {
-                return tdigest.ByRevRank(ctx, key_name_, unique_inputs_, result);
+                return tdigest.ByRevRank(ctx, key_name_, unique_inputs_, &result);
               } else {
-                return tdigest.ByRank(ctx, key_name_, unique_inputs_, result);
+                return tdigest.ByRank(ctx, key_name_, unique_inputs_, &result);
               }
             }();
         !s.ok()) {

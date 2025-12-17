@@ -177,6 +177,7 @@ Config::Config() {
       {"compact-cron", false, new StringField(&compact_cron_str_, "")},
       {"bgsave-cron", false, new StringField(&bgsave_cron_str_, "")},
       {"dbsize-scan-cron", false, new StringField(&dbsize_scan_cron_str_, "")},
+      {"dbsize-scan-key-parallelism", false, new IntField(&dbsize_scan_key_parallelism, 0, 0, INT_MAX)},
       {"replica-announce-ip", false, new StringField(&replica_announce_ip, "")},
       {"replica-announce-port", false, new UInt32Field(&replica_announce_port, 0, 0, PORT_LIMIT)},
       {"compaction-checker-range", false, new StringField(&compaction_checker_range_str_, "")},
@@ -572,6 +573,15 @@ void Config::initFieldCallback() {
            [this](Server *srv, [[maybe_unused]] const std::string &k, [[maybe_unused]] const std::string &v) -> Status {
              if (!srv) return Status::OK();
              srv->storage->SetIORateLimit(max_io_mb);
+             return Status::OK();
+           }},
+          {"dbsize-scan-key-parallelism",
+           [this]([[maybe_unused]] Server *srv, [[maybe_unused]] const std::string &k,
+                  [[maybe_unused]] const std::string &v) -> Status {
+             if (dbsize_scan_key_parallelism == 0) {
+               unsigned int max_parallelism = std::thread::hardware_concurrency();
+               dbsize_scan_key_parallelism = static_cast<int>(max_parallelism) / 2;
+             }
              return Status::OK();
            }},
           {"profiling-sample-record-max-len",

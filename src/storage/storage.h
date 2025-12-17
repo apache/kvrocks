@@ -363,6 +363,8 @@ class Storage {
   std::string GetReplIdFromWalBySeq(rocksdb::SequenceNumber seq);
   std::string GetReplIdFromDbEngine();
 
+  int GetDBScanKeyParallelism() const { return config_->dbsize_scan_key_parallelism; }
+
  private:
   std::unique_ptr<rocksdb::DB> db_ = nullptr;
   std::string replid_;

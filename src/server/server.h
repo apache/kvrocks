@@ -346,6 +346,9 @@ class Server {
 
   AuthResult AuthenticateUser(const std::string &user_password, std::string *ns);
 
+  void SetSlotRanges(std::vector<SlotRange> &slot_ranges) { slot_ranges_ = slot_ranges; };
+  std::vector<SlotRange> *GetSlotRanges() { return &slot_ranges_; };
+
 #ifdef ENABLE_OPENSSL
   UniqueSSLContext ssl_ctx;
 #endif
@@ -450,4 +453,7 @@ class Server {
   std::atomic<uint16_t> cursor_counter_ = {0};
   using CursorDictType = std::array<CursorDictElement, CURSOR_DICT_SIZE>;
   std::unique_ptr<CursorDictType> cursor_dict_;
+
+  // slot_ranges
+  std::vector<SlotRange> slot_ranges_;
 };

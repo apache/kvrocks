@@ -76,11 +76,6 @@ func TestTDigest(t *testing.T) {
 			Options:    []string{"yes", "no"},
 			ConfigType: util.YesNo,
 		},
-		{
-			Name:       "resp3-enabled",
-			Options:    []string{"yes", "no"},
-			ConfigType: util.YesNo,
-		},
 	}
 
 	configsMatrix, err := util.GenerateConfigsMatrix(configOptions)

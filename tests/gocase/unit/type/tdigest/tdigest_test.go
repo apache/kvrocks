@@ -55,42 +55,17 @@ type tdigestInfo struct {
 }
 
 func toTdigestInfo(t *testing.T, value interface{}) tdigestInfo {
-	// Handle both RESP2 (map) and RESP3 (array) formats
-	switch v := value.(type) {
-	case map[interface{}]interface{}:
-		// RESP2 format - map
-		return tdigestInfo{
-			Compression:       v["Compression"].(int64),
-			Capacity:          v["Capacity"].(int64),
-			MergedNodes:       v["Merged nodes"].(int64),
-			UnmergedNodes:     v["Unmerged nodes"].(int64),
-			MergedWeight:      v["Merged weight"].(int64),
-			UnmergedWeight:    v["Unmerged weight"].(int64),
-			Observations:      v["Observations"].(int64),
-			TotalCompressions: v["Total compressions"].(int64),
-		}
-	case []interface{}:
-		// RESP3 format - array of key-value pairs
-		require.Len(t, v, 16, "expected 16 elements in tdigest info array")
-		m := make(map[string]interface{})
-		for i := 0; i < len(v); i += 2 {
-			key := v[i].(string)
-			val := v[i+1]
-			m[key] = val
-		}
-		return tdigestInfo{
-			Compression:       m["Compression"].(int64),
-			Capacity:          m["Capacity"].(int64),
-			MergedNodes:       m["Merged nodes"].(int64),
-			UnmergedNodes:     m["Unmerged nodes"].(int64),
-			MergedWeight:      m["Merged weight"].(int64),
-			UnmergedWeight:    m["Unmerged weight"].(int64),
-			Observations:      m["Observations"].(int64),
-			TotalCompressions: m["Total compressions"].(int64),
-		}
-	default:
-		require.Fail(t, "unexpected type for tdigest info", "got %T, expected map or array", value)
-		return tdigestInfo{}
+	require.IsType(t, map[interface{}]interface{}{}, value)
+	v := value.(map[interface{}]interface{})
+	return tdigestInfo{
+		Compression:       v["Compression"].(int64),
+		Capacity:          v["Capacity"].(int64),
+		MergedNodes:       v["Merged nodes"].(int64),
+		UnmergedNodes:     v["Unmerged nodes"].(int64),
+		MergedWeight:      v["Merged weight"].(int64),
+		UnmergedWeight:    v["Unmerged weight"].(int64),
+		Observations:      v["Observations"].(int64),
+		TotalCompressions: v["Total compressions"].(int64),
 	}
 }
 
@@ -747,6 +722,36 @@ func tdigestTests(t *testing.T, configs util.KvrocksServerConfigs) {
 			require.EqualValues(t, expected[i], rank, "REVRANK mismatch at index %d", i)
 		}
 	})
+}
+
+func TestTDigestByRankAndByRevRank(t *testing.T) {
+	configOptions := []util.ConfigOptions{
+		{
+			Name:       "txn-context-enabled",
+			Options:    []string{"yes", "no"},
+			ConfigType: util.YesNo,
+		},
+		{
+			Name:       "resp3-enabled",
+			Options:    []string{"yes", "no"},
+			ConfigType: util.YesNo,
+		},
+	}
+
+	configsMatrix, err := util.GenerateConfigsMatrix(configOptions)
+	require.NoError(t, err)
+
+	for _, configs := range configsMatrix {
+		tdigestTestsByRankAndByRevRank(t, configs)
+	}
+}
+
+func tdigestTestsByRankAndByRevRank(t *testing.T, configs util.KvrocksServerConfigs) {
+	srv := util.StartServer(t, configs)
+	defer srv.Close()
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
 
 	t.Run("tdigest.byrank and tdigest.byrevrank on empty sketch", func(t *testing.T) {
 		key := "tdigest_byrank_on_empty_sketch"

@@ -871,10 +871,10 @@ func tdigestTests(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.Len(t, vals, 8)
 		// test BYRANK with duplicate values
 		if isRESP3 {
+			expected := []float64{1, 2, 2, 3, 3, 3}
 			for i, v := range vals {
 				rank, ok := v.(float64)
 				require.True(t, ok, "expected float64 but got %T at index %d", v, i)
-				expected := []float64{1, 2, 2, 3, 3, 3}
 				if i < 6 {
 					require.InDelta(t, expected[i], rank, 0.1, "BYRANK mismatch at index %d", i)
 				} else {
@@ -897,10 +897,10 @@ func tdigestTests(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.NoError(t, err)
 		require.Len(t, vals, 8)
 		if isRESP3 {
+			expected := []float64{3, 3, 3, 2, 2, 1}
 			for i, v := range vals {
 				rank, ok := v.(float64)
 				require.True(t, ok, "expected float64 but got %T at index %d", v, i)
-				expected := []float64{3, 3, 3, 2, 2, 1}
 				if i < 6 {
 					require.InDelta(t, expected[i], rank, 0.1, "BYREVRANK mismatch at index %d", i)
 				} else {
@@ -929,10 +929,10 @@ func tdigestTests(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.NoError(t, err)
 		require.Len(t, vals, 12)
 		if isRESP3 {
+			expected := []float64{1, 4, 7, 8.8, 8.8, 12, 12, 15, 15, 12}
 			for i, v := range vals {
 				rank, ok := v.(float64)
 				require.True(t, ok, "expected float64 but got %T at index %d", v, i)
-				expected := []float64{1, 4, 7, 8.8, 8.8, 12, 12, 15, 15, 12}
 				if i < 10 {
 					require.InDelta(t, expected[i], rank, 0.1, "BYRANK mismatch at index %d", i)
 				} else {
@@ -955,10 +955,10 @@ func tdigestTests(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.NoError(t, err)
 		require.Len(t, vals, 10)
 		if isRESP3 {
+			expected := []float64{0, 0, 100, 99, 81, 75, 50, 46, 36, 36}
 			for i, v := range vals {
 				rank, ok := v.(float64)
 				require.True(t, ok, "expected float64 but got %T at index %d", v, i)
-				expected := []float64{0, 0, 100, 99, 81, 75, 50, 46, 36, 36}
 				if i < 2 {
 					require.True(t, math.IsInf(rank, -1), "rank %d should be -Inf, got %v", i, rank)
 				} else {

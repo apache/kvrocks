@@ -73,10 +73,10 @@ std::string Connection::ToString() {
   std::string db_or_ns_value;
 
   if (srv_->GetConfig()->redis_databases > 0) {
-    // Parse db number from namespace (pure number format)
+    // Parse db number from namespace (format: "db1", "db2", etc.)
     int db_num = 0;
-    if (ns_ != kDefaultNamespace) {
-      db_num = ParseInt<int>(ns_, 10).ValueOr(0);
+    if (ns_ != kDefaultNamespace && ns_.size() >= 3 && ns_.substr(0, 2) == "db") {
+      db_num = ParseInt<int>(ns_.substr(2), 10).ValueOr(0);
     }
     db_or_ns_field = "db";
     db_or_ns_value = std::to_string(db_num);

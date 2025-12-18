@@ -55,6 +55,7 @@ constexpr const size_t GiB = 1024L * MiB;
 constexpr const uint32_t kDefaultPort = 6666;
 
 constexpr const char *kDefaultNamespace = "__namespace";
+constexpr const char *kDatabaseNamespacePrefix = "db";
 constexpr int KVROCKS_MAX_LSM_LEVEL = 7;
 
 constexpr const uint64_t kDefaultRocksdbTTL = UINT64_MAX - 1;
@@ -174,6 +175,7 @@ struct Config {
   int migrate_batch_rate_limit_mb;
 
   bool redis_cursor_compatible = false;
+  int redis_databases = 0;
   bool resp3_enabled = false;
   int log_retention_days;
 

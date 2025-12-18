@@ -71,6 +71,9 @@ class CommandNamespace : public Commander {
     if (config->repl_namespace_enabled && config->IsSlave() && sub_command != "get") {
       return {Status::RedisExecErr, "namespace is read-only for slave"};
     }
+    if (config->redis_databases > 0) {
+      return {Status::RedisExecErr, "namespace command is not allowed when redis-databases > 0"};
+    }
     if (args_.size() == 3 && sub_command == "get") {
       if (args_[2] == "*") {
         std::vector<std::string> namespaces;
@@ -201,8 +204,31 @@ class CommandPing : public Commander {
 
 class CommandSelect : public Commander {
  public:
-  Status Execute([[maybe_unused]] engine::Context &ctx, [[maybe_unused]] Server *srv, [[maybe_unused]] Connection *conn,
-                 std::string *output) override {
+  Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    Config *config = srv->GetConfig();
+    // If redis-databases is 0, just return OK (default behavior)
+    if (config->redis_databases == 0) {
+      *output = redis::RESP_OK;
+      return Status::OK();
+    }
+
+    // Parse database index
+    auto parse_result = ParseInt<int>(args_[1], 10);
+    if (!parse_result) {
+      return {Status::RedisParseErr, "Invalid DB number"};
+    }
+    int db_index = *parse_result;
+    // Validate database index range
+    if (db_index < 0 || db_index >= config->redis_databases) {
+      return {Status::RedisParseErr, "DB number is out of range"};
+    }
+
+    // DB 0 uses default namespace
+    std::string ns = kDefaultNamespace;
+    if (db_index > 0) {
+      ns = std::string(kDatabaseNamespacePrefix) + std::to_string(db_index);
+    }
+    conn->SetNamespace(ns);
     *output = redis::RESP_OK;
     return Status::OK();
   }

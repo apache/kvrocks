@@ -371,6 +371,14 @@ void Config::initFieldValidator() {
          std::vector<std::string> args = util::Split(v, " \t");
          return dbsize_scan_cron.SetScheduleTime(args);
        }},
+      {"dbsize-scan-key-parallelism",
+       [this]([[maybe_unused]] const std::string &k, [[maybe_unused]] const std::string &v) -> Status {
+         if (dbsize_scan_key_parallelism == 0) {
+           unsigned int max_parallelism = std::thread::hardware_concurrency();
+           dbsize_scan_key_parallelism = static_cast<int>(max_parallelism) / 2;
+         }
+         return Status::OK();
+       }},
       {"compaction-checker-range",
        [this]([[maybe_unused]] const std::string &k, const std::string &v) -> Status {
          if (!compaction_checker_cron_str_.empty()) {
@@ -573,15 +581,6 @@ void Config::initFieldCallback() {
            [this](Server *srv, [[maybe_unused]] const std::string &k, [[maybe_unused]] const std::string &v) -> Status {
              if (!srv) return Status::OK();
              srv->storage->SetIORateLimit(max_io_mb);
-             return Status::OK();
-           }},
-          {"dbsize-scan-key-parallelism",
-           [this]([[maybe_unused]] Server *srv, [[maybe_unused]] const std::string &k,
-                  [[maybe_unused]] const std::string &v) -> Status {
-             if (dbsize_scan_key_parallelism == 0) {
-               unsigned int max_parallelism = std::thread::hardware_concurrency();
-               dbsize_scan_key_parallelism = static_cast<int>(max_parallelism) / 2;
-             }
              return Status::OK();
            }},
           {"profiling-sample-record-max-len",

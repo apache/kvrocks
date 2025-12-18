@@ -228,6 +228,8 @@ Config::Config() {
        new EnumField<MigrationType>(&migrate_type, migration_types, MigrationType::kRawKeyValue)},
       {"migrate-batch-size-kb", false, new IntField(&migrate_batch_size_kb, 16, 1, INT_MAX)},
       {"migrate-batch-rate-limit-mb", false, new IntField(&migrate_batch_rate_limit_mb, 16, 1, INT_MAX)},
+      {"migrate-slots-send-snapshots-parallelism", false,
+       new IntField(&migrate_slots_send_snapshots_parallelism, 0, 0, INT_MAX)},
       {"unixsocket", true, new StringField(&unixsocket, "")},
       {"unixsocketperm", true, new OctalField(&unixsocketperm, 0777, 1, INT_MAX)},
       {"log-retention-days", true, new IntField(&log_retention_days, -1, -1, INT_MAX)},
@@ -608,6 +610,16 @@ void Config::initFieldCallback() {
            [this](Server *srv, [[maybe_unused]] const std::string &k, [[maybe_unused]] const std::string &v) -> Status {
              if (!srv) return Status::OK();
              srv->slot_migrator->SetMigrateBatchSize(migrate_batch_size_kb * KiB);
+             return Status::OK();
+           }},
+          {"migrate-slots-send-snapshots-parallelism",
+           [this](Server *srv, [[maybe_unused]] const std::string &k, [[maybe_unused]] const std::string &v) -> Status {
+             if (migrate_slots_send_snapshots_parallelism == 0) {
+               unsigned int max_parallelism = std::thread::hardware_concurrency();
+               migrate_slots_send_snapshots_parallelism = static_cast<int>(max_parallelism);
+             }
+             if (!srv) return Status::OK();
+             srv->slot_migrator->SetMigrateSlotsSendSnapshotsParallelism(migrate_slots_send_snapshots_parallelism);
              return Status::OK();
            }},
           {"log-level",

@@ -21,6 +21,7 @@
 #pragma once
 
 #include <rocksdb/db.h>
+#include <rocksdb/rate_limiter.h>
 #include <rocksdb/status.h>
 #include <rocksdb/transaction_log.h>
 #include <rocksdb/write_batch.h>
@@ -99,6 +100,9 @@ class SlotMigrator : public redis::Database {
   void SetSequenceGapLimit(int value) {
     if (value > 0) seq_gap_limit_ = value;
   }
+  void SetMigrateSlotsSendSnapshotsParallelism(int value) {
+    if (value > 0) migrate_slots_send_snapshots_parallelism_ = value;
+  }
   void SetMigrateBatchRateLimit(size_t bytes_per_sec) { migrate_batch_bytes_per_sec_ = bytes_per_sec; }
   void SetMigrateBatchSize(size_t size) { migrate_batch_size_bytes_ = size; }
   void SetStopMigrationFlag(bool value) { stop_migration_ = value; }
@@ -148,6 +152,8 @@ class SlotMigrator : public redis::Database {
 
   Status sendMigrationBatch(BatchSender *batch);
   Status sendSnapshotByRawKV();
+  Status migrateSlotRange(int start_slot, int end_slot, int fd);
+  int createConnectToDstNode();
   Status syncWALByRawKV();
   bool catchUpIncrementalWAL();
   Status migrateIncrementalDataByRawKV(uint64_t end_seq, BatchSender *batch_sender);
@@ -173,6 +179,9 @@ class SlotMigrator : public redis::Database {
   uint64_t seq_gap_limit_ = kDefaultSequenceGapLimit;
   std::atomic<size_t> migrate_batch_bytes_per_sec_ = 1 * GiB;
   std::atomic<size_t> migrate_batch_size_bytes_;
+  int migrate_slots_send_snapshots_parallelism_ = 0;
+
+  std::shared_ptr<rocksdb::RateLimiter> global_rate_limiter_;
 
   SlotMigrationStage current_stage_ = SlotMigrationStage::kNone;
   ParserState parser_state_ = ParserState::ArrayLen;

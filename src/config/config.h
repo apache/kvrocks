@@ -172,6 +172,7 @@ struct Config {
   MigrationType migrate_type;
   int migrate_batch_size_kb;
   int migrate_batch_rate_limit_mb;
+  int migrate_slots_send_snapshots_parallelism;
 
   bool redis_cursor_compatible = false;
   bool resp3_enabled = false;

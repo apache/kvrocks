@@ -71,12 +71,12 @@ Status BatchSender::Send() {
   }
 
   // rate limit
-  if (bytes_per_sec_ > 0) {
-    auto single_burst = rate_limiter_->GetSingleBurstBytes();
+  if (global_rate_limiter_) {
+    auto single_burst = global_rate_limiter_->GetSingleBurstBytes();
     auto left = static_cast<int64_t>(write_batch_.GetDataSize());
     while (left > 0) {
       auto request_size = std::min(left, single_burst);
-      rate_limiter_->Request(request_size, rocksdb::Env::IOPriority::IO_HIGH, nullptr);
+      global_rate_limiter_->Request(request_size, rocksdb::Env::IOPriority::IO_HIGH, nullptr);
       left -= request_size;
     }
   }
@@ -107,16 +107,6 @@ Status BatchSender::sendApplyBatchCmd(int fd, const rocksdb::WriteBatch &write_b
   }
 
   return Status::OK();
-}
-
-void BatchSender::SetBytesPerSecond(size_t bytes_per_sec) {
-  if (bytes_per_sec_ == bytes_per_sec) {
-    return;
-  }
-  bytes_per_sec_ = bytes_per_sec;
-  if (bytes_per_sec > 0) {
-    rate_limiter_->SetBytesPerSecond(static_cast<int64_t>(bytes_per_sec));
-  }
 }
 
 double BatchSender::GetRate(uint64_t since) const {

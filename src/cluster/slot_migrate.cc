@@ -20,13 +20,16 @@
 
 #include "slot_migrate.h"
 
+#include <future>
 #include <memory>
 #include <utility>
 
+#include "arpa/inet.h"
 #include "db_util.h"
 #include "event_util.h"
 #include "fmt/format.h"
 #include "io_util.h"
+#include "netinet/tcp.h"
 #include "storage/batch_extractor.h"
 #include "storage/iterator.h"
 #include "storage/redis_metadata.h"
@@ -52,7 +55,8 @@ SlotMigrator::SlotMigrator(Server *srv)
       max_pipeline_size_(srv->GetConfig()->pipeline_size),
       seq_gap_limit_(srv->GetConfig()->sequence_gap),
       migrate_batch_bytes_per_sec_(srv->GetConfig()->migrate_batch_rate_limit_mb * MiB),
-      migrate_batch_size_bytes_(srv->GetConfig()->migrate_batch_size_kb * KiB) {
+      migrate_batch_size_bytes_(srv->GetConfig()->migrate_batch_size_kb * KiB),
+      migrate_slots_send_snapshots_parallelism_(srv->GetConfig()->migrate_slots_send_snapshots_parallelism) {
   // Let metadata_cf_handle_ be nullptr, and get them in real time to avoid accessing invalid pointer,
   // because metadata_cf_handle_ and db_ will be destroyed if DB is reopened.
   // [Situation]:
@@ -69,6 +73,7 @@ SlotMigrator::SlotMigrator(Server *srv)
   // [Note]:
   // This problem may exist in all functions of Database called in slot migration process.
   metadata_cf_handle_ = nullptr;
+  global_rate_limiter_.reset(rocksdb::NewGenericRateLimiter(static_cast<int64_t>(migrate_batch_bytes_per_sec_)));
 
   if (srv->IsSlave()) {
     SetStopMigrationFlag(true);
@@ -1251,7 +1256,6 @@ void SlotMigrator::resumeSyncCtx(const Status &migrate_result) {
 Status SlotMigrator::sendMigrationBatch(BatchSender *batch) {
   // user may dynamically change some configs, apply it when send data
   batch->SetMaxBytes(migrate_batch_size_bytes_);
-  batch->SetBytesPerSecond(migrate_batch_bytes_per_sec_);
   return batch->Send();
 }
 
@@ -1260,8 +1264,47 @@ Status SlotMigrator::sendSnapshotByRawKV() {
   auto slot_range = slot_range_.load();
   info("[migrate] Migrating snapshot of slot(s) {} by raw key value", slot_range.String());
 
-  auto prefix = ComposeSlotKeyPrefix(namespace_, slot_range.start);
-  auto upper_bound = ComposeSlotKeyUpperBound(namespace_, slot_range.end);
+  int total_slots = slot_range.end - slot_range.start + 1;
+  int slots_per_thread = total_slots / migrate_slots_send_snapshots_parallelism_;
+  int remain_slots = total_slots % migrate_slots_send_snapshots_parallelism_;
+
+  std::vector<std::future<Status>> results;
+  int cur_start = slot_range.start;
+  for (int i = 0; i < migrate_slots_send_snapshots_parallelism_; i++) {
+    int count = slots_per_thread + (i < remain_slots ? 1 : 0);
+    int cur_end = cur_start + count - 1;
+
+    results.emplace_back(std::async(std::launch::async, [=]() -> Status {
+      int fd = createConnectToDstNode();
+      if (fd < 0) {
+        return {Status::NotOK, fmt::format("failed to connect the destination node in thread[{}]", i)};
+      }
+      auto s = migrateSlotRange(cur_start, cur_end, fd);
+      close(fd);
+      return s;
+    }));
+
+    cur_start = cur_end + 1;
+  }
+
+  // Wait til finish
+  for (auto &result : results) {
+    auto s = result.get();
+    if (!s.IsOK()) {
+      return {Status::NotOK, fmt::format("[migrate] Parallel migrate get result error: {}", s.Msg())};
+    }
+  }
+
+  auto elapsed = util::GetTimeStampMS() - start_ts;
+  info("[migrate] Parallel snapshot migrate succeeded, slot(s) {}, elapsed: {} ms", slot_range.String(), elapsed);
+
+  return Status::OK();
+}
+
+Status SlotMigrator::migrateSlotRange(int start_slot, int end_slot, int fd) {
+  SlotRange sub{start_slot, end_slot};
+  auto prefix = ComposeSlotKeyPrefix(namespace_, start_slot);
+  auto upper_bound = ComposeSlotKeyUpperBound(namespace_, end_slot);
 
   rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
   read_options.snapshot = slot_snapshot_;
@@ -1272,12 +1315,11 @@ Status SlotMigrator::sendSnapshotByRawKV() {
   auto no_txn_ctx = engine::Context::NoTransactionContext(storage_);
   engine::DBIterator iter(no_txn_ctx, read_options);
 
-  BatchSender batch_sender(*dst_fd_, migrate_batch_size_bytes_, migrate_batch_bytes_per_sec_);
+  BatchSender batch_sender(fd, migrate_batch_size_bytes_, global_rate_limiter_);
 
   for (iter.Seek(prefix); iter.Valid(); iter.Next()) {
-    // Iteration is out of range
     auto key_slot_id = ExtractSlotId(iter.Key());
-    if (!slot_range.Contains(key_slot_id)) {
+    if (!sub.Contains(key_slot_id)) {
       break;
     }
 
@@ -1325,20 +1367,32 @@ Status SlotMigrator::sendSnapshotByRawKV() {
 
   GET_OR_RET(sendMigrationBatch(&batch_sender));
 
-  auto elapsed = util::GetTimeStampMS() - start_ts;
-  info(
-      "[migrate] Succeed to migrate snapshot range, slot(s): {}, elapsed: {} ms, sent: {} bytes, rate: {:.2f} kb/s, "
-      "batches: {}, entries: {}",
-      slot_range.String(), elapsed, batch_sender.GetSentBytes(), batch_sender.GetRate(start_ts),
-      batch_sender.GetSentBatchesNum(), batch_sender.GetEntriesNum());
-
   return Status::OK();
+}
+
+int SlotMigrator::createConnectToDstNode() {
+  // Connect to the destination node
+  auto fd = util::SockConnect(dst_ip_, dst_port_);
+  if (!fd.IsOK()) {
+    error("failed to connect to the node error: {}", fd.Msg());
+    return -1;
+  }
+
+  std::string pass = srv_->GetConfig()->requirepass;
+  if (!pass.empty()) {
+    auto s = authOnDstNode(*fd, pass);
+    if (!s.IsOK()) {
+      error("failed to authenticate on destination node error: {}", s.Msg());
+      return -1;
+    }
+  }
+  return *fd;
 }
 
 Status SlotMigrator::syncWALByRawKV() {
   uint64_t start_ts = util::GetTimeStampMS();
   info("[migrate] Syncing WAL of slot(s) {} by raw key value", slot_range_.load().String());
-  BatchSender batch_sender(*dst_fd_, migrate_batch_size_bytes_, migrate_batch_bytes_per_sec_);
+  BatchSender batch_sender(*dst_fd_, migrate_batch_size_bytes_, global_rate_limiter_);
 
   int epoch = 1;
   uint64_t wal_incremental_seq = 0;

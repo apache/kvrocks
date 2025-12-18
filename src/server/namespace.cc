@@ -78,7 +78,7 @@ Status Namespace::LoadAndRewrite() {
   if (!s.IsOK()) return s;
 
   if (!db_tokens.empty() && config->redis_databases > 0) {
-    return {Status::NotOK, "cannot enable redis_databases when namespaces exist in db"};
+    return {Status::NotOK, "cannot enable redis-databases when namespaces exist in db"};
   }
 
   if (!db_tokens.empty() && !config->repl_namespace_enabled) {

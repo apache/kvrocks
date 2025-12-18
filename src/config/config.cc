@@ -233,6 +233,7 @@ Config::Config() {
       {"log-retention-days", true, new IntField(&log_retention_days, -1, -1, INT_MAX)},
       {"persist-cluster-nodes-enabled", false, new YesNoField(&persist_cluster_nodes_enabled, true)},
       {"redis-cursor-compatible", false, new YesNoField(&redis_cursor_compatible, true)},
+      {"redis-databases", true, new IntField(&redis_databases, 0, 0, INT_MAX)},
       {"resp3-enabled", false, new YesNoField(&resp3_enabled, true)},
       {"repl-namespace-enabled", false, new YesNoField(&repl_namespace_enabled, false)},
       {"proto-max-bulk-len", false,
@@ -889,6 +890,12 @@ Status Config::finish() {
   }
   if ((cluster_enabled) && !load_tokens.empty()) {
     return {Status::NotOK, "enabled cluster mode wasn't allowed while the namespace exists"};
+  }
+  if ((redis_databases > 0) && !load_tokens.empty()) {
+    return {Status::NotOK, "redis-databases > 0 is not allowed while any non-default namespace exists"};
+  }
+  if ((redis_databases > 0) && (cluster_enabled)) {
+    return {Status::NotOK, "cluster mode and redis-databases cannot be enabled at the same time"};
   }
   if (unixsocket.empty() && binds.size() == 0) {
     binds.emplace_back(kDefaultBindAddress);

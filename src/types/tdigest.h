@@ -171,8 +171,8 @@ struct DoubleComparator {
   bool operator()(const double& a, const double& b) const { return DoubleCompare(a, b) == -1; }
 };
 
-template <typename TD, bool Reverse>
-inline Status TDigestRankImpl(TD&& td, const std::vector<double>& inputs, std::vector<int>& result) {
+template <bool Reverse, typename TD>
+inline Status TDigestRank(TD&& td, const std::vector<double>& inputs, std::vector<int>& result) {
   std::map<double, size_t, DoubleComparator> value_to_index;
   for (size_t i = 0; i < inputs.size(); ++i) {
     value_to_index[inputs[i]] = i;
@@ -211,7 +211,7 @@ inline Status TDigestRankImpl(TD&& td, const std::vector<double>& inputs, std::v
     }
   }
 
-  auto iter = td.Begin(Reverse);
+  auto iter = td.Begin();
   double cumulative_weight = 0;
   while (iter->Valid() && !is_end()) {
     auto centroid = GET_OR_RET(iter->GetCentroid());
@@ -266,13 +266,4 @@ inline Status TDigestRankImpl(TD&& td, const std::vector<double>& inputs, std::v
     }
   }
   return Status::OK();
-}
-
-template <typename TD>
-inline Status TDigestRank(TD&& td, const std::vector<double>& inputs, bool reverse, std::vector<int>& result) {
-  if (reverse) {
-    return TDigestRankImpl<TD, true>(std::forward<TD>(td), inputs, result);
-  } else {
-    return TDigestRankImpl<TD, false>(std::forward<TD>(td), inputs, result);
-  }
 }

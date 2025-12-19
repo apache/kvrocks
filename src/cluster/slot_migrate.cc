@@ -1265,12 +1265,13 @@ Status SlotMigrator::sendSnapshotByRawKV() {
   info("[migrate] Migrating snapshot of slot(s) {} by raw key value", slot_range.String());
 
   int total_slots = slot_range.end - slot_range.start + 1;
-  int slots_per_thread = total_slots / migrate_slots_send_snapshots_parallelism_;
-  int remain_slots = total_slots % migrate_slots_send_snapshots_parallelism_;
+  int parallelism = std::min(migrate_slots_send_snapshots_parallelism_, total_slots);
+  int slots_per_thread = total_slots / parallelism;
+  int remain_slots = total_slots % parallelism;
 
   std::vector<std::future<Status>> results;
   int cur_start = slot_range.start;
-  for (int i = 0; i < migrate_slots_send_snapshots_parallelism_; i++) {
+  for (int i = 0; i < parallelism; i++) {
     int count = slots_per_thread + (i < remain_slots ? 1 : 0);
     int cur_end = cur_start + count - 1;
 

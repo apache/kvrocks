@@ -25,6 +25,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <ranges>
 #include <set>
 
 #include "db_util.h"
@@ -53,11 +54,11 @@ rocksdb::Status ZSet::Add(engine::Context &ctx, const Slice &user_key, ZAddFlags
   s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) return s;
   std::unordered_set<std::string_view> added_member_keys;
-  for (auto it = mscores->rbegin(); it != mscores->rend(); ++it) {
-    if (!added_member_keys.insert(it->member).second) {
+  for (auto &mscore : std::ranges::reverse_view(*mscores)) {
+    if (!added_member_keys.insert(mscore.member).second) {
       continue;
     }
-    std::string member_key = InternalKey(ns_key, it->member, metadata.version, storage_->IsSlotIdEncoded()).Encode();
+    std::string member_key = InternalKey(ns_key, mscore.member, metadata.version, storage_->IsSlotIdEncoded()).Encode();
     if (metadata.size > 0) {
       std::string old_score_bytes;
       s = storage_->Get(ctx, ctx.GetReadOptions(), member_key, &old_score_bytes);
@@ -68,28 +69,28 @@ rocksdb::Status ZSet::Add(engine::Context &ctx, const Slice &user_key, ZAddFlags
         }
         double old_score = DecodeDouble(old_score_bytes.data());
         if (flags.HasIncr()) {
-          if ((flags.HasLT() && it->score >= 0) || (flags.HasGT() && it->score <= 0)) {
+          if ((flags.HasLT() && mscore.score >= 0) || (flags.HasGT() && mscore.score <= 0)) {
             continue;
           }
-          it->score += old_score;
-          if (std::isnan(it->score)) {
+          mscore.score += old_score;
+          if (std::isnan(mscore.score)) {
             return rocksdb::Status::InvalidArgument("resulting score is not a number (NaN)");
           }
         }
-        if (it->score != old_score) {
-          if ((flags.HasLT() && it->score >= old_score) || (flags.HasGT() && it->score <= old_score)) {
+        if (mscore.score != old_score) {
+          if ((flags.HasLT() && mscore.score >= old_score) || (flags.HasGT() && mscore.score <= old_score)) {
             continue;
           }
-          old_score_bytes.append(it->member);
+          old_score_bytes.append(mscore.member);
           std::string old_score_key =
               InternalKey(ns_key, old_score_bytes, metadata.version, storage_->IsSlotIdEncoded()).Encode();
           s = batch->Delete(score_cf_handle_, old_score_key);
           if (!s.ok()) return s;
           std::string new_score_bytes;
-          PutDouble(&new_score_bytes, it->score);
+          PutDouble(&new_score_bytes, mscore.score);
           s = batch->Put(member_key, new_score_bytes);
           if (!s.ok()) return s;
-          new_score_bytes.append(it->member);
+          new_score_bytes.append(mscore.member);
           std::string new_score_key =
               InternalKey(ns_key, new_score_bytes, metadata.version, storage_->IsSlotIdEncoded()).Encode();
           s = batch->Put(score_cf_handle_, new_score_key, Slice());
@@ -103,10 +104,10 @@ rocksdb::Status ZSet::Add(engine::Context &ctx, const Slice &user_key, ZAddFlags
       continue;
     }
     std::string score_bytes;
-    PutDouble(&score_bytes, it->score);
+    PutDouble(&score_bytes, mscore.score);
     s = batch->Put(member_key, score_bytes);
     if (!s.ok()) return s;
-    score_bytes.append(it->member);
+    score_bytes.append(mscore.member);
     std::string score_key = InternalKey(ns_key, score_bytes, metadata.version, storage_->IsSlotIdEncoded()).Encode();
     s = batch->Put(score_cf_handle_, score_key, Slice());
     if (!s.ok()) return s;

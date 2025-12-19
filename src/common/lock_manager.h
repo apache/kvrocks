@@ -25,6 +25,7 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <ranges>
 #include <set>
 #include <string>
 #include <vector>
@@ -118,8 +119,8 @@ class MultiLockGuard {
 
   ~MultiLockGuard() {
     // Lock with order `A B C` and unlock should be `C B A`
-    for (auto iter = locks_.rbegin(); iter != locks_.rend(); ++iter) {
-      (*iter)->unlock();
+    for (auto &lock : std::ranges::reverse_view(locks_)) {
+      lock->unlock();
     }
   }
 

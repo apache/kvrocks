@@ -26,6 +26,7 @@
 #include <cctype>
 #include <cmath>
 #include <random>
+#include <ranges>
 #include <utility>
 
 #include "db_util.h"
@@ -257,13 +258,13 @@ rocksdb::Status Hash::MSet(engine::Context &ctx, const Slice &user_key, const st
   s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) return s;
   std::unordered_set<std::string_view> field_set;
-  for (auto it = field_values.rbegin(); it != field_values.rend(); it++) {
-    if (!field_set.insert(it->field).second) {
+  for (const auto &it : std::ranges::reverse_view(field_values)) {
+    if (!field_set.insert(it.field).second) {
       continue;
     }
 
     bool exists = false;
-    std::string sub_key = InternalKey(ns_key, it->field, metadata.version, storage_->IsSlotIdEncoded()).Encode();
+    std::string sub_key = InternalKey(ns_key, it.field, metadata.version, storage_->IsSlotIdEncoded()).Encode();
 
     if (metadata.size > 0) {
       std::string field_value;
@@ -271,7 +272,7 @@ rocksdb::Status Hash::MSet(engine::Context &ctx, const Slice &user_key, const st
       if (!s.ok() && !s.IsNotFound()) return s;
 
       if (s.ok()) {
-        if (nx || field_value == it->value) continue;
+        if (nx || field_value == it.value) continue;
 
         exists = true;
       }
@@ -279,7 +280,7 @@ rocksdb::Status Hash::MSet(engine::Context &ctx, const Slice &user_key, const st
 
     if (!exists) added++;
 
-    s = batch->Put(sub_key, it->value);
+    s = batch->Put(sub_key, it.value);
     if (!s.ok()) return s;
   }
 

@@ -53,7 +53,7 @@ StatusOr<FieldValueRetriever> FieldValueRetriever::Create(IndexOnDataType type, 
     JsonValue value;
     auto s = db.read(ctx, ns_key, &metadata, &value);
     if (!s.ok()) return {s.IsNotFound() ? Status::NotFound : Status::NotOK, s.ToString()};
-    return FieldValueRetriever(value);
+    return FieldValueRetriever(value);  // NOLINT
   } else {
     UNREACHABLE();
   }

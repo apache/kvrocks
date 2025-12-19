@@ -35,4 +35,5 @@ endif ()
 FetchContent_MakeAvailableWithArgs(cpptrace
   ${CPPTRACE_BACKEND_OPTION}
   HAS_CXX20_MODULES=OFF
+  CMAKE_CXX_SCAN_FOR_MODULES=OFF
 )

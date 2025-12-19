@@ -262,7 +262,7 @@ rocksdb::Status TDigest::prepareRankData(engine::Context& ctx, const Slice& dige
 }
 
 rocksdb::Status TDigest::Rank(engine::Context& ctx, const Slice& digest_name, const std::vector<double>& inputs,
-                              std::vector<int>& result) {
+                              std::vector<int>* result) {
   TDigestMetadata metadata;
   std::vector<Centroid> centroids;
   if (auto status = prepareRankData(ctx, digest_name, metadata, centroids); !status.ok()) {
@@ -270,7 +270,7 @@ rocksdb::Status TDigest::Rank(engine::Context& ctx, const Slice& digest_name, co
   }
 
   if (metadata.total_observations == 0) {
-    result.resize(inputs.size(), -2);
+    result->resize(inputs.size(), -2);
     return rocksdb::Status::OK();
   }
 
@@ -282,7 +282,7 @@ rocksdb::Status TDigest::Rank(engine::Context& ctx, const Slice& digest_name, co
 }
 
 rocksdb::Status TDigest::RevRank(engine::Context& ctx, const Slice& digest_name, const std::vector<double>& inputs,
-                                 std::vector<int>& result) {
+                                 std::vector<int>* result) {
   TDigestMetadata metadata;
   std::vector<Centroid> centroids;
   if (auto status = prepareRankData(ctx, digest_name, metadata, centroids); !status.ok()) {
@@ -290,12 +290,52 @@ rocksdb::Status TDigest::RevRank(engine::Context& ctx, const Slice& digest_name,
   }
 
   if (metadata.total_observations == 0) {
-    result.resize(inputs.size(), -2);
+    result->resize(inputs.size(), -2);
     return rocksdb::Status::OK();
   }
 
   auto dump_centroids = DummyCentroids<true>(metadata, centroids);
   if (auto status = TDigestRank<true>(dump_centroids, inputs, result); !status) {
+    return rocksdb::Status::InvalidArgument(status.Msg());
+  }
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status TDigest::ByRevRank(engine::Context& ctx, const Slice& digest_name, const std::vector<int>& inputs,
+                                   std::vector<double>* result) {
+  TDigestMetadata metadata;
+  std::vector<Centroid> centroids;
+  if (auto status = prepareRankData(ctx, digest_name, metadata, centroids); !status.ok()) {
+    return status;
+  }
+
+  if (metadata.total_observations == 0) {
+    result->resize(inputs.size(), std::numeric_limits<double>::quiet_NaN());
+    return rocksdb::Status::OK();
+  }
+
+  auto dump_centroids = DummyCentroids<true>(metadata, centroids);
+  if (auto status = TDigestByRank<true>(dump_centroids, inputs, result); !status) {
+    return rocksdb::Status::InvalidArgument(status.Msg());
+  }
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status TDigest::ByRank(engine::Context& ctx, const Slice& digest_name, const std::vector<int>& inputs,
+                                std::vector<double>* result) {
+  TDigestMetadata metadata;
+  std::vector<Centroid> centroids;
+  if (auto status = prepareRankData(ctx, digest_name, metadata, centroids); !status.ok()) {
+    return status;
+  }
+
+  if (metadata.total_observations == 0) {
+    result->resize(inputs.size(), std::numeric_limits<double>::quiet_NaN());
+    return rocksdb::Status::OK();
+  }
+
+  auto dump_centroids = DummyCentroids<false>(metadata, centroids);
+  if (auto status = TDigestByRank<false>(dump_centroids, inputs, result); !status) {
     return rocksdb::Status::InvalidArgument(status.Msg());
   }
   return rocksdb::Status::OK();

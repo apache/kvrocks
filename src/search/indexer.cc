@@ -55,7 +55,7 @@ StatusOr<FieldValueRetriever> FieldValueRetriever::Create(IndexOnDataType type, 
     if (!s.ok()) return {s.IsNotFound() ? Status::NotFound : Status::NotOK, s.ToString()};
     return FieldValueRetriever(value);
   } else {
-    unreachable();
+    UNREACHABLE();
   }
 }
 

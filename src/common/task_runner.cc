@@ -45,7 +45,7 @@ Status TaskRunner::Join() {
 
   for (auto &thread : threads_) {
     if (auto s = util::ThreadJoin(thread); !s) {
-      warn("Failed to join thread: {}", s.Msg());
+      WARN("Failed to join thread: {}", s.Msg());
       continue;
     }
   }

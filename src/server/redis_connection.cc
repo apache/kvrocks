@@ -22,13 +22,13 @@
 #include <rocksdb/perf_context.h>
 
 #include <mutex>
+#include <nonstd/span.hpp>
 #include <shared_mutex>
 
 #include "commands/commander.h"
 #include "commands/error_constants.h"
 #include "fmt/format.h"
 #include "logging.h"
-#include "nonstd/span.hpp"
 #include "search/indexer.h"
 #include "server/redis_reply.h"
 #include "string_util.h"
@@ -107,7 +107,7 @@ void Connection::OnRead([[maybe_unused]] struct bufferevent *bev) {
   if (!s.IsOK()) {
     EnableFlag(redis::Connection::kCloseAfterReply);
     Reply(redis::Error(s));
-    info("[connection] Failed to tokenize the request. Error: {}", s.Msg());
+    INFO("[connection] Failed to tokenize the request. Error: {}", s.Msg());
     return;
   }
 
@@ -126,11 +126,11 @@ void Connection::OnWrite([[maybe_unused]] bufferevent *bev) {
 void Connection::OnEvent(bufferevent *bev, int16_t events) {
   if (events & BEV_EVENT_ERROR) {
 #ifdef ENABLE_OPENSSL
-    error("[connection] Removing client: {}, error: {}, SSL Error: {}", GetAddr(),
+    ERROR("[connection] Removing client: {}, error: {}, SSL Error: {}", GetAddr(),
           evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()),
           fmt::streamed(SSLError(bufferevent_get_openssl_error(bev))));  // NOLINT
 #else
-    error("[connection] Removing client: {}, error: {}", GetAddr(),
+    ERROR("[connection] Removing client: {}, error: {}", GetAddr(),
           evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
 #endif
     Close();
@@ -138,13 +138,13 @@ void Connection::OnEvent(bufferevent *bev, int16_t events) {
   }
 
   if (events & BEV_EVENT_EOF) {
-    debug("[connection] Going to remove the client: {}, while closed by client", GetAddr());
+    DEBUG("[connection] Going to remove the client: {}, while closed by client", GetAddr());
     Close();
     return;
   }
 
   if (events & BEV_EVENT_TIMEOUT) {
-    debug("[connection] The client: {} reached timeout", GetAddr());
+    DEBUG("[connection] The client: {} reached timeout", GetAddr());
     bufferevent_enable(bev, EV_READ | EV_WRITE);
   }
 }
@@ -425,7 +425,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     if (!cmd_s.IsOK()) {
       auto cmd_name = cmd_tokens.front();
       if (util::EqualICase(cmd_name, "host:") || util::EqualICase(cmd_name, "post")) {
-        warn(
+        WARN(
             "[connection] A likely HTTP request is detected in the RESP connection, indicating a potential "
             "Cross-Protocol Scripting attack. Connection aborted.");
         EnableFlag(kCloseAsync);
@@ -574,7 +574,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
                     if (res.IsOK()) {
                       index_records.push_back(*res);
                     } else if (!res.Is<Status::NoPrefixMatched>() && !res.Is<Status::TypeMismatched>()) {
-                      warn("[connection] index recording failed for key: {}", key);
+                      WARN("[connection] index recording failed for key: {}", key);
                     }
                   },
                   args);
@@ -586,7 +586,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
       for (const auto &record : index_records) {
         auto s = GlobalIndexer::Update(ctx, record);
         if (!s.IsOK() && !s.Is<Status::TypeMismatched>()) {
-          warn("[connection] index updating failed for key: {}", record.key);
+          WARN("[connection] index updating failed for key: {}", record.key);
         }
       }
     }

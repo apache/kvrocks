@@ -507,8 +507,8 @@ void Config::initFieldCallback() {
                backup_dir = v;
              }
              if (!previous_backup.empty() && srv != nullptr && !srv->IsLoading()) {
-               // info() should be called after log is initialized and server is loaded.
-               info("change backup dir from {} to {}", previous_backup, v);
+               // INFO() should be called after log is initialized and server is loaded.
+               INFO("change backup dir from {} to {}", previous_backup, v);
              }
              return Status::OK();
            }},
@@ -830,7 +830,7 @@ void Config::SetMaster(const std::string &host, uint32_t port) {
   if (iter != fields_.end()) {
     auto s = iter->second->Set(master_host + " " + std::to_string(master_port));
     if (!s.IsOK()) {
-      error("Failed to set the value of 'slaveof' setting: {}", s.Msg());
+      ERROR("Failed to set the value of 'slaveof' setting: {}", s.Msg());
     }
   }
 }
@@ -842,7 +842,7 @@ void Config::ClearMaster() {
   if (iter != fields_.end()) {
     auto s = iter->second->Set("no one");
     if (!s.IsOK()) {
-      error("Failed to clear the value of 'slaveof' setting: {}", s.Msg());
+      ERROR("Failed to clear the value of 'slaveof' setting: {}", s.Msg());
     }
   }
 }

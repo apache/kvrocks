@@ -28,12 +28,8 @@
 class BatchSender {
  public:
   BatchSender() = default;
-  BatchSender(int fd, size_t max_bytes, size_t bytes_per_sec)
-      : dst_fd_(fd),
-        max_bytes_(max_bytes),
-        bytes_per_sec_(bytes_per_sec),
-        rate_limiter_(std::unique_ptr<rocksdb::RateLimiter>(
-            rocksdb::NewGenericRateLimiter(static_cast<int64_t>(bytes_per_sec_)))) {}
+  BatchSender(int fd, size_t max_bytes, std::shared_ptr<rocksdb::RateLimiter> global_rate_limiter)
+      : dst_fd_(fd), max_bytes_(max_bytes), global_rate_limiter_(std::move(global_rate_limiter)) {}
 
   ~BatchSender() = default;
 
@@ -50,7 +46,6 @@ class BatchSender {
   uint64_t GetSentBytes() const { return sent_bytes_; }
   uint32_t GetSentBatchesNum() const { return sent_batches_num_; }
   uint32_t GetEntriesNum() const { return entries_num_; }
-  void SetBytesPerSecond(size_t bytes_per_sec);
   double GetRate(uint64_t since) const;
 
  private:
@@ -66,6 +61,5 @@ class BatchSender {
   int dst_fd_;
   size_t max_bytes_;
 
-  size_t bytes_per_sec_ = 0;  // 0 means no limit
-  std::unique_ptr<rocksdb::RateLimiter> rate_limiter_;
+  std::shared_ptr<rocksdb::RateLimiter> global_rate_limiter_;
 };

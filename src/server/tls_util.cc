@@ -22,6 +22,7 @@
 
 #include "tls_util.h"
 
+#include <fmt/ostream.h>
 #include <openssl/err.h>
 #include <openssl/opensslv.h>
 #include <openssl/rand.h>

@@ -37,6 +37,7 @@
 #include "commands/error_constants.h"
 #include "event_util.h"
 #include "fmt/format.h"
+#include "fmt/ostream.h"
 #include "io_util.h"
 #include "logging.h"
 #include "rocksdb/write_batch.h"

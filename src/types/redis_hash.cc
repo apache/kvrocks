@@ -26,7 +26,6 @@
 #include <cctype>
 #include <cmath>
 #include <random>
-#include <ranges>
 #include <utility>
 
 #include "db_util.h"
@@ -258,7 +257,7 @@ rocksdb::Status Hash::MSet(engine::Context &ctx, const Slice &user_key, const st
   s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) return s;
   std::unordered_set<std::string_view> field_set;
-  for (const auto &it : std::ranges::reverse_view(field_values)) {
+  for (const auto &it : ranges::reverse_view(field_values)) {
     if (!field_set.insert(it.field).second) {
       continue;
     }

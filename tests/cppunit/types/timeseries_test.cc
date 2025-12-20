@@ -22,7 +22,6 @@
 
 #include <memory>
 #include <random>
-#include <ranges>
 
 #include "test_base.h"
 #include "types/redis_timeseries.h"
@@ -231,11 +230,11 @@ TEST_F(TimeSeriesTest, Range) {
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(res.size(), 9);
   size_t curr = 0;
-  for (auto &current : std::ranges::reverse_view(samples3)) EXPECT_EQ(res[curr++], current);
+  for (auto &current : ranges::reverse_view(samples3)) EXPECT_EQ(res[curr++], current);
 
-  for (auto &current : std::ranges::reverse_view(samples2)) EXPECT_EQ(res[curr++], current);
+  for (auto &current : ranges::reverse_view(samples2)) EXPECT_EQ(res[curr++], current);
 
-  for (auto &current : std::ranges::reverse_view(samples1)) EXPECT_EQ(res[curr++], current);
+  for (auto &current : ranges::reverse_view(samples1)) EXPECT_EQ(res[curr++], current);
 
   // Test aggregation with min
   res.clear();

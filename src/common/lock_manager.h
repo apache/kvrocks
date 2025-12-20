@@ -25,10 +25,11 @@
 #include <functional>
 #include <memory>
 #include <mutex>
-#include <ranges>
 #include <set>
 #include <string>
 #include <vector>
+
+#include "range/v3/view/reverse.hpp"
 
 class LockManager {
  public:
@@ -119,7 +120,7 @@ class MultiLockGuard {
 
   ~MultiLockGuard() {
     // Lock with order `A B C` and unlock should be `C B A`
-    for (auto &lock : std::ranges::reverse_view(locks_)) {
+    for (auto &lock : ranges::reverse_view(locks_)) {
       lock->unlock();
     }
   }

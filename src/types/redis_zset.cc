@@ -25,7 +25,6 @@
 #include <map>
 #include <memory>
 #include <optional>
-#include <ranges>
 #include <set>
 
 #include "db_util.h"
@@ -54,7 +53,7 @@ rocksdb::Status ZSet::Add(engine::Context &ctx, const Slice &user_key, ZAddFlags
   s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) return s;
   std::unordered_set<std::string_view> added_member_keys;
-  for (auto &mscore : std::ranges::reverse_view(*mscores)) {
+  for (auto &mscore : ranges::reverse_view(*mscores)) {
     if (!added_member_keys.insert(mscore.member).second) {
       continue;
     }

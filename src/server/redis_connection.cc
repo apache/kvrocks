@@ -28,6 +28,7 @@
 #include "commands/commander.h"
 #include "commands/error_constants.h"
 #include "fmt/format.h"
+#include "fmt/ostream.h"
 #include "logging.h"
 #include "search/indexer.h"
 #include "server/redis_reply.h"

@@ -34,7 +34,5 @@ endif ()
 
 FetchContent_MakeAvailableWithArgs(cpptrace
   ${CPPTRACE_BACKEND_OPTION}
-  HAS_CXX20_MODULES=OFF
+  CPPTRACE_DISABLE_CXX_20_MODULES=ON
 )
-
-set_property(TARGET cpptrace-lib PROPERTY CXX_SCAN_FOR_MODULES OFF)

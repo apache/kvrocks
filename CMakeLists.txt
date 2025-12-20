@@ -35,8 +35,6 @@ set(SYMBOLIZE_BACKEND "" CACHE STRING "symbolization backend library for cpptrac
 set(PORTABLE 0 CACHE STRING "build a portable binary (disable arch-specific optimizations)")
 option(ENABLE_NEW_ENCODING "enable new encoding (#1033) for storing 64bit size and expire time in milliseconds" ON)
 
-cmake_policy(SET CMP0155 OLD)
-
 # to save build time in debug mode
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
     set(ENABLE_LTO OFF)
@@ -73,7 +71,6 @@ endif()
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_SCAN_FOR_MODULES OFF CACHE BOOL "" FORCE)
 
 set(DEPS_FETCH_PROXY "" CACHE STRING
     "a template URL to proxy the traffic for fetching dependencies,

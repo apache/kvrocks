@@ -262,7 +262,7 @@ rocksdb::Status TDigest::prepareRankData(engine::Context& ctx, const Slice& dige
 }
 
 rocksdb::Status TDigest::Rank(engine::Context& ctx, const Slice& digest_name, const std::vector<double>& inputs,
-                              std::vector<int>& result) {
+                              std::vector<int>* result) {
   TDigestMetadata metadata;
   std::vector<Centroid> centroids;
   if (auto status = prepareRankData(ctx, digest_name, metadata, centroids); !status.ok()) {
@@ -270,7 +270,7 @@ rocksdb::Status TDigest::Rank(engine::Context& ctx, const Slice& digest_name, co
   }
 
   if (metadata.total_observations == 0) {
-    result.resize(inputs.size(), -2);
+    result->resize(inputs.size(), -2);
     return rocksdb::Status::OK();
   }
 
@@ -282,7 +282,7 @@ rocksdb::Status TDigest::Rank(engine::Context& ctx, const Slice& digest_name, co
 }
 
 rocksdb::Status TDigest::RevRank(engine::Context& ctx, const Slice& digest_name, const std::vector<double>& inputs,
-                                 std::vector<int>& result) {
+                                 std::vector<int>* result) {
   TDigestMetadata metadata;
   std::vector<Centroid> centroids;
   if (auto status = prepareRankData(ctx, digest_name, metadata, centroids); !status.ok()) {
@@ -290,12 +290,52 @@ rocksdb::Status TDigest::RevRank(engine::Context& ctx, const Slice& digest_name,
   }
 
   if (metadata.total_observations == 0) {
-    result.resize(inputs.size(), -2);
+    result->resize(inputs.size(), -2);
     return rocksdb::Status::OK();
   }
 
   auto dump_centroids = DummyCentroids<true>(metadata, centroids);
   if (auto status = TDigestRank<true>(dump_centroids, inputs, result); !status) {
+    return rocksdb::Status::InvalidArgument(status.Msg());
+  }
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status TDigest::ByRevRank(engine::Context& ctx, const Slice& digest_name, const std::vector<int>& inputs,
+                                   std::vector<double>* result) {
+  TDigestMetadata metadata;
+  std::vector<Centroid> centroids;
+  if (auto status = prepareRankData(ctx, digest_name, metadata, centroids); !status.ok()) {
+    return status;
+  }
+
+  if (metadata.total_observations == 0) {
+    result->resize(inputs.size(), std::numeric_limits<double>::quiet_NaN());
+    return rocksdb::Status::OK();
+  }
+
+  auto dump_centroids = DummyCentroids<true>(metadata, centroids);
+  if (auto status = TDigestByRank<true>(dump_centroids, inputs, result); !status) {
+    return rocksdb::Status::InvalidArgument(status.Msg());
+  }
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status TDigest::ByRank(engine::Context& ctx, const Slice& digest_name, const std::vector<int>& inputs,
+                                std::vector<double>* result) {
+  TDigestMetadata metadata;
+  std::vector<Centroid> centroids;
+  if (auto status = prepareRankData(ctx, digest_name, metadata, centroids); !status.ok()) {
+    return status;
+  }
+
+  if (metadata.total_observations == 0) {
+    result->resize(inputs.size(), std::numeric_limits<double>::quiet_NaN());
+    return rocksdb::Status::OK();
+  }
+
+  auto dump_centroids = DummyCentroids<false>(metadata, centroids);
+  if (auto status = TDigestByRank<false>(dump_centroids, inputs, result); !status) {
     return rocksdb::Status::InvalidArgument(status.Msg());
   }
   return rocksdb::Status::OK();
@@ -592,16 +632,16 @@ rocksdb::Status TDigest::decodeCentroidFromKeyValue(const rocksdb::Slice& key, c
   auto subkey = ikey.GetSubKey();
   auto type_flg = static_cast<uint8_t>(SegmentType::kGuardFlag);
   if (!GetFixed8(&subkey, &type_flg)) {
-    error("corrupted tdigest centroid key, extract type failed");
+    ERROR("corrupted tdigest centroid key, extract type failed");
     return rocksdb::Status::Corruption("corrupted tdigest centroid key");
   }
   if (static_cast<SegmentType>(type_flg) != SegmentType::kCentroids) {
-    error("corrupted tdigest centroid key type: {}, expect to be {}", type_flg,
+    ERROR("corrupted tdigest centroid key type: {}, expect to be {}", type_flg,
           static_cast<uint8_t>(SegmentType::kCentroids));
     return rocksdb::Status::Corruption("corrupted tdigest centroid key type");
   }
   if (!GetDouble(&subkey, &centroid->mean)) {
-    error("corrupted tdigest centroid key, extract mean failed");
+    ERROR("corrupted tdigest centroid key, extract mean failed");
     return rocksdb::Status::Corruption("corrupted tdigest centroid key");
   }
 
@@ -610,7 +650,7 @@ rocksdb::Status TDigest::decodeCentroidFromKeyValue(const rocksdb::Slice& key, c
 
   if (rocksdb::Slice value_slice = value;  // GetDouble needs a mutable pointer of slice
       !GetDouble(&value_slice, &centroid->weight)) {
-    error("corrupted tdigest centroid value, extract weight failed");
+    ERROR("corrupted tdigest centroid value, extract weight failed");
     return rocksdb::Status::Corruption("corrupted tdigest centroid value");
   }
   return rocksdb::Status::OK();
@@ -657,7 +697,7 @@ rocksdb::Status TDigest::dumpCentroidsAndBuffer(engine::Context& ctx, const std:
       for (uint64_t i = 0; i < metadata.unmerged_nodes; ++i) {
         double tmp_value = std::numeric_limits<double>::quiet_NaN();
         if (!GetDouble(&buffer_slice, &tmp_value)) {
-          error("metadata has {} records, but get {} failed", metadata.unmerged_nodes, i);
+          ERROR("metadata has {} records, but get {} failed", metadata.unmerged_nodes, i);
           return rocksdb::Status::Corruption("corrupted tdigest buffer value");
         }
         buffer->emplace_back(tmp_value);
@@ -698,7 +738,7 @@ rocksdb::Status TDigest::dumpCentroidsAndBuffer(engine::Context& ctx, const std:
   }
 
   if (centroids->size() != metadata.merged_nodes) {
-    error("metadata has {} merged nodes, but got {}", metadata.merged_nodes, centroids->size());
+    ERROR("metadata has {} merged nodes, but got {}", metadata.merged_nodes, centroids->size());
     return rocksdb::Status::Corruption("centroids count mismatch with metadata");
   }
   return rocksdb::Status::OK();

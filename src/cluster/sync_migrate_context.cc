@@ -35,7 +35,7 @@ void SyncMigrateContext::Resume(const Status &migrate_result) {
   migrate_result_ = migrate_result;
   auto s = conn_->Owner()->EnableWriteEvent(conn_->GetFD());
   if (!s.IsOK()) {
-    error("[server] Failed to enable write event on the sync migrate connection {}: {}", conn_->GetFD(), s.Msg());
+    ERROR("[server] Failed to enable write event on the sync migrate connection {}: {}", conn_->GetFD(), s.Msg());
   }
 }
 

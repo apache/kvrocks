@@ -36,7 +36,7 @@ TSChunkPtr CreateTSChunkFromData(nonstd::span<const char> data) {
     return std::make_unique<UncompTSChunk>(data);
   } else {
     // TODO: compressed chunk
-    unreachable();
+    UNREACHABLE();
   }
 }
 
@@ -344,7 +344,7 @@ std::string UncompTSChunk::UpsertSamples(SampleBatchSlice batch) const {
 
     // Select next sample by earliest timestamp
     if (existing_sample_iter->ts <= new_samples[new_sample_idx].ts) {
-      candidate = existing_sample_iter;
+      candidate = &*existing_sample_iter;
     } else {
       candidate = &new_samples[new_sample_idx];
       from_new_batch = true;
@@ -560,7 +560,7 @@ std::string UncompTSChunk::UpdateSampleValue(uint64_t ts, double value, bool is_
 
 TSSample UncompTSChunk::GetLatestSample(uint32_t idx) const {
   if (metadata_.count == 0 || idx >= metadata_.count) {
-    unreachable();
+    UNREACHABLE();
   }
   return samples_[metadata_.count - 1 - idx];
 }

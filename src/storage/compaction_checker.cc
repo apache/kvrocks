@@ -32,10 +32,10 @@ void CompactionChecker::CompactPropagateAndPubSubFiles() {
   compact_opts.change_level = !storage_->GetConfig()->rocks_db.level_compaction_dynamic_level_bytes;
   for (const auto &cf :
        {engine::ColumnFamilyConfigs::PubSubColumnFamily(), engine::ColumnFamilyConfigs::PropagateColumnFamily()}) {
-    info("[compaction checker] Start to compact the column family: {}", cf.Name());
+    INFO("[compaction checker] Start to compact the column family: {}", cf.Name());
     auto cf_handle = storage_->GetCFHandle(cf.Id());
     auto s = storage_->GetDB()->CompactRange(compact_opts, cf_handle, nullptr, nullptr);
-    info("[compaction checker] Compact the column family: {} finished, result: {}", cf.Name(), s.ToString());
+    INFO("[compaction checker] Compact the column family: {} finished, result: {}", cf.Name(), s.ToString());
   }
 }
 
@@ -44,7 +44,7 @@ void CompactionChecker::PickCompactionFilesForCf(const engine::ColumnFamilyConfi
   rocksdb::ColumnFamilyHandle *cf = storage_->GetCFHandle(column_family_config.Id());
   auto s = storage_->GetDB()->GetPropertiesOfAllTables(cf, &props);
   if (!s.ok()) {
-    warn("[compaction checker] Failed to get table properties, {}", s.ToString());
+    WARN("[compaction checker] Failed to get table properties, {}", s.ToString());
     return;
   }
   // The main goal of compaction was reclaimed the disk space and removed
@@ -75,7 +75,7 @@ void CompactionChecker::PickCompactionFilesForCf(const engine::ColumnFamilyConfi
       // file_creation_time is 0 which means the unknown condition in rocksdb
       s = rocksdb::Env::Default()->GetFileModificationTime(iter.first, &file_creation_time);
       if (!s.ok()) {
-        info("[compaction checker] Failed to get the file creation time: {}, err: {}", iter.first, s.ToString());
+        INFO("[compaction checker] Failed to get the file creation time: {}, err: {}", iter.first, s.ToString());
         continue;
       }
     }
@@ -84,7 +84,7 @@ void CompactionChecker::PickCompactionFilesForCf(const engine::ColumnFamilyConfi
       if (property_iter.first == "total_keys") {
         auto parse_result = ParseInt<int>(property_iter.second, 10);
         if (!parse_result) {
-          error("[compaction checker] Parse total_keys error: {}", parse_result.Msg());
+          ERROR("[compaction checker] Parse total_keys error: {}", parse_result.Msg());
           continue;
         }
         total_keys = *parse_result;
@@ -92,7 +92,7 @@ void CompactionChecker::PickCompactionFilesForCf(const engine::ColumnFamilyConfi
       if (property_iter.first == "deleted_keys") {
         auto parse_result = ParseInt<int>(property_iter.second, 10);
         if (!parse_result) {
-          error("[compaction checker] Parse deleted_keys error: {}", parse_result.Msg());
+          ERROR("[compaction checker] Parse deleted_keys error: {}", parse_result.Msg());
           continue;
         }
         deleted_keys = *parse_result;
@@ -111,9 +111,9 @@ void CompactionChecker::PickCompactionFilesForCf(const engine::ColumnFamilyConfi
     // pick the file according to force compact policy
     if (file_creation_time < static_cast<uint64_t>(now - force_compact_file_age) &&
         delete_ratio >= force_compact_min_ratio) {
-      info("[compaction checker] Going to compact the key in file (force compact policy): {}", iter.first);
+      INFO("[compaction checker] Going to compact the key in file (force compact policy): {}", iter.first);
       auto s = storage_->Compact(cf, &start_key, &stop_key);
-      info("[compaction checker] Compact the key in file (force compact policy): {} finished, result: {}", iter.first,
+      INFO("[compaction checker] Compact the key in file (force compact policy): {} finished, result: {}", iter.first,
            s.ToString());
       max_files_to_compact--;
       continue;
@@ -133,11 +133,11 @@ void CompactionChecker::PickCompactionFilesForCf(const engine::ColumnFamilyConfi
     }
   }
   if (best_delete_ratio > 0.1 && !best_start_key.empty() && !best_stop_key.empty()) {
-    info("[compaction checker] Going to compact the key in file: {}, delete ratio: {}", best_filename,
+    INFO("[compaction checker] Going to compact the key in file: {}, delete ratio: {}", best_filename,
          best_delete_ratio);
     auto s = storage_->Compact(cf, &best_start_key, &best_stop_key);
     if (!s.ok()) {
-      error("[compaction checker] Failed to do compaction: {}", s.ToString());
+      ERROR("[compaction checker] Failed to do compaction: {}", s.ToString());
     }
   }
 }

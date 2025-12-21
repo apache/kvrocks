@@ -51,7 +51,7 @@ jobs:
           echo "docs_only=${{ fromJSON(steps.changes.outputs.all_count) == fromJSON(steps.changes.outputs.docs_count) && fromJSON(steps.changes.outputs.docs_count) > 0 }}" >> $GITHUB_OUTPUT
 
   check-typos:
-    name: Check typos
+    name: Check typos and licenses
     runs-on: ubuntu-22.04
     env:
       FORCE_COLOR: 1
@@ -61,6 +61,9 @@ jobs:
         uses: crate-ci/typos@v1.37.1
         with:
           config: .github/config/typos.toml
+      - uses: apache/skywalking-eyes/header@v0.7.0
+        with:
+          config: .github/config/licenserc.yml
 
   check-and-lint:
     name: Lint and check code
@@ -69,9 +72,6 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - uses: apache/skywalking-eyes/header@v0.7.0
-        with:
-          config: .github/config/licenserc.yml
       - uses: actions/setup-go@v5
         with:
           go-version-file: 'tests/gocase/go.mod'

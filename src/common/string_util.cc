@@ -22,7 +22,6 @@
 
 #include <fmt/format.h>
 
-#include <range/v3/view/reverse.hpp>
 #include <regex>
 #include <string>
 
@@ -548,9 +547,9 @@ std::string EscapeString(std::string_view s) {
 }
 
 std::string StringNext(std::string s) {
-  for (char &c : ranges::reverse_view(s)) {
-    if (c != char(0xff)) {
-      c++;
+  for (auto iter = s.rbegin(); iter != s.rend(); ++iter) {
+    if (*iter != char(0xff)) {
+      (*iter)++;
       break;
     }
   }

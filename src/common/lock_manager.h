@@ -29,8 +29,6 @@
 #include <string>
 #include <vector>
 
-#include "range/v3/view/reverse.hpp"
-
 class LockManager {
  public:
   explicit LockManager(unsigned hash_power)
@@ -120,8 +118,8 @@ class MultiLockGuard {
 
   ~MultiLockGuard() {
     // Lock with order `A B C` and unlock should be `C B A`
-    for (auto &lock : ranges::reverse_view(locks_)) {
-      lock->unlock();
+    for (auto iter = locks_.rbegin(); iter != locks_.rend(); ++iter) {
+      (*iter)->unlock();
     }
   }
 

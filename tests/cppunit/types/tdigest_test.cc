@@ -32,7 +32,6 @@
 #include <range/v3/view/chunk.hpp>
 #include <range/v3/view/iota.hpp>
 #include <range/v3/view/join.hpp>
-#include <range/v3/view/reverse.hpp>
 #include <range/v3/view/transform.hpp>
 #include <string>
 #include <vector>

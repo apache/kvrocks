@@ -130,7 +130,7 @@ Status Cluster::SetSlotRanges(const std::vector<SlotRange> &slot_ranges, const s
         if (migrated_slots_.count(slot) > 0) {
           auto s = srv_->slot_migrator->ClearKeysOfSlotRange(ctx, kDefaultNamespace, SlotRange::GetPoint(slot));
           if (!s.ok()) {
-            error("failed to clear data of migrated slot: {}", s.ToString());
+            ERROR("failed to clear data of migrated slot: {}", s.ToString());
           }
           migrated_slots_.erase(slot);
         }
@@ -213,7 +213,7 @@ Status Cluster::SetClusterNodes(const std::string &nodes_str, int64_t version, b
       if (slots_nodes_[slot] != myself_) {
         auto s = srv_->slot_migrator->ClearKeysOfSlotRange(ctx, kDefaultNamespace, SlotRange::GetPoint(slot));
         if (!s.ok()) {
-          error("failed to clear data of migrated slots: {}", s.ToString());
+          ERROR("failed to clear data of migrated slots: {}", s.ToString());
         }
       }
     }
@@ -246,11 +246,11 @@ Status Cluster::SetMasterSlaveRepl() {
     if (!s.IsOK()) {
       return s.Prefixed("failed to remove master");
     }
-    info("MASTER MODE enabled by cluster topology setting");
+    INFO("MASTER MODE enabled by cluster topology setting");
     if (srv_->slot_migrator && is_cluster_enabled && is_slave) {
       // Slave -> Master
       srv_->slot_migrator->SetStopMigrationFlag(false);
-      info("Change server role to master, restart migration task");
+      INFO("Change server role to master, restart migration task");
     }
     return Status::OK();
   }
@@ -261,16 +261,16 @@ Status Cluster::SetMasterSlaveRepl() {
     std::shared_ptr<ClusterNode> master = it->second;
     auto s = srv_->AddMaster(master->host, master->port, false);
     if (!s.IsOK()) {
-      warn("SLAVE OF {}:{} wasn't enabled by cluster topology setting, encounter error: {}", master->host, master->port,
+      WARN("SLAVE OF {}:{} wasn't enabled by cluster topology setting, encounter error: {}", master->host, master->port,
            s.Msg());
       return s.Prefixed("failed to add master");
     }
     if (srv_->slot_migrator && is_cluster_enabled && !is_slave) {
       // Master -> Slave
       srv_->slot_migrator->SetStopMigrationFlag(true);
-      info("Change server role to slave, stop migration task");
+      INFO("Change server role to slave, stop migration task");
     }
-    info("SLAVE OF {}:{} enabled by cluster topology setting", master->host, master->port);
+    INFO("SLAVE OF {}:{} enabled by cluster topology setting", master->host, master->port);
   }
 
   return Status::OK();
@@ -374,7 +374,7 @@ Status Cluster::ImportSlotRange(redis::Connection *conn, const SlotRange &slot_r
       conn->close_cb = [object_ptr = srv_->slot_import.get(), slot_range]([[maybe_unused]] int fd) {
         auto s = object_ptr->StopForLinkError();
         if (!s.IsOK()) {
-          error("[import] Failed to stop importing slot(s) {}: {}", slot_range.String(), s.Msg());
+          ERROR("[import] Failed to stop importing slot(s) {}: {}", slot_range.String(), s.Msg());
         }
       };  // Stop forbidding writing slot to accept write commands
       if (slot_range.HasOverlap(srv_->slot_migrator->GetForbiddenSlotRange())) {
@@ -384,17 +384,17 @@ Status Cluster::ImportSlotRange(redis::Connection *conn, const SlotRange &slot_r
         // supported in the future.
         srv_->slot_migrator->ReleaseForbiddenSlotRange();
       }
-      info("[import] Start importing slot(s) {}", slot_range.String());
+      INFO("[import] Start importing slot(s) {}", slot_range.String());
       break;
     case kImportSuccess:
       s = srv_->slot_import->Success(slot_range);
       if (!s.IsOK()) return s;
-      info("[import] Mark the importing slot(s) {} as succeed", slot_range.String());
+      INFO("[import] Mark the importing slot(s) {} as succeed", slot_range.String());
       break;
     case kImportFailed:
       s = srv_->slot_import->Fail(slot_range);
       if (!s.IsOK()) return s;
-      info("[import] Mark the importing slot(s) {} as failed", slot_range.String());
+      INFO("[import] Mark the importing slot(s) {} as failed", slot_range.String());
       break;
     default:
       return {Status::NotOK, errInvalidImportState};
@@ -691,7 +691,7 @@ Status Cluster::DumpClusterNodes(const std::string &file) {
 
 Status Cluster::LoadClusterNodes(const std::string &file_path) {
   if (rocksdb::Env::Default()->FileExists(file_path).IsNotFound()) {
-    info("The cluster nodes file {} is not found. Use CLUSTERX subcommands to specify it.", file_path);
+    INFO("The cluster nodes file {} is not found. Use CLUSTERX subcommands to specify it.", file_path);
     return Status::OK();
   }
 

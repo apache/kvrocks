@@ -34,7 +34,7 @@ RedisWriter::RedisWriter(kvrocks2redis::Config *config) : Writer(config) {
     assert(stop_flag_);
   });
   if (!t.IsOK()) {
-    error("Failed to create thread: {}", t.Msg());
+    ERROR("Failed to create thread: {}", t.Msg());
     return;
   }
   t_ = std::move(*t);
@@ -82,14 +82,14 @@ void RedisWriter::Stop() {
 
   if (t_.joinable()) t_.join();
   // handled by sync func
-  info("RedisWriter Stopped");
+  INFO("RedisWriter Stopped");
 }
 
 void RedisWriter::sync() {
   for (const auto &iter : config_->tokens) {
     Status s = readNextOffsetFromFile(iter.first, &next_offsets_[iter.first]);
     if (!s.IsOK()) {
-      error("{}", s.Msg());
+      ERROR("{}", s.Msg());
       return;
     }
   }
@@ -100,13 +100,13 @@ void RedisWriter::sync() {
     for (const auto &iter : config_->tokens) {
       Status s = GetAofFd(iter.first);
       if (!s.IsOK()) {
-        error("{}", s.Msg());
+        ERROR("{}", s.Msg());
         continue;
       }
 
       s = getRedisConn(iter.first, iter.second.host, iter.second.port, iter.second.auth, iter.second.db_number);
       if (!s.IsOK()) {
-        error("{}", s.Msg());
+        ERROR("{}", s.Msg());
         continue;
       }
 
@@ -114,7 +114,7 @@ void RedisWriter::sync() {
         auto getted_line_leng = pread(aof_fds_[iter.first], buffer.get(), chunk_size, next_offsets_[iter.first]);
         if (getted_line_leng <= 0) {
           if (getted_line_leng < 0) {
-            error("failed to read AOF file: {}", strerror(errno));
+            ERROR("failed to read AOF file: {}", strerror(errno));
           }
           break;
         }
@@ -122,13 +122,13 @@ void RedisWriter::sync() {
         std::string con = std::string(buffer.get(), getted_line_leng);
         s = util::SockSend(redis_fds_[iter.first], con);
         if (!s.IsOK()) {
-          error("Failed to send data to redis err: {}", s.Msg());
+          ERROR("Failed to send data to redis err: {}", s.Msg());
           break;
         }
 
         auto line_state = util::SockReadLine(redis_fds_[iter.first]);
         if (!line_state) {
-          error("Failed to read redis response err: {}", s.Msg());
+          ERROR("Failed to read redis response err: {}", s.Msg());
           break;
         }
 
@@ -136,14 +136,14 @@ void RedisWriter::sync() {
         if (line.compare(0, 1, "-") == 0) {
           // Ooops, something went wrong , sync process has been terminated, administrator should be notified
           // when full sync is needed, please remove last_next_seq config file, and restart kvrocks2redis
-          error("CRITICAL - redis sync return error, administrator confirm needed: {}", line);
+          ERROR("CRITICAL - redis sync return error, administrator confirm needed: {}", line);
           Stop();
           return;
         }
 
         s = updateNextOffset(iter.first, next_offsets_[iter.first] + getted_line_leng);
         if (!s.IsOK()) {
-          error("Failed to updating next offset: {}", s.Msg());
+          ERROR("Failed to updating next offset: {}", s.Msg());
           break;
         }
       }
@@ -204,7 +204,7 @@ Status RedisWriter::selectDB(const std::string &ns, int db_number) {
     return s.Prefixed("failed to send SELECT command to socket");
   }
 
-  info("select db request was sent, waiting for response");
+  INFO("select db request was sent, waiting for response");
   std::string line = GET_OR_RET(util::SockReadLine(redis_fds_[ns]).Prefixed("read select db response err"));
   if (line.compare(0, 3, "+OK") != 0) {
     return {Status::NotOK, "[kvrocks2redis] redis select db failed: " + line};

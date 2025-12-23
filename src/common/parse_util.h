@@ -29,12 +29,12 @@
 template <typename T>
 using ParseResultAndPos = std::tuple<T, const char *>;
 
-// TryParseInt parses a string to a integer,
+// TryParseInt parses a string to an integer,
 // if non-integer characters is encountered, it stop parsing and
 // return the result integer and the current string position.
 // e.g. TryParseInt("100MB") -> {100, "MB"}
 // if no integer can be parsed or out of type range, an error will be returned
-// base can be in {0, 2, ..., 36}, refer to strto* in standard c for more details
+// base can be in {2, ..., 36}
 template <typename T = long long, std::enable_if_t<std::is_integral_v<T>, int> = 0>  // NOLINT
 StatusOr<ParseResultAndPos<T>> TryParseInt(std::string_view v, int base = 10) {
   T res = 0;

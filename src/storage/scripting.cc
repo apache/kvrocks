@@ -209,10 +209,10 @@ int RedisLogCommand(lua_State *lua) {
   switch (level) {
     case LL_VERBOSE:  // also regard VERBOSE as INFO here since no VERBOSE level
     case LL_NOTICE:
-      info("[Lua] {}", log_message);
+      INFO("[Lua] {}", log_message);
       break;
     case LL_WARNING:
-      warn("[Lua] {}", log_message);
+      WARN("[Lua] {}", log_message);
       break;
   }
   return 0;

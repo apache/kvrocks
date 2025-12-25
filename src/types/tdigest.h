@@ -171,15 +171,57 @@ struct DoubleComparator {
   bool operator()(const double& a, const double& b) const { return DoubleCompare(a, b) == -1; }
 };
 
-template <typename TD, bool Reverse>
-inline Status TDigestRankImpl(TD&& td, const std::vector<double>& inputs, std::vector<int>& result) {
+template <bool Reverse, typename TD>
+inline Status TDigestByRank(TD&& td, const std::vector<int>& inputs, std::vector<double>* result) {
+  result->clear();
+  result->resize(inputs.size(), std::numeric_limits<double>::quiet_NaN());
+
+  std::map<int, size_t> rank_to_index;
+  for (size_t i = 0; i < inputs.size(); ++i) {
+    rank_to_index[inputs[i]] = i;
+  }
+
+  auto it = rank_to_index.begin();
+  auto is_end = [&it, &rank_to_index]() -> bool { return it == rank_to_index.end(); };
+  auto iter = td.Begin();
+  double cumulative_weight = 0;
+  while (iter->Valid() && !is_end()) {
+    auto centroid = GET_OR_RET(iter->GetCentroid());
+    cumulative_weight += centroid.weight;
+    while (!is_end() && it->first < static_cast<int>(cumulative_weight)) {
+      (*result)[it->second] = centroid.mean;
+      ++it;
+    }
+    iter->Next();
+  }
+
+  while (!is_end() && it->first >= static_cast<int>(td.TotalWeight())) {
+    if constexpr (Reverse) {
+      (*result)[it->second] = -std::numeric_limits<double>::infinity();
+    } else {
+      (*result)[it->second] = std::numeric_limits<double>::infinity();
+    }
+    ++it;
+  }
+
+  // check if all results are valid
+  for (auto r : *result) {
+    if (std::isnan(r)) {
+      return Status{Status::InvalidArgument, "invalid result when getting byrank or byrevrank"};
+    }
+  }
+  return Status::OK();
+}
+
+template <bool Reverse, typename TD>
+inline Status TDigestRank(TD&& td, const std::vector<double>& inputs, std::vector<int>* result) {
   std::map<double, size_t, DoubleComparator> value_to_index;
   for (size_t i = 0; i < inputs.size(); ++i) {
     value_to_index[inputs[i]] = i;
   }
 
-  result.clear();
-  result.resize(inputs.size(), -2);
+  result->clear();
+  result->resize(inputs.size(), -2);
 
   using MapType = decltype(value_to_index);
   using IterType = std::conditional_t<Reverse, typename MapType::reverse_iterator, typename MapType::iterator>;
@@ -201,17 +243,17 @@ inline Status TDigestRankImpl(TD&& td, const std::vector<double>& inputs, std::v
   // handle inputs larger than maximum in reverse order or smaller than minimum in forward order
   if constexpr (Reverse) {
     while (!is_end() && it->first > td.Max()) {
-      result[it->second] = -1;
+      (*result)[it->second] = -1;
       ++it;
     }
   } else {
     while (!is_end() && it->first < td.Min()) {
-      result[it->second] = -1;
+      (*result)[it->second] = -1;
       ++it;
     }
   }
 
-  auto iter = td.Begin(Reverse);
+  auto iter = td.Begin();
   double cumulative_weight = 0;
   while (iter->Valid() && !is_end()) {
     auto centroid = GET_OR_RET(iter->GetCentroid());
@@ -233,7 +275,7 @@ inline Status TDigestRankImpl(TD&& td, const std::vector<double>& inputs, std::v
         cumulative_weight += next_centroid.weight;
       }
 
-      result[it->second] = static_cast<int>(current_mean_cumulative_weight);
+      (*result)[it->second] = static_cast<int>(current_mean_cumulative_weight);
       ++it;
       iter->Next();
     } else if constexpr (Reverse) {
@@ -241,7 +283,7 @@ inline Status TDigestRankImpl(TD&& td, const std::vector<double>& inputs, std::v
         cumulative_weight += centroid.weight;
         iter->Next();
       } else {
-        result[it->second] = static_cast<int>(cumulative_weight);
+        (*result)[it->second] = static_cast<int>(cumulative_weight);
         ++it;
       }
     } else {
@@ -249,18 +291,18 @@ inline Status TDigestRankImpl(TD&& td, const std::vector<double>& inputs, std::v
         cumulative_weight += centroid.weight;
         iter->Next();
       } else {
-        result[it->second] = static_cast<int>(cumulative_weight);
+        (*result)[it->second] = static_cast<int>(cumulative_weight);
         ++it;
       }
     }
   }
 
   while (!is_end()) {
-    result[it->second] = static_cast<int>(td.TotalWeight());
+    (*result)[it->second] = static_cast<int>(td.TotalWeight());
     ++it;
   }
 
-  for (auto r : result) {
+  for (auto r : *result) {
     if (r <= -2) {
       return Status{Status::InvalidArgument, "invalid result when computing rank or revrank"};
     }
@@ -276,7 +318,6 @@ inline Status TDigestRank(TD&& td, const std::vector<double>& inputs, bool rever
     return TDigestRankImpl<TD, false>(std::forward<TD>(td), inputs, result);
   }
 }
-
 
 template <typename TD>
 inline StatusOr<double> TDigestTrimmedMean(TD&& td, double low_cut_quantile, double high_cut_quantile) {
@@ -298,7 +339,7 @@ inline StatusOr<double> TDigestTrimmedMean(TD&& td, double low_cut_quantile, dou
   // Get boundary values for trimming
   double low_boundary;
   double high_boundary;
-  
+
   // For 0 and 1 quantiles, use exact min/max values
   if (low_cut_quantile == 0.0) {
     low_boundary = td.Min();
@@ -309,7 +350,7 @@ inline StatusOr<double> TDigestTrimmedMean(TD&& td, double low_cut_quantile, dou
     }
     low_boundary = *low_result;
   }
-  
+
   if (high_cut_quantile == 1.0) {
     high_boundary = td.Max();
   } else {
@@ -324,10 +365,10 @@ inline StatusOr<double> TDigestTrimmedMean(TD&& td, double low_cut_quantile, dou
   auto iter = td.Begin();
   double total_weight_in_range = 0;
   double weighted_sum = 0;
-  
+
   while (iter->Valid()) {
     auto centroid = GET_OR_RET(iter->GetCentroid());
-    
+
     // Check if centroid falls within the trimmed range
     // For full range (0 to 1), include all centroids
     if ((low_cut_quantile == 0.0 && high_cut_quantile == 1.0) ||
@@ -335,14 +376,14 @@ inline StatusOr<double> TDigestTrimmedMean(TD&& td, double low_cut_quantile, dou
       total_weight_in_range += centroid.weight;
       weighted_sum += centroid.mean * centroid.weight;
     }
-    
+
     iter->Next();
   }
-  
+
   // Check if we have any data in the trimmed range
   if (total_weight_in_range == 0) {
     return std::numeric_limits<double>::quiet_NaN();
   }
-  
+
   return weighted_sum / total_weight_in_range;
 }

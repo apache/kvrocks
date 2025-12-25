@@ -178,7 +178,7 @@ Status Parser::ParseWriteBatch(const std::string &batch_string) {
   for (const auto &iter : *resp_commands) {
     auto s = writer_->Write(iter.first, iter.second);
     if (!s.IsOK()) {
-      error("Failed to write to AOF from the write batch. Error: {}", s.Msg());
+      ERROR("Failed to write to AOF from the write batch. Error: {}", s.Msg());
     }
   }
 

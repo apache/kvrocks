@@ -50,7 +50,7 @@ void SlowEntry::DumpToLogFile(spdlog::level::level_enum level) const {
     }
     cmd.pop_back();
   }
-  log(level, "[slowlog] id: {}, timestamp: {}, duration: {}, cmd: {}, ip: {}, port: {}, client_name: {}", id, time,
+  LOG(level, "[slowlog] id: {}, timestamp: {}, duration: {}, cmd: {}, ip: {}, port: {}, client_name: {}", id, time,
       duration, cmd, ip, port, client_name);
 }
 

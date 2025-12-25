@@ -88,7 +88,7 @@ bool IsDiskQuotaExceeded(const rocksdb::Status &bg_error) {
 }
 
 void EventListener::OnCompactionBegin([[maybe_unused]] rocksdb::DB *db, const rocksdb::CompactionJobInfo &ci) {
-  info(
+  INFO(
       "[event_listener/compaction_begin] column family: {}, job_id: {}, compaction reason: {}, output compression "
       "type: {}, base input level(files): {}({}), output level(files): {}({}), input bytes: {}, output bytes: {}, "
       "is_manual_compaction: {}",
@@ -99,7 +99,7 @@ void EventListener::OnCompactionBegin([[maybe_unused]] rocksdb::DB *db, const ro
 }
 
 void EventListener::OnCompactionCompleted([[maybe_unused]] rocksdb::DB *db, const rocksdb::CompactionJobInfo &ci) {
-  info(
+  INFO(
       "[event_listener/compaction_completed] column family: {}, job_id: {}, compaction reason: {}, output compression "
       "type: {}, base input level(files): {}({}), output level(files): {}({}), input bytes: {}, output bytes: {}, "
       "is_manual_compaction: {}, elapsed(micro): {}",
@@ -112,7 +112,7 @@ void EventListener::OnCompactionCompleted([[maybe_unused]] rocksdb::DB *db, cons
 }
 
 void EventListener::OnSubcompactionBegin(const rocksdb::SubcompactionJobInfo &si) {
-  info(
+  INFO(
       "[event_listener/subcompaction_begin] column family: {}, job_id: {}, compaction reason: {}, output compression "
       "type: {}",
       si.cf_name, si.job_id, rocksdb::GetCompactionReasonString(si.compaction_reason),
@@ -120,7 +120,7 @@ void EventListener::OnSubcompactionBegin(const rocksdb::SubcompactionJobInfo &si
 }
 
 void EventListener::OnSubcompactionCompleted(const rocksdb::SubcompactionJobInfo &si) {
-  info(
+  INFO(
       "[event_listener/subcompaction_completed] column family: {}, job_id: {}, compaction reason: {}, output "
       "compression type: {}, base input level(files): {}, output level(files): {}, input bytes: {}, output bytes: {}, "
       "is_manual_compaction: {}, elapsed(micro): {}",
@@ -130,14 +130,14 @@ void EventListener::OnSubcompactionCompleted(const rocksdb::SubcompactionJobInfo
 }
 
 void EventListener::OnFlushBegin([[maybe_unused]] rocksdb::DB *db, const rocksdb::FlushJobInfo &fi) {
-  info("[event_listener/flush_begin] column family: {}, thread_id: {}, job_id: {}, reason: {}", fi.cf_name,
+  INFO("[event_listener/flush_begin] column family: {}, thread_id: {}, job_id: {}, reason: {}", fi.cf_name,
        fi.thread_id, fi.job_id, rocksdb::GetFlushReasonString(fi.flush_reason));
 }
 
 void EventListener::OnFlushCompleted([[maybe_unused]] rocksdb::DB *db, const rocksdb::FlushJobInfo &fi) {
   storage_->RecordStat(engine::StatType::FlushCount, 1);
   storage_->CheckDBSizeLimit();
-  info(
+  INFO(
       "[event_listener/flush_completed] column family: {}, thread_id: {}, job_id: {}, file: {}, reason: {}, "
       "is_write_slowdown: {}, is_write_stall: {}, largest seqno: {}, smallest seqno: {}",
       fi.cf_name, fi.thread_id, fi.job_id, fi.file_path, rocksdb::GetFlushReasonString(fi.flush_reason),
@@ -160,7 +160,7 @@ void EventListener::OnBackgroundError(rocksdb::BackgroundErrorReason reason, roc
       auto s = storage_->GetDB()->GetLiveFiles(live_files, &manifest_size, false /* flush_memtable */);
       if (s.ok() && std::find(live_files.begin(), live_files.end(), corrupt_sst) == live_files.end()) {
         *bg_error = rocksdb::Status::OK();
-        warn(
+        WARN(
             "[event_listener/background_error] ignore no-fatal background error about sst file, reason: {}, bg_error: "
             "{}",
             reason_str, error_str);
@@ -174,16 +174,16 @@ void EventListener::OnBackgroundError(rocksdb::BackgroundErrorReason reason, roc
     storage_->SetDBInRetryableIOError(true);
   }
 
-  error("[event_listener/background_error] reason: {}, bg_error: {}", reason_str, error_str);
+  ERROR("[event_listener/background_error] reason: {}, bg_error: {}", reason_str, error_str);
 }
 
 void EventListener::OnStallConditionsChanged(const rocksdb::WriteStallInfo &info) {
-  warn("[event_listener/stall_cond_changed] column family: {} write stall condition was changed, from {} to {}",
+  WARN("[event_listener/stall_cond_changed] column family: {} write stall condition was changed, from {} to {}",
        info.cf_name, StallConditionType2String(info.condition.prev), StallConditionType2String(info.condition.cur));
 }
 
 void EventListener::OnTableFileCreated(const rocksdb::TableFileCreationInfo &table_info) {
-  info(
+  INFO(
       "[event_listener/table_file_created] column family: {}, file path: {}, file size: {}, job_id: {}, reason: {}, "
       "status: {}",
       table_info.cf_name, table_info.file_path, table_info.file_size, table_info.job_id,
@@ -191,12 +191,12 @@ void EventListener::OnTableFileCreated(const rocksdb::TableFileCreationInfo &tab
 }
 
 void EventListener::OnTableFileDeleted(const rocksdb::TableFileDeletionInfo &table_info) {
-  info("[event_listener/table_file_deleted] db: {}, sst file: {}, status: {}", table_info.db_name, table_info.file_path,
+  INFO("[event_listener/table_file_deleted] db: {}, sst file: {}, status: {}", table_info.db_name, table_info.file_path,
        table_info.status.ToString());
 }
 
 void EventListener::OnBlobFileCreated(const rocksdb::BlobFileCreationInfo &blob_info) {
-  info(
+  INFO(
       "[event_listener/blob_file_created] column family: {}, file path: {}, blob count: {}, blob bytes: {}, job_id: {}"
       ", reason: {}, status: {}",
       blob_info.cf_name, blob_info.file_path, blob_info.total_blob_count, blob_info.total_blob_bytes, blob_info.job_id,
@@ -204,6 +204,6 @@ void EventListener::OnBlobFileCreated(const rocksdb::BlobFileCreationInfo &blob_
 }
 
 void EventListener::OnBlobFileDeleted(const rocksdb::BlobFileDeletionInfo &blob_info) {
-  info("[event_listener/blob_file_deleted] db: {}, blob file: {}, status: {}", blob_info.db_name, blob_info.file_path,
+  INFO("[event_listener/blob_file_deleted] db: {}, blob file: {}, status: {}", blob_info.db_name, blob_info.file_path,
        blob_info.status.ToString());
 }

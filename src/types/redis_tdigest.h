@@ -81,8 +81,14 @@ class TDigest : public SubKeyScanner {
 
   rocksdb::Status Merge(engine::Context& ctx, const Slice& dest_digest, const std::vector<std::string>& source_digests,
                         const TDigestMergeOptions& options);
-  rocksdb::Status Rank(engine::Context& ctx, const Slice& digest_name, const std::vector<double>& inputs, bool reverse,
-                       std::vector<int>& result);
+  rocksdb::Status Rank(engine::Context& ctx, const Slice& digest_name, const std::vector<double>& inputs,
+                       std::vector<int>* result);
+  rocksdb::Status RevRank(engine::Context& ctx, const Slice& digest_name, const std::vector<double>& inputs,
+                          std::vector<int>* result);
+  rocksdb::Status ByRevRank(engine::Context& ctx, const Slice& digest_name, const std::vector<int>& inputs,
+                            std::vector<double>* result);
+  rocksdb::Status ByRank(engine::Context& ctx, const Slice& digest_name, const std::vector<int>& inputs,
+                         std::vector<double>* result);
   rocksdb::Status TrimmedMean(engine::Context& ctx, const Slice& digest_name, double low_cut_quantile,
                               double high_cut_quantile, TDigestTrimmedMeanResult* result);
   rocksdb::Status GetMetaData(engine::Context& context, const Slice& digest_name, TDigestMetadata* metadata);
@@ -136,6 +142,7 @@ class TDigest : public SubKeyScanner {
   static std::string internalValueFromCentroid(const Centroid& centroid);
   rocksdb::Status decodeCentroidFromKeyValue(const rocksdb::Slice& key, const rocksdb::Slice& value,
                                              Centroid* centroid) const;
+  rocksdb::Status prepareRankData(engine::Context& ctx, const Slice& digest_name, TDigestMetadata& metadata,
+                                  std::vector<Centroid>& centroids);
 };
-
 }  // namespace redis

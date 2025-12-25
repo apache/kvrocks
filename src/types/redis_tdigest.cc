@@ -47,114 +47,81 @@
 
 namespace redis {
 
+namespace {
+template <bool Reverse, typename Container>
+inline decltype(auto) GetCbeginIter(const Container& centroids) {
+  if constexpr (Reverse) {
+    return centroids.crbegin();
+  } else {
+    return centroids.cbegin();
+  }
+}
+
+template <bool Reverse, typename Container>
+inline decltype(auto) GetCendIter(const Container& centroids) {
+  if constexpr (Reverse) {
+    return centroids.crend();
+  } else {
+    return centroids.cend();
+  }
+}
+}  // namespace
+
 // TODO: It should be replaced by a iteration of the rocksdb iterator
+template <bool Reverse>
 class DummyCentroids {
  public:
-  class BaseIterator {
-   public:
-    virtual ~BaseIterator() = default;
-    virtual bool Next() = 0;
-    virtual bool Prev() = 0;
-    virtual bool Valid() const = 0;
-    virtual std::unique_ptr<BaseIterator> Clone() const = 0;
-    virtual StatusOr<Centroid> GetCentroid() const = 0;
-  };
-
   DummyCentroids(const TDigestMetadata& meta_data, const std::vector<Centroid>& centroids)
       : meta_data_(meta_data), centroids_(centroids) {}
-  class Iterator : public BaseIterator {
+  class Iterator {
    public:
-    Iterator(std::vector<Centroid>::const_iterator&& iter, const std::vector<Centroid>& centroids)
-        : iter_(iter), centroids_(centroids) {}
-    std::unique_ptr<BaseIterator> Clone() const override {
-      if (iter_ != centroids_.cend()) {
-        return std::make_unique<Iterator>(std::next(centroids_.cbegin(), std::distance(centroids_.cbegin(), iter_)),
-                                          centroids_);
+    using IterType = std::conditional_t<Reverse, std::vector<Centroid>::const_reverse_iterator,
+                                        std::vector<Centroid>::const_iterator>;
+    Iterator(IterType iter, const std::vector<Centroid>& centroids) : iter_(iter), centroids_(centroids) {}
+    std::unique_ptr<Iterator> Clone() const {
+      if (iter_ != GetCendIter<Reverse>(centroids_)) {
+        return std::make_unique<Iterator>(
+            std::next(GetCbeginIter<Reverse>(centroids_), std::distance(GetCbeginIter<Reverse>(centroids_), iter_)),
+            centroids_);
       }
-      return std::make_unique<Iterator>(centroids_.cend(), centroids_);
+      return std::make_unique<Iterator>(GetCendIter<Reverse>(centroids_), centroids_);
     }
-    bool Next() override {
+    bool Next() {
       if (Valid()) {
         std::advance(iter_, 1);
       }
-      return iter_ != centroids_.cend();
+      return iter_ != GetCendIter<Reverse>(centroids_);
     }
 
     // The Prev function can only be called for item is not cend,
     // because we must guarantee the iterator to be inside the valid range before iteration.
-    bool Prev() override {
-      if (Valid() && iter_ != centroids_.cbegin()) {
+    bool Prev() {
+      if (Valid() && iter_ != GetCendIter<Reverse>(centroids_)) {
         std::advance(iter_, -1);
       }
       return Valid();
     }
-    bool Valid() const override { return iter_ != centroids_.cend(); }
-    StatusOr<Centroid> GetCentroid() const override {
-      if (iter_ == centroids_.cend()) {
+    bool Valid() const { return iter_ != GetCendIter<Reverse>(centroids_); }
+    StatusOr<Centroid> GetCentroid() const {
+      if (iter_ == GetCendIter<Reverse>(centroids_)) {
         return {::Status::NotOK, "invalid iterator during decoding tdigest centroid"};
       }
       return *iter_;
     }
 
    private:
-    std::vector<Centroid>::const_iterator iter_;
+    IterType iter_;
     const std::vector<Centroid>& centroids_;
   };
 
-  class ReverseIterator final : public BaseIterator {
-   public:
-    ReverseIterator(std::vector<Centroid>::const_reverse_iterator&& iter, const std::vector<Centroid>& centroids)
-        : iter_(iter), centroids_(centroids) {}
-    std::unique_ptr<BaseIterator> Clone() const override {
-      if (iter_ != centroids_.crend()) {
-        return std::make_unique<ReverseIterator>(
-            std::next(centroids_.crbegin(), std::distance(centroids_.crbegin(), iter_)), centroids_);
-      }
-      return std::make_unique<ReverseIterator>(centroids_.crend(), centroids_);
-    }
-    bool Next() override {
-      if (Valid()) {
-        std::advance(iter_, 1);
-      }
-      return iter_ != centroids_.crend();
-    }
-
-    bool Prev() override {
-      if (Valid() && iter_ != centroids_.crbegin()) {
-        std::advance(iter_, -1);
-      }
-      return Valid();
-    }
-    bool Valid() const override { return iter_ != centroids_.crend(); }
-    StatusOr<Centroid> GetCentroid() const override {
-      if (iter_ == centroids_.crend()) {
-        return {::Status::NotOK, "invalid iterator during decoding tdigest centroid"};
-      }
-      return *iter_;
-    }
-
-   private:
-    std::vector<Centroid>::const_reverse_iterator iter_;
-    const std::vector<Centroid>& centroids_;
-  };
-
-  std::unique_ptr<BaseIterator> Begin(const bool reverse = false) const {
-    if (reverse) {
-      return std::make_unique<ReverseIterator>(centroids_.crbegin(), centroids_);
-    }
-    return std::make_unique<Iterator>(centroids_.cbegin(), centroids_);
+  std::unique_ptr<Iterator> Begin() const {
+    return std::make_unique<Iterator>(GetCbeginIter<Reverse>(centroids_), centroids_);
   }
-  std::unique_ptr<BaseIterator> End(const bool reverse = false) const {
+  std::unique_ptr<Iterator> End() const {
     if (centroids_.empty()) {
-      if (reverse) {
-        return std::make_unique<ReverseIterator>(centroids_.crend(), centroids_);
-      }
-      return std::make_unique<Iterator>(centroids_.cend(), centroids_);
+      return std::make_unique<Iterator>(GetCendIter<Reverse>(centroids_), centroids_);
     }
-    if (reverse) {
-      return std::make_unique<ReverseIterator>(std::prev(centroids_.crend()), centroids_);
-    }
-    return std::make_unique<Iterator>(std::prev(centroids_.cend()), centroids_);
+    return std::make_unique<Iterator>(std::prev(GetCendIter<Reverse>(centroids_)), centroids_);
   }
   double TotalWeight() const { return static_cast<double>(meta_data_.total_weight); }
   double Min() const { return meta_data_.minimum; }
@@ -273,10 +240,9 @@ rocksdb::Status TDigest::mergeNodes(engine::Context& ctx, const std::string& ns_
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status TDigest::Rank(engine::Context& ctx, const Slice& digest_name, const std::vector<double>& inputs,
-                              bool reverse, std::vector<int>& result) {
+rocksdb::Status TDigest::prepareRankData(engine::Context& ctx, const Slice& digest_name, TDigestMetadata& metadata,
+                                         std::vector<Centroid>& centroids) {
   auto ns_key = AppendNamespacePrefix(digest_name);
-  TDigestMetadata metadata;
   {
     LockGuard guard(storage_->GetLockManager(), ns_key);
 
@@ -285,7 +251,6 @@ rocksdb::Status TDigest::Rank(engine::Context& ctx, const Slice& digest_name, co
     }
 
     if (metadata.total_observations == 0) {
-      result.resize(inputs.size(), -2);
       return rocksdb::Status::OK();
     }
 
@@ -293,15 +258,84 @@ rocksdb::Status TDigest::Rank(engine::Context& ctx, const Slice& digest_name, co
       return status;
     }
   }
+  return dumpCentroids(ctx, ns_key, metadata, &centroids);
+}
 
+rocksdb::Status TDigest::Rank(engine::Context& ctx, const Slice& digest_name, const std::vector<double>& inputs,
+                              std::vector<int>* result) {
+  TDigestMetadata metadata;
   std::vector<Centroid> centroids;
-  if (auto status = dumpCentroids(ctx, ns_key, metadata, &centroids); !status.ok()) {
+  if (auto status = prepareRankData(ctx, digest_name, metadata, centroids); !status.ok()) {
     return status;
   }
 
-  auto dump_centroids = DummyCentroids(metadata, centroids);
-  auto status = TDigestRank(dump_centroids, inputs, reverse, result);
-  if (!status) {
+  if (metadata.total_observations == 0) {
+    result->resize(inputs.size(), -2);
+    return rocksdb::Status::OK();
+  }
+
+  auto dump_centroids = DummyCentroids<false>(metadata, centroids);
+  if (auto status = TDigestRank<false>(dump_centroids, inputs, result); !status) {
+    return rocksdb::Status::InvalidArgument(status.Msg());
+  }
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status TDigest::RevRank(engine::Context& ctx, const Slice& digest_name, const std::vector<double>& inputs,
+                                 std::vector<int>* result) {
+  TDigestMetadata metadata;
+  std::vector<Centroid> centroids;
+  if (auto status = prepareRankData(ctx, digest_name, metadata, centroids); !status.ok()) {
+    return status;
+  }
+
+  if (metadata.total_observations == 0) {
+    result->resize(inputs.size(), -2);
+    return rocksdb::Status::OK();
+  }
+
+  auto dump_centroids = DummyCentroids<true>(metadata, centroids);
+  if (auto status = TDigestRank<true>(dump_centroids, inputs, result); !status) {
+    return rocksdb::Status::InvalidArgument(status.Msg());
+  }
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status TDigest::ByRevRank(engine::Context& ctx, const Slice& digest_name, const std::vector<int>& inputs,
+                                   std::vector<double>* result) {
+  TDigestMetadata metadata;
+  std::vector<Centroid> centroids;
+  if (auto status = prepareRankData(ctx, digest_name, metadata, centroids); !status.ok()) {
+    return status;
+  }
+
+  if (metadata.total_observations == 0) {
+    result->resize(inputs.size(), std::numeric_limits<double>::quiet_NaN());
+    return rocksdb::Status::OK();
+  }
+
+  auto dump_centroids = DummyCentroids<true>(metadata, centroids);
+  if (auto status = TDigestByRank<true>(dump_centroids, inputs, result); !status) {
+    return rocksdb::Status::InvalidArgument(status.Msg());
+  }
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status TDigest::ByRank(engine::Context& ctx, const Slice& digest_name, const std::vector<int>& inputs,
+                                std::vector<double>* result) {
+  TDigestMetadata metadata;
+  std::vector<Centroid> centroids;
+  if (auto status = prepareRankData(ctx, digest_name, metadata, centroids); !status.ok()) {
+    return status;
+  }
+
+  if (metadata.total_observations == 0) {
+    result->resize(inputs.size(), std::numeric_limits<double>::quiet_NaN());
+    return rocksdb::Status::OK();
+  }
+
+  auto dump_centroids = DummyCentroids<false>(metadata, centroids);
+  if (auto status = TDigestByRank<false>(dump_centroids, inputs, result); !status) {
     return rocksdb::Status::InvalidArgument(status.Msg());
   }
   return rocksdb::Status::OK();
@@ -332,7 +366,7 @@ rocksdb::Status TDigest::Quantile(engine::Context& ctx, const Slice& digest_name
     return status;
   }
 
-  auto dump_centroids = DummyCentroids(metadata, centroids);
+  auto dump_centroids = DummyCentroids<false>(metadata, centroids);
 
   auto quantile_results = std::vector<double>();
   quantile_results.reserve(qs.size());
@@ -598,16 +632,16 @@ rocksdb::Status TDigest::decodeCentroidFromKeyValue(const rocksdb::Slice& key, c
   auto subkey = ikey.GetSubKey();
   auto type_flg = static_cast<uint8_t>(SegmentType::kGuardFlag);
   if (!GetFixed8(&subkey, &type_flg)) {
-    error("corrupted tdigest centroid key, extract type failed");
+    ERROR("corrupted tdigest centroid key, extract type failed");
     return rocksdb::Status::Corruption("corrupted tdigest centroid key");
   }
   if (static_cast<SegmentType>(type_flg) != SegmentType::kCentroids) {
-    error("corrupted tdigest centroid key type: {}, expect to be {}", type_flg,
+    ERROR("corrupted tdigest centroid key type: {}, expect to be {}", type_flg,
           static_cast<uint8_t>(SegmentType::kCentroids));
     return rocksdb::Status::Corruption("corrupted tdigest centroid key type");
   }
   if (!GetDouble(&subkey, &centroid->mean)) {
-    error("corrupted tdigest centroid key, extract mean failed");
+    ERROR("corrupted tdigest centroid key, extract mean failed");
     return rocksdb::Status::Corruption("corrupted tdigest centroid key");
   }
 
@@ -616,7 +650,7 @@ rocksdb::Status TDigest::decodeCentroidFromKeyValue(const rocksdb::Slice& key, c
 
   if (rocksdb::Slice value_slice = value;  // GetDouble needs a mutable pointer of slice
       !GetDouble(&value_slice, &centroid->weight)) {
-    error("corrupted tdigest centroid value, extract weight failed");
+    ERROR("corrupted tdigest centroid value, extract weight failed");
     return rocksdb::Status::Corruption("corrupted tdigest centroid value");
   }
   return rocksdb::Status::OK();
@@ -663,7 +697,7 @@ rocksdb::Status TDigest::dumpCentroidsAndBuffer(engine::Context& ctx, const std:
       for (uint64_t i = 0; i < metadata.unmerged_nodes; ++i) {
         double tmp_value = std::numeric_limits<double>::quiet_NaN();
         if (!GetDouble(&buffer_slice, &tmp_value)) {
-          error("metadata has {} records, but get {} failed", metadata.unmerged_nodes, i);
+          ERROR("metadata has {} records, but get {} failed", metadata.unmerged_nodes, i);
           return rocksdb::Status::Corruption("corrupted tdigest buffer value");
         }
         buffer->emplace_back(tmp_value);
@@ -704,7 +738,7 @@ rocksdb::Status TDigest::dumpCentroidsAndBuffer(engine::Context& ctx, const std:
   }
 
   if (centroids->size() != metadata.merged_nodes) {
-    error("metadata has {} merged nodes, but got {}", metadata.merged_nodes, centroids->size());
+    ERROR("metadata has {} merged nodes, but got {}", metadata.merged_nodes, centroids->size());
     return rocksdb::Status::Corruption("centroids count mismatch with metadata");
   }
   return rocksdb::Status::OK();

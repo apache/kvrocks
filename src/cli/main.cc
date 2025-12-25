@@ -50,7 +50,7 @@ Server *srv = nullptr;
 
 extern "C" void SignalHandler(int sig) {
   if (srv && !srv->IsStopped()) {
-    info("Signal {} ({}) received, stopping the server", strsignal(sig), sig);
+    INFO("Signal {} ({}) received, stopping the server", strsignal(sig), sig);
     srv->Stop();
   }
 }
@@ -165,7 +165,7 @@ int main(int argc, char *argv[]) {
     std::cout << "Failed to initialize logging system. Error: " << s.Msg() << std::endl;
     return 1;
   }
-  info("kvrocks {}", PrintVersion());
+  INFO("kvrocks {}", PrintVersion());
   // Tricky: We don't expect that different instances running on the same port,
   // but the server use REUSE_PORT to support the multi listeners. So we connect
   // the listen port to check if the port has already listened or not.
@@ -173,7 +173,7 @@ int main(int argc, char *argv[]) {
     uint32_t ports[] = {config.port, config.tls_port, 0};
     for (uint32_t *port = ports; *port; ++port) {
       if (util::IsPortInUse(*port)) {
-        error("Could not create the server since the specified port {} is already in use", *port);
+        ERROR("Could not create the server since the specified port {} is already in use", *port);
         return 1;
       }
     }
@@ -182,7 +182,7 @@ int main(int argc, char *argv[]) {
   if (config.daemonize && !is_supervised) Daemonize();
   s = CreatePidFile(config.pidfile);
   if (!s.IsOK()) {
-    error("Failed to create pidfile: {}", s.Msg());
+    ERROR("Failed to create pidfile: {}", s.Msg());
     return 1;
   }
   auto pidfile_exit = MakeScopeExit([&config] { RemovePidFile(config.pidfile); });
@@ -197,14 +197,14 @@ int main(int argc, char *argv[]) {
   engine::Storage storage(&config);
   s = storage.Open();
   if (!s.IsOK()) {
-    error("Failed to open the database: {}", s.Msg());
+    ERROR("Failed to open the database: {}", s.Msg());
     return 1;
   }
   Server server(&storage, &config);
   srv = &server;
   s = srv->Start();
   if (!s.IsOK()) {
-    error("Failed to start server: {}", s.Msg());
+    ERROR("Failed to start server: {}", s.Msg());
     return 1;
   }
   srv->Join();

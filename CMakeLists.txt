@@ -45,20 +45,20 @@ if (CMAKE_VERSION VERSION_GREATER_EQUAL "3.24.0")
 endif()
 
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 8)
-        message(FATAL_ERROR "It is expected to build kvrocks with GCC 8 or above")
+    if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 11)
+        message(FATAL_ERROR "It is expected to build kvrocks with GCC 11 or above")
     endif()
 elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-    if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 9)
-        message(FATAL_ERROR "It is expected to build kvrocks with Clang 9 or above")
+    if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 12)
+        message(FATAL_ERROR "It is expected to build kvrocks with Clang 12 or above")
     endif()
 elseif(CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
-    if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 11)
-        message(FATAL_ERROR "It is expected to build kvrocks with Xcode toolchains 11 or above")
+    if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 13)
+        message(FATAL_ERROR "It is expected to build kvrocks with Xcode toolchains 13 or above")
     endif()
 else()
     message(WARNING "The compiler you are currently using is not officially supported,
-        so you can try switching to GCC>=8 or Clang>=8 if you encounter problems")
+        so you can try switching to GCC>=11 or Clang>=12 if you encounter problems")
 endif()
 
 if(CMAKE_GENERATOR STREQUAL "Ninja")
@@ -69,7 +69,7 @@ else()
     set(MAKE_COMMAND $(MAKE))
 endif()
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(DEPS_FETCH_PROXY "" CACHE STRING
@@ -269,6 +269,7 @@ target_compile_features(kvrocks_objs PUBLIC cxx_std_17)
 target_compile_options(kvrocks_objs PUBLIC -Wall -Wpedantic -Wsign-compare -Wreturn-type -fno-omit-frame-pointer)
 target_compile_options(kvrocks_objs PUBLIC -Werror=unused-parameter)
 target_compile_options(kvrocks_objs PUBLIC -Werror=unused-result)
+target_compile_definitions(kvrocks_objs PUBLIC span_CONFIG_SELECT_SPAN=1)
 
 # disable unused-variable check on GCC < 8 due to the structure bindings
 # https://gcc.gnu.org/bugzilla/show_bug.cgi?format=multiple&id=81767

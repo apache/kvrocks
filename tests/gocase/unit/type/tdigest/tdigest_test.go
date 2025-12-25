@@ -716,4 +716,67 @@ func tdigestTests(t *testing.T, configs util.KvrocksServerConfigs) {
 			require.EqualValues(t, expected[i], rank, "REVRANK mismatch at index %d", i)
 		}
 	})
+
+	t.Run("tdigest.trimmed_mean with different arguments", func(t *testing.T) {
+		keyPrefix := "tdigest_trimmed_mean_"
+
+		// Test invalid arguments
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN").Err(), errMsgWrongNumberArg)
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN", keyPrefix+"key").Err(), errMsgWrongNumberArg)
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN", keyPrefix+"key", "0.1").Err(), errMsgWrongNumberArg)
+
+		// Test non-existent key
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN", keyPrefix+"nonexistent", "0.1", "0.9").Err(), errMsgKeyNotExist)
+
+		// Test with empty tdigest
+		emptyKey := keyPrefix + "empty"
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", emptyKey, "compression", "100").Err())
+		rsp := rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN", emptyKey, "0.1", "0.9")
+		require.NoError(t, rsp.Err())
+		result, err := rsp.Result()
+		require.NoError(t, err)
+		require.Equal(t, "nan", result)
+
+		// Test with sample data
+		key1 := keyPrefix + "test1"
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", key1, "compression", "100").Err())
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", key1, "1", "2", "3", "4", "5", "6", "7", "8", "9", "10").Err())
+
+		// Test trimmed mean with trimming
+		rsp = rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN", key1, "0.1", "0.9")
+		require.NoError(t, rsp.Err())
+		result, err = rsp.Result()
+		require.NoError(t, err)
+		mean, err := strconv.ParseFloat(result.(string), 64)
+		require.NoError(t, err)
+		require.InDelta(t, 5.5, mean, 1.0)
+
+		// Test with no trimming
+		rsp = rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN", key1, "0", "1")
+		require.NoError(t, rsp.Err())
+		result, err = rsp.Result()
+		require.NoError(t, err)
+		mean, err = strconv.ParseFloat(result.(string), 64)
+		require.NoError(t, err)
+		require.InDelta(t, 5.5, mean, 0.1)
+
+		// Test with invalid quantile ranges
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN", key1, "-0.1", "0.9").Err(), "low cut quantile must be between 0 and 1")
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN", key1, "0.1", "1.1").Err(), "high cut quantile must be between 0 and 1")
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN", key1, "0.9", "0.1").Err(), "low cut quantile must be less than high cut quantile")
+
+		// Test with skewed data
+		key2 := keyPrefix + "skewed"
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", key2, "compression", "100").Err())
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", key2, "1", "1", "1", "1", "1", "10", "100").Err())
+
+		// Test trimming with outliers
+		rsp = rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN", key2, "0.2", "0.8")
+		require.NoError(t, rsp.Err())
+		result, err = rsp.Result()
+		require.NoError(t, err)
+		mean, err = strconv.ParseFloat(result.(string), 64)
+		require.NoError(t, err)
+		require.Less(t, mean, 50.0)
+	})
 }

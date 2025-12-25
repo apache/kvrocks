@@ -53,6 +53,10 @@ struct TDigestQuantitleResult {
   std::optional<std::vector<double>> quantiles;
 };
 
+struct TDigestTrimmedMeanResult {
+  std::optional<double> mean;
+};
+
 class TDigest : public SubKeyScanner {
  public:
   using Slice = rocksdb::Slice;
@@ -79,6 +83,8 @@ class TDigest : public SubKeyScanner {
                         const TDigestMergeOptions& options);
   rocksdb::Status Rank(engine::Context& ctx, const Slice& digest_name, const std::vector<double>& inputs, bool reverse,
                        std::vector<int>& result);
+  rocksdb::Status TrimmedMean(engine::Context& ctx, const Slice& digest_name, double low_cut_quantile,
+                              double high_cut_quantile, TDigestTrimmedMeanResult* result);
   rocksdb::Status GetMetaData(engine::Context& context, const Slice& digest_name, TDigestMetadata* metadata);
 
  private:

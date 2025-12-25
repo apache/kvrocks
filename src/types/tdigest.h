@@ -276,3 +276,73 @@ inline Status TDigestRank(TD&& td, const std::vector<double>& inputs, bool rever
     return TDigestRankImpl<TD, false>(std::forward<TD>(td), inputs, result);
   }
 }
+
+
+template <typename TD>
+inline StatusOr<double> TDigestTrimmedMean(TD&& td, double low_cut_quantile, double high_cut_quantile) {
+  if (td.Size() == 0) {
+    return Status{Status::InvalidArgument, "empty tdigest"};
+  }
+
+  // Validate quantile parameters
+  if (low_cut_quantile < 0.0 || low_cut_quantile > 1.0) {
+    return Status{Status::InvalidArgument, "low cut quantile must be between 0 and 1"};
+  }
+  if (high_cut_quantile < 0.0 || high_cut_quantile > 1.0) {
+    return Status{Status::InvalidArgument, "high cut quantile must be between 0 and 1"};
+  }
+  if (low_cut_quantile >= high_cut_quantile) {
+    return Status{Status::InvalidArgument, "low cut quantile must be less than high cut quantile"};
+  }
+
+  // Get boundary values for trimming
+  double low_boundary;
+  double high_boundary;
+  
+  // For 0 and 1 quantiles, use exact min/max values
+  if (low_cut_quantile == 0.0) {
+    low_boundary = td.Min();
+  } else {
+    auto low_result = TDigestQuantile(std::forward<TD>(td), low_cut_quantile);
+    if (!low_result) {
+      return low_result;
+    }
+    low_boundary = *low_result;
+  }
+  
+  if (high_cut_quantile == 1.0) {
+    high_boundary = td.Max();
+  } else {
+    auto high_result = TDigestQuantile(std::forward<TD>(td), high_cut_quantile);
+    if (!high_result) {
+      return high_result;
+    }
+    high_boundary = *high_result;
+  }
+
+  // Calculate trimmed mean by iterating through centroids
+  auto iter = td.Begin();
+  double total_weight_in_range = 0;
+  double weighted_sum = 0;
+  
+  while (iter->Valid()) {
+    auto centroid = GET_OR_RET(iter->GetCentroid());
+    
+    // Check if centroid falls within the trimmed range
+    // For full range (0 to 1), include all centroids
+    if ((low_cut_quantile == 0.0 && high_cut_quantile == 1.0) ||
+        (centroid.mean >= low_boundary && centroid.mean <= high_boundary)) {
+      total_weight_in_range += centroid.weight;
+      weighted_sum += centroid.mean * centroid.weight;
+    }
+    
+    iter->Next();
+  }
+  
+  // Check if we have any data in the trimmed range
+  if (total_weight_in_range == 0) {
+    return std::numeric_limits<double>::quiet_NaN();
+  }
+  
+  return weighted_sum / total_weight_in_range;
+}

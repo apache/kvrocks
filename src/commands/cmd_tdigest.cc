@@ -412,6 +412,57 @@ class CommandTDigestMerge : public Commander {
   TDigestMergeOptions options_;
 };
 
+class CommandTDigestTrimmedMean : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() != 4) {
+      return {Status::RedisParseErr, errWrongNumOfArguments};
+    }
+    
+    key_name_ = args[1];
+    
+    auto low_cut_quantile = ParseFloat(args[2]);
+    if (!low_cut_quantile) {
+      return {Status::RedisParseErr, errValueIsNotFloat};
+    }
+    low_cut_quantile_ = *low_cut_quantile;
+    
+    auto high_cut_quantile = ParseFloat(args[3]);
+    if (!high_cut_quantile) {
+      return {Status::RedisParseErr, errValueIsNotFloat};
+    }
+    high_cut_quantile_ = *high_cut_quantile;
+    
+    return Status::OK();
+  }
+
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    TDigest tdigest(srv->storage, conn->GetNamespace());
+    TDigestTrimmedMeanResult result;
+
+    auto s = tdigest.TrimmedMean(ctx, key_name_, low_cut_quantile_, high_cut_quantile_, &result);
+    if (!s.ok()) {
+      if (s.IsNotFound()) {
+        return {Status::RedisExecErr, errKeyNotFound};
+      }
+      return {Status::RedisExecErr, s.ToString()};
+    }
+
+    if (!result.mean.has_value()) {
+      *output = redis::BulkString(kNan);
+    } else {
+      *output = redis::BulkString(util::Float2String(*result.mean));
+    }
+
+    return Status::OK();
+  }
+
+ private:
+  std::string key_name_;
+  double low_cut_quantile_;
+  double high_cut_quantile_;
+};
+
 std::vector<CommandKeyRange> GetMergeKeyRange(const std::vector<std::string> &args) {
   auto numkeys = ParseInt<int>(args[2], 10).ValueOr(0);
   return {{1, 1, 1}, {3, 2 + numkeys, 1}};
@@ -425,6 +476,7 @@ REDIS_REGISTER_COMMANDS(TDigest, MakeCmdAttr<CommandTDigestCreate>("tdigest.crea
                         MakeCmdAttr<CommandTDigestRevRank>("tdigest.revrank", -3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandTDigestRank>("tdigest.rank", -3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandTDigestQuantile>("tdigest.quantile", -3, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandTDigestTrimmedMean>("tdigest.trimmed_mean", 4, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandTDigestReset>("tdigest.reset", 2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandTDigestMerge>("tdigest.merge", -4, "write", GetMergeKeyRange));
 }  // namespace redis

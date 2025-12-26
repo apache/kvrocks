@@ -21,7 +21,9 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <fmt/format.h>
 
+#include "xxhash.h"
 #include "commander.h"
 #include "commands/command_parser.h"
 #include "error_constants.h"
@@ -721,10 +723,47 @@ class CommandLCS : public Commander {
   int64_t min_match_len_ = 0;
 };
 
+class CommandDigest : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() != 2) {
+      return {Status::RedisParseErr, errWrongNumOfArguments};
+    }
+    return Commander::Parse(args);
+  }
+
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    std::string value;
+    redis::String string_db(srv->storage, conn->GetNamespace());
+
+    auto s = string_db.Get(ctx, args_[1], &value);
+
+    if (s.IsInvalidArgument()) {
+      Config *config = srv->GetConfig();
+      uint32_t max_btos_size = static_cast<uint32_t>(config->max_bitmap_to_string_mb) * MiB;
+      redis::Bitmap bitmap_db(srv->storage, conn->GetNamespace());
+      s = bitmap_db.GetString(ctx, args_[1], max_btos_size, &value);
+    }
+    if (!s.ok() && !s.IsNotFound()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+
+    if (s.IsNotFound()) {
+      *output = conn->NilString();
+      return Status::OK();
+    }
+
+    uint64_t hash = XXH3_64bits(value.data(), value.size());
+    *output = redis::BulkString(fmt::format("{:016x}", hash));
+    return Status::OK();
+  }
+};
+
 REDIS_REGISTER_COMMANDS(
     String, MakeCmdAttr<CommandGet>("get", 2, "read-only", 1, 1, 1),
     MakeCmdAttr<CommandGetEx>("getex", -2, "write", 1, 1, 1),
     MakeCmdAttr<CommandStrlen>("strlen", 2, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandDigest>("digest", 2, "read-only", 1, 1, 1),
     MakeCmdAttr<CommandGetSet>("getset", 3, "write", 1, 1, 1),
     MakeCmdAttr<CommandGetRange>("getrange", 4, "read-only", 1, 1, 1),
     MakeCmdAttr<CommandSubStr>("substr", 4, "read-only", 1, 1, 1),

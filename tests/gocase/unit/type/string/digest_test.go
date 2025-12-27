@@ -40,15 +40,7 @@ func TestDigest(t *testing.T) {
 		
 		// DIGEST should return hex hash
 		digest := rdb.Do(ctx, "DIGEST", "key1").String()
-		require.NotEmpty(t, digest)
-		
-		// Result should be a string with 16 hex characters
-		require.Len(t, digest, 16)
-		
-		// Verify it contains only valid hex characters
-		for _, c := range digest {
-			require.True(t, (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'))
-		}
+		require.Equal(t, "b6acb9d84a38ff74", digest)
 	})
 
 	t.Run("DIGEST with non-existent key", func(t *testing.T) {

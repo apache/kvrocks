@@ -38,13 +38,11 @@ func TestDigest(t *testing.T) {
 	t.Run("DIGEST with existing string key", func(t *testing.T) {
 		require.NoError(t, rdb.Set(ctx, "key1", "Hello world", 0).Err())
 		
-		// DIGEST should return hex hash
 		digest := rdb.Do(ctx, "DIGEST", "key1").String()
 		require.Equal(t, "b6acb9d84a38ff74", digest)
 	})
 
 	t.Run("DIGEST with non-existent key", func(t *testing.T) {
-		// DIGEST should return nil for non-existent key
 		digest := rdb.Do(ctx, "DIGEST", "nonexistent").Val()
 		require.Nil(t, digest)
 	})
@@ -74,8 +72,6 @@ func TestDigest(t *testing.T) {
 		
 		digest := rdb.Do(ctx, "DIGEST", "empty").String()
 		require.NotEmpty(t, digest)
-		
-		// Should still return a valid hex string
 		require.Len(t, digest, 16)
 	})
 
@@ -90,7 +86,6 @@ func TestDigest(t *testing.T) {
 	})
 
 	t.Run("DIGEST with large string", func(t *testing.T) {
-		// Create a large string
 		largeString := make([]byte, 10240)
 		for i := range largeString {
 			largeString[i] = byte(i % 256)
@@ -105,22 +100,18 @@ func TestDigest(t *testing.T) {
 	})
 
 	t.Run("DIGEST wrong number of arguments", func(t *testing.T) {
-		// Too few arguments
 		err := rdb.Do(ctx, "DIGEST").Err()
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "wrong number of arguments")
 
-		// Too many arguments  
 		err = rdb.Do(ctx, "DIGEST", "key1", "extra").Err()
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "wrong number of arguments")
 	})
 
 	t.Run("DIGEST with wrong key type should fail", func(t *testing.T) {
-		// Set up a non-string key
 		require.NoError(t, rdb.LPush(ctx, "list_key", "value").Err())
 		
-		// DIGEST should fail on non-string keys
 		err := rdb.Do(ctx, "DIGEST", "list_key").Err()
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "WRONGTYPE")
@@ -134,7 +125,6 @@ func TestDigestCompatibility(t *testing.T) {
 	rdb := srv.NewClient()
 	defer func() { require.NoError(t, rdb.Close()) }()
 
-	// Test compatibility with Redis command syntax
 	testCases := []struct {
 		name     string
 		value    string

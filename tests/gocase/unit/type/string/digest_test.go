@@ -20,16 +20,14 @@ func TestDigest(t *testing.T) {
 		require.NoError(t, rdb.Set(ctx, "key1", "Hello world", 0).Err())
 		
 		// DIGEST should return hex hash
-		digest := rdb.Do(ctx, "DIGEST", "key1").Val()
-		require.NotNil(t, digest)
+		digest := rdb.Do(ctx, "DIGEST", "key1").String()
+		require.NotEmpty(t, digest)
 		
 		// Result should be a string with 16 hex characters
-		digestStr, ok := digest.(string)
-		require.True(t, ok)
-		require.Len(t, digestStr, 16)
+		require.Len(t, digest, 16)
 		
 		// Verify it contains only valid hex characters
-		for _, c := range digestStr {
+		for _, c := range digest {
 			require.True(t, (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'))
 		}
 	})
@@ -44,8 +42,8 @@ func TestDigest(t *testing.T) {
 		require.NoError(t, rdb.Set(ctx, "key1", "Hello", 0).Err())
 		require.NoError(t, rdb.Set(ctx, "key2", "World", 0).Err())
 		
-		digest1 := rdb.Do(ctx, "DIGEST", "key1").Val().(string)
-		digest2 := rdb.Do(ctx, "DIGEST", "key2").Val().(string)
+		digest1 := rdb.Do(ctx, "DIGEST", "key1").String()
+		digest2 := rdb.Do(ctx, "DIGEST", "key2").String()
 		
 		require.NotEqual(t, digest1, digest2)
 	})
@@ -54,8 +52,8 @@ func TestDigest(t *testing.T) {
 		require.NoError(t, rdb.Set(ctx, "key1", "consistent", 0).Err())
 		require.NoError(t, rdb.Set(ctx, "key2", "consistent", 0).Err())
 		
-		digest1 := rdb.Do(ctx, "DIGEST", "key1").Val().(string)
-		digest2 := rdb.Do(ctx, "DIGEST", "key2").Val().(string)
+		digest1 := rdb.Do(ctx, "DIGEST", "key1").String()
+		digest2 := rdb.Do(ctx, "DIGEST", "key2").String()
 		
 		require.Equal(t, digest1, digest2)
 	})
@@ -63,23 +61,21 @@ func TestDigest(t *testing.T) {
 	t.Run("DIGEST with empty string", func(t *testing.T) {
 		require.NoError(t, rdb.Set(ctx, "empty", "", 0).Err())
 		
-		digest := rdb.Do(ctx, "DIGEST", "empty").Val()
-		require.NotNil(t, digest)
+		digest := rdb.Do(ctx, "DIGEST", "empty").String()
+		require.NotEmpty(t, digest)
 		
 		// Should still return a valid hex string
-		digestStr := digest.(string)
-		require.Len(t, digestStr, 16)
+		require.Len(t, digest, 16)
 	})
 
 	t.Run("DIGEST with binary data", func(t *testing.T) {
 		binaryData := "\x00\x01\x02\xff\xfe\xfd"
 		require.NoError(t, rdb.Set(ctx, "binary", binaryData, 0).Err())
 		
-		digest := rdb.Do(ctx, "DIGEST", "binary").Val()
-		require.NotNil(t, digest)
+		digest := rdb.Do(ctx, "DIGEST", "binary").String()
+		require.NotEmpty(t, digest)
 		
-		digestStr := digest.(string)
-		require.Len(t, digestStr, 16)
+		require.Len(t, digest, 16)
 	})
 
 	t.Run("DIGEST with large string", func(t *testing.T) {
@@ -91,11 +87,10 @@ func TestDigest(t *testing.T) {
 		
 		require.NoError(t, rdb.Set(ctx, "large", string(largeString), 0).Err())
 		
-		digest := rdb.Do(ctx, "DIGEST", "large").Val()
-		require.NotNil(t, digest)
+		digest := rdb.Do(ctx, "DIGEST", "large").String()
+		require.NotEmpty(t, digest)
 		
-		digestStr := digest.(string)
-		require.Len(t, digestStr, 16)
+		require.Len(t, digest, 16)
 	})
 
 	t.Run("DIGEST wrong number of arguments", func(t *testing.T) {
@@ -144,14 +139,13 @@ func TestDigestCompatibility(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			require.NoError(t, rdb.Set(ctx, "test_key", tc.value, 0).Err())
 			
-			digest := rdb.Do(ctx, "DIGEST", "test_key").Val()
-			require.NotNil(t, digest)
+			digest := rdb.Do(ctx, "DIGEST", "test_key").String()
+			require.NotEmpty(t, digest)
 			
-			digestStr := digest.(string)
-			require.Len(t, digestStr, 16)
+			require.Len(t, digest, 16)
 			
 			if tc.expected != "" {
-				require.Equal(t, tc.expected, digestStr)
+				require.Equal(t, tc.expected, digest)
 			}
 		})
 	}

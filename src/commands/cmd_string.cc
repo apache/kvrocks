@@ -725,7 +725,6 @@ class CommandLCS : public Commander {
 
 class CommandDigest : public Commander {
  public:
-
   Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
     std::string value;
     redis::String string_db(srv->storage, conn->GetNamespace());

@@ -725,12 +725,6 @@ class CommandLCS : public Commander {
 
 class CommandDigest : public Commander {
  public:
-  Status Parse(const std::vector<std::string> &args) override {
-    if (args.size() != 2) {
-      return {Status::RedisParseErr, errWrongNumOfArguments};
-    }
-    return Commander::Parse(args);
-  }
 
   Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
     std::string value;

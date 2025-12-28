@@ -670,7 +670,7 @@ rocksdb::Status String::Digest(engine::Context &ctx, const std::string &user_key
   if (!s.ok()) {
     return s;
   }
-  
+
   *digest = ComputeXXH3Hash(value);
   return rocksdb::Status::OK();
 }

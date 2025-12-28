@@ -18,11 +18,11 @@
  *
  */
 
+#include "commander.h"
 #include <cstdint>
 #include <optional>
 #include <string>
 #include <fmt/format.h>
-#include "commander.h"
 #include "commands/command_parser.h"
 #include "error_constants.h"
 #include "server/redis_reply.h"

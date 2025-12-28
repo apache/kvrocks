@@ -24,6 +24,7 @@
 #include <string>
 #include <fmt/format.h>
 #include "commands/command_parser.h"
+#include "common/string_util.h"
 #include "error_constants.h"
 #include "server/redis_reply.h"
 #include "server/redis_request.h"
@@ -734,7 +735,7 @@ class CommandDigest : public Commander {
       std::string value;
       s = bitmap_db.GetString(ctx, args_[1], max_btos_size, &value);
       if (s.ok()) {
-        digest = redis::String::ComputeXXH3Hash(value);
+        digest = util::ComputeXXH3Hash(value);
       }
     }
     if (!s.ok() && !s.IsNotFound()) {

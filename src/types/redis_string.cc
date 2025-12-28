@@ -27,7 +27,7 @@
 #include <string>
 #include <fmt/format.h>
 
-#include "xxh3.h"
+#include "common/string_util.h"
 #include "parse_util.h"
 #include "storage/redis_metadata.h"
 #include "time_util.h"
@@ -659,10 +659,6 @@ rocksdb::Status String::LCS(engine::Context &ctx, const std::string &user_key1, 
   return rocksdb::Status::OK();
 }
 
-std::string String::ComputeXXH3Hash(const std::string &data) {
-  uint64_t hash = XXH3_64bits(data.data(), data.size());
-  return fmt::format("{:016x}", hash);
-}
 
 rocksdb::Status String::Digest(engine::Context &ctx, const std::string &user_key, std::string *digest) {
   std::string value;
@@ -671,7 +667,7 @@ rocksdb::Status String::Digest(engine::Context &ctx, const std::string &user_key
     return s;
   }
 
-  *digest = ComputeXXH3Hash(value);
+  *digest = util::ComputeXXH3Hash(value);
   return rocksdb::Status::OK();
 }
 

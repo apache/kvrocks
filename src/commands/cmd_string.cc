@@ -22,8 +22,6 @@
 #include <optional>
 #include <string>
 #include <fmt/format.h>
-
-#include "xxhash.h"
 #include "commander.h"
 #include "commands/command_parser.h"
 #include "error_constants.h"
@@ -726,28 +724,27 @@ class CommandLCS : public Commander {
 class CommandDigest : public Commander {
  public:
   Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
-    std::string value;
     redis::String string_db(srv->storage, conn->GetNamespace());
-
-    auto s = string_db.Get(ctx, args_[1], &value);
-
+    std::string digest;
+    auto s = string_db.Digest(ctx, args_[1], &digest);
     if (s.IsInvalidArgument()) {
       Config *config = srv->GetConfig();
       uint32_t max_btos_size = static_cast<uint32_t>(config->max_bitmap_to_string_mb) * MiB;
       redis::Bitmap bitmap_db(srv->storage, conn->GetNamespace());
+      std::string value;
       s = bitmap_db.GetString(ctx, args_[1], max_btos_size, &value);
+      if (s.ok()) {
+        digest = redis::String::ComputeXXH3Hash(value);
+      }
     }
     if (!s.ok() && !s.IsNotFound()) {
       return {Status::RedisExecErr, s.ToString()};
     }
-
     if (s.IsNotFound()) {
       *output = conn->NilString();
       return Status::OK();
     }
-
-    uint64_t hash = XXH3_64bits(value.data(), value.size());
-    *output = redis::BulkString(fmt::format("{:016x}", hash));
+    *output = redis::BulkString(digest);
     return Status::OK();
   }
 };

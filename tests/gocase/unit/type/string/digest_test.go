@@ -21,6 +21,7 @@ package string
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -128,10 +129,10 @@ func TestDigestCompatibility(t *testing.T) {
 		value    string
 		expected string
 	}{
-		{"simple string", "hello", ""},
-		{"number as string", "123", ""},
-		{"special chars", "!@#$%^&*()", ""},
-		{"unicode", "こんにちは", ""},
+		{"simple string", "hello", "9555e8555c62dcfd"},
+		{"number as string", "123", "404a763b3f4c8c9a"},
+		{"special chars", "!@#$%^&*()", "078a90faff0bf161"},
+		{"unicode", "こんにちは", "37267692105b8cbf"},
 	}
 
 	for _, tc := range testCases {
@@ -139,12 +140,7 @@ func TestDigestCompatibility(t *testing.T) {
 			require.NoError(t, rdb.Set(ctx, "test_key", tc.value, 0).Err())
 			
 			digest := rdb.Do(ctx, "DIGEST", "test_key").Val().(string)
-			require.NotEmpty(t, digest)
-			require.Len(t, digest, 16)
-			
-			if tc.expected != "" {
-				require.Equal(t, tc.expected, digest)
-			}
+			require.Equal(t, tc.expected, digest)
 		})
 	}
 }

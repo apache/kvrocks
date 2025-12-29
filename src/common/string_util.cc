@@ -558,7 +558,7 @@ std::string StringNext(std::string s) {
 }
 
 std::string StringDigest(std::string_view data) {
-  uint64_t hash = XXH3_64bits(data.data(), data.size());
+  XXH64_hash_t hash = XXH3_64bits(data.data(), data.size());
   return fmt::format("{:016x}", hash);
 }
 

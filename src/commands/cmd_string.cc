@@ -18,13 +18,12 @@
  *
  */
 
-#include "commander.h"
 #include <cstdint>
 #include <optional>
 #include <string>
-#include <fmt/format.h>
+
+#include "commander.h"
 #include "commands/command_parser.h"
-#include "common/string_util.h"
 #include "error_constants.h"
 #include "server/redis_reply.h"
 #include "server/redis_request.h"
@@ -728,16 +727,6 @@ class CommandDigest : public Commander {
     redis::String string_db(srv->storage, conn->GetNamespace());
     std::string digest;
     auto s = string_db.Digest(ctx, args_[1], &digest);
-    if (s.IsInvalidArgument()) {
-      Config *config = srv->GetConfig();
-      uint32_t max_btos_size = static_cast<uint32_t>(config->max_bitmap_to_string_mb) * MiB;
-      redis::Bitmap bitmap_db(srv->storage, conn->GetNamespace());
-      std::string value;
-      s = bitmap_db.GetString(ctx, args_[1], max_btos_size, &value);
-      if (s.ok()) {
-        digest = util::ComputeXXH3Hash(value);
-      }
-    }
     if (!s.ok() && !s.IsNotFound()) {
       return {Status::RedisExecErr, s.ToString()};
     }

@@ -658,7 +658,6 @@ rocksdb::Status String::LCS(engine::Context &ctx, const std::string &user_key1, 
   return rocksdb::Status::OK();
 }
 
-
 rocksdb::Status String::Digest(engine::Context &ctx, const std::string &user_key, std::string *digest) {
   std::string value;
   auto s = Get(ctx, user_key, &value);

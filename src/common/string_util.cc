@@ -557,7 +557,7 @@ std::string StringNext(std::string s) {
   return s;
 }
 
-std::string ComputeXXH3Hash(const std::string &data) {
+std::string StringDigest(std::string_view data) {
   uint64_t hash = XXH3_64bits(data.data(), data.size());
   return fmt::format("{:016x}", hash);
 }

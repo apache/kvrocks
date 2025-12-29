@@ -25,7 +25,6 @@
 #include <cstdint>
 #include <optional>
 #include <string>
-#include <fmt/format.h>
 
 #include "common/string_util.h"
 #include "parse_util.h"

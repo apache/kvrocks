@@ -28,8 +28,8 @@
 
 #include "parse_util.h"
 #include "storage/redis_metadata.h"
-#include "time_util.h"
 #include "string_util.h"
+#include "time_util.h"
 
 namespace redis {
 
@@ -195,7 +195,7 @@ rocksdb::Status String::DelEX(engine::Context &ctx, const std::string &user_key,
   }
   switch (opt_.value()) {
     case '1':
-      if (hash_or_val_.value() == "12345") { // StringDigest(value)
+      if (hash_or_val_.value() == "12345") {  // StringDigest(value)
         res_ = true;
       }
       break;

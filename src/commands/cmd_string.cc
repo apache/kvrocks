@@ -118,17 +118,17 @@ class CommandDelEX : public Commander {
     CommandParser parser(args, 2);
     while (parser.Good()) {
       if (parser.EatEqICase("ifdeq")) {
-        opt_ = '1';
-        hash_or_val_ = GET_OR_RET(parser.TakeStr());
+        option = DelExOption::IFDEQ;
+        hash_or_value = GET_OR_RET(parser.TakeStr());
       } else if (parser.EatEqICase("ifdne")) {
-        opt_ = '2';
-        hash_or_val_ = GET_OR_RET(parser.TakeStr());
+        option = DelExOption::IFDNE;
+        hash_or_value = GET_OR_RET(parser.TakeStr());
       } else if (parser.EatEqICase("ifeq")) {
-        opt_ = '3';
-        hash_or_val_ = GET_OR_RET(parser.TakeStr());
+        option = DelExOption::IFEQ;
+        hash_or_value = GET_OR_RET(parser.TakeStr());
       } else if (parser.EatEqICase("ifne")) {
-        opt_ = '4';
-        hash_or_val_ = GET_OR_RET(parser.TakeStr());
+        option = DelExOption::IFNE;
+        hash_or_value = GET_OR_RET(parser.TakeStr());
       } else {
         return {Status::RedisParseErr, errInvalidSyntax};
       }
@@ -138,13 +138,13 @@ class CommandDelEX : public Commander {
 
   Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
     redis::String string_db(srv->storage, conn->GetNamespace());
-    auto s = string_db.DelEX(ctx, args_[1], opt_, hash_or_val_, res_);
+    auto s = string_db.DelEX(ctx, args_[1], option, hash_or_value, deleted);
 
     if (!s.ok() && !s.IsNotFound()) {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    if (s.IsNotFound() || (opt_ && !res_)) {
+    if (s.IsNotFound() || (option == DelExOption::NONE && !deleted)) {
       *output = redis::Integer(0);
     } else {
       *output = redis::Integer(1);
@@ -153,9 +153,9 @@ class CommandDelEX : public Commander {
   }
 
  private:
-  std::optional<std::string> hash_or_val_ = std::nullopt;
-  std::optional<char> opt_ = std::nullopt;
-  std::optional<bool> res_ = false;
+  std::optional<std::string> hash_or_value = std::nullopt;
+  DelExOption option = DelExOption::NONE;
+  bool deleted = false;
 };
 
 class CommandStrlen : public Commander {

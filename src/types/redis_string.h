@@ -34,6 +34,8 @@ struct StringPair {
   Slice value;
 };
 
+enum class DelExOption { NONE, IFDEQ, IFDNE, IFEQ, IFNE };
+
 enum class StringSetType { NONE, NX, XX };
 
 struct StringSetArgs {
@@ -82,8 +84,8 @@ class String : public Database {
   rocksdb::Status Get(engine::Context &ctx, const std::string &user_key, std::string *value);
   rocksdb::Status GetEx(engine::Context &ctx, const std::string &user_key, std::string *value,
                         std::optional<uint64_t> expire);
-  rocksdb::Status DelEX(engine::Context &ctx, const std::string &user_key, std::optional<char> &opt_,
-                        std::optional<std::string> &hash_or_val_, std::optional<bool> &res_);
+  rocksdb::Status DelEX(engine::Context &ctx, const std::string &user_key, DelExOption &option,
+                        std::optional<std::string> &hash_or_value, bool &deleted);
   rocksdb::Status GetSet(engine::Context &ctx, const std::string &user_key, const std::string &new_value,
                          std::optional<std::string> &old_value);
   rocksdb::Status GetDel(engine::Context &ctx, const std::string &user_key, std::string *value);

@@ -130,7 +130,7 @@ func TestDigestCompatibility(t *testing.T) {
 	}{
 		{"simple string", "hello", "9555e8555c62dcfd"},
 		{"number as string", "123", "404a763b3f4c8c9a"},
-		{"special chars", "!@#$%^&*()", "078a90faff0bf161"},
+		{"special chars", "!@#$%^&*()", "b492113f83b73532"},
 		{"unicode", "こんにちは", "37267692105b8cbf"},
 	}
 

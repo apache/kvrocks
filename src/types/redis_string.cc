@@ -29,6 +29,7 @@
 #include "parse_util.h"
 #include "storage/redis_metadata.h"
 #include "time_util.h"
+#include "string_util.h"
 
 namespace redis {
 
@@ -178,6 +179,48 @@ rocksdb::Status String::GetEx(engine::Context &ctx, const std::string &user_key,
   if (!s.ok()) return s;
   s = storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
   if (!s.ok()) return s;
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status String::DelEX(engine::Context &ctx, const std::string &user_key, std::optional<char> &opt_,
+                              std::optional<std::string> &hash_or_val_, std::optional<bool> &res_) {
+  std::string ns_key = AppendNamespacePrefix(user_key);
+  std::string value;
+  rocksdb::Status s = getValue(ctx, ns_key, &value);
+  if (!s.ok() || s.IsNotFound()) {
+    return s;
+  }
+  if (!opt_.has_value() && !hash_or_val_.has_value()) {
+    return storage_->Delete(ctx, storage_->DefaultWriteOptions(), metadata_cf_handle_, ns_key);
+  }
+  switch (opt_.value()) {
+    case '1':
+      if (hash_or_val_.value() == "12345") { // StringDigest(value)
+        res_ = true;
+      }
+      break;
+    case '2':
+      if (hash_or_val_.value() != "12345") {  // StringDigest(value)
+        res_ = true;
+      }
+      break;
+    case '3':
+      if (hash_or_val_.value() == value) {
+        res_ = true;
+      }
+      break;
+    case '4':
+      if (hash_or_val_.value() != value) {
+        res_ = true;
+      }
+      break;
+    default:
+      return rocksdb::Status::InvalidArgument();
+      break;
+  }
+  if (res_.value()) {
+    return storage_->Delete(ctx, storage_->DefaultWriteOptions(), metadata_cf_handle_, ns_key);
+  }
   return rocksdb::Status::OK();
 }
 

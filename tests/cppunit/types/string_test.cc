@@ -24,6 +24,7 @@
 
 #include "test_base.h"
 #include "time_util.h"
+#include "string_util.h"
 #include "types/redis_string.h"
 
 class RedisStringTest : public TestBase {
@@ -156,6 +157,166 @@ TEST_F(RedisStringTest, GetSet) {
   }
   auto s = string_->Del(*ctx_, key_);
 }
+
+TEST_F(RedisStringTest, DelEX) {
+  std::optional<std::string> hash_or_val_ = std::nullopt;
+  std::optional<char> opt_ = std::nullopt;
+  std::optional<bool> res_ = 0;
+
+  std::string key = "test-string-key10";
+  std::string value = "test-strings-value10";
+  auto status = string_->Set(*ctx_, key, value);
+  ASSERT_TRUE(status.ok());
+  status = string_->Get(*ctx_, key, &value);
+  ASSERT_TRUE(status.ok() && !status.IsNotFound());
+  EXPECT_EQ("test-strings-value10", value);
+
+  // Check no args delete works
+  auto s = string_->DelEX(*ctx_, key, opt_, hash_or_val_, res_);
+  EXPECT_TRUE(s.ok());
+  EXPECT_FALSE(s.IsNotFound());
+  EXPECT_FALSE(res_.value());
+  EXPECT_FALSE(opt_.has_value());
+  status = string_->Get(*ctx_, key, &value);
+  EXPECT_TRUE(!status.ok() && status.IsNotFound());
+  EXPECT_NE("test-strings-value10", value);
+
+  // Check no args delete on same key
+  s = string_->DelEX(*ctx_, key, opt_, hash_or_val_, res_);
+  EXPECT_FALSE(s.ok());
+  EXPECT_TRUE(s.IsNotFound());
+
+  // Check no args delete on invalid/notfound key
+  key = "random";
+  s = string_->DelEX(*ctx_, key, opt_, hash_or_val_, res_);
+  EXPECT_FALSE(s.ok());
+  EXPECT_TRUE(s.IsNotFound());
+  status = string_->Get(*ctx_, key, &value);
+  EXPECT_TRUE(!status.ok() && status.IsNotFound());
+
+  // Correct value but incorrect opt_
+  key = "test-string-key10";
+  value = "test-strings-value10";
+  status = string_->Set(*ctx_, key, value);
+  EXPECT_TRUE(status.ok());
+  opt_ = '0';
+  hash_or_val_ = "test-strings-value10";
+  s = string_->DelEX(*ctx_, key, opt_, hash_or_val_, res_);
+  EXPECT_TRUE(s.IsInvalidArgument());
+  status = string_->Get(*ctx_, key, &value);
+  EXPECT_TRUE(status.ok() && !status.IsNotFound());
+  EXPECT_EQ("test-strings-value10", value);
+
+  // Checking true false cases for all args
+  key = "test-string-key10";
+  value = "test-strings-value10";
+  status = string_->Set(*ctx_, key, value);
+  EXPECT_TRUE(status.ok());
+  opt_ = '1';
+  hash_or_val_ = "xxxxxxxxxxxxxxxx";
+  res_ = 0;
+  s = string_->DelEX(*ctx_, key, opt_, hash_or_val_, res_);
+  EXPECT_TRUE(s.ok());
+  EXPECT_FALSE(s.IsNotFound());
+  EXPECT_FALSE(res_.value());
+  status = string_->Get(*ctx_, key, &value);
+  EXPECT_TRUE(status.ok() && !status.IsNotFound());
+  EXPECT_EQ("test-strings-value10", value);
+
+  opt_ = '1';
+  hash_or_val_ = "12345";//StringDigest(value);
+  res_ = 0;
+  s = string_->DelEX(*ctx_, key, opt_, hash_or_val_, res_);
+  EXPECT_TRUE(s.ok());
+  EXPECT_FALSE(s.IsNotFound());
+  EXPECT_TRUE(res_.value());
+  status = string_->Get(*ctx_, key, &value);
+  EXPECT_TRUE(!status.ok());
+  EXPECT_TRUE(status.IsNotFound());
+  EXPECT_NE("test-strings-value10", value);
+
+  key = "test-string-key10";
+  value = "test-strings-value10";
+  status = string_->Set(*ctx_, key, value);
+  EXPECT_TRUE(status.ok());
+  opt_ = '2';
+  hash_or_val_ = "12345";  // StringDigest(value);
+  res_ = 0;
+  s = string_->DelEX(*ctx_, key, opt_, hash_or_val_, res_);
+  EXPECT_TRUE(s.ok());
+  EXPECT_FALSE(s.IsNotFound());
+  EXPECT_FALSE(res_.value());
+  status = string_->Get(*ctx_, key, &value);
+  EXPECT_TRUE(status.ok() && !status.IsNotFound());
+  EXPECT_EQ("test-strings-value10", value);
+
+  opt_ = '2';
+  hash_or_val_ = "xxxxxxxxxxxxxxxx";
+  res_ = 0;
+  s = string_->DelEX(*ctx_, key, opt_, hash_or_val_, res_);
+  EXPECT_TRUE(s.ok());
+  EXPECT_FALSE(s.IsNotFound());
+  EXPECT_TRUE(res_.value());
+  status = string_->Get(*ctx_, key, &value);
+  EXPECT_TRUE(!status.ok());
+  EXPECT_TRUE(status.IsNotFound());
+  EXPECT_NE("test-strings-value10", value);
+
+  key = "test-string-key10";
+  value = "test-strings-value10";
+  status = string_->Set(*ctx_, key, value);
+  EXPECT_TRUE(status.ok());
+  opt_ = '3';
+  hash_or_val_ = "random";
+  res_ = 0;
+  s = string_->DelEX(*ctx_, key, opt_, hash_or_val_, res_);
+  EXPECT_TRUE(s.ok());
+  EXPECT_FALSE(s.IsNotFound());
+  EXPECT_FALSE(res_.value());
+  status = string_->Get(*ctx_, key, &value);
+  EXPECT_TRUE(status.ok() && !status.IsNotFound());
+  EXPECT_EQ("test-strings-value10", value);
+
+  opt_ = '3';
+  hash_or_val_ = "test-strings-value10";
+  res_ = 0;
+  s = string_->DelEX(*ctx_, key, opt_, hash_or_val_, res_);
+  EXPECT_TRUE(s.ok());
+  EXPECT_FALSE(s.IsNotFound());
+  EXPECT_TRUE(res_.value());
+  status = string_->Get(*ctx_, key, &value);
+  EXPECT_TRUE(!status.ok());
+  EXPECT_TRUE(status.IsNotFound());
+  EXPECT_NE("test-strings-value10", value);
+
+  key = "test-string-key10";
+  value = "test-strings-value10";
+  status = string_->Set(*ctx_, key, value);
+  EXPECT_TRUE(status.ok());
+  opt_ = '4';
+  hash_or_val_ = "test-strings-value10";
+  res_ = 0;
+  s = string_->DelEX(*ctx_, key, opt_, hash_or_val_, res_);
+  EXPECT_TRUE(s.ok());
+  EXPECT_FALSE(s.IsNotFound());
+  EXPECT_FALSE(res_.value());
+  status = string_->Get(*ctx_, key, &value);
+  EXPECT_TRUE(status.ok() && !status.IsNotFound());
+  EXPECT_EQ("test-strings-value10", value);
+
+  opt_ = '4';
+  hash_or_val_ = "random";
+  res_ = 0;
+  s = string_->DelEX(*ctx_, key, opt_, hash_or_val_, res_);
+  EXPECT_TRUE(s.ok());
+  EXPECT_FALSE(s.IsNotFound());
+  EXPECT_TRUE(res_.value());
+  status = string_->Get(*ctx_, key, &value);
+  EXPECT_TRUE(!status.ok());
+  EXPECT_TRUE(status.IsNotFound());
+  EXPECT_NE("test-strings-value10", value);
+}                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               
+
 TEST_F(RedisStringTest, GetDel) {
   for (auto &pair : pairs_) {
     string_->Set(*ctx_, pair.key.ToString(), pair.value.ToString());

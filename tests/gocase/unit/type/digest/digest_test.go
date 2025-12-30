@@ -17,7 +17,7 @@
  * under the License.
  */
 
-package string
+package digest
 
 import (
 	"context"
@@ -37,7 +37,7 @@ func TestDigest(t *testing.T) {
 
 	t.Run("DIGEST with existing string key", func(t *testing.T) {
 		require.NoError(t, rdb.Set(ctx, "key1", "Hello world", 0).Err())
-		
+
 		digest := rdb.Do(ctx, "DIGEST", "key1").Val().(string)
 		require.Equal(t, "b6acb9d84a38ff74", digest)
 	})
@@ -50,26 +50,26 @@ func TestDigest(t *testing.T) {
 	t.Run("DIGEST with different string values produces different hashes", func(t *testing.T) {
 		require.NoError(t, rdb.Set(ctx, "key1", "Hello", 0).Err())
 		require.NoError(t, rdb.Set(ctx, "key2", "World", 0).Err())
-		
+
 		digest1 := rdb.Do(ctx, "DIGEST", "key1").Val().(string)
 		digest2 := rdb.Do(ctx, "DIGEST", "key2").Val().(string)
-		
+
 		require.NotEqual(t, digest1, digest2)
 	})
 
 	t.Run("DIGEST with same string value produces same hash", func(t *testing.T) {
 		require.NoError(t, rdb.Set(ctx, "key1", "consistent", 0).Err())
 		require.NoError(t, rdb.Set(ctx, "key2", "consistent", 0).Err())
-		
+
 		digest1 := rdb.Do(ctx, "DIGEST", "key1").Val().(string)
 		digest2 := rdb.Do(ctx, "DIGEST", "key2").Val().(string)
-		
+
 		require.Equal(t, digest1, digest2)
 	})
 
 	t.Run("DIGEST with empty string", func(t *testing.T) {
 		require.NoError(t, rdb.Set(ctx, "empty", "", 0).Err())
-		
+
 		digest := rdb.Do(ctx, "DIGEST", "empty").Val().(string)
 		require.NotEmpty(t, digest)
 		require.Len(t, digest, 16)
@@ -78,7 +78,7 @@ func TestDigest(t *testing.T) {
 	t.Run("DIGEST with binary data", func(t *testing.T) {
 		binaryData := "\x00\x01\x02\xff\xfe\xfd"
 		require.NoError(t, rdb.Set(ctx, "binary", binaryData, 0).Err())
-		
+
 		digest := rdb.Do(ctx, "DIGEST", "binary").Val().(string)
 		require.NotEmpty(t, digest)
 		require.Len(t, digest, 16)
@@ -89,9 +89,9 @@ func TestDigest(t *testing.T) {
 		for i := range largeString {
 			largeString[i] = byte(i % 256)
 		}
-		
+
 		require.NoError(t, rdb.Set(ctx, "large", string(largeString), 0).Err())
-		
+
 		digest := rdb.Do(ctx, "DIGEST", "large").Val().(string)
 		require.NotEmpty(t, digest)
 		require.Len(t, digest, 16)
@@ -109,7 +109,7 @@ func TestDigest(t *testing.T) {
 
 	t.Run("DIGEST with wrong key type should fail", func(t *testing.T) {
 		require.NoError(t, rdb.LPush(ctx, "list_key", "value").Err())
-		
+
 		err := rdb.Do(ctx, "DIGEST", "list_key").Err()
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "WRONGTYPE")
@@ -137,10 +137,9 @@ func TestDigestCompatibility(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			require.NoError(t, rdb.Set(ctx, "test_key", tc.value, 0).Err())
-			
+
 			digest := rdb.Do(ctx, "DIGEST", "test_key").Val().(string)
 			require.Equal(t, tc.expected, digest)
 		})
 	}
 }
-

@@ -306,20 +306,20 @@ func testString(t *testing.T, configs util.KvrocksServerConfigs) {
 		//Incorrect option
 		require.Error(t, rdb.Do(ctx, "DELEX", "test-string-key69", "random", "random").Err())
 		//True cases for all options
-		//digest1 := rdb.Do(ctx, "DIGEST", value).Val().(string)
+		//digest := rdb.Do(ctx, "DIGEST", value).Val().(string)
 		require.NoError(t, rdb.Do(ctx, "DELEX", "test-string-key69", "ifdeq", "xxxxxxxxxxxxxxxx").Err())
 		require.Equal(t, "0", rdb.Do(ctx, "DELEX","test-string-key69", "ifdeq", "xxxxxxxxxxxxxxxx").Val())
 		require.Equal(t, value, rdb.Get(ctx, key).Val())
-		require.NoError(t, rdb.Do(ctx, "DELEX", "test-string-key69", "ifdeq", "12345").Err()) //digest1
+		require.NoError(t, rdb.Do(ctx, "DELEX", "test-string-key69", "ifdeq", "12345").Err()) //digest
 		require.Equal(t, "", rdb.Get(ctx, value).Val())
 		require.NoError(t, rdb.Set(ctx, key, value, 0).Err())
-		require.Equal(t, "1", rdb.Do(ctx, "DELEX","test-string-key69", "ifdeq", "12345").Val()) //digest1
+		require.Equal(t, "1", rdb.Do(ctx, "DELEX","test-string-key69", "ifdeq", "12345").Val()) //digest
 		require.Equal(t, "", rdb.Get(ctx, value).Val())
 
 		require.NoError(t, rdb.Set(ctx, key, value, 0).Err())
 		require.Equal(t, value, rdb.Get(ctx, key).Val())
-		require.NoError(t, rdb.Do(ctx, "DELEX", "test-string-key69", "ifdne", "12345").Err()) //digest1
-		require.Equal(t, "0", rdb.Do(ctx, "DELEX","test-string-key69", "ifdne", "12345").Val()) //digest1
+		require.NoError(t, rdb.Do(ctx, "DELEX", "test-string-key69", "ifdne", "12345").Err()) //digest
+		require.Equal(t, "0", rdb.Do(ctx, "DELEX","test-string-key69", "ifdne", "12345").Val()) //digest
 		require.Equal(t, value, rdb.Get(ctx, key).Val())
 		require.NoError(t, rdb.Do(ctx, "DELEX", "test-string-key69", "ifdne", "xxxxxxxxxxxxxxxx").Err())
 		require.Equal(t, "", rdb.Get(ctx, value).Val())

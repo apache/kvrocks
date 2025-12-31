@@ -403,6 +403,7 @@ rocksdb::Status String::MSet(engine::Context &ctx, const std::vector<StringPair>
     int exists = 0;
     int key_count = static_cast<int>(pairs.size());
     std::vector<Slice> keys;
+    keys.reserve(pairs.size());
     for (const auto &pair : pairs) {
       keys.emplace_back(pair.key);
     }

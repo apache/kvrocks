@@ -427,8 +427,7 @@ rocksdb::Status String::MSet(engine::Context &ctx, const std::vector<StringPair>
       if (s.ok() && old_expire != 0) {
         metadata.expire = old_expire;
       }
-    }
-    else {
+    } else {
       metadata.expire = args.expire;
     }
     metadata.Encode(&bytes);

@@ -325,7 +325,7 @@ func testString(t *testing.T, configs util.KvrocksServerConfigs) {
 		r = rdb.Do(ctx, "msetex", "0", "a", "1").Err()
 		require.ErrorContains(t, r, "value is out of range, must be positive")
 		r = rdb.Do(ctx, "msetex", "3", "a", "1", "b", "2").Err()
-		require.ErrorContains(t, r, "syntax error")
+		require.ErrorContains(t, r, "wrong number")
 		r = rdb.Do(ctx, "msetex", "1", "a", "1", "b", "2", "xx").Err()
 		require.ErrorContains(t, r, "syntax error")
 		r = rdb.Do(ctx, "msetex", "1", "a", "1", "ex", "-1").Err()

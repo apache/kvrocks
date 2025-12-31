@@ -457,8 +457,12 @@ class CommandMSetEX : public Commander {
 
     if (*parsed_num_keys <= 0) return {Status::RedisParseErr, errValueMustBePositive};
     num_keys_ = *parsed_num_keys;
+    min_args_ = 2 + 2 * num_keys_;
+    if (args.size() < min_args_) {
+      return {Status::RedisParseErr, errWrongNumOfArguments};
+    }
 
-    CommandParser parser(args, 2 + 2 * num_keys_);
+    CommandParser parser(args, min_args_);
     std::string_view ttl_flag, set_flag;
     while (parser.Good()) {
       if (auto v = GET_OR_RET(ParseExpireFlags(parser, ttl_flag))) {
@@ -480,7 +484,7 @@ class CommandMSetEX : public Commander {
     bool ret = false;
 
     std::vector<StringPair> kvs;
-    for (size_t i = 2; i < 2 + 2 * num_keys_; i += 2) {
+    for (size_t i = 2; i < min_args_; i += 2) {
       kvs.emplace_back(StringPair{args_[i], args_[i + 1]});
     }
 
@@ -501,6 +505,7 @@ class CommandMSetEX : public Commander {
 
  private:
   size_t num_keys_ = 0;
+  size_t min_args_ = 4;
   StringSetType set_flag_ = StringSetType::NONE;
   uint64_t expire_ = 0;
   bool keep_ttl_ = false;

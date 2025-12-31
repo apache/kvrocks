@@ -4,7 +4,7 @@ go 1.24.0
 
 require (
 	github.com/linxGnu/grocksdb v1.10.2
-	github.com/redis/go-redis/v9 v9.14.0
+	github.com/redis/go-redis/v9 v9.17.0
 	github.com/shirou/gopsutil/v4 v4.25.8
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/exp v0.0.0-20250911091902-df9299821621

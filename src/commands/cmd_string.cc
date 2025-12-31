@@ -421,7 +421,7 @@ class CommandMSet : public Commander {
       kvs.emplace_back(StringPair{args_[i], args_[i + 1]});
     }
 
-    auto s = string_db.MSet(ctx, kvs, 0);
+    auto s = string_db.MSet(ctx, kvs);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -447,6 +447,65 @@ class CommandSetNX : public Commander {
   }
 };
 
+class CommandMSetEX : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    auto parsed_num_keys = ParseInt<int>(args[1], 10);
+    if (!parsed_num_keys) {
+      return {Status::RedisParseErr, errValueNotInteger};
+    }
+
+    if (*parsed_num_keys <= 0) return {Status::RedisParseErr, errValueMustBePositive};
+    num_keys_ = *parsed_num_keys;
+
+    CommandParser parser(args, 2 + 2 * num_keys_);
+    std::string_view ttl_flag, set_flag;
+    while (parser.Good()) {
+      if (auto v = GET_OR_RET(ParseExpireFlags(parser, ttl_flag))) {
+        expire_ = *v;
+      } else if (parser.EatEqICaseFlag("KEEPTTL", ttl_flag)) {
+        keep_ttl_ = true;
+      } else if (parser.EatEqICaseFlag("NX", set_flag)) {
+        set_flag_ = StringSetType::NX;
+      } else if (parser.EatEqICaseFlag("XX", set_flag)) {
+        set_flag_ = StringSetType::XX;
+      } else {
+        return parser.InvalidSyntax();
+      }
+    }
+    return Status::OK();
+  }
+
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    bool ret = false;
+
+    std::vector<StringPair> kvs;
+    for (size_t i = 2; i < 2 + 2 * num_keys_; i += 2) {
+      kvs.emplace_back(StringPair{args_[i], args_[i + 1]});
+    }
+
+    redis::String string_db(srv->storage, conn->GetNamespace());
+    auto s = string_db.MSetEX(ctx, kvs, {expire_, set_flag_, keep_ttl_}, &ret);
+    if (!s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+
+    *output = redis::Integer(ret ? 1 : 0);
+    return Status::OK();
+  }
+
+  static CommandKeyRange Range(const std::vector<std::string> &args) {
+    int num_keys = *ParseInt<int>(args[1], 10);
+    return {2, 2 + 2 * num_keys, 2};
+  }
+
+ private:
+  size_t num_keys_ = 0;
+  StringSetType set_flag_ = StringSetType::NONE;
+  uint64_t expire_ = 0;
+  bool keep_ttl_ = false;
+};
+
 class CommandMSetNX : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
@@ -465,7 +524,7 @@ class CommandMSetNX : public Commander {
       kvs.emplace_back(StringPair{args_[i], args_[i + 1]});
     }
 
-    auto s = string_db.MSetNX(ctx, kvs, 0, &ret);
+    auto s = string_db.MSetNX(ctx, kvs, &ret);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -734,6 +793,7 @@ REDIS_REGISTER_COMMANDS(
     MakeCmdAttr<CommandAppend>("append", 3, "write", 1, 1, 1), MakeCmdAttr<CommandSet>("set", -3, "write", 1, 1, 1),
     MakeCmdAttr<CommandSetEX>("setex", 4, "write", 1, 1, 1), MakeCmdAttr<CommandPSetEX>("psetex", 4, "write", 1, 1, 1),
     MakeCmdAttr<CommandSetNX>("setnx", 3, "write", 1, 1, 1),
+    MakeCmdAttr<CommandMSetEX>("msetex", -4, "write", CommandMSetEX::Range),
     MakeCmdAttr<CommandMSetNX>("msetnx", -3, "write", 1, -1, 2),
     MakeCmdAttr<CommandMSet>("mset", -3, "write", 1, -1, 2), MakeCmdAttr<CommandIncrBy>("incrby", 3, "write", 1, 1, 1),
     MakeCmdAttr<CommandIncrByFloat>("incrbyfloat", 3, "write", 1, 1, 1),

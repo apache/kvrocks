@@ -319,6 +319,94 @@ func testString(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.ErrorContains(t, r.Err(), "wrong number")
 	})
 
+	t.Run("MSETEX wrong args", func(t *testing.T) {
+		r := rdb.Do(ctx, "msetex", "0").Err()
+		require.ErrorContains(t, r, "wrong number")
+		r = rdb.Do(ctx, "msetex", "0", "a", "1").Err()
+		require.ErrorContains(t, r, "value is out of range, must be positive")
+		r = rdb.Do(ctx, "msetex", "3", "a", "1", "b", "2").Err()
+		require.ErrorContains(t, r, "syntax error")
+		r = rdb.Do(ctx, "msetex", "1", "a", "1", "b", "2", "xx").Err()
+		require.ErrorContains(t, r, "syntax error")
+		r = rdb.Do(ctx, "msetex", "1", "a", "1", "ex", "-1").Err()
+		require.ErrorContains(t, r, "out of numeric range")
+		r = rdb.Do(ctx, "msetex", "1", "a", "1", "ex", "10", "keepttl").Err()
+		require.ErrorContains(t, r, "syntax error")
+	})
+
+	t.Run("MSETEX with NX|XX", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "xx1", "xx2").Err())
+		res := rdb.MSetEX(ctx, redis.MSetEXArgs{Condition: redis.NX}, "xx1", "1", "xx2", "2")
+		require.EqualValues(t, 1, res.Val())
+		require.Equal(t, "1", rdb.Get(ctx, "xx1").Val())
+
+		require.NoError(t, rdb.Set(ctx, "xx3", "pre", 0).Err())
+		res = rdb.MSetEX(ctx, redis.MSetEXArgs{Condition: redis.NX}, "xx3", "a", "xx4", "b")
+		require.EqualValues(t, 0, res.Val())
+		require.Equal(t, "pre", rdb.Get(ctx, "xx3").Val())
+		require.EqualValues(t, 0, rdb.Exists(ctx, "xx4").Val())
+
+		res = rdb.MSetEX(ctx, redis.MSetEXArgs{
+			Condition: redis.XX,
+			Expiration: &redis.ExpirationOption{
+				Mode: redis.EX, Value: 10,
+			}}, "xx1", "new1", "xx2", "new2")
+		require.EqualValues(t, 1, res.Val())
+		require.Equal(t, "new1", rdb.Get(ctx, "xx1").Val())
+		require.Equal(t, "new2", rdb.Get(ctx, "xx2").Val())
+		util.BetweenValues(t, rdb.TTL(ctx, "xx1").Val(), 9*time.Second, 10*time.Second)
+		util.BetweenValues(t, rdb.TTL(ctx, "xx2").Val(), 9*time.Second, 10*time.Second)
+	})
+
+	t.Run("MSETEX with TTL", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "a", "b").Err())
+		res := rdb.MSetEX(ctx, redis.MSetEXArgs{
+			Condition: redis.NX,
+			Expiration: &redis.ExpirationOption{
+				Mode:  redis.EX,
+				Value: 2,
+			}}, "a", "1", "b", "2")
+		require.EqualValues(t, 1, res.Val())
+		require.Equal(t, "1", rdb.Get(ctx, "a").Val())
+		util.BetweenValues(t, rdb.TTL(ctx, "a").Val(), 1*time.Second, 2*time.Second)
+		util.BetweenValues(t, rdb.TTL(ctx, "b").Val(), 1*time.Second, 2*time.Second)
+
+		res = rdb.MSetEX(ctx, redis.MSetEXArgs{
+			Condition: redis.XX,
+			Expiration: &redis.ExpirationOption{
+				Mode:  redis.PX,
+				Value: 3000,
+			}}, "a", "10", "d", "20")
+		require.EqualValues(t, 0, res.Val())
+		require.Equal(t, "1", rdb.Get(ctx, "a").Val())
+
+		res = rdb.MSetEX(ctx, redis.MSetEXArgs{
+			Condition: redis.XX,
+			Expiration: &redis.ExpirationOption{
+				Mode:  redis.PX,
+				Value: 3000,
+			}}, "a", "10", "b", "20")
+		require.EqualValues(t, 1, res.Val())
+		require.Equal(t, "10", rdb.Get(ctx, "a").Val())
+		require.Equal(t, "20", rdb.Get(ctx, "b").Val())
+		util.BetweenValues(t, rdb.TTL(ctx, "a").Val(), 2*time.Second, 3*time.Second)
+		util.BetweenValues(t, rdb.TTL(ctx, "b").Val(), 2*time.Second, 3*time.Second)
+	})
+
+	t.Run("MSETEX with KEEPTTL", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "k1", "v", 5*time.Second).Err())
+		require.NoError(t, rdb.Del(ctx, "k2").Err())
+		res := rdb.MSetEX(ctx, redis.MSetEXArgs{
+			Expiration: &redis.ExpirationOption{
+				Mode: redis.KEEPTTL,
+			}}, "k1", "v2", "k2", "v3")
+		require.EqualValues(t, 1, res.Val())
+		require.Equal(t, "v2", rdb.Get(ctx, "k1").Val())
+		require.Equal(t, "v3", rdb.Get(ctx, "k2").Val())
+		util.BetweenValues(t, rdb.TTL(ctx, "k1").Val(), 4*time.Second, 5*time.Second)
+		require.EqualValues(t, -1, rdb.TTL(ctx, "k2").Val())
+	})
+
 	t.Run("MSETNX with already existent key", func(t *testing.T) {
 		r := rdb.MSetNX(ctx, map[string]interface{}{
 			"x1": "xxx",

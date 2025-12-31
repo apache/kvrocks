@@ -182,35 +182,34 @@ rocksdb::Status String::GetEx(engine::Context &ctx, const std::string &user_key,
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status String::DelEX(engine::Context &ctx, const std::string &user_key, DelExOption &option,
-                              std::optional<std::string> &hash_or_value, bool &deleted) {
+rocksdb::Status String::DelEX(engine::Context &ctx, const std::string &user_key, DelExOption &option, bool &deleted) {
   std::string ns_key = AppendNamespacePrefix(user_key);
   std::string value;
   rocksdb::Status s = getValue(ctx, ns_key, &value);
-  if (!s.ok() || s.IsNotFound()) {
-    return s;
-  }
-  if (option == DelExOption::NONE && !hash_or_value.has_value()) {
+  if (!s.ok()) return s;
+
+  if (option.type == DelExOption::Type::NONE && option.value == "") {
     return storage_->Delete(ctx, storage_->DefaultWriteOptions(), metadata_cf_handle_, ns_key);
   }
-  switch (option) {
-    case DelExOption::IFDEQ:
-      if (hash_or_value.value() == "12345") {  // StringDigest(value)
+
+  switch (option.type) {
+    case DelExOption::Type::IFDEQ:
+      if (option.value == util::StringDigest(value)) {
         deleted = true;
       }
       break;
-    case DelExOption::IFDNE:
-      if (hash_or_value.value() != "12345") {  // StringDigest(value)
+    case DelExOption::Type::IFDNE:
+      if (option.value != util::StringDigest(value)) {
         deleted = true;
       }
       break;
-    case DelExOption::IFEQ:
-      if (hash_or_value.value() == value) {
+    case DelExOption::Type::IFEQ:
+      if (option.value == value) {
         deleted = true;
       }
       break;
-    case DelExOption::IFNE:
-      if (hash_or_value.value() != value) {
+    case DelExOption::Type::IFNE:
+      if (option.value != value) {
         deleted = true;
       }
       break;

@@ -38,6 +38,7 @@
 #include <shared_mutex>
 #include <utility>
 
+#include "cluster/cluster_failover.h"
 #include "commands/command_parser.h"
 #include "commands/commander.h"
 #include "common/string_util.h"
@@ -181,6 +182,7 @@ Status Server::Start() {
   if (config_->cluster_enabled) {
     // Create objects used for slot migration
     slot_migrator = std::make_unique<SlotMigrator>(this);
+    cluster_failover = std::make_unique<ClusterFailover>(this);
 
     if (config_->persist_cluster_nodes_enabled) {
       auto s = cluster->LoadClusterNodes(config_->NodesFilePath());
@@ -2209,4 +2211,15 @@ AuthResult Server::AuthenticateUser(const std::string &user_password, std::strin
   }
   *ns = kDefaultNamespace;
   return AuthResult::IS_ADMIN;
+}
+
+StatusOr<rocksdb::SequenceNumber> Server::GetSlaveReplicationOffset(const std::string &node_ip_port) {
+
+  std::shared_lock<std::shared_mutex> guard(slave_threads_mu_);
+  for (const auto &slave : slave_threads_) {
+    if (slave->GetConn()->GetAnnounceAddr() == node_ip_port) {
+      return slave->GetAckSeq();
+    }
+  }
+  return {Status::NotOK, "Slave not connected"};
 }

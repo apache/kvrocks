@@ -93,6 +93,11 @@ class Cluster {
   Status DumpClusterNodes(const std::string &file);
   Status LoadClusterNodes(const std::string &file_path);
   Status Reset();
+  Status OnTakeOver();
+
+  StatusOr<std::pair<std::string, int>> GetNodeIPPort(const std::string &node_id);
+  void SetMySlotsMigrated(const std::string &dst_ip_port);
+  bool IsSlotImported(int slot) const;
 
   static bool SubCommandIsExecExclusive(const std::string &subcommand);
 

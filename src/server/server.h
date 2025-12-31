@@ -177,6 +177,7 @@ class ServerLogData {
 
 class SlotImport;
 class SlotMigrator;
+class ClusterFailover;
 
 class Server {
  public:
@@ -335,6 +336,7 @@ class Server {
   static inline std::atomic<int64_t> unix_time_secs = 0;
   std::unique_ptr<SlotMigrator> slot_migrator;
   std::unique_ptr<SlotImport> slot_import;
+  std::unique_ptr<ClusterFailover> cluster_failover;
 
   void UpdateWatchedKeysFromArgs(const std::vector<std::string> &args, const redis::CommandAttributes &attr);
   void UpdateWatchedKeysManually(const std::vector<std::string> &keys);
@@ -342,6 +344,7 @@ class Server {
   static bool IsWatchedKeysModified(redis::Connection *conn);
   void ResetWatchedKeys(redis::Connection *conn);
   std::list<std::pair<std::string, uint32_t>> GetSlaveHostAndPort();
+  StatusOr<rocksdb::SequenceNumber> GetSlaveReplicationOffset(const std::string &node_ip_port);
   Namespace *GetNamespace() { return &namespace_; }
 
   AuthResult AuthenticateUser(const std::string &user_password, std::string *ns);

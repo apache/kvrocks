@@ -1,9 +1,8 @@
 module github.com/apache/kvrocks/tests/gocase
 
-go 1.24.0
+go 1.25
 
 require (
-	github.com/linxGnu/grocksdb v1.10.2
 	github.com/redis/go-redis/v9 v9.14.0
 	github.com/shirou/gopsutil/v4 v4.25.8
 	github.com/stretchr/testify v1.11.1

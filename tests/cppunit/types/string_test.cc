@@ -163,13 +163,13 @@ TEST_F(RedisStringTest, DelEX) {
   DelExOption option = DelExOption::NONE;
   bool deleted = 0;
 
-  std::string key = "test-string-key10";
-  std::string value = "test-strings-value10";
+  std::string key = "test-string-key69";
+  std::string value = "test-strings-value69";
   auto status = string_->Set(*ctx_, key, value);
   ASSERT_TRUE(status.ok());
   status = string_->Get(*ctx_, key, &value);
   ASSERT_TRUE(status.ok() && !status.IsNotFound());
-  EXPECT_EQ("test-strings-value10", value);
+  EXPECT_EQ("test-strings-value69", value);
 
   // Check no args delete works
   auto s = string_->DelEX(*ctx_, key, option, hash_or_value, deleted);
@@ -179,7 +179,7 @@ TEST_F(RedisStringTest, DelEX) {
   EXPECT_EQ(option, DelExOption::NONE);
   status = string_->Get(*ctx_, key, &value);
   EXPECT_TRUE(!status.ok() && status.IsNotFound());
-  EXPECT_NE("test-strings-value10", value);
+  EXPECT_NE("test-strings-value69", value);
 
   // Check no args delete on same key
   s = string_->DelEX(*ctx_, key, option, hash_or_value, deleted);
@@ -195,21 +195,19 @@ TEST_F(RedisStringTest, DelEX) {
   EXPECT_TRUE(!status.ok() && status.IsNotFound());
 
   // Correct value but incorrect option
-  key = "test-string-key10";
-  value = "test-strings-value10";
+  key = "test-string-key69";
+  value = "test-strings-value69";
   status = string_->Set(*ctx_, key, value);
   EXPECT_TRUE(status.ok());
   option = DelExOption::NONE;
-  hash_or_value = "test-strings-value10";
+  hash_or_value = "test-strings-value69";
   s = string_->DelEX(*ctx_, key, option, hash_or_value, deleted);
   EXPECT_TRUE(s.IsInvalidArgument());
   status = string_->Get(*ctx_, key, &value);
   EXPECT_TRUE(status.ok() && !status.IsNotFound());
-  EXPECT_EQ("test-strings-value10", value);
+  EXPECT_EQ("test-strings-value69", value);
 
   // Checking true false cases for all args
-  key = "test-string-key10";
-  value = "test-strings-value10";
   status = string_->Set(*ctx_, key, value);
   EXPECT_TRUE(status.ok());
   option = DelExOption::IFDEQ;
@@ -221,9 +219,8 @@ TEST_F(RedisStringTest, DelEX) {
   EXPECT_FALSE(deleted);
   status = string_->Get(*ctx_, key, &value);
   EXPECT_TRUE(status.ok() && !status.IsNotFound());
-  EXPECT_EQ("test-strings-value10", value);
+  EXPECT_EQ("test-strings-value69", value);
 
-  option = DelExOption::IFDEQ;
   hash_or_value = "12345";  // StringDigest(value);
   deleted = 0;
   s = string_->DelEX(*ctx_, key, option, hash_or_value, deleted);
@@ -233,10 +230,8 @@ TEST_F(RedisStringTest, DelEX) {
   status = string_->Get(*ctx_, key, &value);
   EXPECT_TRUE(!status.ok());
   EXPECT_TRUE(status.IsNotFound());
-  EXPECT_NE("test-strings-value10", value);
+  EXPECT_NE("test-strings-value69", value);
 
-  key = "test-string-key10";
-  value = "test-strings-value10";
   status = string_->Set(*ctx_, key, value);
   EXPECT_TRUE(status.ok());
   option = DelExOption::IFDNE;
@@ -248,9 +243,8 @@ TEST_F(RedisStringTest, DelEX) {
   EXPECT_FALSE(deleted);
   status = string_->Get(*ctx_, key, &value);
   EXPECT_TRUE(status.ok() && !status.IsNotFound());
-  EXPECT_EQ("test-strings-value10", value);
+  EXPECT_EQ("test-strings-value69", value);
 
-  option = DelExOption::IFDNE;
   hash_or_value = "xxxxxxxxxxxxxxxx";
   deleted = 0;
   s = string_->DelEX(*ctx_, key, option, hash_or_value, deleted);
@@ -260,10 +254,8 @@ TEST_F(RedisStringTest, DelEX) {
   status = string_->Get(*ctx_, key, &value);
   EXPECT_TRUE(!status.ok());
   EXPECT_TRUE(status.IsNotFound());
-  EXPECT_NE("test-strings-value10", value);
+  EXPECT_NE("test-strings-value69", value);
 
-  key = "test-string-key10";
-  value = "test-strings-value10";
   status = string_->Set(*ctx_, key, value);
   EXPECT_TRUE(status.ok());
   option = DelExOption::IFEQ;
@@ -275,10 +267,10 @@ TEST_F(RedisStringTest, DelEX) {
   EXPECT_FALSE(deleted);
   status = string_->Get(*ctx_, key, &value);
   EXPECT_TRUE(status.ok() && !status.IsNotFound());
-  EXPECT_EQ("test-strings-value10", value);
+  EXPECT_EQ("test-strings-value69", value);
 
   option = DelExOption::IFEQ;
-  hash_or_value = "test-strings-value10";
+  hash_or_value = "test-strings-value69";
   deleted = 0;
   s = string_->DelEX(*ctx_, key, option, hash_or_value, deleted);
   EXPECT_TRUE(s.ok());
@@ -287,14 +279,12 @@ TEST_F(RedisStringTest, DelEX) {
   status = string_->Get(*ctx_, key, &value);
   EXPECT_TRUE(!status.ok());
   EXPECT_TRUE(status.IsNotFound());
-  EXPECT_NE("test-strings-value10", value);
+  EXPECT_NE("test-strings-value69", value);
 
-  key = "test-string-key10";
-  value = "test-strings-value10";
   status = string_->Set(*ctx_, key, value);
   EXPECT_TRUE(status.ok());
   option = DelExOption::IFNE;
-  hash_or_value = "test-strings-value10";
+  hash_or_value = "test-strings-value69";
   deleted = 0;
   s = string_->DelEX(*ctx_, key, option, hash_or_value, deleted);
   EXPECT_TRUE(s.ok());
@@ -302,7 +292,7 @@ TEST_F(RedisStringTest, DelEX) {
   EXPECT_FALSE(deleted);
   status = string_->Get(*ctx_, key, &value);
   EXPECT_TRUE(status.ok() && !status.IsNotFound());
-  EXPECT_EQ("test-strings-value10", value);
+  EXPECT_EQ("test-strings-value69", value);
 
   option = DelExOption::IFNE;
   hash_or_value = "random";
@@ -314,7 +304,7 @@ TEST_F(RedisStringTest, DelEX) {
   status = string_->Get(*ctx_, key, &value);
   EXPECT_TRUE(!status.ok());
   EXPECT_TRUE(status.IsNotFound());
-  EXPECT_NE("test-strings-value10", value);
+  EXPECT_NE("test-strings-value69", value);
 }
 
 TEST_F(RedisStringTest, GetDel) {

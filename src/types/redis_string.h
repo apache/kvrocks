@@ -107,6 +107,7 @@ class String : public Database {
   rocksdb::Status CAD(engine::Context &ctx, const std::string &user_key, const std::string &value, int *flag);
   rocksdb::Status LCS(engine::Context &ctx, const std::string &user_key1, const std::string &user_key2,
                       StringLCSArgs args, StringLCSResult *rst);
+  rocksdb::Status Digest(engine::Context &ctx, const std::string &user_key, std::string *digest);
 
  private:
   rocksdb::Status getValue(engine::Context &ctx, const std::string &ns_key, std::string *value);

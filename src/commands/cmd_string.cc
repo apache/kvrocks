@@ -721,10 +721,29 @@ class CommandLCS : public Commander {
   int64_t min_match_len_ = 0;
 };
 
+class CommandDigest : public Commander {
+ public:
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    redis::String string_db(srv->storage, conn->GetNamespace());
+    std::string digest;
+    auto s = string_db.Digest(ctx, args_[1], &digest);
+    if (!s.ok() && !s.IsNotFound()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+    if (s.IsNotFound()) {
+      *output = conn->NilString();
+      return Status::OK();
+    }
+    *output = redis::BulkString(digest);
+    return Status::OK();
+  }
+};
+
 REDIS_REGISTER_COMMANDS(
     String, MakeCmdAttr<CommandGet>("get", 2, "read-only", 1, 1, 1),
     MakeCmdAttr<CommandGetEx>("getex", -2, "write", 1, 1, 1),
     MakeCmdAttr<CommandStrlen>("strlen", 2, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandDigest>("digest", 2, "read-only", 1, 1, 1),
     MakeCmdAttr<CommandGetSet>("getset", 3, "write", 1, 1, 1),
     MakeCmdAttr<CommandGetRange>("getrange", 4, "read-only", 1, 1, 1),
     MakeCmdAttr<CommandSubStr>("substr", 4, "read-only", 1, 1, 1),

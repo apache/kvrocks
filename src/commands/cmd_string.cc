@@ -118,13 +118,13 @@ class CommandDelEX : public Commander {
     CommandParser parser(args, 2);
     while (parser.Good()) {
       if (parser.EatEqICase("ifdeq")) {
-        option = {DelExOption::Type::IFDEQ, GET_OR_RET(parser.TakeStr())};
+        option = {DelExOption::IFDEQ, GET_OR_RET(parser.TakeStr())};
       } else if (parser.EatEqICase("ifdne")) {
-        option = {DelExOption::Type::IFDNE, GET_OR_RET(parser.TakeStr())};
+        option = {DelExOption::IFDNE, GET_OR_RET(parser.TakeStr())};
       } else if (parser.EatEqICase("ifeq")) {
-        option = {DelExOption::Type::IFEQ, GET_OR_RET(parser.TakeStr())};
+        option = {DelExOption::IFEQ, GET_OR_RET(parser.TakeStr())};
       } else if (parser.EatEqICase("ifne")) {
-        option = {DelExOption::Type::IFNE, GET_OR_RET(parser.TakeStr())};
+        option = {DelExOption::IFNE, GET_OR_RET(parser.TakeStr())};
       } else {
         return {Status::RedisParseErr, errInvalidSyntax};
       }

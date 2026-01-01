@@ -189,28 +189,28 @@ rocksdb::Status String::DelEX(engine::Context &ctx, const std::string &user_key,
   rocksdb::Status s = getValue(ctx, ns_key, &value);
   if (!s.ok()) return s;
 
-  if (option.type == DelExOption::Type::NONE && option.value == "") {
+  if (option.type == DelExOption::NONE && option.value == "") {
     deleted = true;
     return storage_->Delete(ctx, storage_->DefaultWriteOptions(), metadata_cf_handle_, ns_key);
   }
 
   switch (option.type) {
-    case DelExOption::Type::IFDEQ:
+    case DelExOption::IFDEQ:
       if (option.value == util::StringDigest(value)) {
         deleted = true;
       }
       break;
-    case DelExOption::Type::IFDNE:
+    case DelExOption::IFDNE:
       if (option.value != util::StringDigest(value)) {
         deleted = true;
       }
       break;
-    case DelExOption::Type::IFEQ:
+    case DelExOption::IFEQ:
       if (option.value == value) {
         deleted = true;
       }
       break;
-    case DelExOption::Type::IFNE:
+    case DelExOption::IFNE:
       if (option.value != value) {
         deleted = true;
       }

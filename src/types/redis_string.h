@@ -35,11 +35,11 @@ struct StringPair {
 };
 
 struct DelExOption {
-  enum class Type { NONE, IFDEQ, IFDNE, IFEQ, IFNE };
+  enum Type { NONE, IFDEQ, IFDNE, IFEQ, IFNE };
   Type type;
   std::string value;
 
-  DelExOption() : type(Type::NONE) {}
+  DelExOption() : type(NONE) {}
   DelExOption(Type type, std::string value) : type(type), value(std::move(value)) {}
 };
 

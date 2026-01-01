@@ -283,15 +283,15 @@ func testString(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.NoError(t, rdb.Set(ctx, key, value, 0).Err())
 		require.Equal(t, value, rdb.Get(ctx, key).Val())
 
-		require.Equal(t, "1", rdb.Do(ctx, "DelEX", key).Val())
+		require.Equal(t, 1, rdb.Do(ctx, "DELEX", key).Val())
 		require.Equal(t, "", rdb.Get(ctx, key).Val())
 		//on same key
 		require.Error(t, rdb.Do(ctx, "DelEX", key).Err())
-		require.Equal(t, "0", rdb.Do(ctx, "DelEX", "test-string-key69").Val())
+		require.Equal(t, 0, rdb.Do(ctx, "DELEX", "test-string-key69").Val())
 		//on non existent key
 		require.Equal(t, "", rdb.Get(ctx, "random").Val())
 		require.Error(t, rdb.Do(ctx, "DelEX", "random").Err())
-		require.Equal(t, "0", rdb.Do(ctx, "DelEX", "random").Val())
+		require.Equal(t, 0, rdb.Do(ctx, "DELEX", "random").Val())
 	})
 
 	t.Run("DelEX command with args", func(t *testing.T) {
@@ -305,48 +305,47 @@ func testString(t *testing.T, configs util.KvrocksServerConfigs) {
 		//Incorrect option
 		require.Error(t, rdb.Do(ctx, "DELEX", "test-string-key69", "random", "random").Err())
 		//True cases for all options
-		//digest := rdb.Do(ctx, "DIGEST", value).Val().(string) 
-		// DIGEST command not yet implemented by issue #3309, once it is implemented it can be added
+		digest := rdb.Do(ctx, "DIGEST", value).Val().(string) 
 		require.NoError(t, rdb.Do(ctx, "DELEX", "test-string-key69", "ifdeq", "xxxxxxxxxxxxxxxx").Err())
-		require.Equal(t, "0", rdb.Do(ctx, "DELEX","test-string-key69", "ifdeq", "xxxxxxxxxxxxxxxx").Val())
+		require.Equal(t, 0, rdb.Do(ctx, "DELEX","test-string-key69", "ifdeq", "xxxxxxxxxxxxxxxx").Val())
 		require.Equal(t, value, rdb.Get(ctx, key).Val())
-		require.NoError(t, rdb.Do(ctx, "DELEX", "test-string-key69", "ifdeq", "12345").Err()) //digest
+		require.NoError(t, rdb.Do(ctx, "DELEX", "test-string-key69", "ifdeq", digest).Err())
 		require.Equal(t, "", rdb.Get(ctx, value).Val())
 		require.NoError(t, rdb.Set(ctx, key, value, 0).Err())
-		require.Equal(t, "1", rdb.Do(ctx, "DELEX","test-string-key69", "ifdeq", "12345").Val()) //digest
+		require.Equal(t, 1, rdb.Do(ctx, "DELEX","test-string-key69", "ifdeq", digest).Val())
 		require.Equal(t, "", rdb.Get(ctx, value).Val())
 
 		require.NoError(t, rdb.Set(ctx, key, value, 0).Err())
 		require.Equal(t, value, rdb.Get(ctx, key).Val())
-		require.NoError(t, rdb.Do(ctx, "DELEX", "test-string-key69", "ifdne", "12345").Err()) //digest
-		require.Equal(t, "0", rdb.Do(ctx, "DELEX","test-string-key69", "ifdne", "12345").Val()) //digest
+		require.NoError(t, rdb.Do(ctx, "DELEX", "test-string-key69", "ifdne", digest).Err())
+		require.Equal(t, 0, rdb.Do(ctx, "DELEX","test-string-key69", "ifdne", digest).Val())
 		require.Equal(t, value, rdb.Get(ctx, key).Val())
 		require.NoError(t, rdb.Do(ctx, "DelEX", "test-string-key69", "ifdne", "xxxxxxxxxxxxxxxx").Err())
 		require.Equal(t, "", rdb.Get(ctx, value).Val())
 		require.NoError(t, rdb.Set(ctx, key, value, 0).Err())
-		require.Equal(t, "1", rdb.Do(ctx, "DelEX","test-string-key69", "ifdne", "xxxxxxxxxxxxxxxx").Val())
+		require.Equal(t, 1, rdb.Do(ctx, "DELEX","test-string-key69", "ifdne", "xxxxxxxxxxxxxxxx").Val())
 		require.Equal(t, "", rdb.Get(ctx, value).Val())
 
 		require.NoError(t, rdb.Set(ctx, key, value, 0).Err())
 		require.Equal(t, value, rdb.Get(ctx, key).Val())
 		require.NoError(t, rdb.Do(ctx, "DelEX", "test-string-key69", "ifeq", "random").Err())
-		require.Equal(t, "0", rdb.Do(ctx, "DelEX","test-string-key69", "ifeq", "random").Val())
+		require.Equal(t, 0, rdb.Do(ctx, "DELEX","test-string-key69", "ifeq", "random").Val())
 		require.Equal(t, value, rdb.Get(ctx, key).Val())
 		require.NoError(t, rdb.Do(ctx, "DelEX", "test-string-key69", "ifeq", "test-strings-value69").Err())
 		require.Equal(t, "", rdb.Get(ctx, value).Val())
 		require.NoError(t, rdb.Set(ctx, key, value, 0).Err())
-		require.Equal(t, "1", rdb.Do(ctx, "DelEX","test-string-key69", "ifeq", "test-strings-value69").Val())
+		require.Equal(t, 1, rdb.Do(ctx, "DELEX","test-string-key69", "ifeq", "test-strings-value69").Val())
 		require.Equal(t, "", rdb.Get(ctx, value).Val())
 		
 		require.NoError(t, rdb.Set(ctx, key, value, 0).Err())
 		require.Equal(t, value, rdb.Get(ctx, key).Val())
 		require.NoError(t, rdb.Do(ctx, "DelEX", "test-string-key69", "ifne", "test-strings-value69").Err())
-		require.Equal(t, "0", rdb.Do(ctx, "DelEX","test-string-key69", "ifne", "test-strings-value69").Val())
+		require.Equal(t, 0, rdb.Do(ctx, "DELEX","test-string-key69", "ifne", "test-strings-value69").Val())
 		require.Equal(t, value, rdb.Get(ctx, key).Val())
 		require.NoError(t, rdb.Do(ctx, "DelEX", "test-string-key69", "ifne", "random").Err())
 		require.Equal(t, "", rdb.Get(ctx, value).Val())
 		require.NoError(t, rdb.Set(ctx, key, value, 0).Err())
-		require.Equal(t, "1", rdb.Do(ctx, "DelEX","test-string-key69", "ifne", "random").Val())
+		require.Equal(t, 1, rdb.Do(ctx, "DELEX","test-string-key69", "ifne", "random").Val())
 		require.Equal(t, "", rdb.Get(ctx, value).Val())
 	})
 

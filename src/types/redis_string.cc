@@ -243,7 +243,7 @@ rocksdb::Status String::GetDel(engine::Context &ctx, const std::string &user_key
 
 rocksdb::Status String::Set(engine::Context &ctx, const std::string &user_key, const std::string &value) {
   std::vector<StringPair> pairs{StringPair{user_key, value}};
-  return MSet(ctx, pairs, /*expire=*/0);
+  return MSet(ctx, pairs);
 }
 
 rocksdb::Status String::Set(engine::Context &ctx, const std::string &user_key, const std::string &value,
@@ -438,46 +438,71 @@ rocksdb::Status String::IncrByFloat(engine::Context &ctx, const std::string &use
   return updateRawValue(ctx, ns_key, raw_value);
 }
 
-rocksdb::Status String::MSet(engine::Context &ctx, const std::vector<StringPair> &pairs, uint64_t expire_ms) {
+rocksdb::Status String::MSet(engine::Context &ctx, const std::vector<StringPair> &pairs, StringMSetArgs args,
+                             bool *flag) {
+  if (flag != nullptr) {
+    *flag = false;
+  }
+
+  if (args.type != StringSetType::NONE) {
+    int exists = 0;
+    int key_count = static_cast<int>(pairs.size());
+    std::vector<Slice> keys;
+    keys.reserve(pairs.size());
+    for (const auto &pair : pairs) {
+      keys.emplace_back(pair.key);
+    }
+    auto s = Exists(ctx, keys, &exists);
+    if (!s.ok()) return s;
+    if ((args.type == StringSetType::NX && exists > 0) || (args.type == StringSetType::XX && exists < key_count)) {
+      return rocksdb::Status::OK();
+    }
+  }
+
   auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisString);
-  auto s = batch->PutLogData(log_data.Encode());
+  rocksdb::Status s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) return s;
+
   for (const auto &pair : pairs) {
     std::string bytes;
     Metadata metadata(kRedisString, false);
-    metadata.expire = expire_ms;
+    if (args.keep_ttl) {
+      uint64_t old_expire = 0;
+      rocksdb::Status s = GetExpireTime(ctx, pair.key, &old_expire);
+      if (s.ok() && old_expire != 0) {
+        metadata.expire = old_expire;
+      }
+    } else {
+      metadata.expire = args.expire;
+    }
     metadata.Encode(&bytes);
     bytes.append(pair.value.data(), pair.value.size());
     std::string ns_key = AppendNamespacePrefix(pair.key);
     s = batch->Put(metadata_cf_handle_, ns_key, bytes);
     if (!s.ok()) return s;
   }
-  return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
-}
-
-rocksdb::Status String::MSetNX(engine::Context &ctx, const std::vector<StringPair> &pairs, uint64_t expire_ms,
-                               bool *flag) {
-  *flag = false;
-
-  int exists = 0;
-  std::vector<Slice> keys;
-  keys.reserve(pairs.size());
-
-  for (StringPair pair : pairs) {
-    std::string ns_key = AppendNamespacePrefix(pair.key);
-    keys.emplace_back(pair.key);
-  }
-
-  if (Exists(ctx, keys, &exists).ok() && exists > 0) {
-    return rocksdb::Status::OK();
-  }
-
-  rocksdb::Status s = MSet(ctx, pairs, /*expire_ms=*/expire_ms);
+  s = storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
   if (!s.ok()) return s;
 
-  *flag = true;
+  if (flag != nullptr) {
+    *flag = true;
+  }
+
   return rocksdb::Status::OK();
+}
+
+rocksdb::Status String::MSet(engine::Context &ctx, const std::vector<StringPair> &pairs) {
+  return MSet(ctx, pairs, {/*expire=*/0, StringSetType::NONE, /*keep_ttl=*/false}, nullptr);
+}
+
+rocksdb::Status String::MSetEX(engine::Context &ctx, const std::vector<StringPair> &pairs, StringMSetArgs args,
+                               bool *flag) {
+  return MSet(ctx, pairs, args, flag);
+}
+
+rocksdb::Status String::MSetNX(engine::Context &ctx, const std::vector<StringPair> &pairs, bool *flag) {
+  return MSet(ctx, pairs, {/*expire=*/0, StringSetType::NX, /*keep_ttl=*/false}, flag);
 }
 
 // Change the value of user_key to a new_value if the current value of the key matches old_value.

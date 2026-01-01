@@ -70,7 +70,7 @@ TEST_F(RedisStringTest, GetAndSet) {
 }
 
 TEST_F(RedisStringTest, MGetAndMSet) {
-  string_->MSet(*ctx_, pairs_, 0);
+  string_->MSet(*ctx_, pairs_);
   std::vector<Slice> keys;
   std::vector<std::string> values;
   keys.reserve(pairs_.size());
@@ -346,7 +346,7 @@ TEST_F(RedisStringTest, MSetXX) {
 
 TEST_F(RedisStringTest, MSetNX) {
   bool flag = false;
-  string_->MSetNX(*ctx_, pairs_, 0, &flag);
+  string_->MSetNX(*ctx_, pairs_, &flag);
   EXPECT_TRUE(flag);
   std::vector<Slice> keys;
   std::vector<std::string> values;
@@ -362,7 +362,7 @@ TEST_F(RedisStringTest, MSetNX) {
   std::vector<StringPair> new_pairs{
       {"a", "1"}, {"b", "2"}, {"c", "3"}, {pairs_[0].key, pairs_[0].value}, {"d", "4"},
   };
-  string_->MSetNX(*ctx_, pairs_, 0, &flag);
+  string_->MSetNX(*ctx_, pairs_, &flag);
   EXPECT_FALSE(flag);
 
   for (auto &pair : pairs_) {
@@ -377,6 +377,71 @@ TEST_F(RedisStringTest, MSetNXWithTTL) {
   auto s = string_->TTL(*ctx_, key_, &ttl);
   EXPECT_TRUE(ttl >= 2000 && ttl <= 4000);
   s = string_->Del(*ctx_, key_);
+}
+
+TEST_F(RedisStringTest, MSetEX) {
+  {
+    bool flag = false;
+    string_->MSetEX(*ctx_, pairs_, {0, StringSetType::NX, false}, &flag);
+    EXPECT_TRUE(flag);
+    std::vector<Slice> keys;
+    std::vector<std::string> values;
+    keys.reserve(pairs_.size());
+    for (const auto &pair : pairs_) {
+      keys.emplace_back(pair.key);
+    }
+    string_->MGet(*ctx_, keys, &values);
+    for (const auto &pair : pairs_) {
+      int64_t ttl = 0;
+      auto s = string_->TTL(*ctx_, pair.key.ToString(), &ttl);
+      EXPECT_EQ(ttl, -1);
+    }
+  }
+  {
+    bool flag = false;
+    pairs_.emplace_back(StringPair{"a", "1"});
+    string_->MSetEX(*ctx_, pairs_, {0, StringSetType::XX, true}, &flag);
+    EXPECT_FALSE(flag);
+  }
+  for (auto &pair : pairs_) {
+    auto s = string_->Del(*ctx_, pair.key);
+  }
+}
+
+TEST_F(RedisStringTest, MSetEXWithTTL) {
+  {
+    bool flag = false;
+    string_->MSetEX(*ctx_, pairs_, {util::GetTimeStampMS() + 3000, StringSetType::NONE, false}, &flag);
+    EXPECT_TRUE(flag);
+    for (const auto &pair : pairs_) {
+      int64_t ttl = 0;
+      auto s = string_->TTL(*ctx_, pair.key.ToString(), &ttl);
+      EXPECT_TRUE(ttl >= 2000 && ttl <= 4000);
+    }
+  }
+  {
+    bool flag = false;
+    pairs_[0].value = "new-test-strings-value1";
+    pairs_[1].value = "new-test-strings-value2";
+    string_->MSetEX(*ctx_, pairs_, {0, StringSetType::XX, true}, &flag);
+    EXPECT_TRUE(flag);
+    std::vector<Slice> keys;
+    std::vector<std::string> values;
+    keys.reserve(pairs_.size());
+    for (const auto &pair : pairs_) {
+      keys.emplace_back(pair.key);
+    }
+    string_->MGet(*ctx_, keys, &values);
+    for (size_t i = 0; i < pairs_.size(); i++) {
+      EXPECT_EQ(pairs_[i].value, values[i]);
+      int64_t ttl = 0;
+      auto s = string_->TTL(*ctx_, pairs_[i].key.ToString(), &ttl);
+      EXPECT_TRUE(ttl >= 2000 && ttl <= 4000);
+    }
+  }
+  for (auto &pair : pairs_) {
+    auto s = string_->Del(*ctx_, pair.key);
+  }
 }
 
 TEST_F(RedisStringTest, SetEX) {

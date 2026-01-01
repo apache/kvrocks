@@ -26,6 +26,7 @@
 #include <optional>
 #include <string>
 
+#include "common/string_util.h"
 #include "parse_util.h"
 #include "storage/redis_metadata.h"
 #include "string_util.h"
@@ -697,6 +698,17 @@ rocksdb::Status String::LCS(engine::Context &ctx, const std::string &user_key1, 
     }
   }
 
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status String::Digest(engine::Context &ctx, const std::string &user_key, std::string *digest) {
+  std::string value;
+  auto s = Get(ctx, user_key, &value);
+  if (!s.ok()) {
+    return s;
+  }
+
+  *digest = util::StringDigest(value);
   return rocksdb::Status::OK();
 }
 

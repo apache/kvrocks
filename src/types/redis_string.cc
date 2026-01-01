@@ -185,6 +185,7 @@ rocksdb::Status String::GetEx(engine::Context &ctx, const std::string &user_key,
 
 rocksdb::Status String::DelEX(engine::Context &ctx, const std::string &user_key, const DelExOption &option,
                               bool &deleted) {
+  deleted = false;
   std::string ns_key = AppendNamespacePrefix(user_key);
   std::string value;
   rocksdb::Status s = getValue(ctx, ns_key, &value);

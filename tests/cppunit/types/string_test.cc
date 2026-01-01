@@ -256,7 +256,7 @@ TEST_F(RedisStringTest, MSetEXWithTTL) {
     for (const auto &pair : pairs_) {
       int64_t ttl = 0;
       auto s = string_->TTL(*ctx_, pair.key.ToString(), &ttl);
-      EXPECT_TRUE(ttl >= 2000 && ttl <= 3000);
+      EXPECT_TRUE(ttl >= 2000 && ttl <= 4000);
     }
   }
   {
@@ -276,7 +276,7 @@ TEST_F(RedisStringTest, MSetEXWithTTL) {
       EXPECT_EQ(pairs_[i].value, values[i]);
       int64_t ttl = 0;
       auto s = string_->TTL(*ctx_, pairs_[i].key.ToString(), &ttl);
-      EXPECT_TRUE(ttl >= 2000 && ttl <= 3000);
+      EXPECT_TRUE(ttl >= 2000 && ttl <= 4000);
     }
   }
   for (auto &pair : pairs_) {

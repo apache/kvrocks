@@ -289,9 +289,8 @@ func testString(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.Error(t, rdb.Do(ctx, "DelEX", key).Err())
 		require.Equal(t, "0", rdb.Do(ctx, "DelEX", "test-string-key69").Val())
 		//on non existent key
-		key := "random"
-		require.Equal(t, "", rdb.Get(ctx, key).Val())
-		require.Error(t, rdb.Do(ctx, "DelEX", key).Err())
+		require.Equal(t, "", rdb.Get(ctx, "random").Val())
+		require.Error(t, rdb.Do(ctx, "DelEX", "random").Err())
 		require.Equal(t, "0", rdb.Do(ctx, "DelEX", "random").Val())
 	})
 
@@ -306,7 +305,8 @@ func testString(t *testing.T, configs util.KvrocksServerConfigs) {
 		//Incorrect option
 		require.Error(t, rdb.Do(ctx, "DELEX", "test-string-key69", "random", "random").Err())
 		//True cases for all options
-		//digest := rdb.Do(ctx, "DIGEST", value).Val().(string)
+		//digest := rdb.Do(ctx, "DIGEST", value).Val().(string) 
+		// DIGEST command not yet implemented by issue #3309, once it is implemented it can be added
 		require.NoError(t, rdb.Do(ctx, "DELEX", "test-string-key69", "ifdeq", "xxxxxxxxxxxxxxxx").Err())
 		require.Equal(t, "0", rdb.Do(ctx, "DELEX","test-string-key69", "ifdeq", "xxxxxxxxxxxxxxxx").Val())
 		require.Equal(t, value, rdb.Get(ctx, key).Val())

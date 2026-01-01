@@ -182,13 +182,15 @@ rocksdb::Status String::GetEx(engine::Context &ctx, const std::string &user_key,
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status String::DelEX(engine::Context &ctx, const std::string &user_key, DelExOption &option, bool &deleted) {
+rocksdb::Status String::DelEX(engine::Context &ctx, const std::string &user_key, const DelExOption &option,
+                              bool &deleted) {
   std::string ns_key = AppendNamespacePrefix(user_key);
   std::string value;
   rocksdb::Status s = getValue(ctx, ns_key, &value);
   if (!s.ok()) return s;
 
   if (option.type == DelExOption::Type::NONE && option.value == "") {
+    deleted = true;
     return storage_->Delete(ctx, storage_->DefaultWriteOptions(), metadata_cf_handle_, ns_key);
   }
 
@@ -215,7 +217,6 @@ rocksdb::Status String::DelEX(engine::Context &ctx, const std::string &user_key,
       break;
     default:
       return rocksdb::Status::InvalidArgument();
-      break;
   }
   if (deleted) {
     return storage_->Delete(ctx, storage_->DefaultWriteOptions(), metadata_cf_handle_, ns_key);

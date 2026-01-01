@@ -38,6 +38,9 @@ struct DelExOption {
   enum class Type { NONE, IFDEQ, IFDNE, IFEQ, IFNE };
   Type type;
   std::string value;
+
+  DelExOption() : type(Type::NONE) {}
+  DelExOption(Type type, std::string value) : type(type), value(std::move(value)) {}
 };
 
 enum class StringSetType { NONE, NX, XX };
@@ -88,7 +91,7 @@ class String : public Database {
   rocksdb::Status Get(engine::Context &ctx, const std::string &user_key, std::string *value);
   rocksdb::Status GetEx(engine::Context &ctx, const std::string &user_key, std::string *value,
                         std::optional<uint64_t> expire);
-  rocksdb::Status DelEX(engine::Context &ctx, const std::string &user_key, DelExOption &option, bool &deleted);
+  rocksdb::Status DelEX(engine::Context &ctx, const std::string &user_key, const DelExOption &option, bool &deleted);
   rocksdb::Status GetSet(engine::Context &ctx, const std::string &user_key, const std::string &new_value,
                          std::optional<std::string> &old_value);
   rocksdb::Status GetDel(engine::Context &ctx, const std::string &user_key, std::string *value);

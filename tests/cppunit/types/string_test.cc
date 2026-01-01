@@ -174,7 +174,7 @@ TEST_F(RedisStringTest, DelEX) {
   auto s = string_->DelEX(*ctx_, key, option, deleted);
   EXPECT_TRUE(s.ok());
   EXPECT_FALSE(s.IsNotFound());
-  EXPECT_FALSE(deleted);
+  EXPECT_TRUE(deleted);
   EXPECT_EQ(option.type, DelExOption::Type::NONE);
   status = string_->Get(*ctx_, key, &value);
   EXPECT_TRUE(!status.ok() && status.IsNotFound());

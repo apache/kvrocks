@@ -140,7 +140,7 @@ class CommandDelEX : public Commander {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    if (s.IsNotFound() || (option.type == DelExOption::Type::NONE && !deleted)) {
+    if (s.IsNotFound() || !deleted) {
       *output = redis::Integer(0);
     } else {
       *output = redis::Integer(1);
@@ -149,7 +149,7 @@ class CommandDelEX : public Commander {
   }
 
  private:
-  DelExOption option = {DelExOption::Type::NONE, ""};
+  DelExOption option;
   bool deleted = false;
 };
 

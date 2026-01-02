@@ -118,13 +118,13 @@ class CommandDelEX : public Commander {
     CommandParser parser(args, 2);
     while (parser.Good()) {
       if (parser.EatEqICase("ifdeq")) {
-        option = {DelExOption::IFDEQ, GET_OR_RET(parser.TakeStr())};
+        option_ = {DelExOption::IFDEQ, GET_OR_RET(parser.TakeStr())};
       } else if (parser.EatEqICase("ifdne")) {
-        option = {DelExOption::IFDNE, GET_OR_RET(parser.TakeStr())};
+        option_ = {DelExOption::IFDNE, GET_OR_RET(parser.TakeStr())};
       } else if (parser.EatEqICase("ifeq")) {
-        option = {DelExOption::IFEQ, GET_OR_RET(parser.TakeStr())};
+        option_ = {DelExOption::IFEQ, GET_OR_RET(parser.TakeStr())};
       } else if (parser.EatEqICase("ifne")) {
-        option = {DelExOption::IFNE, GET_OR_RET(parser.TakeStr())};
+        option_ = {DelExOption::IFNE, GET_OR_RET(parser.TakeStr())};
       } else {
         return {Status::RedisParseErr, errInvalidSyntax};
       }
@@ -134,7 +134,8 @@ class CommandDelEX : public Commander {
 
   Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
     redis::String string_db(srv->storage, conn->GetNamespace());
-    auto s = string_db.DelEX(ctx, args_[1], option, deleted);
+    bool deleted = false;
+    auto s = string_db.DelEX(ctx, args_[1], option_, deleted);
 
     if (!s.ok() && !s.IsNotFound()) {
       return {Status::RedisExecErr, s.ToString()};
@@ -149,8 +150,7 @@ class CommandDelEX : public Commander {
   }
 
  private:
-  DelExOption option;
-  bool deleted = false;
+  DelExOption option_;
 };
 
 class CommandStrlen : public Commander {

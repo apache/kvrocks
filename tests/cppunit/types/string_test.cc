@@ -160,7 +160,7 @@ TEST_F(RedisStringTest, GetSet) {
 
 TEST_F(RedisStringTest, DelEX) {
   DelExOption option = {DelExOption::NONE, ""};
-  bool deleted = 0;
+  bool deleted = false;
 
   std::string key = "test-string-key69";
   std::string value = "test-strings-value69";
@@ -200,7 +200,7 @@ TEST_F(RedisStringTest, DelEX) {
   EXPECT_TRUE(status.ok());
   option.type = DelExOption::IFDEQ;
   option.value = "xxxxxxxxxxxxxxxx";
-  deleted = 0;
+  deleted = false;
   s = string_->DelEX(*ctx_, key, option, deleted);
   EXPECT_TRUE(s.ok());
   EXPECT_FALSE(s.IsNotFound());
@@ -211,7 +211,7 @@ TEST_F(RedisStringTest, DelEX) {
 
   option.type = DelExOption::IFDEQ;
   option.value = util::StringDigest(value);
-  deleted = 0;
+  deleted = false;
   s = string_->DelEX(*ctx_, key, option, deleted);
   EXPECT_TRUE(s.ok());
   EXPECT_FALSE(s.IsNotFound());
@@ -227,7 +227,7 @@ TEST_F(RedisStringTest, DelEX) {
   EXPECT_TRUE(status.ok());
   option.type = DelExOption::IFDNE;
   option.value = util::StringDigest(value);
-  deleted = 0;
+  deleted = false;
   s = string_->DelEX(*ctx_, key, option, deleted);
   EXPECT_TRUE(s.ok());
   EXPECT_FALSE(s.IsNotFound());
@@ -238,7 +238,7 @@ TEST_F(RedisStringTest, DelEX) {
 
   option.type = DelExOption::IFDNE;
   option.value = "xxxxxxxxxxxxxxxx";
-  deleted = 0;
+  deleted = false;
   s = string_->DelEX(*ctx_, key, option, deleted);
   EXPECT_TRUE(s.ok());
   EXPECT_FALSE(s.IsNotFound());
@@ -254,7 +254,7 @@ TEST_F(RedisStringTest, DelEX) {
   EXPECT_TRUE(status.ok());
   option.type = DelExOption::IFEQ;
   option.value = "random";
-  deleted = 0;
+  deleted = false;
   s = string_->DelEX(*ctx_, key, option, deleted);
   EXPECT_TRUE(s.ok());
   EXPECT_FALSE(s.IsNotFound());
@@ -265,7 +265,7 @@ TEST_F(RedisStringTest, DelEX) {
 
   option.type = DelExOption::IFEQ;
   option.value = "test-strings-value69";
-  deleted = 0;
+  deleted = false;
   s = string_->DelEX(*ctx_, key, option, deleted);
   EXPECT_TRUE(s.ok());
   EXPECT_FALSE(s.IsNotFound());
@@ -281,7 +281,7 @@ TEST_F(RedisStringTest, DelEX) {
   EXPECT_TRUE(status.ok());
   option.type = DelExOption::IFNE;
   option.value = "test-strings-value69";
-  deleted = 0;
+  deleted = false;
   s = string_->DelEX(*ctx_, key, option, deleted);
   EXPECT_TRUE(s.ok());
   EXPECT_FALSE(s.IsNotFound());
@@ -292,7 +292,7 @@ TEST_F(RedisStringTest, DelEX) {
 
   option.type = DelExOption::IFNE;
   option.value = "random";
-  deleted = 0;
+  deleted = false;
   s = string_->DelEX(*ctx_, key, option, deleted);
   EXPECT_TRUE(s.ok());
   EXPECT_FALSE(s.IsNotFound());

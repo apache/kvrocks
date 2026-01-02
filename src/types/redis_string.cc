@@ -187,33 +187,36 @@ rocksdb::Status String::DelEX(engine::Context &ctx, const std::string &user_key,
                               bool &deleted) {
   deleted = false;
   std::string ns_key = AppendNamespacePrefix(user_key);
+
   if (option.type == DelExOption::NONE) {
+    rocksdb::Status s = KeyExist(ctx, user_key);
+    if (s.IsNotFound()) return s;
     deleted = true;
     return storage_->Delete(ctx, storage_->DefaultWriteOptions(), metadata_cf_handle_, ns_key);
   }
 
-  std::string value;
-  rocksdb::Status s = getValue(ctx, ns_key, &value);
+  std::string val;
+  rocksdb::Status s = getValue(ctx, ns_key, &val);
   if (!s.ok()) return s;
 
   switch (option.type) {
     case DelExOption::IFDEQ:
-      if (option.value == util::StringDigest(value)) {
+      if (option.value == util::StringDigest(val)) {
         deleted = true;
       }
       break;
     case DelExOption::IFDNE:
-      if (option.value != util::StringDigest(value)) {
+      if (option.value != util::StringDigest(val)) {
         deleted = true;
       }
       break;
     case DelExOption::IFEQ:
-      if (option.value == value) {
+      if (option.value == val) {
         deleted = true;
       }
       break;
     case DelExOption::IFNE:
-      if (option.value != value) {
+      if (option.value != val) {
         deleted = true;
       }
       break;

@@ -182,29 +182,16 @@ TEST_F(RedisStringTest, DelEX) {
 
   // Check no args delete on same key
   s = string_->DelEX(*ctx_, key, option, deleted);
-  EXPECT_FALSE(s.ok());
   EXPECT_TRUE(s.IsNotFound());
+  EXPECT_FALSE(deleted);
 
   // Check no args delete on invalid/notfound key
   key = "random";
   s = string_->DelEX(*ctx_, key, option, deleted);
-  EXPECT_FALSE(s.ok());
   EXPECT_TRUE(s.IsNotFound());
+  EXPECT_FALSE(deleted);
   status = string_->Get(*ctx_, key, &value);
   EXPECT_TRUE(!status.ok() && status.IsNotFound());
-
-  // Correct value but incorrect option
-  key = "test-string-key69";
-  value = "test-strings-value69";
-  status = string_->Set(*ctx_, key, value);
-  EXPECT_TRUE(status.ok());
-  option.type = DelExOption::NONE;
-  option.value = "test-strings-value69";
-  s = string_->DelEX(*ctx_, key, option, deleted);
-  EXPECT_TRUE(s.IsInvalidArgument());
-  status = string_->Get(*ctx_, key, &value);
-  EXPECT_TRUE(status.ok() && !status.IsNotFound());
-  EXPECT_EQ("test-strings-value69", value);
 
   // Checking true false cases for all args
   key = "test-string-key69";

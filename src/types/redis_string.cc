@@ -431,43 +431,38 @@ rocksdb::Status String::IncrByFloat(engine::Context &ctx, const std::string &use
 }
 
 rocksdb::Status String::MSet(engine::Context &ctx, const std::vector<StringPair> &pairs, StringMSetArgs args,
-                             bool *flag) {
-  if (flag != nullptr) {
-    *flag = false;
-  }
-
-  if (args.type != StringSetType::NONE) {
-    int exists = 0;
-    int key_count = static_cast<int>(pairs.size());
-    std::vector<Slice> keys;
-    keys.reserve(pairs.size());
-    for (const auto &pair : pairs) {
-      keys.emplace_back(pair.key);
-    }
-    auto s = Exists(ctx, keys, &exists);
-    if (!s.ok()) return s;
-    if ((args.type == StringSetType::NX && exists > 0) || (args.type == StringSetType::XX && exists < key_count)) {
-      return rocksdb::Status::OK();
-    }
-  }
+                             bool *flag = nullptr) {
+  if (flag) *flag = false;
 
   auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisString);
-  rocksdb::Status s = batch->PutLogData(log_data.Encode());
+  auto s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) return s;
 
   for (const auto &pair : pairs) {
-    std::string bytes;
+    Metadata old_metadata(kRedisNone, false);
+    if (args.type != StringSetType::NONE || args.keep_ttl) {
+      std::string ns_key = AppendNamespacePrefix(pair.key);
+      auto s = GetMetadata(ctx, RedisTypes::All(), ns_key, &old_metadata);
+      if (!s.ok() && !s.IsNotFound()) return s;
+      if (s.ok() && !old_metadata.Expired()) {
+        if (args.type == StringSetType::NX) {
+          return rocksdb::Status::OK();
+        }
+      } else if (args.type == StringSetType::XX) {
+        return rocksdb::Status::OK();
+      }
+    }
+
     Metadata metadata(kRedisString, false);
     if (args.keep_ttl) {
-      uint64_t old_expire = 0;
-      rocksdb::Status s = GetExpireTime(ctx, pair.key, &old_expire);
-      if (s.ok() && old_expire != 0) {
-        metadata.expire = old_expire;
+      if (s.ok() && old_metadata.expire != 0) {
+        metadata.expire = old_metadata.expire;
       }
     } else {
       metadata.expire = args.expire;
     }
+    std::string bytes;
     metadata.Encode(&bytes);
     bytes.append(pair.value.data(), pair.value.size());
     std::string ns_key = AppendNamespacePrefix(pair.key);
@@ -477,15 +472,12 @@ rocksdb::Status String::MSet(engine::Context &ctx, const std::vector<StringPair>
   s = storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
   if (!s.ok()) return s;
 
-  if (flag != nullptr) {
-    *flag = true;
-  }
-
+  if (flag) *flag = true;
   return rocksdb::Status::OK();
 }
 
 rocksdb::Status String::MSet(engine::Context &ctx, const std::vector<StringPair> &pairs) {
-  return MSet(ctx, pairs, {/*expire=*/0, StringSetType::NONE, /*keep_ttl=*/false}, nullptr);
+  return MSet(ctx, pairs, {/*expire=*/0, StringSetType::NONE, /*keep_ttl=*/false});
 }
 
 rocksdb::Status String::MSetEX(engine::Context &ctx, const std::vector<StringPair> &pairs, StringMSetArgs args,

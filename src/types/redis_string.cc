@@ -186,47 +186,36 @@ rocksdb::Status String::GetEx(engine::Context &ctx, const std::string &user_key,
 rocksdb::Status String::DelEX(engine::Context &ctx, const std::string &user_key, const DelExOption &option,
                               bool &deleted) {
   deleted = false;
-  std::string ns_key = AppendNamespacePrefix(user_key);
-
-  if (option.type == DelExOption::NONE) {
-    rocksdb::Status s = KeyExist(ctx, user_key);
-    if (s.IsNotFound()) return s;
-    deleted = true;
-    return storage_->Delete(ctx, storage_->DefaultWriteOptions(), metadata_cf_handle_, ns_key);
-  }
-
   std::string val;
+  std::string ns_key = AppendNamespacePrefix(user_key);
   rocksdb::Status s = getValue(ctx, ns_key, &val);
   if (!s.ok()) return s;
 
+  bool matched = false;
   switch (option.type) {
+    case DelExOption::NONE:
+      matched = true;
+      break;
     case DelExOption::IFDEQ:
-      if (option.value == util::StringDigest(val)) {
-        deleted = true;
-      }
+      matched = option.value == util::StringDigest(val);
       break;
     case DelExOption::IFDNE:
-      if (option.value != util::StringDigest(val)) {
-        deleted = true;
-      }
+      matched = option.value != util::StringDigest(val);
       break;
     case DelExOption::IFEQ:
-      if (option.value == val) {
-        deleted = true;
-      }
+      matched = option.value == val;
       break;
     case DelExOption::IFNE:
-      if (option.value != val) {
-        deleted = true;
-      }
+      matched = option.value != val;
       break;
     default:
       return rocksdb::Status::InvalidArgument();
   }
-  if (deleted) {
-    return storage_->Delete(ctx, storage_->DefaultWriteOptions(), metadata_cf_handle_, ns_key);
+  if (matched) {
+    s = storage_->Delete(ctx, storage_->DefaultWriteOptions(), metadata_cf_handle_, ns_key);
+    deleted = s.ok();
   }
-  return rocksdb::Status::OK();
+  return s;
 }
 
 rocksdb::Status String::GetSet(engine::Context &ctx, const std::string &user_key, const std::string &new_value,

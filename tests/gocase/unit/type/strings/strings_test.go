@@ -285,10 +285,10 @@ func testString(t *testing.T, configs util.KvrocksServerConfigs) {
 
 		require.Equal(t, int64(1), rdb.Do(ctx, "DELEX", key).Val())
 		require.Equal(t, "", rdb.Get(ctx, key).Val())
-		//on same key
+		
 		require.NoError(t, rdb.Do(ctx, "DelEX", key).Err())
 		require.Equal(t, int64(0), rdb.Do(ctx, "DelEX", key).Val())
-		//on non existent key
+		
 		require.Equal(t, "", rdb.Get(ctx, "random").Val())
 		require.NoError(t, rdb.Do(ctx, "DelEX", "random").Err())
 		require.Equal(t, int64(0), rdb.Do(ctx, "DELEX", "random").Val())
@@ -300,13 +300,12 @@ func testString(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.NoError(t, rdb.Set(ctx, key, value, 0).Err())
 		require.Equal(t, value, rdb.Get(ctx, key).Val())
 		
-		// More than 4 args
 		r := rdb.Do(ctx, "DelEX", key, "random", "random", "random").Err()
 		require.ErrorContains(t, r, "wrong number")
-		//Incorrect option
+		
 		r = rdb.Do(ctx, "DelEX", key, "random", "random").Err()
 		require.ErrorContains(t, r, "syntax error")
-		//True cases for all options
+		
 		digest := "b6acb9d84a38ff74"
 		require.NoError(t, rdb.Do(ctx, "DelEX", key, "ifdeq", "xxxxxxxxxxxxxxxx").Err())
 		require.Equal(t, int64(0), rdb.Do(ctx, "DelEX", key, "ifdeq", "xxxxxxxxxxxxxxxx").Val())

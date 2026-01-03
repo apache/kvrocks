@@ -434,38 +434,43 @@ rocksdb::Status String::MSet(engine::Context &ctx, const std::vector<StringPair>
                              bool *flag = nullptr) {
   if (flag) *flag = false;
 
-  auto batch = storage_->GetWriteBatchBase();
-  WriteBatchLogData log_data(kRedisString);
-  auto s = batch->PutLogData(log_data.Encode());
-  if (!s.ok()) return s;
-
-  for (const auto &pair : pairs) {
-    Metadata old_metadata(kRedisNone, false);
-    if (args.type != StringSetType::NONE || args.keep_ttl) {
-      std::string ns_key = AppendNamespacePrefix(pair.key);
+  std::vector<uint64_t> expires;
+  if (args.type != StringSetType::NONE || args.keep_ttl) {
+    expires.resize(pairs.size(), 0);
+    for (size_t i = 0; i < pairs.size(); i++) {
+      Metadata old_metadata(kRedisNone, false);
+      std::string ns_key = AppendNamespacePrefix(pairs[i].key);
       auto s = GetMetadata(ctx, RedisTypes::All(), ns_key, &old_metadata);
       if (!s.ok() && !s.IsNotFound()) return s;
       if (s.ok() && !old_metadata.Expired()) {
         if (args.type == StringSetType::NX) {
           return rocksdb::Status::OK();
         }
+        expires[i] = old_metadata.expire;
       } else if (args.type == StringSetType::XX) {
         return rocksdb::Status::OK();
       }
     }
+  }
 
+  auto batch = storage_->GetWriteBatchBase();
+  WriteBatchLogData log_data(kRedisString);
+  auto s = batch->PutLogData(log_data.Encode());
+  if (!s.ok()) return s;
+
+  for (size_t i = 0; i < pairs.size(); i++) {
     Metadata metadata(kRedisString, false);
     if (args.keep_ttl) {
-      if (s.ok() && old_metadata.expire != 0) {
-        metadata.expire = old_metadata.expire;
+      if (expires[i] != 0) {
+        metadata.expire = expires[i];
       }
     } else {
       metadata.expire = args.expire;
     }
     std::string bytes;
     metadata.Encode(&bytes);
-    bytes.append(pair.value.data(), pair.value.size());
-    std::string ns_key = AppendNamespacePrefix(pair.key);
+    bytes.append(pairs[i].value.data(), pairs[i].value.size());
+    std::string ns_key = AppendNamespacePrefix(pairs[i].key);
     s = batch->Put(metadata_cf_handle_, ns_key, bytes);
     if (!s.ok()) return s;
   }

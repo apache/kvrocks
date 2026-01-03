@@ -480,6 +480,18 @@ func testString(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.EqualValues(t, -1, rdb.TTL(ctx, "k2").Val())
 	})
 
+	t.Run("MSETEX with TXN", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "k1", "k2").Err())
+		res := rdb.MSetEX(ctx, redis.MSetEXArgs{}, "k1", "v1")
+		require.EqualValues(t, 1, res.Val())
+		txn := rdb.TxPipeline()
+		txn.MSetEX(ctx, redis.MSetEXArgs{Condition: redis.XX}, "k1", "v10", "k2", "v20")
+		_, err := txn.Exec(ctx)
+		require.NoError(t, err)
+		require.Equal(t, "v1", rdb.Get(ctx, "k1").Val())
+		require.Equal(t, "", rdb.Get(ctx, "k2").Val())
+	})
+
 	t.Run("MSETNX with already existent key", func(t *testing.T) {
 		r := rdb.MSetNX(ctx, map[string]interface{}{
 			"x1": "xxx",

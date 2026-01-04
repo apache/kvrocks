@@ -55,7 +55,7 @@ class CommandMove : public Commander {
   }
 
   Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
-    int count = 0;
+    uint32_t count = 0;
     redis::Database redis(srv->storage, conn->GetNamespace());
 
     rocksdb::Status s = redis.Exists(ctx, {args_[1]}, &count);
@@ -163,7 +163,7 @@ class CommandExists : public Commander {
       keys.emplace_back(args_[i]);
     }
 
-    int cnt = 0;
+    uint32_t cnt = 0;
     redis::Database redis(srv->storage, conn->GetNamespace());
 
     auto s = redis.Exists(ctx, keys, &cnt);

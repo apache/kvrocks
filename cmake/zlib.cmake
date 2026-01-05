@@ -26,8 +26,8 @@ FetchContent_DeclareGitHubWithMirror(zlib
 
 FetchContent_MakeAvailableWithArgs(zlib
   WITH_GTEST=OFF
-  ZLIB_ENABLE_TESTS=OFF
   ZLIBNG_ENABLE_TESTS=OFF
   BUILD_SHARED_LIBS=OFF
+  BUILD_TESTING=OFF
   ZLIB_COMPAT=ON
 )

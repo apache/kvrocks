@@ -21,65 +21,39 @@
 #pragma once
 
 #include <cstdlib>
-#include <iterator>
 
-#include "fmt/base.h"
-#include "fmt/ostream.h"
-#include "spdlog/common.h"
 #include "spdlog/spdlog.h"
 
 // just like std::source_location::current() in C++20 and __builtin_source_location(),
 // but works in lower version compilers (GCC and Clang)
+// NOTE: even now we use C++20, it is not supported until libstdc++ 11 and libc++ 16.
 inline constexpr spdlog::source_loc CurrentLocation(const char *filename = __builtin_FILE(),
                                                     int lineno = __builtin_LINE(),
                                                     const char *funcname = __builtin_FUNCTION()) {
   return {filename, lineno, funcname};
 }
 
-struct FormatMessageWithLoc {
-  template <typename T>
-  constexpr FormatMessageWithLoc(const T &v, spdlog::source_loc loc = CurrentLocation())  // NOLINT
-      : fmt(v), current_loc(loc) {}
+// NOLINTNEXTLINE
+#define LOG(...) spdlog::log(CurrentLocation(), __VA_ARGS__)
 
-  std::string_view fmt;
-  spdlog::source_loc current_loc;
-};
+// NOLINTNEXTLINE
+#define DEBUG(...) spdlog::log(CurrentLocation(), spdlog::level::debug, __VA_ARGS__)
 
-template <typename... Args>
-inline void log(spdlog::level::level_enum lvl, FormatMessageWithLoc fmt, Args &&...args) {  // NOLINT
-  spdlog::default_logger_raw()->log(fmt.current_loc, lvl, fmt.fmt, std::forward<Args>(args)...);
-}
+// NOLINTNEXTLINE
+#define INFO(...) spdlog::log(CurrentLocation(), spdlog::level::info, __VA_ARGS__)
 
-template <typename... Args>
-inline void debug(FormatMessageWithLoc fmt, Args &&...args) {  // NOLINT
-  spdlog::default_logger_raw()->log(fmt.current_loc, spdlog::level::debug, fmt.fmt, std::forward<Args>(args)...);
-}
+// NOLINTNEXTLINE
+#define WARN(...) spdlog::log(CurrentLocation(), spdlog::level::warn, __VA_ARGS__)
 
-template <typename... Args>
-inline void info(FormatMessageWithLoc fmt, Args &&...args) {  // NOLINT
-  spdlog::default_logger_raw()->log(fmt.current_loc, spdlog::level::info, fmt.fmt, std::forward<Args>(args)...);
-}
+// NOLINTNEXTLINE
+#define ERROR(...) spdlog::log(CurrentLocation(), spdlog::level::err, __VA_ARGS__)
 
-template <typename... Args>
-inline void warn(FormatMessageWithLoc fmt, Args &&...args) {  // NOLINT
-  spdlog::default_logger_raw()->log(fmt.current_loc, spdlog::level::warn, fmt.fmt, std::forward<Args>(args)...);
-}
+// NOLINTNEXTLINE
+#define FATAL(...) (spdlog::log(CurrentLocation(), spdlog::level::critical, __VA_ARGS__), std::abort())
 
-template <typename... Args>
-inline void error(FormatMessageWithLoc fmt, Args &&...args) {  // NOLINT
-  spdlog::default_logger_raw()->log(fmt.current_loc, spdlog::level::err, fmt.fmt, std::forward<Args>(args)...);
-}
-
-template <typename... Args>
-[[noreturn]] inline void fatal(FormatMessageWithLoc fmt, Args &&...args) {  // NOLINT
-  spdlog::default_logger_raw()->log(fmt.current_loc, spdlog::level::critical, fmt.fmt, std::forward<Args>(args)...);
-  std::abort();
-}
-
-[[noreturn]] inline void unreachable(spdlog::source_loc loc = CurrentLocation()) {  // NOLINT
-  fatal({"UNREACHABLE REACHED: please submit a bug report with the stacktrace below.", loc});
-}
+// NOLINTNEXTLINE
+#define UNREACHABLE(...) FATAL("UNREACHABLE REACHED: please submit a bug report with the stacktrace below.")
 
 // NOLINTNEXTLINE
 #define CHECK(cond) \
-  if (!(cond)) fatal("Check `{}` failed.", #cond);
+  if (!(cond)) FATAL("Check `{}` failed.", #cond);

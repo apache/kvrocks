@@ -43,10 +43,10 @@ bool MetadataFilter::Filter([[maybe_unused]] int level, const Slice &key, const 
   rocksdb::Status s = metadata.Decode(value);
   auto [ns, user_key] = ExtractNamespaceKey(key, stor_->IsSlotIdEncoded());
   if (!s.ok()) {
-    warn("[compact_filter/metadata] Failed to decode, namespace: {}, key: {}, err: {}", ns, user_key, s.ToString());
+    WARN("[compact_filter/metadata] Failed to decode, namespace: {}, key: {}, err: {}", ns, user_key, s.ToString());
     return false;
   }
-  debug("[compact_filter/metadata] namespace: {}, key: {}, result: {}", ns, user_key,
+  DEBUG("[compact_filter/metadata] namespace: {}, key: {}, result: {}", ns, user_key,
         (metadata.Expired() ? "deleted" : "reserved"));
   return metadata.Expired();
 }
@@ -107,7 +107,7 @@ rocksdb::CompactionFilter::Decision SubKeyFilter::FilterBlobByKey([[maybe_unused
     return rocksdb::CompactionFilter::Decision::kRemove;
   }
   if (!s.IsOK()) {
-    error("[compact_filter/subkey] Failed to get metadata, namespace: {}, key: {}, err: {}", ikey.GetNamespace(),
+    ERROR("[compact_filter/subkey] Failed to get metadata, namespace: {}, key: {}, err: {}", ikey.GetNamespace(),
           ikey.GetKey(), s.Msg());
     return rocksdb::CompactionFilter::Decision::kKeep;
   }
@@ -129,7 +129,7 @@ bool SubKeyFilter::Filter([[maybe_unused]] int level, const Slice &key, const Sl
     return true;
   }
   if (!s.IsOK()) {
-    error("[compact_filter/subkey] Failed to get metadata, namespace: {}, key: {}, err: {}", ikey.GetNamespace(),
+    ERROR("[compact_filter/subkey] Failed to get metadata, namespace: {}, key: {}, err: {}", ikey.GetNamespace(),
           ikey.GetKey(), s.Msg());
     return false;
   }
@@ -139,7 +139,7 @@ bool SubKeyFilter::Filter([[maybe_unused]] int level, const Slice &key, const Sl
     Slice input(cached_metadata_);
     auto s = ts_metadata.Decode(&input);
     if (!s.ok()) {
-      error("[compact_filter/subkey] Failed to decode timeseries metadata, namespace: {}, key: {}, err: {}",
+      ERROR("[compact_filter/subkey] Failed to decode timeseries metadata, namespace: {}, key: {}, err: {}",
             ikey.GetNamespace(), ikey.GetKey(), s.ToString());
       return false;
     }
@@ -148,7 +148,7 @@ bool SubKeyFilter::Filter([[maybe_unused]] int level, const Slice &key, const Sl
     bool expired = false;
     s = ts_db.IsTSSubKeyExpired(ts_metadata, key, value, expired);
     if (!s.ok()) {
-      error("[compact_filter/subkey] Failed to check if timeseries subkey is expired, namespace: {}, key: {}, err: {}",
+      ERROR("[compact_filter/subkey] Failed to check if timeseries subkey is expired, namespace: {}, key: {}, err: {}",
             ikey.GetNamespace(), ikey.GetKey(), s.ToString());
       return false;
     }
@@ -206,7 +206,7 @@ bool SearchFilter::Filter([[maybe_unused]] int level, const Slice &key, [[maybe_
     // metadata of this field is not found, so we can remove the field data
     return true;
   } else if (!s.ok()) {
-    error("[compact_filter/search] Failed to get field metadata, namespace: {}, index: {}, field: {}, err: {}", ns,
+    ERROR("[compact_filter/search] Failed to get field metadata, namespace: {}, index: {}, field: {}, err: {}", ns,
           index_name, field_name, s.ToString());
     return false;
   }
@@ -214,7 +214,7 @@ bool SearchFilter::Filter([[maybe_unused]] int level, const Slice &key, [[maybe_
   std::unique_ptr<redis::IndexFieldMetadata> field_meta;
   Slice field_meta_slice(field_meta_value);
   if (auto s = redis::IndexFieldMetadata::Decode(&field_meta_slice, field_meta); !s.ok()) {
-    error("[compact_filter/search] Failed to decode field metadata, namespace: {}, index: {}, field: {}, err: {}", ns,
+    ERROR("[compact_filter/search] Failed to decode field metadata, namespace: {}, index: {}, field: {}, err: {}", ns,
           index_name, field_name, s.ToString());
     return false;
   }
@@ -243,14 +243,14 @@ bool SearchFilter::Filter([[maybe_unused]] int level, const Slice &key, [[maybe_
     // metadata of this key is not found, so we can remove the field data
     return true;
   } else if (!s.ok()) {
-    error("[compact_filter/search] Failed to get metadata, namespace: {}, key: {}, err: {}", ns, user_key,
+    ERROR("[compact_filter/search] Failed to get metadata, namespace: {}, key: {}, err: {}", ns, user_key,
           s.ToString());
     return false;
   }
 
   Metadata metadata(kRedisNone, false);
   if (auto s = metadata.Decode(metadata_value); !s.ok()) {
-    error("[compact_filter/search] Failed to decode metadata, namespace: {}, key: {}, err: {}", ns, user_key,
+    ERROR("[compact_filter/search] Failed to decode metadata, namespace: {}, key: {}, err: {}", ns, user_key,
           s.ToString());
   }
 
@@ -281,13 +281,13 @@ bool IndexFilter::Filter([[maybe_unused]] int level, const Slice &key, [[maybe_u
     // metadata of this key is not found, so we can remove the index
     return true;
   } else if (!s.ok()) {
-    error("[compact_filter/index] Failed to get metadata, namespace: {}, key: {}, err: {}", ns, user_key, s.ToString());
+    ERROR("[compact_filter/index] Failed to get metadata, namespace: {}, key: {}, err: {}", ns, user_key, s.ToString());
     return false;
   }
 
   Metadata metadata(kRedisNone, false);
   if (auto s = metadata.Decode(metadata_value); !s.ok()) {
-    error("[compact_filter/index] Failed to decode metadata, namespace: {}, key: {}, err: {}", ns, user_key,
+    ERROR("[compact_filter/index] Failed to decode metadata, namespace: {}, key: {}, err: {}", ns, user_key,
           s.ToString());
   }
 

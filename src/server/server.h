@@ -58,7 +58,7 @@
 #include "tls_util.h"
 #include "worker.h"
 
-constexpr const char *REDIS_VERSION = "4.0.0";
+constexpr const char *REDIS_VERSION = "7.0.0";
 
 struct DBScanInfo {
   // Last scan system clock in seconds

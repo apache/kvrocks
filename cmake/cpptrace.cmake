@@ -34,4 +34,5 @@ endif ()
 
 FetchContent_MakeAvailableWithArgs(cpptrace
   ${CPPTRACE_BACKEND_OPTION}
+  CPPTRACE_DISABLE_CXX_20_MODULES=ON
 )

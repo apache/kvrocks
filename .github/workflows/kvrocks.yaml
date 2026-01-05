@@ -51,27 +51,27 @@ jobs:
           echo "docs_only=${{ fromJSON(steps.changes.outputs.all_count) == fromJSON(steps.changes.outputs.docs_count) && fromJSON(steps.changes.outputs.docs_count) > 0 }}" >> $GITHUB_OUTPUT
 
   check-typos:
-    name: Check typos
+    name: Check typos and licenses
     runs-on: ubuntu-22.04
     env:
       FORCE_COLOR: 1
     steps:
       - uses: actions/checkout@v4
       - name: Check typos
-        uses: crate-ci/typos@v1.37.1
+        uses: crate-ci/typos@v1.41.0
         with:
           config: .github/config/typos.toml
+      - uses: apache/skywalking-eyes/header@v0.7.0
+        with:
+          config: .github/config/licenserc.yml
 
   check-and-lint:
     name: Lint and check code
-    needs: [precondition]
+    needs: [precondition, check-typos]
     if: ${{ needs.precondition.outputs.docs_only != 'true' }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - uses: apache/skywalking-eyes/header@v0.7.0
-        with:
-          config: .github/config/licenserc.yml
       - uses: actions/setup-go@v5
         with:
           go-version-file: 'tests/gocase/go.mod'
@@ -103,7 +103,7 @@ jobs:
 
   build-and-test:
     name: Build and test
-    needs: [precondition, check-and-lint, check-typos]
+    needs: [precondition, check-typos]
     if: ${{ needs.precondition.outputs.docs_only != 'true' }}
     strategy:
       fail-fast: false
@@ -150,13 +150,12 @@ jobs:
           - name: Ubuntu Clang
             os: ubuntu-22.04
             compiler: clang
-          # FIXME: https://github.com/apache/kvrocks/issues/2411
-          # - name: Ubuntu 24 GCC
-          #   os: ubuntu-24.04
-          #   compiler: gcc
-          # - name: Ubuntu 24 Clang
-          #   os: ubuntu-24.04
-          #   compiler: clang
+          - name: Ubuntu 24 GCC
+            os: ubuntu-24.04
+            compiler: gcc
+          - name: Ubuntu 24 Clang
+            os: ubuntu-24.04
+            compiler: clang
           - name: Ubuntu GCC ASan
             os: ubuntu-22.04
             without_jemalloc: -DDISABLE_JEMALLOC=ON
@@ -240,7 +239,7 @@ jobs:
       RISCV_PATH: "/opt/riscv"
     steps:
       - name: Maximize build space
-        if: ${{ matrix.riscv_toolchain }}
+        if: ${{ startsWith(matrix.os, 'ubuntu') }}
         run: |
           # refer to https://github.com/easimon/maximize-build-space,
           # we take some ideas from this action but don't use it directly.
@@ -457,7 +456,7 @@ jobs:
 
   check-docker:
     name: Check Docker image
-    needs: [precondition, check-and-lint, check-typos]
+    needs: [precondition, check-typos]
     if: ${{ needs.precondition.outputs.docs_only != 'true' }}
     runs-on: ${{ matrix.os }}
     strategy:
@@ -491,7 +490,7 @@ jobs:
 
   build-and-test-in-container:
     name: Build and test in container
-    needs: [precondition, check-and-lint, check-typos]
+    needs: [precondition, check-typos]
     if: ${{ needs.precondition.outputs.docs_only != 'true' }}
     strategy:
       fail-fast: false
@@ -503,10 +502,9 @@ jobs:
           - name: ArchLinux
             image: archlinux:base
             compiler: gcc
-          # FIXME: disable it due to "No space left on device" issue
-          # - name: Rocky Linux 8
-          #   image: rockylinux:8
-          #   compiler: gcc
+          - name: Rocky Linux 8
+            image: rockylinux:8
+            compiler: gcc
           - name: Rocky Linux 9
             image: rockylinux:9
             compiler: gcc
@@ -521,7 +519,16 @@ jobs:
     runs-on: ubuntu-22.04
     container:
       image: ${{ matrix.image }}
+      volumes:
+        - /usr/local/lib/android:/usr-local-lib-android
+        - /usr/share/dotnet:/usr-share-dotnet
     steps:
+      - name: Maximize build space
+        run: |
+          df -h
+          rm -rf /usr-local-lib-android/*
+          rm -rf /usr-share-dotnet/*
+          df -h
       - name: Setup ArchLinux
         if: ${{ startsWith(matrix.image, 'archlinux') }}
         run: |
@@ -660,6 +667,7 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - precondition
+      - check-and-lint
       - build-and-test
       - build-and-test-in-container
       - check-docker

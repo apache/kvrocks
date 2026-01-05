@@ -512,7 +512,7 @@ rocksdb::Status Hash::RandField(engine::Context &ctx, const Slice &user_key, int
       break;
     }
     case HashFetchType::kOnlyValue:
-      unreachable();
+      UNREACHABLE();
   }
   return rocksdb::Status::OK();
 }

@@ -395,22 +395,22 @@ Status Storage::Open(DBOpenMode mode) {
       break;
     }
     default:
-      unreachable();
+      UNREACHABLE();
   }
   auto end = std::chrono::high_resolution_clock::now();
   int64_t duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
 
   if (!db_) {
-    info("[storage] Failed to load the data from disk: {} ms", duration);
+    INFO("[storage] Failed to load the data from disk: {} ms", duration);
     return {Status::DBOpenErr};
   }
-  info("[storage] Success to load the data from disk: {} ms", duration);
+  INFO("[storage] Success to load the data from disk: {} ms", duration);
 
   return Status::OK();
 }
 
 Status Storage::CreateBackup(uint64_t *sequence_number) {
-  info("[storage] Start to create new backup");
+  INFO("[storage] Start to create new backup");
   std::lock_guard<std::mutex> lg(config_->backup_mu);
   std::string task_backup_dir = config_->backup_dir;
 
@@ -422,28 +422,28 @@ Status Storage::CreateBackup(uint64_t *sequence_number) {
   rocksdb::Checkpoint *checkpoint = nullptr;
   rocksdb::Status s = rocksdb::Checkpoint::Create(db_.get(), &checkpoint);
   if (!s.ok()) {
-    warn("Failed to create checkpoint object for backup. Error: {}", s.ToString());
+    WARN("Failed to create checkpoint object for backup. Error: {}", s.ToString());
     return {Status::NotOK, s.ToString()};
   }
 
   std::unique_ptr<rocksdb::Checkpoint> checkpoint_guard(checkpoint);
   s = checkpoint->CreateCheckpoint(tmpdir, config_->rocks_db.write_buffer_size * MiB, sequence_number);
   if (!s.ok()) {
-    warn("Failed to create checkpoint (snapshot) for backup. Error: {}", s.ToString());
+    WARN("Failed to create checkpoint (snapshot) for backup. Error: {}", s.ToString());
     return {Status::DBBackupErr, s.ToString()};
   }
 
   // 2) Rename tmp backup to real backup dir
   if (s = rocksdb::DestroyDB(task_backup_dir, rocksdb::Options()); !s.ok()) {
-    warn("[storage] Failed to clean old backup. Error: {}", s.ToString());
+    WARN("[storage] Failed to clean old backup. Error: {}", s.ToString());
     return {Status::NotOK, s.ToString()};
   }
 
   if (s = env_->RenameFile(tmpdir, task_backup_dir); !s.ok()) {
-    warn("[storage] Failed to rename tmp backup. Error: {}", s.ToString());
+    WARN("[storage] Failed to rename tmp backup. Error: {}", s.ToString());
     // Just try best effort
     if (s = rocksdb::DestroyDB(tmpdir, rocksdb::Options()); !s.ok()) {
-      warn("[storage] Failed to clean tmp backup. Error: {}", s.ToString());
+      WARN("[storage] Failed to clean tmp backup. Error: {}", s.ToString());
     }
 
     return {Status::NotOK, s.ToString()};
@@ -452,7 +452,7 @@ Status Storage::CreateBackup(uint64_t *sequence_number) {
   // 'backup_mu_' can guarantee 'backup_creating_time_secs_' is thread-safe
   backup_creating_time_secs_ = util::GetTimeStamp<std::chrono::seconds>();
 
-  info("[storage] Success to create new backup");
+  INFO("[storage] Success to create new backup");
   return Status::OK();
 }
 
@@ -475,15 +475,15 @@ Status Storage::RestoreFromBackup() {
 
   auto s = backup_->RestoreDBFromLatestBackup(config_->db_dir, config_->db_dir);
   if (!s.ok()) {
-    error("[storage] Failed to restore database from the latest backup. Error: {}", s.ToString());
+    ERROR("[storage] Failed to restore database from the latest backup. Error: {}", s.ToString());
   } else {
-    info("[storage] Database was restored from the latest backup");
+    INFO("[storage] Database was restored from the latest backup");
   }
 
   // Reopen DB （should always try to reopen db even if restore failed, replication SST file CRC check may use it）
   auto s2 = Open();
   if (!s2.IsOK()) {
-    error("[storage] Failed to reopen the database. Error: {}", s2.Msg());
+    ERROR("[storage] Failed to reopen the database. Error: {}", s2.Msg());
     return {Status::DBOpenErr, s2.Msg()};
   }
 
@@ -515,7 +515,7 @@ Status Storage::RestoreFromCheckpoint() {
   s = env_->RenameFile(config_->db_dir, tmp_dir);
   if (!s.ok()) {
     if (auto s1 = Open(); !s1.IsOK()) {
-      error("[storage] Failed to reopen database. Error: {}", s1.Msg());
+      ERROR("[storage] Failed to reopen database. Error: {}", s1.Msg());
     }
     return {Status::NotOK, fmt::format("Failed to rename database directory '{}' to '{}'. Error: {}", config_->db_dir,
                                        tmp_dir, s.ToString())};
@@ -525,7 +525,7 @@ Status Storage::RestoreFromCheckpoint() {
   if (s = env_->RenameFile(checkpoint_dir, config_->db_dir); !s.ok()) {
     env_->RenameFile(tmp_dir, config_->db_dir);
     if (auto s1 = Open(); !s1.IsOK()) {
-      error("[storage] Failed to reopen database. Error: {}", s1.Msg());
+      ERROR("[storage] Failed to reopen database. Error: {}", s1.Msg());
     }
     return {Status::NotOK, fmt::format("Failed to rename checkpoint directory '{}' to '{}'. Error: {}", checkpoint_dir,
                                        config_->db_dir, s.ToString())};
@@ -534,18 +534,18 @@ Status Storage::RestoreFromCheckpoint() {
   // Open the new database, restore if replica fails to open
   auto s2 = Open();
   if (!s2.IsOK()) {
-    warn("[storage] Failed to open master checkpoint. Error: {}", s2.Msg());
+    WARN("[storage] Failed to open master checkpoint. Error: {}", s2.Msg());
     rocksdb::DestroyDB(config_->db_dir, rocksdb::Options());
     env_->RenameFile(tmp_dir, config_->db_dir);
     if (auto s1 = Open(); !s1.IsOK()) {
-      error("[storage] Failed to reopen database. Error: {}", s1.Msg());
+      ERROR("[storage] Failed to reopen database. Error: {}", s1.Msg());
     }
     return {Status::DBOpenErr, "Failed to open master checkpoint. Error: " + s2.Msg()};
   }
 
   // Destroy the origin database
   if (s = rocksdb::DestroyDB(tmp_dir, rocksdb::Options()); !s.ok()) {
-    warn("[storage] Failed to destroy the origin database at '{}'. Error: {}", tmp_dir, s.ToString());
+    WARN("[storage] Failed to destroy the origin database at '{}'. Error: {}", tmp_dir, s.ToString());
   }
   return Status::OK();
 }
@@ -570,7 +570,7 @@ void Storage::EmptyDB() {
 
   auto s = rocksdb::DestroyDB(config_->db_dir, rocksdb::Options());
   if (!s.ok()) {
-    error("[storage] Failed to destroy database. Error: {}", s.ToString());
+    ERROR("[storage] Failed to destroy database. Error: {}", s.ToString());
   }
 }
 
@@ -589,9 +589,9 @@ void Storage::PurgeOldBackups(uint32_t num_backups_to_keep, uint32_t backup_max_
   if (num_backups_to_keep == 0 || backup_expired) {
     s = rocksdb::DestroyDB(task_backup_dir, rocksdb::Options());
     if (s.ok()) {
-      info("[storage] Succeeded cleaning old backup that was created at {}", backup_creating_time_secs_);
+      INFO("[storage] Succeeded cleaning old backup that was created at {}", backup_creating_time_secs_);
     } else {
-      info("[storage] Failed cleaning old backup that was created at {}. Error: {}", backup_creating_time_secs_,
+      INFO("[storage] Failed cleaning old backup that was created at {}. Error: {}", backup_creating_time_secs_,
            s.ToString());
     }
   }
@@ -798,7 +798,7 @@ StatusOr<int> Storage::IngestSST(const std::string &sst_dir, const rocksdb::Inge
 
   sst_files = std::move(filtered_files);
   if (sst_files.empty()) {
-    warn("No SST files found in {}", sst_dir);
+    WARN("No SST files found in {}", sst_dir);
     return 0;
   }
 
@@ -963,9 +963,9 @@ void Storage::CheckDBSizeLimit() {
 
   db_size_limit_reached_ = limit_reached;
   if (db_size_limit_reached_) {
-    warn("[storage] ENABLE db_size limit {} GB. Switch kvrocks to read-only mode.", config_->max_db_size);
+    WARN("[storage] ENABLE db_size limit {} GB. Switch kvrocks to read-only mode.", config_->max_db_size);
   } else {
-    warn("[storage] DISABLE db_size limit. Switch kvrocks to read-write mode.");
+    WARN("[storage] DISABLE db_size limit. Switch kvrocks to read-write mode.");
   }
 }
 
@@ -1045,7 +1045,7 @@ Status Storage::ShiftReplId(engine::Context &ctx) {
     rand_str[i] = charset[distrib(gen)];
   }
   replid_ = std::move(rand_str);
-  info("[replication] New replication id: {}", replid_);
+  INFO("[replication] New replication id: {}", replid_);
 
   // Write new replication id into db engine
   return WriteToPropagateCF(ctx, kReplicationIdKey, replid_);
@@ -1122,7 +1122,7 @@ Status Storage::ReplDataManager::GetFullReplDataInfo(Storage *storage, std::stri
     rocksdb::Checkpoint *checkpoint = nullptr;
     rocksdb::Status s = rocksdb::Checkpoint::Create(storage->db_.get(), &checkpoint);
     if (!s.ok()) {
-      warn("Failed to create checkpoint object. Error: {}", s.ToString());
+      WARN("Failed to create checkpoint object. Error: {}", s.ToString());
       return {Status::NotOK, s.ToString()};
     }
 
@@ -1137,10 +1137,10 @@ Status Storage::ReplDataManager::GetFullReplDataInfo(Storage *storage, std::stri
     storage->checkpoint_info_.access_time_secs = now_secs;
     storage->checkpoint_info_.latest_seq = checkpoint_latest_seq;
     if (!s.ok()) {
-      warn("[storage] Failed to create checkpoint (snapshot). Error: {}", s.ToString());
+      WARN("[storage] Failed to create checkpoint (snapshot). Error: {}", s.ToString());
       return {Status::NotOK, s.ToString()};
     }
-    info("[storage] Create checkpoint successfully");
+    INFO("[storage] Create checkpoint successfully");
   } else {
     // Replicas can share checkpoint to replication if the checkpoint existing time is less than a half of WAL TTL.
     int64_t can_shared_time_secs = storage->config_->rocks_db.wal_ttl_seconds / 2;
@@ -1149,7 +1149,7 @@ Status Storage::ReplDataManager::GetFullReplDataInfo(Storage *storage, std::stri
 
     auto now_secs = util::GetTimeStamp<std::chrono::seconds>();
     if (now_secs - storage->GetCheckpointCreateTimeSecs() > can_shared_time_secs) {
-      warn("[storage] Can't use current checkpoint, waiting next checkpoint");
+      WARN("[storage] Can't use current checkpoint, waiting next checkpoint");
       return {Status::NotOK, "Can't use current checkpoint, waiting for next checkpoint"};
     }
 
@@ -1157,10 +1157,10 @@ Status Storage::ReplDataManager::GetFullReplDataInfo(Storage *storage, std::stri
     // or the slave will fall into the full sync loop since it won't create new checkpoint.
     auto s = storage->InWALBoundary(storage->checkpoint_info_.latest_seq);
     if (!s.IsOK()) {
-      warn("[storage] Can't use current checkpoint, error: {}", s.Msg());
+      WARN("[storage] Can't use current checkpoint, error: {}", s.Msg());
       return {Status::NotOK, fmt::format("Can't use current checkpoint, error: {}", s.Msg())};
     }
-    info("[storage] Using current existing checkpoint");
+    INFO("[storage] Using current existing checkpoint");
   }
 
   ulm.unlock();
@@ -1169,7 +1169,7 @@ Status Storage::ReplDataManager::GetFullReplDataInfo(Storage *storage, std::stri
   std::vector<std::string> result;
   auto s = storage->env_->GetChildren(data_files_dir, &result);
   if (!s.ok()) {
-    warn("[storage] Failed to list checkpoint files. Error: {}", s.ToString());
+    WARN("[storage] Failed to list checkpoint files. Error: {}", s.ToString());
     return {Status::NotOK, s.ToString()};
   }
   for (const auto &f : result) {
@@ -1228,9 +1228,9 @@ Status Storage::ReplDataManager::CleanInvalidFiles(Storage *storage, const std::
     auto s = storage->env_->DeleteFile(dir + "/" + *it);
     if (!s.ok()) {
       ret = Status(Status::NotOK, s.ToString());
-      info("[storage] Failed to delete invalid file {} of master checkpoint", *it);
+      INFO("[storage] Failed to delete invalid file {} of master checkpoint", *it);
     } else {
-      info("[storage] Succeed deleting invalid file {} of master checkpoint", *it);
+      INFO("[storage] Succeed deleting invalid file {} of master checkpoint", *it);
     }
   }
   return ret;
@@ -1240,14 +1240,14 @@ int Storage::ReplDataManager::OpenDataFile(Storage *storage, const std::string &
   std::string abs_path = storage->config_->checkpoint_dir + "/" + repl_file;
   auto s = storage->env_->FileExists(abs_path);
   if (!s.ok()) {
-    error("[storage] Data file [{}] not found", abs_path);
+    ERROR("[storage] Data file [{}] not found", abs_path);
     return NullFD;
   }
 
   storage->env_->GetFileSize(abs_path, file_size);
   auto rv = open(abs_path.c_str(), O_RDONLY);
   if (rv < 0) {
-    error("[storage] Failed to open file: {}", strerror(errno));
+    ERROR("[storage] Failed to open file: {}", strerror(errno));
   }
 
   return rv;
@@ -1256,7 +1256,7 @@ int Storage::ReplDataManager::OpenDataFile(Storage *storage, const std::string &
 Status Storage::ReplDataManager::ParseMetaAndSave(Storage *storage, rocksdb::BackupID meta_id, evbuffer *evbuf,
                                                   Storage::ReplDataManager::MetaInfo *meta) {
   auto meta_file = "meta/" + std::to_string(meta_id);
-  debug("[meta] id: {}", meta_id);
+  DEBUG("[meta] id: {}", meta_id);
 
   // Save the meta to tmp file
   auto wf = NewTmpFile(storage, storage->config_->backup_sync_dir, meta_file);
@@ -1266,27 +1266,27 @@ Status Storage::ReplDataManager::ParseMetaAndSave(Storage *storage, rocksdb::Bac
 
   // timestamp;
   UniqueEvbufReadln line(evbuf, EVBUFFER_EOL_LF);
-  debug("[meta] timestamp: {}", line.get());
+  DEBUG("[meta] timestamp: {}", line.get());
   meta->timestamp = std::strtoll(line.get(), nullptr, 10);
   // sequence
   line = UniqueEvbufReadln(evbuf, EVBUFFER_EOL_LF);
-  debug("[meta] seq: {}", line.get());
+  DEBUG("[meta] seq: {}", line.get());
   meta->seq = std::strtoull(line.get(), nullptr, 10);
   // optional metadata
   line = UniqueEvbufReadln(evbuf, EVBUFFER_EOL_LF);
   if (strncmp(line.get(), "metadata", 8) == 0) {
-    debug("[meta] meta: {}", line.get());
+    DEBUG("[meta] meta: {}", line.get());
     meta->meta_data = std::string(line.get(), line.length);
     line = UniqueEvbufReadln(evbuf, EVBUFFER_EOL_LF);
   }
-  debug("[meta] file count: {}", line.get());
+  DEBUG("[meta] file count: {}", line.get());
   // file list
   while (true) {
     line = UniqueEvbufReadln(evbuf, EVBUFFER_EOL_LF);
     if (!line) {
       break;
     }
-    debug("[meta] file info: {}", line.get());
+    DEBUG("[meta] file info: {}", line.get());
     auto cptr = line.get();
     while (*(cptr++) != ' ') {
     }
@@ -1309,7 +1309,7 @@ Status MkdirRecursively(rocksdb::Env *env, const std::string &dir) {
   for (auto pos = dir.find('/', 1); pos != std::string::npos; pos = dir.find('/', pos + 1)) {
     parent = dir.substr(0, pos);
     if (auto s = env->CreateDirIfMissing(parent); !s.ok()) {
-      error("[storage] Failed to create directory '{}' recursively. Error: {}", parent, s.ToString());
+      ERROR("[storage] Failed to create directory '{}' recursively. Error: {}", parent, s.ToString());
       return {Status::NotOK};
     }
   }
@@ -1324,7 +1324,7 @@ std::unique_ptr<rocksdb::WritableFile> Storage::ReplDataManager::NewTmpFile(Stor
   std::string tmp_file = dir + "/" + repl_file + ".tmp";
   auto s = storage->env_->FileExists(tmp_file);
   if (s.ok()) {
-    error("[storage] Data file exists, override");
+    ERROR("[storage] Data file exists, override");
     storage->env_->DeleteFile(tmp_file);
   }
 
@@ -1337,7 +1337,7 @@ std::unique_ptr<rocksdb::WritableFile> Storage::ReplDataManager::NewTmpFile(Stor
   std::unique_ptr<rocksdb::WritableFile> wf;
   s = storage->env_->NewWritableFile(tmp_file, &wf, rocksdb::EnvOptions());
   if (!s.ok()) {
-    error("[storage] Failed to create data file '{}'. Error: {}", tmp_file, s.ToString());
+    ERROR("[storage] Failed to create data file '{}'. Error: {}", tmp_file, s.ToString());
     return nullptr;
   }
 

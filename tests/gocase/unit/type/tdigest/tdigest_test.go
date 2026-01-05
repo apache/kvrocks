@@ -23,6 +23,7 @@ package tdigest
 
 import (
 	"context"
+	"math"
 	"strconv"
 	"testing"
 
@@ -714,6 +715,263 @@ func tdigestTests(t *testing.T, configs util.KvrocksServerConfigs) {
 			rank, ok := v.(int64)
 			require.True(t, ok, "expected int64 but got %T at index %d", v, i)
 			require.EqualValues(t, expected[i], rank, "REVRANK mismatch at index %d", i)
+		}
+	})
+}
+
+func TestTDigestByRankAndByRevRank(t *testing.T) {
+	configOptions := []util.ConfigOptions{
+		{
+			Name:       "txn-context-enabled",
+			Options:    []string{"yes", "no"},
+			ConfigType: util.YesNo,
+		},
+		{
+			Name:       "resp3-enabled",
+			Options:    []string{"yes", "no"},
+			ConfigType: util.YesNo,
+		},
+	}
+
+	configsMatrix, err := util.GenerateConfigsMatrix(configOptions)
+	require.NoError(t, err)
+
+	for _, configs := range configsMatrix {
+		tdigestTestsByRankAndByRevRank(t, configs)
+	}
+}
+
+func tdigestTestsByRankAndByRevRank(t *testing.T, configs util.KvrocksServerConfigs) {
+	srv := util.StartServer(t, configs)
+	defer srv.Close()
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	t.Run("tdigest.byrank and tdigest.byrevrank on empty sketch", func(t *testing.T) {
+		key := "tdigest_byrank_on_empty_sketch"
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", key, "compression", "100").Err())
+
+		// Test BYRANK on empty sketch
+		rsp := rdb.Do(ctx, "TDIGEST.BYRANK", key, "1", "2", "4", "5", "0", "1", "20")
+		require.NoError(t, rsp.Err())
+		vals, err := rsp.Slice()
+		require.NoError(t, err)
+		require.Len(t, vals, 7)
+		isRESP3 := configs["resp3-enabled"] == "yes"
+		if isRESP3 {
+			for i, v := range vals {
+				rank, ok := v.(float64)
+				require.True(t, ok, "expected float64 but got %T at index %d", v, i)
+				require.True(t, math.IsNaN(rank), "expected NaN but got %v at index %d", rank, i)
+			}
+		} else {
+			expected := []string{"nan", "nan", "nan", "nan", "nan", "nan", "nan"}
+			for i, v := range vals {
+				rank, ok := v.(string)
+				require.True(t, ok, "expected string but got %T at index %d", v, i)
+				require.EqualValues(t, expected[i], rank, "RANK mismatch at index %d", i)
+			}
+		}
+
+		// Test BYREVRANK on empty sketch
+		rsp = rdb.Do(ctx, "TDIGEST.BYREVRANK", key, "1", "2", "4", "5", "0", "1", "20")
+		require.NoError(t, rsp.Err())
+		vals, err = rsp.Slice()
+		require.NoError(t, err)
+		require.Len(t, vals, 7)
+		if isRESP3 {
+			for i, v := range vals {
+				rank, ok := v.(float64)
+				require.True(t, ok, "expected float64 but got %T at index %d", v, i)
+				require.True(t, math.IsNaN(rank), "expected NaN but got %v at index %d", rank, i)
+			}
+		} else {
+			expected := []string{"nan", "nan", "nan", "nan", "nan", "nan", "nan"}
+			for i, v := range vals {
+				rank, ok := v.(string)
+				require.True(t, ok, "expected string but got %T at index %d", v, i)
+				require.EqualValues(t, expected[i], rank, "REVRANK mismatch at index %d", i)
+			}
+		}
+	})
+
+	t.Run("tdigest.byrank and tdigest.byrevrank on non-empty sketch", func(t *testing.T) {
+		key := "tdigest_byrank_non_empty"
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", key, "compression", "100").Err())
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", key, "1", "2", "3", "4", "5").Err())
+		isRESP3 := configs["resp3-enabled"] == "yes"
+
+		rsp := rdb.Do(ctx, "TDIGEST.BYRANK", key, "0", "1", "2", "3", "4", "5", "6")
+		require.NoError(t, rsp.Err())
+		vals, err := rsp.Slice()
+		require.NoError(t, err)
+		require.Len(t, vals, 7)
+		if isRESP3 {
+			// Expected: rank 0 -> 1, rank 1 -> 2, rank 2 -> 3, rank 3 -> 4, rank 4 -> 5
+			// Expected: rank 5, 6 -> out of range (+inf)
+			expected := []float64{1, 2, 3, 4, 5, math.Inf(1), math.Inf(1)}
+			for i, v := range vals {
+				rank, ok := v.(float64)
+				require.True(t, ok, "expected float64 but got %T at index %d", v, i)
+				if math.IsInf(expected[i], 1) {
+					require.True(t, math.IsInf(rank, 1), "expected +Inf but got %v at index %d", rank, i)
+				} else {
+					require.InDelta(t, expected[i], rank, 0.1, "BYRANK mismatch at index %d", i)
+				}
+			}
+		} else {
+			expectedStrings := []string{"1", "2", "3", "4", "5", "inf", "inf"}
+			for i, v := range vals {
+				rank, ok := v.(string)
+				require.True(t, ok, "expected string but got %T at index %d", v, i)
+				require.Equal(t, expectedStrings[i], rank, "BYRANK mismatch at index %d", i)
+			}
+		}
+
+		rsp = rdb.Do(ctx, "TDIGEST.BYREVRANK", key, "0", "1", "2", "3", "4", "5", "6")
+		require.NoError(t, rsp.Err())
+		vals, err = rsp.Slice()
+		require.NoError(t, err)
+		require.Len(t, vals, 7)
+
+		if isRESP3 {
+			// Expected: rank 0 -> 5, rank 1 -> 4, rank 2 -> 3, rank 3 -> 2, rank 4 -> 1
+			// Expected: rank 5, 6 -> out of range (-inf)
+			expected := []float64{5, 4, 3, 2, 1, math.Inf(-1), math.Inf(-1)}
+			for i, v := range vals {
+				rank, ok := v.(float64)
+				require.True(t, ok, "expected float64 but got %T at index %d", v, i)
+				if math.IsInf(expected[i], -1) {
+					require.True(t, math.IsInf(rank, -1), "expected -Inf but got %v at index %d", rank, i)
+				} else {
+					require.InDelta(t, expected[i], rank, 0.1, "BYREVRANK mismatch at index %d", i)
+				}
+			}
+		} else {
+			expectedStrings := []string{"5", "4", "3", "2", "1", "-inf", "-inf"}
+			for i, v := range vals {
+				rank, ok := v.(string)
+				require.True(t, ok, "expected string but got %T at index %d", v, i)
+				require.Equal(t, expectedStrings[i], rank, "BYREVRANK mismatch at index %d", i)
+			}
+		}
+	})
+
+	t.Run("tdigest.byrank and tdigest.byrevrank with duplicate values", func(t *testing.T) {
+		key := "tdigest_byrank_duplicates"
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", key, "compression", "100").Err())
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", key, "1", "2", "2", "3", "3", "3").Err())
+		isRESP3 := configs["resp3-enabled"] == "yes"
+
+		rsp := rdb.Do(ctx, "TDIGEST.BYRANK", key, "0", "1", "2", "3", "4", "5", "6", "7")
+		require.NoError(t, rsp.Err())
+		vals, err := rsp.Slice()
+		require.NoError(t, err)
+		require.Len(t, vals, 8)
+		// test BYRANK with duplicate values
+		if isRESP3 {
+			expected := []float64{1, 2, 2, 3, 3, 3}
+			for i, v := range vals {
+				rank, ok := v.(float64)
+				require.True(t, ok, "expected float64 but got %T at index %d", v, i)
+				if i < 6 {
+					require.InDelta(t, expected[i], rank, 0.1, "BYRANK mismatch at index %d", i)
+				} else {
+					require.True(t, math.IsInf(rank, 1), "rank %d should be +Inf, got %v", i, rank)
+				}
+			}
+		} else {
+			expectedStrings := []string{"1", "2", "2", "3", "3", "3", "inf", "inf"}
+			for i, v := range vals {
+				rank, ok := v.(string)
+				require.True(t, ok, "expected string but got %T at index %d", v, i)
+				require.Equal(t, expectedStrings[i], rank, "BYRANK mismatch at index %d", i)
+			}
+		}
+
+		// test BYREVRANK with duplicate values
+		rsp = rdb.Do(ctx, "TDIGEST.BYREVRANK", key, "0", "1", "2", "3", "4", "5", "6", "7")
+		require.NoError(t, rsp.Err())
+		vals, err = rsp.Slice()
+		require.NoError(t, err)
+		require.Len(t, vals, 8)
+		if isRESP3 {
+			expected := []float64{3, 3, 3, 2, 2, 1}
+			for i, v := range vals {
+				rank, ok := v.(float64)
+				require.True(t, ok, "expected float64 but got %T at index %d", v, i)
+				if i < 6 {
+					require.InDelta(t, expected[i], rank, 0.1, "BYREVRANK mismatch at index %d", i)
+				} else {
+					require.True(t, math.IsInf(rank, -1), "rank %d should be -Inf, got %v", i, rank)
+				}
+			}
+		} else {
+			expectedStrings := []string{"3", "3", "3", "2", "2", "1", "-inf", "-inf"}
+			for i, v := range vals {
+				rank, ok := v.(string)
+				require.True(t, ok, "expected string but got %T at index %d", v, i)
+				require.Equal(t, expectedStrings[i], rank, "BYREVRANK mismatch at index %d", i)
+			}
+		}
+	})
+
+	t.Run("tdigest.byrank and tdigest.byrevrank with unordered duplicate values", func(t *testing.T) {
+		key := "tdigest_byrank_unordered_dup_"
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", key, "compression", "100").Err())
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", key, "12", "100", "50", "36", "75", "81", "35.5", "46", "36", "8.8", "15", "4", "32.5", "12", "8.8", "7", "99", "1").Err())
+		isRESP3 := configs["resp3-enabled"] == "yes"
+
+		rsp := rdb.Do(ctx, "TDIGEST.BYRANK", key, "0", "1", "2", "3", "4", "5", "6", "7", "7", "5", "20", "100")
+		require.NoError(t, rsp.Err())
+		vals, err := rsp.Slice()
+		require.NoError(t, err)
+		require.Len(t, vals, 12)
+		if isRESP3 {
+			expected := []float64{1, 4, 7, 8.8, 8.8, 12, 12, 15, 15, 12}
+			for i, v := range vals {
+				rank, ok := v.(float64)
+				require.True(t, ok, "expected float64 but got %T at index %d", v, i)
+				if i < 10 {
+					require.InDelta(t, expected[i], rank, 0.1, "BYRANK mismatch at index %d", i)
+				} else {
+					require.True(t, math.IsInf(rank, 1), "rank %d should be +Inf, got %v", i, rank)
+				}
+			}
+		} else {
+			expectedStrings := []string{"1", "4", "7", "8.8", "8.8", "12", "12", "15", "15", "12", "inf", "inf"}
+			for i, v := range vals {
+				rank, ok := v.(string)
+				require.True(t, ok, "expected string but got %T at index %d", v, i)
+				require.Equal(t, expectedStrings[i], rank, "BYRANK mismatch at index %d", i)
+			}
+		}
+
+		// test BYREVRANK with duplicate values
+		rsp = rdb.Do(ctx, "TDIGEST.BYREVRANK", key, "20", "75", "0", "1", "2", "3", "4", "5", "6", "7")
+		require.NoError(t, rsp.Err())
+		vals, err = rsp.Slice()
+		require.NoError(t, err)
+		require.Len(t, vals, 10)
+		if isRESP3 {
+			expected := []float64{0, 0, 100, 99, 81, 75, 50, 46, 36, 36}
+			for i, v := range vals {
+				rank, ok := v.(float64)
+				require.True(t, ok, "expected float64 but got %T at index %d", v, i)
+				if i < 2 {
+					require.True(t, math.IsInf(rank, -1), "rank %d should be -Inf, got %v", i, rank)
+				} else {
+					require.InDelta(t, expected[i], rank, 0.1, "BYREVRANK mismatch at index %d", i)
+				}
+			}
+		} else {
+			expectedStrings := []string{"-inf", "-inf", "100", "99", "81", "75", "50", "46", "36", "36"}
+			for i, v := range vals {
+				rank, ok := v.(string)
+				require.True(t, ok, "expected string but got %T at index %d", v, i)
+				require.Equal(t, expectedStrings[i], rank, "BYREVRANK mismatch at index %d", i)
+			}
 		}
 	})
 }

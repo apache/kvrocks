@@ -114,13 +114,13 @@ int main(int argc, char *argv[]) {
   }
 
   InitSpdlog(config);
-  info("kvrocks2redis {}", PrintVersion());
+  INFO("kvrocks2redis {}", PrintVersion());
 
   if (config.daemonize) Daemonize();
 
   s = CreatePidFile(config.pidfile);
   if (!s.IsOK()) {
-    error("Failed to create pidfile '{}': {}", config.pidfile, s.Msg());
+    ERROR("Failed to create pidfile '{}': {}", config.pidfile, s.Msg());
     exit(1);
   }
 
@@ -132,7 +132,7 @@ int main(int argc, char *argv[]) {
   engine::Storage storage(&kvrocks_config);
   s = storage.Open(kDBOpenModeAsSecondaryInstance);
   if (!s.IsOK()) {
-    error("Failed to open Kvrocks storage: {}", s.Msg());
+    ERROR("Failed to open Kvrocks storage: {}", s.Msg());
     exit(1);
   }
 
@@ -142,7 +142,7 @@ int main(int argc, char *argv[]) {
   Sync sync(&storage, &writer, &parser, &config);
   hup_handler = [&sync] {
     if (!sync.IsStopped()) {
-      info("Stopping sync");
+      INFO("Stopping sync");
       sync.Stop();
     }
   };

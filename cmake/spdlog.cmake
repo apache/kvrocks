@@ -20,8 +20,8 @@ include_guard()
 include(cmake/utils.cmake)
 
 FetchContent_DeclareGitHubWithMirror(spdlog
-  gabime/spdlog v1.16.0
-  MD5=9492e71daefbfdfb86727b3628066b5a
+  gabime/spdlog v1.17.0
+  MD5=d38d278383b768847ccc4616879df42f
 )
 
 FetchContent_MakeAvailableWithArgs(spdlog

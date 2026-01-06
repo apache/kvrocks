@@ -258,9 +258,8 @@ rocksdb::Status Hash::MSet(engine::Context &ctx, const Slice &user_key, const st
   if (!s.ok()) return s;
   std::unordered_set<std::string_view> field_set;
 
-  rocksdb::ReadOptions read_options = ctx.DefaultMultiGetOptions();
   std::vector<rocksdb::Slice> keys;
-  std::vector<std::string> sub_keys;
+  std::vector<std::string> keys_encoded;
   std::vector<std::string_view> values;
   keys.reserve(field_values.size());
   values.reserve(field_values.size());
@@ -269,27 +268,29 @@ rocksdb::Status Hash::MSet(engine::Context &ctx, const Slice &user_key, const st
       continue;
     }
 
-    sub_keys.push_back(InternalKey(ns_key, it->field, metadata.version, storage_->IsSlotIdEncoded()).Encode());
-    keys.emplace_back(sub_keys.back());
+    keys_encoded.push_back(InternalKey(ns_key, it->field, metadata.version, storage_->IsSlotIdEncoded()).Encode());
+    keys.emplace_back(keys_encoded.back());
     values.emplace_back(it->value);
   }
 
-  std::vector<rocksdb::PinnableSlice> values_vector;
-  values_vector.resize(keys.size());
-  std::vector<rocksdb::Status> statuses_vector;
-  statuses_vector.resize(keys.size());
+  std::vector<rocksdb::PinnableSlice> values_vector(keys.size());
+  std::vector<rocksdb::Status> statuses_vector(keys.size());
   if (metadata.size > 0) {
+    rocksdb::ReadOptions read_options = ctx.DefaultMultiGetOptions();
     storage_->MultiGet(ctx, read_options, storage_->GetDB()->DefaultColumnFamily(), keys.size(), keys.data(),
                        values_vector.data(), statuses_vector.data());
   }
 
   for (size_t field_index = 0; field_index < keys.size(); field_index++) {
+    const rocksdb::Slice field_key = keys[field_index];
     bool exists = false;
+
     if (metadata.size > 0) {
-      if (!statuses_vector[field_index].ok() && !statuses_vector[field_index].IsNotFound()) {
-        return statuses_vector[field_index];
+      rocksdb::Status &field_status = statuses_vector[field_index];
+      if (!field_status.ok() && !field_status.IsNotFound()) {
+        return field_status;
       }
-      if (statuses_vector[field_index].ok()) {
+      if (field_status.ok()) {
         if (nx || values_vector[field_index] == values[field_index]) {
           continue;
         }
@@ -301,7 +302,7 @@ rocksdb::Status Hash::MSet(engine::Context &ctx, const Slice &user_key, const st
       added++;
     }
 
-    s = batch->Put(keys[field_index], values[field_index]);
+    s = batch->Put(field_key, values[field_index]);
     if (!s.ok()) return s;
   }
 

@@ -234,6 +234,7 @@ Config::Config() {
       {"log-retention-days", true, new IntField(&log_retention_days, -1, -1, INT_MAX)},
       {"persist-cluster-nodes-enabled", false, new YesNoField(&persist_cluster_nodes_enabled, true)},
       {"redis-cursor-compatible", false, new YesNoField(&redis_cursor_compatible, true)},
+      {"redis-databases", true, new IntField(&redis_databases, 0, 0, INT_MAX)},
       {"resp3-enabled", false, new YesNoField(&resp3_enabled, true)},
       {"repl-namespace-enabled", false, new YesNoField(&repl_namespace_enabled, false)},
       {"proto-max-bulk-len", false,
@@ -515,8 +516,8 @@ void Config::initFieldCallback() {
                backup_dir = v;
              }
              if (!previous_backup.empty() && srv != nullptr && !srv->IsLoading()) {
-               // info() should be called after log is initialized and server is loaded.
-               info("change backup dir from {} to {}", previous_backup, v);
+               // INFO() should be called after log is initialized and server is loaded.
+               INFO("change backup dir from {} to {}", previous_backup, v);
              }
              return Status::OK();
            }},
@@ -838,7 +839,7 @@ void Config::SetMaster(const std::string &host, uint32_t port) {
   if (iter != fields_.end()) {
     auto s = iter->second->Set(master_host + " " + std::to_string(master_port));
     if (!s.IsOK()) {
-      error("Failed to set the value of 'slaveof' setting: {}", s.Msg());
+      ERROR("Failed to set the value of 'slaveof' setting: {}", s.Msg());
     }
   }
 }
@@ -850,7 +851,7 @@ void Config::ClearMaster() {
   if (iter != fields_.end()) {
     auto s = iter->second->Set("no one");
     if (!s.IsOK()) {
-      error("Failed to clear the value of 'slaveof' setting: {}", s.Msg());
+      ERROR("Failed to clear the value of 'slaveof' setting: {}", s.Msg());
     }
   }
 }
@@ -898,6 +899,12 @@ Status Config::finish() {
   }
   if ((cluster_enabled) && !load_tokens.empty()) {
     return {Status::NotOK, "enabled cluster mode wasn't allowed while the namespace exists"};
+  }
+  if ((redis_databases > 0) && !load_tokens.empty()) {
+    return {Status::NotOK, "redis-databases > 0 is not allowed while any non-default namespace exists"};
+  }
+  if ((redis_databases > 0) && (cluster_enabled)) {
+    return {Status::NotOK, "cluster mode and redis-databases cannot be enabled at the same time"};
   }
   if (unixsocket.empty() && binds.size() == 0) {
     binds.emplace_back(kDefaultBindAddress);

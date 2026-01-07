@@ -31,15 +31,15 @@
 #include "version_util.h"
 
 extern "C" inline void SegvHandler(int sig, [[maybe_unused]] siginfo_t *info, [[maybe_unused]] void *secret) {
-  error("Ooops! Apache Kvrocks {} got signal: {} ({})", PrintVersion(), strsignal(sig), sig);
+  ERROR("Ooops! Apache Kvrocks {} got signal: {} ({})", PrintVersion(), strsignal(sig), sig);
   auto trace = cpptrace::generate_trace();
 
   std::string trace_str;
   std::ostringstream os(trace_str);
   trace.print(os);
 
-  error("{}", os.str());
-  error(
+  ERROR("{}", os.str());
+  ERROR(
       "It would be greatly appreciated if you could submit this crash to https://github.com/apache/kvrocks/issues "
       "along with the stacktrace above, logs and any relevant information.");
 

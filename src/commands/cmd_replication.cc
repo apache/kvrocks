@@ -58,7 +58,7 @@ class CommandPSync : public Commander {
   }
 
   Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
-    info(
+    INFO(
         "Slave {}, listening port: {}, announce ip: {} asks for synchronization "
         "with next sequence: {}, replication id: {}, and local sequence: {}",
         conn->GetAddr(), conn->GetListeningPort(), conn->GetAnnounceIP(), next_repl_seq_,
@@ -68,7 +68,7 @@ class CommandPSync : public Commander {
     // Check replication id of the last sequence log
     if (new_psync_ && srv->GetConfig()->use_rsid_psync) {
       std::string replid_in_wal = srv->storage->GetReplIdFromWalBySeq(next_repl_seq_ - 1);
-      info("Replication id in WAL: {}", replid_in_wal);
+      INFO("Replication id in WAL: {}", replid_in_wal);
 
       // We check replication id only when WAL has this sequence, since there may be no WAL,
       // Or WAL may have nothing when starting from db of old version kvrocks.
@@ -105,12 +105,12 @@ class CommandPSync : public Commander {
       std::string err = redis::Error(s);
       s = util::SockSend(conn->GetFD(), err, conn->GetBufferEvent());
       if (!s.IsOK()) {
-        warn("failed to send error message to the replica: {}", s.Msg());
+        WARN("failed to send error message to the replica: {}", s.Msg());
       }
       conn->EnableFlag(redis::Connection::kCloseAsync);
-      warn("Failed to add replica: {} to start incremental syncing", conn->GetAddr());
+      WARN("Failed to add replica: {} to start incremental syncing", conn->GetAddr());
     } else {
-      info("New replica: {} was added, start incremental syncing", conn->GetAddr());
+      INFO("New replica: {} was added, start incremental syncing", conn->GetAddr());
     }
     return s;
   }
@@ -138,7 +138,7 @@ class CommandPSync : public Commander {
       auto batch = iter->GetBatch();
       if (seq != batch.sequence) {
         if (seq > batch.sequence) {
-          error("checkWALBoundary with sequence: {}, but GetWALIter return older sequence: {}", seq, batch.sequence);
+          ERROR("checkWALBoundary with sequence: {}, but GetWALIter return older sequence: {}", seq, batch.sequence);
         }
         return {Status::NotOK};
       }
@@ -231,18 +231,18 @@ class CommandFetchMeta : public Commander {
       std::string files;
       auto s = engine::Storage::ReplDataManager::GetFullReplDataInfo(srv->storage, &files);
       if (!s.IsOK()) {
-        warn("[replication] Failed to get full data file info: {}", s.Msg());
+        WARN("[replication] Failed to get full data file info: {}", s.Msg());
         s = util::SockSend(repl_fd, redis::Error({Status::RedisErrorNoPrefix, "can't create db checkpoint"}), bev);
         if (!s.IsOK()) {
-          warn("[replication] Failed to send error response: {}", s.Msg());
+          WARN("[replication] Failed to send error response: {}", s.Msg());
         }
         return;
       }
       // Send full data file info
       if (auto s = util::SockSend(repl_fd, files + CRLF, bev)) {
-        info("[replication] Succeed sending full data file info to {}", ip);
+        INFO("[replication] Succeed sending full data file info to {}", ip);
       } else {
-        warn("[replication] Fail to send full data file info {}, error: {}", ip, s.Msg());
+        WARN("[replication] Fail to send full data file info {}, error: {}", ip, s.Msg());
       }
       auto now_secs = static_cast<time_t>(util::GetTimeStamp());
       srv->storage->SetCheckpointAccessTimeSecs(now_secs);
@@ -299,9 +299,9 @@ class CommandFetchFile : public Commander {
           s = util::SockSendFile(repl_fd, *fd, file_size, bev);
         }
         if (s) {
-          info("[replication] Succeed sending file {} to {}", file, ip);
+          INFO("[replication] Succeed sending file {} to {}", file, ip);
         } else {
-          warn("[replication] Fail to send file {} to {}, error: {}", file, ip, s.Msg());
+          WARN("[replication] Fail to send file {} to {}, error: {}", file, ip, s.Msg());
           break;
         }
         fd.Close();
@@ -313,7 +313,7 @@ class CommandFetchFile : public Commander {
           auto shortest = static_cast<uint64_t>(static_cast<double>(file_size) /
                                                 static_cast<double>(max_replication_bytes) * (1000 * 1000));
           if (duration < shortest) {
-            info("[replication] Need to sleep {} ms since of sending files too quickly", (shortest - duration) / 1000);
+            INFO("[replication] Need to sleep {} ms since of sending files too quickly", (shortest - duration) / 1000);
             usleep(shortest - duration);
           }
         }

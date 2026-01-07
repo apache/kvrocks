@@ -55,7 +55,7 @@ struct QueryExprEvaluator {
       return Visit(v);
     }
 
-    unreachable();
+    UNREACHABLE();
   }
 
   StatusOr<bool> Visit(AndExpr *v) const {
@@ -114,7 +114,7 @@ struct QueryExprEvaluator {
       case NumericCompareExpr::GET:
         return l >= r;
       default:
-        unreachable();
+        UNREACHABLE();
     }
   }
 

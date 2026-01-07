@@ -101,7 +101,7 @@ struct SemaChecker {
       GET_OR_RET(Check(v->inner.get()));
     } else if (auto v = dynamic_cast<TagContainExpr *>(node)) {
       if (auto iter = current_index->fields.find(v->field->name); iter == current_index->fields.end()) {
-        return {Status::NotOK, fmt::format("field `{}` not found in index `{}`", v->field->name)};
+        return {Status::NotOK, fmt::format("field `{}` not found in index `{}`", v->field->name, current_index->name)};
       } else if (auto meta = iter->second.MetadataAs<redis::TagFieldMetadata>(); !meta) {
         return {Status::NotOK, fmt::format("field `{}` is not a tag field", v->field->name)};
       } else {

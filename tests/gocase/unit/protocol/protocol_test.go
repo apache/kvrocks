@@ -248,7 +248,7 @@ func handshakeWithRESP3(t *testing.T, c *util.TCPClient) {
 	require.NoError(t, c.WriteArgs("HELLO", "3"))
 	values := []string{"%6",
 		"$6", "server", "$5", "redis",
-		"$7", "version", "$5", "4.0.0",
+		"$7", "version", "$5", "7.0.0",
 		"$5", "proto", ":3",
 		"$4", "mode", "$10", "standalone",
 		"$4", "role", "$6", "master",

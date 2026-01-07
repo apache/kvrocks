@@ -108,6 +108,51 @@ class CommandGetEx : public Commander {
   std::optional<uint64_t> expire_;
 };
 
+class CommandDelEX : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() > 4) {
+      return {Status::RedisParseErr, errWrongNumOfArguments};
+    }
+
+    CommandParser parser(args, 2);
+    while (parser.Good()) {
+      if (parser.EatEqICase("ifdeq")) {
+        option_ = {DelExOption::IFDEQ, GET_OR_RET(parser.TakeStr())};
+      } else if (parser.EatEqICase("ifdne")) {
+        option_ = {DelExOption::IFDNE, GET_OR_RET(parser.TakeStr())};
+      } else if (parser.EatEqICase("ifeq")) {
+        option_ = {DelExOption::IFEQ, GET_OR_RET(parser.TakeStr())};
+      } else if (parser.EatEqICase("ifne")) {
+        option_ = {DelExOption::IFNE, GET_OR_RET(parser.TakeStr())};
+      } else {
+        return {Status::RedisParseErr, errInvalidSyntax};
+      }
+    }
+    return Status::OK();
+  }
+
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    redis::String string_db(srv->storage, conn->GetNamespace());
+    bool deleted = false;
+    auto s = string_db.DelEX(ctx, args_[1], option_, deleted);
+
+    if (!s.ok() && !s.IsNotFound()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+
+    if (s.IsNotFound() || !deleted) {
+      *output = redis::Integer(0);
+    } else {
+      *output = redis::Integer(1);
+    }
+    return Status::OK();
+  }
+
+ private:
+  DelExOption option_;
+};
+
 class CommandStrlen : public Commander {
  public:
   Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
@@ -421,7 +466,7 @@ class CommandMSet : public Commander {
       kvs.emplace_back(StringPair{args_[i], args_[i + 1]});
     }
 
-    auto s = string_db.MSet(ctx, kvs, 0);
+    auto s = string_db.MSet(ctx, kvs);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -447,6 +492,70 @@ class CommandSetNX : public Commander {
   }
 };
 
+class CommandMSetEX : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    auto parsed_num_keys = ParseInt<int>(args[1], 10);
+    if (!parsed_num_keys) {
+      return {Status::RedisParseErr, errValueNotInteger};
+    }
+
+    if (*parsed_num_keys <= 0) return {Status::RedisParseErr, errValueMustBePositive};
+    num_keys_ = *parsed_num_keys;
+    min_args_ = 2 + 2 * num_keys_;
+    if (args.size() < min_args_) {
+      return {Status::RedisParseErr, errWrongNumOfArguments};
+    }
+
+    CommandParser parser(args, min_args_);
+    std::string_view ttl_flag, set_flag;
+    while (parser.Good()) {
+      if (auto v = GET_OR_RET(ParseExpireFlags(parser, ttl_flag))) {
+        expire_ = *v;
+      } else if (parser.EatEqICaseFlag("KEEPTTL", ttl_flag)) {
+        keep_ttl_ = true;
+      } else if (parser.EatEqICaseFlag("NX", set_flag)) {
+        set_flag_ = StringSetType::NX;
+      } else if (parser.EatEqICaseFlag("XX", set_flag)) {
+        set_flag_ = StringSetType::XX;
+      } else {
+        return parser.InvalidSyntax();
+      }
+    }
+    return Status::OK();
+  }
+
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    bool ret = false;
+
+    std::vector<StringPair> kvs;
+    for (size_t i = 2; i < min_args_; i += 2) {
+      kvs.emplace_back(StringPair{args_[i], args_[i + 1]});
+    }
+
+    redis::String string_db(srv->storage, conn->GetNamespace());
+    auto s = string_db.MSetEX(ctx, kvs, {expire_, set_flag_, keep_ttl_}, &ret);
+    if (!s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+
+    *output = redis::Integer(ret ? 1 : 0);
+    return Status::OK();
+  }
+
+  static CommandKeyRange Range(const std::vector<std::string> &args) {
+    int num_keys = *ParseInt<int>(args[1], 10);
+    return {2, 2 + 2 * num_keys, 2};
+  }
+
+ private:
+  size_t num_keys_ = 0;
+  size_t min_args_ = 4;
+  StringSetType set_flag_ = StringSetType::NONE;
+  uint64_t expire_ = 0;
+  bool keep_ttl_ = false;
+};
+
 class CommandMSetNX : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
@@ -465,7 +574,7 @@ class CommandMSetNX : public Commander {
       kvs.emplace_back(StringPair{args_[i], args_[i + 1]});
     }
 
-    auto s = string_db.MSetNX(ctx, kvs, 0, &ret);
+    auto s = string_db.MSetNX(ctx, kvs, &ret);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -721,19 +830,40 @@ class CommandLCS : public Commander {
   int64_t min_match_len_ = 0;
 };
 
+class CommandDigest : public Commander {
+ public:
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    redis::String string_db(srv->storage, conn->GetNamespace());
+    std::string digest;
+    auto s = string_db.Digest(ctx, args_[1], &digest);
+    if (!s.ok() && !s.IsNotFound()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+    if (s.IsNotFound()) {
+      *output = conn->NilString();
+      return Status::OK();
+    }
+    *output = redis::BulkString(digest);
+    return Status::OK();
+  }
+};
+
 REDIS_REGISTER_COMMANDS(
     String, MakeCmdAttr<CommandGet>("get", 2, "read-only", 1, 1, 1),
     MakeCmdAttr<CommandGetEx>("getex", -2, "write", 1, 1, 1),
     MakeCmdAttr<CommandStrlen>("strlen", 2, "read-only", 1, 1, 1),
+    MakeCmdAttr<CommandDigest>("digest", 2, "read-only", 1, 1, 1),
     MakeCmdAttr<CommandGetSet>("getset", 3, "write", 1, 1, 1),
     MakeCmdAttr<CommandGetRange>("getrange", 4, "read-only", 1, 1, 1),
     MakeCmdAttr<CommandSubStr>("substr", 4, "read-only", 1, 1, 1),
     MakeCmdAttr<CommandGetDel>("getdel", 2, "write no-dbsize-check", 1, 1, 1),
+    MakeCmdAttr<CommandDelEX>("delex", -2, "write", 1, 1, 1),
     MakeCmdAttr<CommandSetRange>("setrange", 4, "write", 1, 1, 1),
     MakeCmdAttr<CommandMGet>("mget", -2, "read-only", 1, -1, 1),
     MakeCmdAttr<CommandAppend>("append", 3, "write", 1, 1, 1), MakeCmdAttr<CommandSet>("set", -3, "write", 1, 1, 1),
     MakeCmdAttr<CommandSetEX>("setex", 4, "write", 1, 1, 1), MakeCmdAttr<CommandPSetEX>("psetex", 4, "write", 1, 1, 1),
     MakeCmdAttr<CommandSetNX>("setnx", 3, "write", 1, 1, 1),
+    MakeCmdAttr<CommandMSetEX>("msetex", -4, "write", CommandMSetEX::Range),
     MakeCmdAttr<CommandMSetNX>("msetnx", -3, "write", 1, -1, 2),
     MakeCmdAttr<CommandMSet>("mset", -3, "write", 1, -1, 2), MakeCmdAttr<CommandIncrBy>("incrby", 3, "write", 1, 1, 1),
     MakeCmdAttr<CommandIncrByFloat>("incrbyfloat", 3, "write", 1, 1, 1),

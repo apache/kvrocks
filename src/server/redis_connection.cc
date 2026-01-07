@@ -22,13 +22,14 @@
 #include <rocksdb/perf_context.h>
 
 #include <mutex>
+#include <nonstd/span.hpp>
 #include <shared_mutex>
 
 #include "commands/commander.h"
 #include "commands/error_constants.h"
 #include "fmt/format.h"
+#include "fmt/ostream.h"
 #include "logging.h"
-#include "nonstd/span.hpp"
 #include "search/indexer.h"
 #include "server/redis_reply.h"
 #include "string_util.h"
@@ -68,9 +69,27 @@ Connection::~Connection() {
 }
 
 std::string Connection::ToString() {
-  return fmt::format("id={} addr={} fd={} name={} age={} idle={} flags={} namespace={} qbuf={} obuf={} cmd={}\n", id_,
-                     addr_, bufferevent_getfd(bev_), name_, GetAge(), GetIdleTime(), GetFlags(), ns_,
-                     evbuffer_get_length(Input()), evbuffer_get_length(Output()), last_cmd_);
+  // When redis-databases > 0 (SELECT compatibility mode), show db field instead of namespace
+  std::string db_or_ns_field;
+  std::string db_or_ns_value;
+
+  if (srv_->GetConfig()->redis_databases > 0) {
+    // Parse db number from namespace (format: kDatabaseNamespacePrefix + number, e.g., "db1", "db2", etc.)
+    int db_num = 0;
+    if (util::StartsWith(ns_, kDatabaseNamespacePrefix)) {
+      const size_t prefix_len = strlen(kDatabaseNamespacePrefix);
+      db_num = ParseInt<int>(ns_.substr(prefix_len), 10).ValueOr(0);
+    }
+    db_or_ns_field = "db";
+    db_or_ns_value = std::to_string(db_num);
+  } else {
+    db_or_ns_field = "namespace";
+    db_or_ns_value = ns_;
+  }
+
+  return fmt::format("id={} addr={} fd={} name={} age={} idle={} flags={} {}={} qbuf={} obuf={} cmd={}\n", id_, addr_,
+                     bufferevent_getfd(bev_), name_, GetAge(), GetIdleTime(), GetFlags(), db_or_ns_field,
+                     db_or_ns_value, evbuffer_get_length(Input()), evbuffer_get_length(Output()), last_cmd_);
 }
 
 void Connection::Close() {
@@ -89,7 +108,7 @@ void Connection::OnRead([[maybe_unused]] struct bufferevent *bev) {
   if (!s.IsOK()) {
     EnableFlag(redis::Connection::kCloseAfterReply);
     Reply(redis::Error(s));
-    info("[connection] Failed to tokenize the request. Error: {}", s.Msg());
+    INFO("[connection] Failed to tokenize the request. Error: {}", s.Msg());
     return;
   }
 
@@ -108,11 +127,11 @@ void Connection::OnWrite([[maybe_unused]] bufferevent *bev) {
 void Connection::OnEvent(bufferevent *bev, int16_t events) {
   if (events & BEV_EVENT_ERROR) {
 #ifdef ENABLE_OPENSSL
-    error("[connection] Removing client: {}, error: {}, SSL Error: {}", GetAddr(),
+    ERROR("[connection] Removing client: {}, error: {}, SSL Error: {}", GetAddr(),
           evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()),
           fmt::streamed(SSLError(bufferevent_get_openssl_error(bev))));  // NOLINT
 #else
-    error("[connection] Removing client: {}, error: {}", GetAddr(),
+    ERROR("[connection] Removing client: {}, error: {}", GetAddr(),
           evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
 #endif
     Close();
@@ -120,13 +139,13 @@ void Connection::OnEvent(bufferevent *bev, int16_t events) {
   }
 
   if (events & BEV_EVENT_EOF) {
-    debug("[connection] Going to remove the client: {}, while closed by client", GetAddr());
+    DEBUG("[connection] Going to remove the client: {}, while closed by client", GetAddr());
     Close();
     return;
   }
 
   if (events & BEV_EVENT_TIMEOUT) {
-    debug("[connection] The client: {} reached timeout", GetAddr());
+    DEBUG("[connection] The client: {} reached timeout", GetAddr());
     bufferevent_enable(bev, EV_READ | EV_WRITE);
   }
 }
@@ -407,7 +426,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     if (!cmd_s.IsOK()) {
       auto cmd_name = cmd_tokens.front();
       if (util::EqualICase(cmd_name, "host:") || util::EqualICase(cmd_name, "post")) {
-        warn(
+        WARN(
             "[connection] A likely HTTP request is detected in the RESP connection, indicating a potential "
             "Cross-Protocol Scripting attack. Connection aborted.");
         EnableFlag(kCloseAsync);
@@ -556,7 +575,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
                     if (res.IsOK()) {
                       index_records.push_back(*res);
                     } else if (!res.Is<Status::NoPrefixMatched>() && !res.Is<Status::TypeMismatched>()) {
-                      warn("[connection] index recording failed for key: {}", key);
+                      WARN("[connection] index recording failed for key: {}", key);
                     }
                   },
                   args);
@@ -568,7 +587,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
       for (const auto &record : index_records) {
         auto s = GlobalIndexer::Update(ctx, record);
         if (!s.IsOK() && !s.Is<Status::TypeMismatched>()) {
-          warn("[connection] index updating failed for key: {}", record.key);
+          WARN("[connection] index updating failed for key: {}", record.key);
         }
       }
     }

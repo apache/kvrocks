@@ -206,9 +206,9 @@ class TDigestRankCommand : public Commander {
     if (const auto s =
             [&]() {
               if constexpr (Reverse) {
-                return tdigest.RevRank(ctx, key_name_, unique_inputs_, result);
+                return tdigest.RevRank(ctx, key_name_, unique_inputs_, &result);
               } else {
-                return tdigest.Rank(ctx, key_name_, unique_inputs_, result);
+                return tdigest.Rank(ctx, key_name_, unique_inputs_, &result);
               }
             }();
         !s.ok()) {
@@ -237,6 +237,77 @@ class TDigestRankCommand : public Commander {
 class CommandTDigestRevRank : public TDigestRankCommand<true> {};
 
 class CommandTDigestRank : public TDigestRankCommand<false> {};
+
+template <bool Reverse>
+class TDigestByRankCommand : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    key_name_ = args[1];
+
+    std::set<std::string> unique_inputs_set(args.begin() + 2, args.end());
+    origin_inputs_.assign(args.begin() + 2, args.end());
+
+    unique_inputs_.reserve(unique_inputs_set.size());
+    size_t i = 0;
+    for (const auto &input : unique_inputs_set) {
+      auto value = ParseInt<int>(input);
+      if (!value) {
+        return {Status::RedisParseErr, errValueNotInteger};
+      }
+      if (*value < 0) {
+        return {Status::InvalidArgument, errInvalidRankValue};
+      }
+      unique_inputs_.push_back(*value);
+      unique_inputs_order_[input] = i;
+      ++i;
+    }
+    return Status::OK();
+  }
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    TDigest tdigest(srv->storage, conn->GetNamespace());
+    std::vector<double> result;
+    result.reserve(origin_inputs_.size());
+
+    if (const auto s =
+            [&]() {
+              if constexpr (Reverse) {
+                return tdigest.ByRevRank(ctx, key_name_, unique_inputs_, &result);
+              } else {
+                return tdigest.ByRank(ctx, key_name_, unique_inputs_, &result);
+              }
+            }();
+        !s.ok()) {
+      if (s.IsNotFound()) {
+        return {Status::RedisExecErr, errKeyNotFound};
+      }
+      return {Status::RedisExecErr, s.ToString()};
+    }
+
+    std::vector<std::string> ranks;
+    ranks.reserve(origin_inputs_.size());
+    auto is_resp3 = conn->GetProtocolVersion() == RESP::v3;
+    for (const auto &v : origin_inputs_) {
+      auto rank_value = result[unique_inputs_order_[v]];
+      if (is_resp3) {
+        ranks.push_back(redis::Double(redis::RESP::v3, rank_value));
+      } else {
+        ranks.push_back(redis::BulkString(fmt::format("{}", rank_value)));
+      }
+    }
+    *output = redis::Array(ranks);
+    return Status::OK();
+  }
+
+ private:
+  std::string key_name_;
+  std::vector<int> unique_inputs_;
+  std::map<std::string, size_t> unique_inputs_order_;
+  std::vector<std::string> origin_inputs_;
+};
+
+class CommandTDigestByRevRank : public TDigestByRankCommand<true> {};
+
+class CommandTDigestByRank : public TDigestByRankCommand<false> {};
 
 class CommandTDigestMinMax : public Commander {
  public:
@@ -433,6 +504,8 @@ REDIS_REGISTER_COMMANDS(TDigest, MakeCmdAttr<CommandTDigestCreate>("tdigest.crea
                         MakeCmdAttr<CommandTDigestMin>("tdigest.min", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandTDigestRevRank>("tdigest.revrank", -3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandTDigestRank>("tdigest.rank", -3, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandTDigestByRevRank>("tdigest.byrevrank", -3, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandTDigestByRank>("tdigest.byrank", -3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandTDigestQuantile>("tdigest.quantile", -3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandTDigestReset>("tdigest.reset", 2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandTDigestMerge>("tdigest.merge", -4, "write", GetMergeKeyRange));

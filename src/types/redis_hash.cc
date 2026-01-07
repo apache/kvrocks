@@ -257,29 +257,52 @@ rocksdb::Status Hash::MSet(engine::Context &ctx, const Slice &user_key, const st
   s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) return s;
   std::unordered_set<std::string_view> field_set;
+
+  std::vector<rocksdb::Slice> keys;
+  std::vector<std::string> keys_encoded;
+  std::vector<std::string_view> values;
+  keys.reserve(field_values.size());
+  values.reserve(field_values.size());
   for (auto it = field_values.rbegin(); it != field_values.rend(); it++) {
     if (!field_set.insert(it->field).second) {
       continue;
     }
 
+    keys_encoded.push_back(InternalKey(ns_key, it->field, metadata.version, storage_->IsSlotIdEncoded()).Encode());
+    keys.emplace_back(keys_encoded.back());
+    values.emplace_back(it->value);
+  }
+
+  std::vector<rocksdb::PinnableSlice> values_vector(keys.size());
+  std::vector<rocksdb::Status> statuses_vector(keys.size());
+  if (metadata.size > 0) {
+    rocksdb::ReadOptions read_options = ctx.DefaultMultiGetOptions();
+    storage_->MultiGet(ctx, read_options, storage_->GetDB()->DefaultColumnFamily(), keys.size(), keys.data(),
+                       values_vector.data(), statuses_vector.data());
+  }
+
+  for (size_t field_index = 0; field_index < keys.size(); field_index++) {
+    const rocksdb::Slice field_key = keys[field_index];
     bool exists = false;
-    std::string sub_key = InternalKey(ns_key, it->field, metadata.version, storage_->IsSlotIdEncoded()).Encode();
 
     if (metadata.size > 0) {
-      std::string field_value;
-      s = storage_->Get(ctx, ctx.GetReadOptions(), sub_key, &field_value);
-      if (!s.ok() && !s.IsNotFound()) return s;
-
-      if (s.ok()) {
-        if (nx || field_value == it->value) continue;
-
+      rocksdb::Status &field_status = statuses_vector[field_index];
+      if (!field_status.ok() && !field_status.IsNotFound()) {
+        return field_status;
+      }
+      if (field_status.ok()) {
+        if (nx || values_vector[field_index] == values[field_index]) {
+          continue;
+        }
         exists = true;
       }
     }
 
-    if (!exists) added++;
+    if (!exists) {
+      added++;
+    }
 
-    s = batch->Put(sub_key, it->value);
+    s = batch->Put(field_key, values[field_index]);
     if (!s.ok()) return s;
   }
 

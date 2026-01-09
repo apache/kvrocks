@@ -545,7 +545,7 @@ class CommandMSetEX : public Commander {
 
   static CommandKeyRange Range(const std::vector<std::string> &args) {
     int num_keys = *ParseInt<int>(args[1], 10);
-    return {2, 2 + 2 * num_keys, 2};
+    return {2, 2 * num_keys, 2};
   }
 
  private:

@@ -104,6 +104,15 @@ func TestCommand(t *testing.T) {
 		require.Equal(t, "test", vs[0])
 	})
 
+	t.Run("COMMAND GETKEYS MSETEX", func(t *testing.T) {
+		r := rdb.Do(ctx, "COMMAND", "GETKEYS", "MSETEX", "2", "k1", "v1", "k2", "v2", "NX", "KEEPTTL")
+		vs, err := r.Slice()
+		require.NoError(t, err)
+		require.Len(t, vs, 2)
+		require.Equal(t, "k1", vs[0])
+		require.Equal(t, "k2", vs[1])
+	})
+
 	t.Run("COMMAND GETKEYS SINTERCARD", func(t *testing.T) {
 		r := rdb.Do(ctx, "COMMAND", "GETKEYS", "SINTERCARD", "2", "key1", "key2")
 		vs, err := r.Slice()

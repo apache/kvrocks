@@ -1353,6 +1353,7 @@ class CommandXRead : public Commander,
 
     if (results.empty()) {
       conn_->Reply(conn_->NilArray());
+      return;
     }
 
     SendReply(results);
@@ -1664,6 +1665,7 @@ class CommandXReadGroup : public Commander,
 
     if (results.empty()) {
       conn_->Reply(redis::MultiLen(-1));
+      return;
     }
 
     SendReply(results);

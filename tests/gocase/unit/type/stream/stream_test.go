@@ -2361,6 +2361,72 @@ func TestStreamOffset(t *testing.T) {
 		require.Greater(t, pendingEntry.Idle, time.Millisecond)
 		require.Less(t, pendingEntry.Idle, 10*time.Second)
 	})
+
+	t.Run("XREADGROUP BLOCK concurrent readers should not receive double responses", func(t *testing.T) {
+		streamName := "test-concurrent-xreadgroup-block"
+		groupName := "test-group"
+
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+		require.NoError(t, rdb.XGroupCreateMkStream(ctx, streamName, groupName, "0").Err())
+
+		// Create multiple clients to simulate concurrent blocking readers
+		numReaders := 5
+		numIterations := 20
+		clients := make([]*redis.Client, numReaders)
+		for i := 0; i < numReaders; i++ {
+			clients[i] = srv.NewClient()
+			defer clients[i].Close()
+		}
+
+		errorCh := make(chan error, numReaders*numIterations)
+		doneCh := make(chan bool, numReaders)
+
+		// Start concurrent blocking readers
+		for i := 0; i < numReaders; i++ {
+			go func(id int) {
+				defer func() { doneCh <- true }()
+				for j := 0; j < numIterations; j++ {
+					_, err := clients[id].XReadGroup(ctx, &redis.XReadGroupArgs{
+						Group:    groupName,
+						Consumer: fmt.Sprintf("reader%d", id),
+						Streams:  []string{streamName, ">"},
+						Count:    1,
+						Block:    50 * time.Millisecond,
+					}).Result()
+					// redis.Nil is expected when block times out with no data
+					if err != nil && err != redis.Nil {
+						errorCh <- err
+					}
+				}
+			}(i)
+		}
+
+		// Concurrently add messages while readers are blocking
+		go func() {
+			for i := 0; i < 100; i++ {
+				rdb.XAdd(ctx, &redis.XAddArgs{
+					Stream: streamName,
+					Values: []string{"msg", strconv.Itoa(i)},
+				})
+				time.Sleep(5 * time.Millisecond)
+			}
+		}()
+
+		// Wait for all readers to complete
+		for i := 0; i < numReaders; i++ {
+			<-doneCh
+		}
+		close(errorCh)
+
+		// Collect any errors - there should be none
+		var errors []error
+		for err := range errorCh {
+			errors = append(errors, err)
+		}
+		require.Empty(t, errors, "XREADGROUP BLOCK should not produce protocol errors under concurrent load")
+
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+	})
 }
 
 func parseStreamEntryID(id string) (ts int64, seqNum int64) {

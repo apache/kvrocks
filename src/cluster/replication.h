@@ -64,7 +64,8 @@ using FetchFileCallback = std::function<void(const std::string &, uint32_t)>;
 
 class FeedSlaveThread {
  public:
-  explicit FeedSlaveThread(Server *srv, redis::Connection *conn, rocksdb::SequenceNumber next_repl_seq, uint32_t padded_seq_count = 0);
+  explicit FeedSlaveThread(Server *srv, redis::Connection *conn, rocksdb::SequenceNumber next_repl_seq,
+                           uint32_t padded_seq_count = 0);
   ~FeedSlaveThread() = default;
 
   Status Start();

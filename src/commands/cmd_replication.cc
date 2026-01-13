@@ -81,8 +81,8 @@ class CommandPSync : public Commander {
     // Check Log sequence
     uint32_t padded_seq_count = 0;
     if (!need_full_sync && !checkWALBoundary(srv->storage, next_repl_seq_, padded_seq_count).IsOK()) {
-        *output = "sequence out of range, please use fullsync";
-        need_full_sync = true;
+      *output = "sequence out of range, please use fullsync";
+      need_full_sync = true;
     }
 
     if (need_full_sync) {
@@ -101,6 +101,9 @@ class CommandPSync : public Commander {
     }
 
     srv->stats.IncrPSyncOKCount();
+    if (padded_seq_count > 0) {
+      srv->stats.IncrPSyncPaddingCount();
+    }
     s = srv->AddSlave(conn, next_repl_seq_, padded_seq_count);
     if (!s.IsOK()) {
       std::string err = redis::Error(s);

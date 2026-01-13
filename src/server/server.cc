@@ -1324,6 +1324,7 @@ Server::InfoEntries Server::GetStatsInfo() {
   entries.emplace_back("sync_full", stats.fullsync_count.load());
   entries.emplace_back("sync_partial_ok", stats.psync_ok_count.load());
   entries.emplace_back("sync_partial_err", stats.psync_err_count.load());
+  entries.emplace_back("sync_partial_padding", stats.psync_padding_count.load());
 
   auto db_stats = storage->GetDBStats();
   entries.emplace_back("keyspace_hits", db_stats->keyspace_hits.load());

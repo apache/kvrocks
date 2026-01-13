@@ -770,6 +770,7 @@ func TestReplicationSequencePadding(t *testing.T) {
 		require.Equal(t, "slave", util.FindInfoEntry(replicaClient, "role"))
 		require.Equal(t, "0", util.FindInfoEntry(replicaClient, "sync_full"))
 		require.Equal(t, "1", util.FindInfoEntry(masterClient, "sync_partial_ok"))
+		require.Equal(t, "1", util.FindInfoEntry(masterClient, "sync_partial_padding"))
 
 		// Perform writes on master and verify replication
 		masterClient.Set(ctx, "k0", "v0", 0)

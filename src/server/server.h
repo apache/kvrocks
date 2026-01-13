@@ -198,7 +198,7 @@ class Server {
 
   Status AddMaster(const std::string &host, uint32_t port, bool force_reconnect);
   Status RemoveMaster();
-  Status AddSlave(redis::Connection *conn, rocksdb::SequenceNumber next_repl_seq);
+  Status AddSlave(redis::Connection *conn, rocksdb::SequenceNumber next_repl_seq, uint32_t padded_seq_count = 0);
   void DisconnectSlaves();
   void CleanupExitedSlaves();
   bool IsSlave() const { return !master_host_.empty(); }

@@ -79,9 +79,10 @@ class CommandPSync : public Commander {
     }
 
     // Check Log sequence
-    if (!need_full_sync && !checkWALBoundary(srv->storage, next_repl_seq_).IsOK()) {
-      *output = "sequence out of range, please use fullsync";
-      need_full_sync = true;
+    uint32_t padded_seq_count = 0;
+    if (!need_full_sync && !checkWALBoundary(srv->storage, next_repl_seq_, padded_seq_count).IsOK()) {
+        *output = "sequence out of range, please use fullsync";
+        need_full_sync = true;
     }
 
     if (need_full_sync) {
@@ -100,7 +101,7 @@ class CommandPSync : public Commander {
     }
 
     srv->stats.IncrPSyncOKCount();
-    s = srv->AddSlave(conn, next_repl_seq_);
+    s = srv->AddSlave(conn, next_repl_seq_, padded_seq_count);
     if (!s.IsOK()) {
       std::string err = redis::Error(s);
       s = util::SockSend(conn->GetFD(), err, conn->GetBufferEvent());
@@ -121,7 +122,9 @@ class CommandPSync : public Commander {
   std::string replica_replid_;
 
   // Return OK if the seq is in the range of the current WAL
-  static Status checkWALBoundary(engine::Storage *storage, rocksdb::SequenceNumber seq) {
+  static Status checkWALBoundary(engine::Storage *storage, rocksdb::SequenceNumber seq, uint32_t &padded_seq_count) {
+    padded_seq_count = 0;
+
     if (seq == storage->LatestSeqNumber() + 1) {
       return Status::OK();
     }
@@ -138,6 +141,15 @@ class CommandPSync : public Commander {
       auto batch = iter->GetBatch();
       if (seq != batch.sequence) {
         if (seq > batch.sequence) {
+          if (storage->GetConfig()->replication_enable_sequence_padding) {
+            // RocksDB WriteBatch::Count() returns a uint32_t
+            // In practice, batch sizes are much smaller. Since GetWALIter() ensures this
+            // batch contains the requested sequence, (seq - batch.sequence) is always
+            // <= batch.Count(), so overflow checks are unnecessary.
+            padded_seq_count = batch.writeBatchPtr->GetWriteBatch()->Count() - uint32_t(seq - batch.sequence);
+            return Status::OK();
+          }
+
           ERROR("checkWALBoundary with sequence: {}, but GetWALIter return older sequence: {}", seq, batch.sequence);
         }
         return {Status::NotOK};

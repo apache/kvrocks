@@ -711,3 +711,72 @@ func TestReplicationWatermark(t *testing.T) {
 	// The small command should be processed much faster than 1 second
 	require.Less(t, duration, 1*time.Second, "small command should be processed promptly")
 }
+
+func TestReplicationSequencePadding(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	// Start master with sequence padding disabled
+	masterSrv := util.StartServer(t, map[string]string{
+		"cluster-enabled":                     "yes",
+		"replication-enable-sequence-padding": "no",
+	})
+	defer func() { masterSrv.Close() }()
+	masterClient := masterSrv.NewClient()
+	defer func() { require.NoError(t, masterClient.Close()) }()
+	masterNodeID := "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx00"
+	require.NoError(t, masterClient.Do(ctx, "clusterx", "SETNODEID", masterNodeID).Err())
+
+	replicaSrv := util.StartServer(t, map[string]string{
+		"cluster-enabled": "yes",
+	})
+	defer func() { replicaSrv.Close() }()
+	replicaClient := replicaSrv.NewClient()
+	// allow to run the read-only command in the replica
+	require.NoError(t, replicaClient.ReadOnly(ctx).Err())
+	defer func() { require.NoError(t, replicaClient.Close()) }()
+	replicaNodeID := "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx01"
+	require.NoError(t, replicaClient.Do(ctx, "clusterx", "SETNODEID", replicaNodeID).Err())
+
+	// Configure master cluster topology
+	masterClusterConfigStr := fmt.Sprintf("%s 127.0.0.1 %d master - 0-16383", masterNodeID, masterSrv.Port())
+	require.NoError(t, masterClient.Do(ctx, "clusterx", "SETNODES", masterClusterConfigStr, "1").Err())
+
+	// Write to master to increase sequence number (creates gap with replica)
+	require.NoError(t, masterClient.Do(ctx, "hmset", "testHashKey", "1", "1", "2", "2").Err())
+
+	// Configure replica as standalone master and increase its sequence number (creates mismatch)
+	replicaClusterConfigStr := fmt.Sprintf("%s 127.0.0.1 %d master - 0-16383", replicaNodeID, replicaSrv.Port())
+	require.NoError(t, replicaClient.Do(ctx, "clusterx", "SETNODES", replicaClusterConfigStr, "1").Err())
+	require.NoError(t, replicaClient.Do(ctx, "hmset", "testHashKey", "1", "1").Err())
+
+	t.Run("Psync reports sequence out of range when padding disabled", func(t *testing.T) {
+		require.Contains(t, masterClient.Do(ctx, "psync", "2").Err().Error(), "sequence out of range")
+		require.Equal(t, "1", util.FindInfoEntry(masterClient, "sync_partial_err"))
+	})
+
+	t.Run("Psync avoids full sync when padding enabled", func(t *testing.T) {
+		// Enable sequence padding on master
+		require.NoError(t, masterClient.Do(ctx, "config", "set", "replication-enable-sequence-padding", "yes").Err())
+
+		// Configure replica as slave of master
+		replicaClusterConfigStr = fmt.Sprintf("%s\n%s 127.0.0.1 %d slave %s", masterClusterConfigStr, replicaNodeID, replicaSrv.Port(), masterNodeID)
+		require.NoError(t, replicaClient.Do(ctx, "clusterx", "SETNODES", replicaClusterConfigStr, "2").Err())
+
+		// Wait until replication catches up
+		util.WaitForSync(t, replicaClient)
+
+		// Verify roles and sync stats
+		require.Equal(t, "slave", util.FindInfoEntry(replicaClient, "role"))
+		require.Equal(t, "0", util.FindInfoEntry(replicaClient, "sync_full"))
+		require.Equal(t, "1", util.FindInfoEntry(masterClient, "sync_partial_ok"))
+
+		// Perform writes on master and verify replication
+		masterClient.Set(ctx, "k0", "v0", 0)
+		masterClient.LPush(ctx, "k1", "e0", "e1", "e2")
+		util.WaitForOffsetSync(t, masterClient, replicaClient, 5*time.Second)
+
+		require.Equal(t, "v0", replicaClient.Get(ctx, "k0").Val())
+		require.Equal(t, []string{"e2", "e1", "e0"}, replicaClient.LRange(ctx, "k1", 0, -1).Val())
+	})
+}

@@ -64,7 +64,7 @@ using FetchFileCallback = std::function<void(const std::string &, uint32_t)>;
 
 class FeedSlaveThread {
  public:
-  explicit FeedSlaveThread(Server *srv, redis::Connection *conn, rocksdb::SequenceNumber next_repl_seq);
+  explicit FeedSlaveThread(Server *srv, redis::Connection *conn, rocksdb::SequenceNumber next_repl_seq, uint32_t padded_seq_count = 0);
   ~FeedSlaveThread() = default;
 
   Status Start();
@@ -80,6 +80,7 @@ class FeedSlaveThread {
   Server *srv_ = nullptr;
   std::unique_ptr<redis::Connection> conn_ = nullptr;
   std::atomic<rocksdb::SequenceNumber> next_repl_seq_ = 0;
+  uint32_t padded_seq_count_ = 0;
   std::thread t_;
   std::unique_ptr<rocksdb::TransactionLogIterator> iter_ = nullptr;
   // used to parse the ack response from the slave

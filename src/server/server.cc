@@ -330,8 +330,9 @@ Status Server::RemoveMaster() {
   return Status::OK();
 }
 
-Status Server::AddSlave(redis::Connection *conn, rocksdb::SequenceNumber next_repl_seq) {
-  auto t = std::make_unique<FeedSlaveThread>(this, conn, next_repl_seq);
+Status Server::AddSlave(redis::Connection *conn, rocksdb::SequenceNumber next_repl_seq,
+                        uint32_t padded_seq_count /*= 0*/) {
+  auto t = std::make_unique<FeedSlaveThread>(this, conn, next_repl_seq, padded_seq_count);
   auto s = t->Start();
   if (!s.IsOK()) {
     return s;

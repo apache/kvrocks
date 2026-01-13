@@ -57,10 +57,12 @@
 #include <openssl/ssl.h>
 #endif
 
-FeedSlaveThread::FeedSlaveThread(Server *srv, redis::Connection *conn, rocksdb::SequenceNumber next_repl_seq)
+FeedSlaveThread::FeedSlaveThread(Server *srv, redis::Connection *conn, rocksdb::SequenceNumber next_repl_seq,
+                                 uint32_t padded_seq_count /*= 0*/)
     : srv_(srv),
       conn_(conn),
       next_repl_seq_(next_repl_seq),
+      padded_seq_count_(padded_seq_count),
       req_(srv),
       max_delay_bytes_(srv->GetConfig()->max_replication_delay_bytes),
       max_delay_updates_(srv->GetConfig()->max_replication_delay_updates) {}
@@ -174,6 +176,29 @@ bool FeedSlaveThread::shouldSendGetAck(rocksdb::SequenceNumber seq) {
 }
 
 void FeedSlaveThread::loop() {
+  // If there are padded sequences, send dummy no-op entries to keep replication sequence continuous
+  if (padded_seq_count_ > 0) {
+    static constexpr std::string_view kPaddingSequenceKey = "__kvrocks_internal_padding_seq__";
+    rocksdb::WriteBatch padding_write_batch;
+    for (uint32_t i = 0; i < padded_seq_count_; ++i) {
+      padding_write_batch.Delete(kPaddingSequenceKey);
+    }
+
+    // Encode the dummy WriteBatch as a Redis BulkString to send via replication protocol
+    std::string padding_seq_encoded = redis::BulkString(padding_write_batch.Data());
+    auto s = util::SockSend(conn_->GetFD(), padding_seq_encoded, conn_->GetBufferEvent());
+    if (!s.IsOK()) {
+      ERROR("Write error while sending padding sequence write batch to slave: {}. batches: 0x{}", s.Msg(),
+            util::StringToHex(padding_seq_encoded));
+      Stop();
+      return;
+    }
+
+    next_repl_seq_.fetch_add(rocksdb::SequenceNumber(padded_seq_count_), std::memory_order_relaxed);
+    WARN("Sent {} padding sequence write batch to slave {}, next replicate sequence {}", padded_seq_count_,
+         conn_->GetAddr(), next_repl_seq_.load());
+  }
+
   // is_first_repl_batch was used to fix that replication may be stuck in a dead loop
   // when some seqs might be lost in the middle of the WAL log, so forced to replicate
   // first batch here to work around this issue instead of waiting for enough batch size.

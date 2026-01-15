@@ -1190,7 +1190,7 @@ class CommandRestore : public Commander {
     redis::Database redis(srv->storage, conn->GetNamespace());
 
     if (!replace_) {
-      int count = 0;
+      uint32_t count = 0;
       db_status = redis.Exists(ctx, {args_[1]}, &count);
       if (!db_status.ok()) {
         return {Status::RedisExecErr, db_status.ToString()};
@@ -1352,7 +1352,7 @@ class CommandDump : public Commander {
     rocksdb::Status db_status;
     std::string &key = args_[1];
     redis::Database redis(srv->storage, conn->GetNamespace());
-    int count = 0;
+    uint32_t count = 0;
 
     db_status = redis.Exists(ctx, {key}, &count);
     if (!db_status.ok()) {

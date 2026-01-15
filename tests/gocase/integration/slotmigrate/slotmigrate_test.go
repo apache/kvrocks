@@ -1336,7 +1336,7 @@ func TestSlotRangeMigrate(t *testing.T) {
 		require.Equal(t, "OK", rdb0.Do(ctx, "clusterx", "migrate", "112-113", id1).Val())
 		waitForMigrateSlotRangeState(t, rdb0, "112-113", SlotMigrationStateSuccess)
 		for slot := 112; slot <= 118; slot++ {
-			require.Contains(t, rdb0.LPush(ctx, util.SlotTable[slot], 10).Err(), "MOVED")
+			require.ErrorContains(t, rdb0.LPush(ctx, util.SlotTable[slot], 10).Err(), "MOVED")
 		}
 
 		// overlap

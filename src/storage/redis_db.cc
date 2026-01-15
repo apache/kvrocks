@@ -207,7 +207,7 @@ rocksdb::Status Database::MDel(engine::Context &ctx, const std::vector<Slice> &k
   return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
-rocksdb::Status Database::Exists(engine::Context &ctx, const std::vector<Slice> &keys, int *ret) {
+rocksdb::Status Database::Exists(engine::Context &ctx, const std::vector<Slice> &keys, uint32_t *ret) {
   std::vector<std::string> ns_keys;
   ns_keys.reserve(keys.size());
   for (const auto &key : keys) {
@@ -543,7 +543,7 @@ rocksdb::Status Database::ClearKeysOfSlotRange(engine::Context &ctx, const rocks
 }
 
 rocksdb::Status Database::KeyExist(engine::Context &ctx, const std::string &key) {
-  int cnt = 0;
+  uint32_t cnt = 0;
   std::vector<rocksdb::Slice> keys{key};
   auto s = Exists(ctx, keys, &cnt);
   if (!s.ok()) {
@@ -621,7 +621,7 @@ Status WriteBatchLogData::Decode(const rocksdb::Slice &blob) {
   return Status::OK();
 }
 
-rocksdb::Status Database::existsInternal(engine::Context &ctx, const std::vector<std::string> &keys, int *ret) {
+rocksdb::Status Database::existsInternal(engine::Context &ctx, const std::vector<std::string> &keys, uint32_t *ret) {
   *ret = 0;
   rocksdb::Status s;
   std::string value;
@@ -666,7 +666,7 @@ rocksdb::Status Database::Copy(engine::Context &ctx, const std::string &key, con
   }
 
   if (nx) {
-    int exist = 0;
+    uint32_t exist = 0;
     if (s = existsInternal(ctx, {new_key}, &exist), !s.ok()) return s;
     if (exist > 0) {
       *res = CopyResult::KEY_ALREADY_EXIST;

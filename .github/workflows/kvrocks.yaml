@@ -58,7 +58,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Check typos
-        uses: crate-ci/typos@v1.37.1
+        uses: crate-ci/typos@v1.42.0
         with:
           config: .github/config/typos.toml
       - uses: apache/skywalking-eyes/header@v0.7.0
@@ -512,7 +512,7 @@ jobs:
             image: debian:12
             compiler: gcc
           - name: Alpine 3
-            image: alpine:3
+            image: alpine:3.22
             compiler: gcc
             disable_jemalloc: -DDISABLE_JEMALLOC=ON
 

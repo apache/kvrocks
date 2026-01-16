@@ -802,6 +802,7 @@ StatusOr<int> Storage::IngestSST(const std::string &sst_dir, const rocksdb::Inge
     return 0;
   }
 
+  // Group files by column family
   std::unordered_map<ColumnFamilyID, std::vector<std::string>> cf_files;
   for (const auto &file : sst_files) {
     bool matched = false;
@@ -817,38 +818,31 @@ StatusOr<int> Storage::IngestSST(const std::string &sst_dir, const rocksdb::Inge
     }
   }
 
-  // Process each set of files with the appropriate column family
-  // By importing the specific column family SST files first, we avoid data corruption -
-  // if import fails, no data is made available or corrupted in either column family
-  // if the metadata import fails, the imported data will be deleted by the compaction.
-  rocksdb::Status status;
-  // Process files for each column family except metadata
+  // Perform atomic ingestion across all column families using IngestExternalFiles
+  // This API ingests all files atomically - either all succeed or all fail
+  std::vector<rocksdb::IngestExternalFileArg> ingest_args;
+
   for (const auto &[cf, files] : cf_files) {
-    if (cf == ColumnFamilyID::Metadata) continue;
     if (files.empty()) continue;
 
-    rocksdb::ColumnFamilyHandle *cf_handle = GetCFHandle(cf);
+    rocksdb::IngestExternalFileArg arg;
+    arg.column_family = GetCFHandle(cf);
+    arg.external_files = files;
+    arg.options = ingest_options;
+    ingest_args.push_back(arg);
+  }
 
-    status = ingestSST(cf_handle, ingest_options, files);
+  if (!ingest_args.empty()) {
+    rocksdb::Status status = db_->IngestExternalFiles(ingest_args);
     if (!status.ok()) {
-      return {Status::NotOK, status.ToString()};
+      ERROR("Failed to atomically ingest SST files across column families: {}", status.ToString());
+      return {Status::NotOK,
+              fmt::format("Failed to atomically ingest SST files across column families: {}", status.ToString())};
     }
   }
-  // Process metadata files
-  const auto &metadata_files = cf_files[ColumnFamilyID::Metadata];
-  if (!metadata_files.empty()) {
-    status = ingestSST(GetCFHandle(ColumnFamilyID::Metadata), ingest_options, metadata_files);
-    if (!status.ok()) {
-      return {Status::NotOK, status.ToString()};
-    }
-  }
+
+  INFO("Successfully ingested {} SST files atomically across all column families", sst_files.size());
   return sst_files.size();
-}
-
-rocksdb::Status Storage::ingestSST(rocksdb::ColumnFamilyHandle *cf_handle,
-                                   const rocksdb::IngestExternalFileOptions &options,
-                                   const std::vector<std::string> &sst_file_names) {
-  return db_->IngestExternalFile(cf_handle, sst_file_names, options);
 }
 
 void Storage::FlushBlockCache() { shared_block_cache_->EraseUnRefEntries(); }

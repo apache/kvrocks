@@ -802,13 +802,27 @@ StatusOr<int> Storage::IngestSST(const std::string &sst_dir, const rocksdb::Inge
     return 0;
   }
 
-  // Group files by column family
-  std::unordered_map<ColumnFamilyID, std::vector<std::string>> cf_files;
+  // Group files by column family and build ingestion arguments atomically
+  std::vector<rocksdb::IngestExternalFileArg> ingest_args;
+  std::unordered_map<ColumnFamilyID, size_t> cf_to_arg_index;
+
   for (const auto &file : sst_files) {
     bool matched = false;
     for (const auto &cf : ColumnFamilyConfigs::ListAllColumnFamilies()) {
       if (file.find(cf.Name()) != std::string::npos) {
-        cf_files[cf.Id()].push_back(file);
+        ColumnFamilyID cf_id = cf.Id();
+
+        // Create new arg if this CF hasn't been seen yet
+        if (cf_to_arg_index.find(cf_id) == cf_to_arg_index.end()) {
+          rocksdb::IngestExternalFileArg arg;
+          arg.column_family = GetCFHandle(cf_id);
+          arg.options = ingest_options;
+          cf_to_arg_index[cf_id] = ingest_args.size();
+          ingest_args.push_back(arg);
+        }
+
+        // Add file to the corresponding arg
+        ingest_args[cf_to_arg_index[cf_id]].external_files.push_back(file);
         matched = true;
         break;
       }
@@ -820,18 +834,6 @@ StatusOr<int> Storage::IngestSST(const std::string &sst_dir, const rocksdb::Inge
 
   // Perform atomic ingestion across all column families using IngestExternalFiles
   // This API ingests all files atomically - either all succeed or all fail
-  std::vector<rocksdb::IngestExternalFileArg> ingest_args;
-
-  for (const auto &[cf, files] : cf_files) {
-    if (files.empty()) continue;
-
-    rocksdb::IngestExternalFileArg arg;
-    arg.column_family = GetCFHandle(cf);
-    arg.external_files = files;
-    arg.options = ingest_options;
-    ingest_args.push_back(arg);
-  }
-
   if (!ingest_args.empty()) {
     rocksdb::Status status = db_->IngestExternalFiles(ingest_args);
     if (!status.ok()) {

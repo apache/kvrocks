@@ -818,7 +818,7 @@ StatusOr<int> Storage::IngestSST(const std::string &sst_dir, const rocksdb::Inge
           arg.column_family = GetCFHandle(cf_id);
           arg.options = ingest_options;
           cf_to_arg_index[cf_id] = ingest_args.size();
-          ingest_args.push_back(arg);
+          ingest_args.emplace_back(arg);
         }
 
         // Add file to the corresponding arg

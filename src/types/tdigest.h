@@ -311,21 +311,11 @@ inline Status TDigestRank(TD&& td, const std::vector<double>& inputs, std::vecto
 }
 
 template <typename TD>
-inline Status TDigestRank(TD&& td, const std::vector<double>& inputs, bool reverse, std::vector<int>& result) {
-  if (reverse) {
-    return TDigestRankImpl<TD, true>(std::forward<TD>(td), inputs, result);
-  } else {
-    return TDigestRankImpl<TD, false>(std::forward<TD>(td), inputs, result);
-  }
-}
-
-template <typename TD>
 inline StatusOr<double> TDigestTrimmedMean(TD&& td, double low_cut_quantile, double high_cut_quantile) {
   if (td.Size() == 0) {
     return Status{Status::InvalidArgument, "empty tdigest"};
   }
 
-  // Validate quantile parameters
   if (low_cut_quantile < 0.0 || low_cut_quantile > 1.0) {
     return Status{Status::InvalidArgument, "low cut quantile must be between 0 and 1"};
   }
@@ -336,15 +326,13 @@ inline StatusOr<double> TDigestTrimmedMean(TD&& td, double low_cut_quantile, dou
     return Status{Status::InvalidArgument, "low cut quantile must be less than high cut quantile"};
   }
 
-  // Get boundary values for trimming
-  double low_boundary;
-  double high_boundary;
+  double low_boundary = std::numeric_limits<double>::quiet_NaN();
+  double high_boundary = std::numeric_limits<double>::quiet_NaN();
 
-  // For 0 and 1 quantiles, use exact min/max values
   if (low_cut_quantile == 0.0) {
     low_boundary = td.Min();
   } else {
-    auto low_result = TDigestQuantile(std::forward<TD>(td), low_cut_quantile);
+    auto low_result = TDigestQuantile(td, low_cut_quantile);
     if (!low_result) {
       return low_result;
     }
@@ -354,14 +342,13 @@ inline StatusOr<double> TDigestTrimmedMean(TD&& td, double low_cut_quantile, dou
   if (high_cut_quantile == 1.0) {
     high_boundary = td.Max();
   } else {
-    auto high_result = TDigestQuantile(std::forward<TD>(td), high_cut_quantile);
+    auto high_result = TDigestQuantile(td, high_cut_quantile);
     if (!high_result) {
       return high_result;
     }
     high_boundary = *high_result;
   }
 
-  // Calculate trimmed mean by iterating through centroids
   auto iter = td.Begin();
   double total_weight_in_range = 0;
   double weighted_sum = 0;
@@ -369,8 +356,6 @@ inline StatusOr<double> TDigestTrimmedMean(TD&& td, double low_cut_quantile, dou
   while (iter->Valid()) {
     auto centroid = GET_OR_RET(iter->GetCentroid());
 
-    // Check if centroid falls within the trimmed range
-    // For full range (0 to 1), include all centroids
     if ((low_cut_quantile == 0.0 && high_cut_quantile == 1.0) ||
         (centroid.mean >= low_boundary && centroid.mean <= high_boundary)) {
       total_weight_in_range += centroid.weight;
@@ -380,7 +365,6 @@ inline StatusOr<double> TDigestTrimmedMean(TD&& td, double low_cut_quantile, dou
     iter->Next();
   }
 
-  // Check if we have any data in the trimmed range
   if (total_weight_in_range == 0) {
     return std::numeric_limits<double>::quiet_NaN();
   }

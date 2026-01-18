@@ -524,3 +524,32 @@ TEST_F(RedisTDigestTest, ByRank_And_ByRevRank) {
   EXPECT_EQ(result[0], 1.0) << "Rank 0 should be minimum";
   EXPECT_TRUE(std::isinf(result[3])) << "Rank >= total_weight should be infinity";
 }
+
+TEST_F(RedisTDigestTest, TrimmedMean) {
+  std::string test_digest_name = "test_digest_trimmed_mean" + std::to_string(util::GetTimeStampMS());
+  bool exists = false;
+  auto status = tdigest_->Create(*ctx_, test_digest_name, {100}, &exists);
+  ASSERT_FALSE(exists);
+  ASSERT_TRUE(status.ok());
+
+  std::vector<double> values = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
+  status = tdigest_->Add(*ctx_, test_digest_name, values);
+  ASSERT_TRUE(status.ok()) << status.ToString();
+
+  redis::TDigestTrimmedMeanResult result;
+  status = tdigest_->TrimmedMean(*ctx_, test_digest_name, 0.1, 0.9, &result);
+  ASSERT_TRUE(status.ok()) << status.ToString();
+  ASSERT_TRUE(result.mean.has_value());
+  EXPECT_NEAR(*result.mean, 5.5, 1.0) << "Trimmed mean should be approximately 5.5";
+
+  status = tdigest_->TrimmedMean(*ctx_, test_digest_name, 0.0, 1.0, &result);
+  ASSERT_TRUE(status.ok()) << status.ToString();
+  ASSERT_TRUE(result.mean.has_value());
+  EXPECT_NEAR(*result.mean, 5.5, 0.1) << "Full range should equal complete mean";
+
+  status = tdigest_->TrimmedMean(*ctx_, test_digest_name, 0.25, 0.75, &result);
+  ASSERT_TRUE(status.ok()) << status.ToString();
+  ASSERT_TRUE(result.mean.has_value());
+  EXPECT_GT(*result.mean, 3.0) << "Trimmed mean should be greater than 3.0";
+  EXPECT_LT(*result.mean, 8.0) << "Trimmed mean should be less than 8.0";
+}

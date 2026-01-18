@@ -498,21 +498,21 @@ class CommandTDigestTrimmedMean : public Commander {
     if (args.size() != 4) {
       return {Status::RedisParseErr, errWrongNumOfArguments};
     }
-    
+
     key_name_ = args[1];
-    
+
     auto low_cut_quantile = ParseFloat(args[2]);
     if (!low_cut_quantile) {
       return {Status::RedisParseErr, errValueIsNotFloat};
     }
     low_cut_quantile_ = *low_cut_quantile;
-    
+
     auto high_cut_quantile = ParseFloat(args[3]);
     if (!high_cut_quantile) {
       return {Status::RedisParseErr, errValueIsNotFloat};
     }
     high_cut_quantile_ = *high_cut_quantile;
-    
+
     return Status::OK();
   }
 

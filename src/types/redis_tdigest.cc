@@ -784,7 +784,7 @@ rocksdb::Status TDigest::TrimmedMean(engine::Context& ctx, const Slice& digest_n
   if (auto status = dumpCentroids(ctx, ns_key, metadata, &centroids); !status.ok()) {
     return status;
   }
-  auto dump_centroids = DummyCentroids(metadata, centroids);
+  auto dump_centroids = DummyCentroids<false>(metadata, centroids);
   auto trimmed_mean_result = TDigestTrimmedMean(dump_centroids, low_cut_quantile, high_cut_quantile);
   if (!trimmed_mean_result) {
     return rocksdb::Status::InvalidArgument(trimmed_mean_result.Msg());

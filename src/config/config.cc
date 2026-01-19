@@ -277,7 +277,7 @@ Config::Config() {
       {"rocksdb.cache_index_and_filter_blocks", true, new YesNoField(&rocks_db.cache_index_and_filter_blocks, true)},
       {"rocksdb.block_cache_size", true, new IntField(&rocks_db.block_cache_size, 0, 0, INT_MAX)},
       {"rocksdb.block_cache_type", true,
-       new EnumField<BlockCacheType>(&rocks_db.block_cache_type, cache_types, BlockCacheType::kCacheTypeLRU)},
+       new EnumField<BlockCacheType>(&rocks_db.block_cache_type, cache_types, BlockCacheType::kCacheTypeHCC)},
       {"rocksdb.subkey_block_cache_size", true, new IntField(&rocks_db.subkey_block_cache_size, 2048, 0, INT_MAX)},
       {"rocksdb.metadata_block_cache_size", true, new IntField(&rocks_db.metadata_block_cache_size, 2048, 0, INT_MAX)},
       {"rocksdb.share_metadata_and_subkey_block_cache", true,

@@ -182,6 +182,18 @@ class SubKeyScanner : public redis::Database {
   rocksdb::Status Scan(engine::Context &ctx, RedisType type, const Slice &user_key, const std::string &cursor,
                        uint64_t limit, const std::string &subkey_prefix, std::vector<std::string> *keys,
                        std::vector<std::string> *values = nullptr);
+  [[nodiscard]] rocksdb::Slice GetSubKeyExpireInternalKey(const Slice &user_key, const Slice &hash_field,
+                                                          uint64_t metadata_version);
+  // Get expire timestamp in milliseconds for a field
+  // expire_at:
+  // 0 (NoExpireTime) if field has no associated expiration.
+  // A non-negative value representing the expire timestamp in milliseconds.
+  [[nodiscard]] rocksdb::Status GetSubKeyExpireTimestampMS(engine::Context &ctx, const Slice &user_key,
+                                                           const Slice &hash_field, uint64_t metadata_version,
+                                                           uint64_t *expired_at);
+  void MGetSubKeyExpireTimestampMS(engine::Context &ctx, const Slice &user_key, const std::vector<Slice> &hash_fields,
+                                   uint64_t metadata_version, std::vector<uint64_t> *expired_ats,
+                                   std::vector<rocksdb::Status> *statuses);
 };
 
 class WriteBatchLogData {

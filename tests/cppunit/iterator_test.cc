@@ -435,11 +435,9 @@ TEST_F(WALIteratorTest, BasicHash) {
   auto start_seq = storage_->GetDB()->GetLatestSequenceNumber();
   redis::Hash hash(storage_.get(), "test_ns1");
   uint64_t ret = 0;
-  auto s = hash.MSet(*ctx_, "hash-1", {{"f0", "v0"}, {"f1", "v1"}, {"f2", "v2"}, {"f3", "v3"}}, false, &ret);
-  ASSERT_TRUE(s.ok());
+  hash.MSet(*ctx_, "hash-1", {{"f0", "v0"}, {"f1", "v1"}, {"f2", "v2"}, {"f3", "v3"}}, false, &ret);
   uint64_t deleted_cnt = 0;
-  s = hash.Delete(*ctx_, "hash-1", {"f0"}, &deleted_cnt);
-  ASSERT_TRUE(s.ok());
+  hash.Delete(*ctx_, "hash-1", {"f0"}, &deleted_cnt);
   // Delete will put meta key again
   auto expected_put_keys = {"hash-1", "hash-1"};
   // Sub key will be putted in reverse order

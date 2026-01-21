@@ -44,30 +44,6 @@ rocksdb::Status Hash::GetMetadata(engine::Context &ctx, const Slice &ns_key, Has
   return Database::GetMetadata(ctx, {kRedisHash}, ns_key, metadata);
 }
 
-rocksdb::Status Hash::getExpireTimestampMS(engine::Context &ctx, const Slice &expire_key, uint64_t *expired_at) {
-  std::string expire_value;
-  *expired_at = NoExpireTime;
-  auto expire_status = storage_->Get(ctx, ctx.GetReadOptions(), expire_key, &expire_value);
-  if (expire_status.ok()) {
-    *expired_at = DecodeFixed64(expire_value.data());
-  }
-  return expire_status;
-}
-
-void Hash::mGetExpireTimestampMS(engine::Context &ctx, const std::vector<Slice> &expire_keys,
-                                 std::vector<uint64_t> *expired_ats, std::vector<rocksdb::Status> *statuses) {
-  expired_ats->resize(expire_keys.size());
-  std::vector<rocksdb::PinnableSlice> expire_values(expire_keys.size());
-  statuses->resize(expire_keys.size());
-  storage_->MultiGet(ctx, ctx.GetReadOptions(), storage_->GetDB()->DefaultColumnFamily(), expire_keys.size(),
-                     expire_keys.data(), expire_values.data(), statuses->data());
-  for (size_t i = 0; i < expire_keys.size(); i++) {
-    if ((*statuses)[i].ok()) {
-      (*expired_ats)[i] = DecodeFixed64(expire_values[i].data());
-    }
-  }
-}
-
 rocksdb::Status Hash::Size(engine::Context &ctx, const Slice &user_key, uint64_t *size) {
   *size = 0;
   std::vector<FieldValue> fields;
@@ -88,10 +64,8 @@ rocksdb::Status Hash::Get(engine::Context &ctx, const Slice &user_key, const Sli
   std::string sub_key = InternalKey(ns_key, field, metadata.version, storage_->IsSlotIdEncoded()).Encode();
   s = storage_->Get(ctx, ctx.GetReadOptions(), sub_key, value);
   if (!s.ok()) return s;
-  std::string sub_expire_key =
-      InternalKey(ns_key, field, metadata.version + ExpireVersionOffset, storage_->IsSlotIdEncoded()).Encode();
   uint64_t expire_at = NoExpireTime;
-  s = getExpireTimestampMS(ctx, sub_expire_key, &expire_at);
+  s = GetSubKeyExpireTimestampMS(ctx, user_key, field, metadata.version, &expire_at);
   if (!s.ok() && !s.IsNotFound()) return s;
   if (expire_at != NoExpireTime && expire_at < util::GetTimeStampMS()) {
     return rocksdb::Status::NotFound();
@@ -115,10 +89,8 @@ rocksdb::Status Hash::IncrBy(engine::Context &ctx, const Slice &user_key, const 
     s = storage_->Get(ctx, ctx.GetReadOptions(), sub_key, &value_bytes);
     if (!s.ok() && !s.IsNotFound()) return s;
     if (s.ok()) {
-      std::string sub_expire_key =
-          InternalKey(ns_key, field, metadata.version + ExpireVersionOffset, storage_->IsSlotIdEncoded()).Encode();
       uint64_t expire_at = NoExpireTime;
-      s = getExpireTimestampMS(ctx, sub_expire_key, &expire_at);
+      s = GetSubKeyExpireTimestampMS(ctx, user_key, field, metadata.version, &expire_at);
       if (!s.ok() && !s.IsNotFound()) return s;
       if (expire_at != NoExpireTime && expire_at < util::GetTimeStampMS()) {
         old_value = 0;
@@ -174,10 +146,8 @@ rocksdb::Status Hash::IncrByFloat(engine::Context &ctx, const Slice &user_key, c
     s = storage_->Get(ctx, ctx.GetReadOptions(), sub_key, &value_bytes);
     if (!s.ok() && !s.IsNotFound()) return s;
     if (s.ok()) {
-      std::string sub_expire_key =
-          InternalKey(ns_key, field, metadata.version + ExpireVersionOffset, storage_->IsSlotIdEncoded()).Encode();
       uint64_t expire_at = NoExpireTime;
-      s = getExpireTimestampMS(ctx, sub_expire_key, &expire_at);
+      s = GetSubKeyExpireTimestampMS(ctx, user_key, field, metadata.version, &expire_at);
       if (!s.ok() && !s.IsNotFound()) return s;
       if (expire_at != NoExpireTime && expire_at < util::GetTimeStampMS()) {
         old_value = 0;
@@ -230,20 +200,16 @@ rocksdb::Status Hash::MGet(engine::Context &ctx, const Slice &user_key, const st
 
   keys.reserve(fields.size());
   std::vector<std::string> sub_keys;
-  std::vector<Slice> sub_expire_keys;
   sub_keys.resize(fields.size());
-  sub_expire_keys.resize(fields.size());
   for (size_t i = 0; i < fields.size(); i++) {
     auto &field = fields[i];
     sub_keys[i] = InternalKey(ns_key, field, metadata.version, storage_->IsSlotIdEncoded()).Encode();
-    sub_expire_keys[i] =
-        InternalKey(ns_key, field, metadata.version + ExpireVersionOffset, storage_->IsSlotIdEncoded()).Encode();
     keys.emplace_back(sub_keys[i]);
   }
 
   std::vector<uint64_t> expire_ats(fields.size(), NoExpireTime);
   std::vector<rocksdb::Status> expire_statuses(fields.size(), rocksdb::Status::OK());
-  mGetExpireTimestampMS(ctx, sub_expire_keys, &expire_ats, &expire_statuses);
+  MGetSubKeyExpireTimestampMS(ctx, user_key, fields, metadata.version, &expire_ats, &expire_statuses);
   std::vector<rocksdb::PinnableSlice> values_vector;
   values_vector.resize(keys.size());
   std::vector<rocksdb::Status> statuses_vector;
@@ -295,7 +261,7 @@ rocksdb::Status Hash::Delete(engine::Context &ctx, const Slice &user_key, const 
       std::string sub_key_expire =
           InternalKey(ns_key, field, metadata.version + ExpireVersionOffset, storage_->IsSlotIdEncoded()).Encode();
       uint64_t old_expired_timestamp = NoExpireTime;
-      s = getExpireTimestampMS(ctx, sub_key_expire, &old_expired_timestamp);
+      s = GetSubKeyExpireTimestampMS(ctx, user_key, field, metadata.version, &old_expired_timestamp);
       if (!s.ok() && !s.IsNotFound()) return s;
       if (old_expired_timestamp == NoExpireTime || old_expired_timestamp > util::GetTimeStampMS()) {
         *deleted_cnt += 1;
@@ -362,6 +328,10 @@ rocksdb::Status Hash::MSet(engine::Context &ctx, const Slice &user_key, const st
                        values_vector.data(), statuses_vector.data());
   }
 
+  std::vector<uint64_t> expire_ats(field_values.size(), NoExpireTime);
+  std::vector<rocksdb::Status> expire_statuses(field_values.size(), rocksdb::Status::OK());
+  MGetSubKeyExpireTimestampMS(ctx, user_key, keys, metadata.version, &expire_ats, &expire_statuses);
+
   for (size_t field_index = 0; field_index < keys.size(); field_index++) {
     const rocksdb::Slice field_key = keys[field_index];
     bool exists = false;
@@ -385,6 +355,17 @@ rocksdb::Status Hash::MSet(engine::Context &ctx, const Slice &user_key, const st
 
     s = batch->Put(field_key, values[field_index]);
     if (!s.ok()) return s;
+    uint64_t expire_at = expire_ats[field_index];
+    rocksdb::Status &expire_status = expire_statuses[field_index];
+    if (!expire_status.ok() && !expire_status.IsNotFound()) {
+      return expire_status;
+    }
+    // this key was once expired but the expire time exists may block the read
+    if (expire_at != NoExpireTime && expire_at < util::GetTimeStampMS()) {
+      auto sub_key_expire = GetSubKeyExpireInternalKey(user_key, field_key, metadata.version);
+      s = batch->Delete(sub_key_expire);
+      if (!s.ok()) return s;
+    }
   }
 
   if (added > 0 || ttl_updated) {
@@ -476,16 +457,12 @@ rocksdb::Status Hash::GetAll(engine::Context &ctx, const Slice &user_key, std::v
   auto iter = util::UniqueIterator(ctx, read_options);
   for (iter->Seek(prefix_key); iter->Valid() && iter->key().starts_with(prefix_key); iter->Next()) {
     InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
-    std::string sub_expire_key =
-        InternalKey(ns_key, ikey.GetSubKey(), metadata.version + ExpireVersionOffset, storage_->IsSlotIdEncoded())
-            .Encode();
     uint64_t expire_at = NoExpireTime;
-    s = getExpireTimestampMS(ctx, sub_expire_key, &expire_at);
+    s = GetSubKeyExpireTimestampMS(ctx, user_key, ikey.GetSubKey(), metadata.version, &expire_at);
     if (!s.ok() && !s.IsNotFound()) {
       return s;
     }
-    if (expire_at != NoExpireTime && expire_at > util::GetTimeStampMS()) {
-      // expired
+    if (expire_at != NoExpireTime && expire_at < util::GetTimeStampMS()) {
       continue;
     }
     if (type == HashFetchType::kOnlyKey) {
@@ -544,7 +521,8 @@ rocksdb::Status Hash::RandField(engine::Context &ctx, const Slice &user_key, int
 }
 
 rocksdb::Status Hash::ExpireFields(engine::Context &ctx, const Slice &user_key, uint64_t expireat_ms,
-                                   const std::vector<Slice> &fields, std::vector<FieldExpireResult> *results) {
+                                   const std::vector<Slice> &fields, std::vector<FieldExpireResult> *results,
+                                   FieldExpireCondition condition) {
   results->clear();
   results->reserve(fields.size());
 
@@ -562,7 +540,12 @@ rocksdb::Status Hash::ExpireFields(engine::Context &ctx, const Slice &user_key, 
   s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) return s;
 
+  auto current_time_ms = util::GetTimeStampMS();
   for (const auto &field : fields) {
+    if (current_time_ms >= expireat_ms) {
+      results->push_back(FieldExpireResult::kExpireWithPastTime);
+      continue;
+    }
     std::string sub_key = InternalKey(ns_key, field, metadata.version, storage_->IsSlotIdEncoded()).Encode();
     std::string value;
     s = storage_->Get(ctx, ctx.GetReadOptions(), sub_key, &value);
@@ -575,12 +558,47 @@ rocksdb::Status Hash::ExpireFields(engine::Context &ctx, const Slice &user_key, 
 
     std::string sub_key_expire =
         InternalKey(ns_key, field, metadata.version + ExpireVersionOffset, storage_->IsSlotIdEncoded()).Encode();
-    uint64_t old_expired_timestamp = 0;
-    s = getExpireTimestampMS(ctx, sub_key_expire, &old_expired_timestamp);
+    uint64_t old_expired_timestamp = NoExpireTime;
+    s = GetSubKeyExpireTimestampMS(ctx, user_key, field, metadata.version, &old_expired_timestamp);
     if (!s.ok() && !s.IsNotFound()) return s;
     if (old_expired_timestamp != NoExpireTime && old_expired_timestamp < util::GetTimeStampMS()) {
       results->push_back(FieldExpireResult::kFieldNotFound);  // Treat as non-existent
       continue;
+    }
+
+    switch (condition) {
+      case FieldExpireCondition::kFieldNoExpireCondition:
+        break;
+      case FieldExpireCondition::kFieldExpireTimeNotExists:
+        if (old_expired_timestamp != NoExpireTime) {
+          // NX set expiration only when the field has no expiration.
+          results->push_back(FieldExpireResult::kExpireNotSet);
+          continue;
+        }
+        break;
+      case FieldExpireCondition::kFieldExpireTimeExists:
+        if (old_expired_timestamp == NoExpireTime) {
+          // XX set expiration only when the field has an existing expiration.
+          results->push_back(FieldExpireResult::kExpireNotSet);  // No existing expiration
+          continue;
+        }
+        break;
+      case FieldExpireCondition::kFieldExpireTimeGreaterThanInput:
+        if (old_expired_timestamp != NoExpireTime && expireat_ms < old_expired_timestamp) {
+          // GT set expiration only when the new expiration is
+          // greater than current one.
+          results->push_back(FieldExpireResult::kExpireNotSet);
+          continue;
+        }
+        break;
+      case FieldExpireCondition::kFieldExpireTimeLessThanInput:
+        if (old_expired_timestamp != NoExpireTime && expireat_ms > old_expired_timestamp) {
+          // LT set expiration only when the new expiration is
+          // less than current one.
+          results->push_back(FieldExpireResult::kExpireNotSet);
+          continue;
+        }
+        break;
     }
     // set new expired time
     std::string expire_value;
@@ -618,15 +636,14 @@ rocksdb::Status Hash::TTLFields(engine::Context &ctx, const Slice &user_key, con
     std::string sub_key_expire =
         InternalKey(ns_key, field, metadata.version + ExpireVersionOffset, storage_->IsSlotIdEncoded()).Encode();
     uint64_t expired_time = 0;
-    s = getExpireTimestampMS(ctx, sub_key_expire, &expired_time);
+    s = GetSubKeyExpireTimestampMS(ctx, user_key, field, metadata.version, &expired_time);
     if (!s.ok() && !s.IsNotFound()) return s;
     if (expired_time == NoExpireTime) {
       results->push_back(-1);
       continue;
     }
-    auto now = static_cast<int64_t>(util::GetTimeStampMS());
-    auto ttl = static_cast<int64_t>(expired_time) - now;
-    results->push_back(ttl > 0 ? ttl : -2);
+    auto ttl_ms = static_cast<int64_t>(expired_time);
+    results->push_back(ttl_ms > 0 ? ttl_ms : -2);
   }
   return rocksdb::Status::OK();
 }
@@ -663,7 +680,7 @@ rocksdb::Status Hash::PersistFields(engine::Context &ctx, const Slice &user_key,
     std::string sub_key_expire =
         InternalKey(ns_key, field, metadata.version + ExpireVersionOffset, storage_->IsSlotIdEncoded()).Encode();
     uint64_t old_expired_timestamp = 0;
-    s = getExpireTimestampMS(ctx, sub_key_expire, &old_expired_timestamp);
+    s = GetSubKeyExpireTimestampMS(ctx, user_key, field, metadata.version, &old_expired_timestamp);
     if (!s.ok() && !s.IsNotFound()) return s;
     if (s.ok()) {
       s = batch->Delete(sub_key_expire);

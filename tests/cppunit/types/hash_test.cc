@@ -406,7 +406,8 @@ TEST_F(RedisHashTest, ExpireFields) {
   std::vector<Slice> fields_to_expire = {fields_[0], fields_[1]};
   std::vector<FieldExpireResult> results;
   uint64_t expire_time = util::GetTimeStampMS() + 1 * 1000;  // 2000 ms
-  auto s = hash_->ExpireFields(*ctx_, key_, expire_time, fields_to_expire, &results);
+  auto s = hash_->ExpireFields(*ctx_, key_, expire_time, fields_to_expire, &results,
+                               FieldExpireCondition::kFieldNoExpireCondition);
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(results.size(), 2);
   EXPECT_EQ(results[0], FieldExpireResult::kExpireSet);  // First field expired successfully
@@ -427,6 +428,103 @@ TEST_F(RedisHashTest, ExpireFields) {
   EXPECT_TRUE(s.IsNotFound());
 
   s = hash_->Del(*ctx_, key_);
+}
+
+TEST_F(RedisHashTest, ExpireFieldsWithConditions) {
+  uint64_t ret = 0;
+  // Set up some fields
+  for (size_t i = 0; i < fields_.size(); i++) {
+    auto s = hash_->Set(*ctx_, key_, fields_[i], values_[i], &ret);
+    EXPECT_TRUE(s.ok() && ret == 1);
+  }
+
+  // test condition NX
+  {
+    std::vector<Slice> fields_to_expire = {fields_[0]};
+    std::vector<FieldExpireResult> results;
+    uint64_t expire_time = util::GetTimeStampMS() + 60000;
+    auto s = hash_->ExpireFields(*ctx_, key_, expire_time, fields_to_expire, &results,
+                                 FieldExpireCondition::kFieldExpireTimeNotExists);
+    EXPECT_TRUE(s.ok());
+    EXPECT_EQ(results.size(), 1);
+    EXPECT_EQ(results[0], FieldExpireResult::kExpireSet);  // First field expired successfully
+
+    // Try to set expiration again with NX condition
+    results.clear();
+    s = hash_->ExpireFields(*ctx_, key_, expire_time + 60000, fields_to_expire, &results,
+                            FieldExpireCondition::kFieldExpireTimeNotExists);
+    EXPECT_TRUE(s.ok());
+    EXPECT_EQ(results.size(), 1);
+    EXPECT_EQ(results[0], FieldExpireResult::kExpireNotSet);  // Expiration not set
+  }
+
+  // test condition XX
+  {
+    std::vector<Slice> fields_to_expire = {fields_[1]};
+    std::vector<FieldExpireResult> results;
+    uint64_t expire_time = util::GetTimeStampMS() + 60000;
+    auto s = hash_->ExpireFields(*ctx_, key_, expire_time, fields_to_expire, &results,
+                                 FieldExpireCondition::kFieldExpireTimeExists);
+    EXPECT_TRUE(s.ok());
+    EXPECT_EQ(results.size(), 1);
+    EXPECT_EQ(results[0], FieldExpireResult::kExpireNotSet);  // Expiration not set
+
+    // Set expiration first
+    std::vector<Slice> first_field = {fields_[1]};
+    uint64_t first_expire_time = util::GetTimeStampMS() + 30000;  // 30 seconds
+    std::vector<FieldExpireResult> expire_results;
+    s = hash_->ExpireFields(*ctx_, key_, first_expire_time, first_field, &expire_results);
+    EXPECT_TRUE(s.ok());
+
+    results.clear();
+    s = hash_->ExpireFields(*ctx_, key_, expire_time + 60000, fields_to_expire, &results,
+                            FieldExpireCondition::kFieldExpireTimeExists);
+    EXPECT_TRUE(s.ok());
+    EXPECT_EQ(results.size(), 1);
+    EXPECT_EQ(results[0], FieldExpireResult::kExpireSet);
+  }
+
+  // test condition GT, LT
+  {
+    std::vector<Slice> fields_to_expire = {fields_[2]};
+    std::vector<FieldExpireResult> results;
+    uint64_t expire_time = util::GetTimeStampMS() + 60000;
+    auto s = hash_->ExpireFields(*ctx_, key_, expire_time, fields_to_expire, &results);
+    EXPECT_TRUE(s.ok());
+    EXPECT_EQ(results.size(), 1);
+    EXPECT_EQ(results[0], FieldExpireResult::kExpireSet);
+    // Now try to set expiration again with XX condition
+    results.clear();
+    s = hash_->ExpireFields(*ctx_, key_, expire_time - 1, fields_to_expire, &results,
+                            FieldExpireCondition::kFieldExpireTimeGreaterThanInput);
+    EXPECT_TRUE(s.ok());
+    EXPECT_EQ(results.size(), 1);
+    EXPECT_EQ(results[0], FieldExpireResult::kExpireNotSet);  // GT condition not met
+
+    results.clear();
+    s = hash_->ExpireFields(*ctx_, key_, expire_time + 80000, fields_to_expire, &results,
+                            FieldExpireCondition::kFieldExpireTimeGreaterThanInput);
+    EXPECT_TRUE(s.ok());
+    EXPECT_EQ(results.size(), 1);
+    EXPECT_EQ(results[0], FieldExpireResult::kExpireSet);
+
+    results.clear();
+    s = hash_->ExpireFields(*ctx_, key_, expire_time + 90000, fields_to_expire, &results,
+                            FieldExpireCondition::kFieldExpireTimeLessThanInput);
+    EXPECT_TRUE(s.ok());
+    EXPECT_EQ(results.size(), 1);
+    EXPECT_EQ(results[0], FieldExpireResult::kExpireNotSet);  // LT condition not met
+
+    results.clear();
+    s = hash_->ExpireFields(*ctx_, key_, expire_time + 10000, fields_to_expire, &results,
+                            FieldExpireCondition::kFieldExpireTimeLessThanInput);
+    EXPECT_TRUE(s.ok());
+    EXPECT_EQ(results.size(), 1);
+    EXPECT_EQ(results[0], FieldExpireResult::kExpireSet);
+  }
+
+  auto s = hash_->Del(*ctx_, key_);
+  EXPECT_TRUE(s.ok());
 }
 
 TEST_F(RedisHashTest, TTLFields) {
@@ -457,8 +555,8 @@ TEST_F(RedisHashTest, TTLFields) {
   results.clear();
   s = hash_->TTLFields(*ctx_, key_, fields_, &results);
   EXPECT_TRUE(s.ok());
-  EXPECT_GE(results[0], 29000);  // Should be around 30 seconds
-  EXPECT_LE(results[0], 31000);
+  EXPECT_GE(results[0] - util::GetTimeStampMS(), 29000);  // Should be around 30 seconds
+  EXPECT_LE(results[0] - util::GetTimeStampMS(), 31000);
   EXPECT_EQ(results[1], -1);  // No TTL
   EXPECT_EQ(results[2], -1);  // No TTL
 

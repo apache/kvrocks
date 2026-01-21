@@ -1053,8 +1053,43 @@ var testHash = func(t *testing.T, configs util.KvrocksServerConfigs) {
 			require.Len(t, vals, 2)
 			ttl1, ok := vals[0].(int64)
 			require.True(t, ok)
+			require.GreaterOrEqual(t, ttl1, int64(59)) // TTL should be around 60
+			require.LessOrEqual(t, ttl1, int64(61))
+			require.EqualValues(t, -1, vals[1]) // field2 has no TTL
+
+			result = rdb.Do(ctx, "HPTTL", testKey, "FIELDS", "2", "field1", "field2")
+			require.NoError(t, result.Err())
+			vals, err = result.Slice()
+			require.NoError(t, err)
+			require.Len(t, vals, 2)
+			ttl1, ok = vals[0].(int64)
+			require.True(t, ok)
 			require.GreaterOrEqual(t, ttl1, int64(59000)) // TTL should be around 60
 			require.LessOrEqual(t, ttl1, int64(61000))
+			require.EqualValues(t, -1, vals[1]) // field2 has no TTL
+
+			result = rdb.Do(ctx, "HEXPIRETIME", testKey, "FIELDS", "2", "field1", "field2")
+			require.NoError(t, result.Err())
+			vals, err = result.Slice()
+			require.NoError(t, err)
+			require.Len(t, vals, 2)
+			ttl1, ok = vals[0].(int64)
+			require.True(t, ok)
+			nowTime := time.Now().Unix()
+			require.GreaterOrEqual(t, ttl1-nowTime, int64(59)) // TTL should be around 60
+			require.LessOrEqual(t, ttl1-nowTime, int64(61))
+			require.EqualValues(t, -1, vals[1]) // field2 has no TTL
+
+			result = rdb.Do(ctx, "HPEXPIRETIME", testKey, "FIELDS", "2", "field1", "field2")
+			require.NoError(t, result.Err())
+			vals, err = result.Slice()
+			require.NoError(t, err)
+			require.Len(t, vals, 2)
+			ttl1, ok = vals[0].(int64)
+			require.True(t, ok)
+			nowTime = time.Now().UnixMilli()
+			require.GreaterOrEqual(t, ttl1-nowTime, int64(59000)) // TTL should be around 60
+			require.LessOrEqual(t, ttl1-nowTime, int64(61000))
 			require.EqualValues(t, -1, vals[1]) // field2 has no TTL
 		})
 
@@ -1118,6 +1153,22 @@ var testHash = func(t *testing.T, configs util.KvrocksServerConfigs) {
 
 			// Set expiration to 1 second
 			rdb.Do(ctx, "HEXPIRE", testKey, "1", "FIELDS", "1", "field1")
+
+			// Wait for expiration
+			time.Sleep(2 * time.Second)
+
+			// Field should be expired
+			val := rdb.HGet(ctx, testKey, "field1")
+			require.Error(t, val.Err())
+		})
+
+		t.Run("HPExpired field is not returned by HGET", func(t *testing.T) {
+			testKey := "hget-hpexpire-test"
+			require.NoError(t, rdb.Del(ctx, testKey).Err())
+			require.NoError(t, rdb.HSet(ctx, testKey, "field1", "value1").Err())
+
+			// Set expiration to 1 second
+			rdb.Do(ctx, "HPEXPIRE", testKey, "1000", "FIELDS", "1", "field1")
 
 			// Wait for expiration
 			time.Sleep(2 * time.Second)

@@ -119,7 +119,6 @@ TEST(Compact, Filter) {
     auto s_expire = hash->Expire(ctx, mk_with_ttl, 1);  // expired immediately..
 
     if (retry == 1) {
-      DEBUG("%s", s_expire.getState());
       ASSERT_TRUE(get_res.ok());  // not expired first time
       ASSERT_TRUE(s_expire.ok());
     } else {

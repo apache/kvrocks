@@ -23,6 +23,7 @@
 #include "error_constants.h"
 #include "scan_base.h"
 #include "server/server.h"
+#include "string_util.h"
 #include "time_util.h"
 #include "types/redis_hash.h"
 
@@ -481,58 +482,91 @@ class CommandHRandField : public Commander {
   bool no_parameters_ = true;
 };
 
+auto ParseFieldsArgs = [](const std::vector<std::string> &args, size_t fields_keyword_index,
+                          std::vector<Slice> &fields) -> Status {
+  if (!util::EqualICase(args[fields_keyword_index], "FIELDS")) {
+    return {Status::RedisParseErr, "mandatory argument FIELDS is missing or not in the right position"};
+  }
+
+  auto num_fields_result = ParseInt<int64_t>(args[fields_keyword_index + 1], 10);
+  if (!num_fields_result) {
+    return {Status::RedisParseErr, errValueNotInteger};
+  }
+  if (*num_fields_result <= 0) {
+    return {Status::RedisParseErr, "numfields must be a positive integer"};
+  }
+  auto num_fields = static_cast<size_t>(*num_fields_result);
+
+  // Check we have the right number of fields
+  if (args.size() != fields_keyword_index + 2 + num_fields) {
+    return {Status::RedisParseErr, "number of fields does not match numfields"};
+  }
+
+  for (size_t i = fields_keyword_index + 2; i < args.size(); i++) {
+    fields.emplace_back(args[i]);
+  }
+
+  return Status::OK();
+};
+
 class CommandHExpire : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
     // HEXPIRE key seconds FIELDS numfields field [field ...]
+    // HPEXPIRE key ms FIELDS numfields field [field ...]
     // Minimum: HEXPIRE key seconds FIELDS 1 field = 6 args
     if (args.size() < 6) {
       return {Status::RedisParseErr, errWrongNumOfArguments};
     }
-
-    auto ttl_result = ParseInt<int64_t>(args[2], 10);
-    if (!ttl_result) {
+    auto input_time = ParseInt<int64_t>(args[2], 10);
+    if (!input_time) {
       return {Status::RedisParseErr, errValueNotInteger};
     }
-    if (*ttl_result < 0) {
-      return {Status::RedisParseErr, "invalid expire time, must be >= 0"};
+    if (*input_time < 0) {
+      return {Status::RedisParseErr, "invalid time, must be >= 0"};
     }
-    ttl_seconds_ = static_cast<uint64_t>(*ttl_result);
+    if (util::EqualICase(args[0], "hexpire")) {
+      expire_ms_ = static_cast<uint64_t>(*input_time) * 1000 + util::GetTimeStampMS();
+    } else if (util::EqualICase(args[0], "hpexpire")) {
+      expire_ms_ = static_cast<uint64_t>(*input_time) + util::GetTimeStampMS();
+    } else if (util::EqualICase(args[0], "hexpireat")) {
+      expire_ms_ = static_cast<uint64_t>(*input_time) * 1000;
+    } else if (util::EqualICase(args[0], "hpexpireat")) {
+      expire_ms_ = static_cast<uint64_t>(*input_time);
+    }
 
-    // Check for FIELDS keyword
-    if (!util::EqualICase(args[3], "FIELDS")) {
+    if (util::EqualICase(args[3], "FIELDS")) {
+      GET_OR_RET(ParseFieldsArgs(args, 3, fields_));
+      return Commander::Parse(args);
+    }
+
+    if (util::EqualICase(args[0], "hexpire") || util::EqualICase(args[0], "hpexpire")) {
       return {Status::RedisParseErr, "mandatory argument FIELDS is missing or not in the right position"};
     }
-
-    auto num_fields_result = ParseInt<int64_t>(args[4], 10);
-    if (!num_fields_result) {
-      return {Status::RedisParseErr, errValueNotInteger};
-    }
-    if (*num_fields_result <= 0) {
-      return {Status::RedisParseErr, "numfields must be a positive integer"};
-    }
-    auto num_fields = static_cast<size_t>(*num_fields_result);
-
-    // Check we have the right number of fields
-    if (args.size() != 5 + num_fields) {
-      return {Status::RedisParseErr, "number of fields does not match numfields"};
+    if (util::EqualICase(args[3], "NX")) {
+      condition_ = FieldExpireCondition::kFieldExpireTimeNotExists;
+    } else if (util::EqualICase(args[3], "XX")) {
+      condition_ = FieldExpireCondition::kFieldExpireTimeExists;
+    } else if (util::EqualICase(args[3], "GT")) {
+      condition_ = FieldExpireCondition::kFieldExpireTimeGreaterThanInput;
+    } else if (util::EqualICase(args[3], "LT")) {
+      condition_ = FieldExpireCondition::kFieldExpireTimeLessThanInput;
+    } else {
+      return {Status::RedisParseErr, "expect argument FIELDS or [NX|XX|GT|LT] is missing or not in the right position"};
     }
 
-    for (size_t i = 5; i < args.size(); i++) {
-      fields_.emplace_back(args[i]);
+    if (util::EqualICase(args[4], "FIELDS")) {
+      GET_OR_RET(ParseFieldsArgs(args, 4, fields_));
+      return Commander::Parse(args);
     }
-
-    return Commander::Parse(args);
+    return {Status::RedisParseErr, "mandatory argument FIELDS is missing or not in the right position"};
   }
 
   Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
     redis::Hash hash_db(srv->storage, conn->GetNamespace());
     std::vector<FieldExpireResult> results;
 
-    // Calculate absolute expiration timestamp in milliseconds
-    uint64_t expire_ms = ttl_seconds_ * 1000 + util::GetTimeStampMS();
-
-    auto s = hash_db.ExpireFields(ctx, args_[1], expire_ms, fields_, &results);
+    auto s = hash_db.ExpireFields(ctx, args_[1], expire_ms_, fields_, &results, condition_);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -548,8 +582,9 @@ class CommandHExpire : public Commander {
   }
 
  private:
-  uint64_t ttl_seconds_ = 0;
+  uint64_t expire_ms_ = 0;
   std::vector<Slice> fields_;
+  FieldExpireCondition condition_ = FieldExpireCondition::kFieldNoExpireCondition;
 };
 
 class CommandHPersist : public Commander {
@@ -561,29 +596,7 @@ class CommandHPersist : public Commander {
       return {Status::RedisParseErr, errWrongNumOfArguments};
     }
 
-    // Check for FIELDS keyword
-    if (!util::EqualICase(args[2], "FIELDS")) {
-      return {Status::RedisParseErr, "mandatory argument FIELDS is missing or not in the right position"};
-    }
-
-    auto num_fields_result = ParseInt<int64_t>(args[3], 10);
-    if (!num_fields_result) {
-      return {Status::RedisParseErr, errValueNotInteger};
-    }
-    if (*num_fields_result <= 0) {
-      return {Status::RedisParseErr, "numfields must be a positive integer"};
-    }
-    auto num_fields = static_cast<size_t>(*num_fields_result);
-
-    // Check we have the right number of fields
-    if (args.size() != 4 + num_fields) {
-      return {Status::RedisParseErr, "number of fields does not match numfields"};
-    }
-
-    for (size_t i = 4; i < args.size(); i++) {
-      fields_.emplace_back(args[i]);
-    }
-
+    GET_OR_RET(ParseFieldsArgs(args, 2, fields_));
     return Commander::Parse(args);
   }
 
@@ -619,29 +632,7 @@ class CommandHTTL : public Commander {
       return {Status::RedisParseErr, errWrongNumOfArguments};
     }
 
-    // Check for FIELDS keyword
-    if (!util::EqualICase(args[2], "FIELDS")) {
-      return {Status::RedisParseErr, "mandatory argument FIELDS is missing or not in the right position"};
-    }
-
-    auto num_fields_result = ParseInt<int64_t>(args[3], 10);
-    if (!num_fields_result) {
-      return {Status::RedisParseErr, errValueNotInteger};
-    }
-    if (*num_fields_result <= 0) {
-      return {Status::RedisParseErr, "numfields must be a positive integer"};
-    }
-    auto num_fields = static_cast<size_t>(*num_fields_result);
-
-    // Check we have the right number of fields
-    if (args.size() != 4 + num_fields) {
-      return {Status::RedisParseErr, "number of fields does not match numfields"};
-    }
-
-    for (size_t i = 4; i < args.size(); i++) {
-      fields_.emplace_back(args[i]);
-    }
-
+    GET_OR_RET(ParseFieldsArgs(args, 2, fields_));
     return Commander::Parse(args);
   }
 
@@ -654,7 +645,24 @@ class CommandHTTL : public Commander {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    // Return array of TTL values
+    auto current_time_ms = static_cast<int64_t>(util::GetTimeStampMS());
+
+    // httl returns time in seconds, hpttl returns time in milliseconds as TTLFields
+    // hexpiretime returns expire_time in seconds, hpexpiretime returns expire_time in milliseconds as TTLFields already
+    // does
+    for (auto &r : results) {
+      if (r > 0) {
+        if (util::EqualICase(args_[0], "httl")) {
+          r = ((r - current_time_ms) / 1000);
+        } else if (util::EqualICase(args_[0], "hpttl")) {
+          r = (r - current_time_ms);
+        } else if (util::EqualICase(args_[0], "hexpiretime")) {
+          r = r / 1000;
+        } else if (util::EqualICase(args_[0], "hpexpiretime")) {
+          // do nothing as TTLFields already returns expire_time in milliseconds
+        }
+      }
+    }
     std::vector<std::string> result_strings;
     result_strings.reserve(results.size());
     for (const auto &r : results) {
@@ -687,7 +695,13 @@ REDIS_REGISTER_COMMANDS(Hash, MakeCmdAttr<CommandHGet>("hget", 3, "read-only", 1
                         MakeCmdAttr<CommandHRangeByLex>("hrangebylex", -4, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandHRandField>("hrandfield", -2, "read-only slow", 1, 1, 1),
                         MakeCmdAttr<CommandHExpire>("hexpire", -6, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandHExpire>("hpexpire", -6, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandHExpire>("hexpireat", -6, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandHExpire>("hpexpireat", -6, "write", 1, 1, 1),
                         MakeCmdAttr<CommandHTTL>("httl", -5, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandHTTL>("hpttl", -5, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandHTTL>("hexpiretime", -5, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandHTTL>("hpexpiretime", -5, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandHPersist>("hpersist", -5, "write", 1, 1, 1), )
 
 }  // namespace redis

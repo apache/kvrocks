@@ -20,6 +20,7 @@
 
 #include "redis_db.h"
 
+#include <cstdint>
 #include <ctime>
 #include <utility>
 
@@ -584,6 +585,14 @@ rocksdb::Status SubKeyScanner::Scan(engine::Context &ctx, RedisType type, const 
       break;
     }
     InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
+    uint64_t expire_at = NoExpireTime;
+    s = GetSubKeyExpireTimestampMS(ctx, user_key, ikey.GetSubKey(), metadata.version, &expire_at);
+    if (!s.ok() && !s.IsNotFound()) {
+      return s;
+    }
+    if (expire_at != NoExpireTime && expire_at < util::GetTimeStampMS()) {
+      continue;
+    }
     keys->emplace_back(ikey.GetSubKey().ToString());
     if (values != nullptr) {
       values->emplace_back(iter->value().ToString());
@@ -594,6 +603,50 @@ rocksdb::Status SubKeyScanner::Scan(engine::Context &ctx, RedisType type, const 
     }
   }
   return iter->status();
+}
+
+rocksdb::Slice SubKeyScanner::GetSubKeyExpireInternalKey(const Slice &user_key, const Slice &hash_field,
+                                                         uint64_t metadata_version) {
+  std::string ns_key = AppendNamespacePrefix(user_key);
+  InternalKey sub_expire_key =
+      InternalKey(ns_key, hash_field, metadata_version + ExpireVersionOffset, storage_->IsSlotIdEncoded());
+  return sub_expire_key.Encode();
+}
+
+rocksdb::Status SubKeyScanner::GetSubKeyExpireTimestampMS(engine::Context &ctx, const Slice &user_key,
+                                                          const Slice &hash_field, uint64_t metadata_version,
+                                                          uint64_t *expired_at) {
+  auto sub_expire_key = GetSubKeyExpireInternalKey(user_key, hash_field, metadata_version);
+  std::string expire_value;
+  *expired_at = NoExpireTime;
+  auto expire_status = storage_->Get(ctx, ctx.GetReadOptions(), sub_expire_key, &expire_value);
+  if (expire_status.ok()) {
+    *expired_at = DecodeFixed64(expire_value.data());
+  }
+  return expire_status;
+}
+
+void SubKeyScanner::MGetSubKeyExpireTimestampMS(engine::Context &ctx, const Slice &user_key,
+                                                const std::vector<Slice> &hash_fields, uint64_t metadata_version,
+                                                std::vector<uint64_t> *expired_ats,
+                                                std::vector<rocksdb::Status> *statuses) {
+  std::string ns_key = AppendNamespacePrefix(user_key);
+  expired_ats->resize(hash_fields.size());
+  std::vector<rocksdb::PinnableSlice> expire_values(hash_fields.size());
+  statuses->resize(hash_fields.size());
+  std::vector<Slice> full_expire_keys;
+  full_expire_keys.reserve(hash_fields.size());
+  for (const auto &hash_field : hash_fields) {
+    auto sub_expire_key = GetSubKeyExpireInternalKey(user_key, hash_field, metadata_version);
+    full_expire_keys.emplace_back(std::move(sub_expire_key));
+  }
+  storage_->MultiGet(ctx, ctx.GetReadOptions(), storage_->GetDB()->DefaultColumnFamily(), full_expire_keys.size(),
+                     full_expire_keys.data(), expire_values.data(), statuses->data());
+  for (size_t i = 0; i < hash_fields.size(); i++) {
+    if ((*statuses)[i].ok()) {
+      (*expired_ats)[i] = DecodeFixed64(expire_values[i].data());
+    }
+  }
 }
 
 RedisType WriteBatchLogData::GetRedisType() const { return type_; }

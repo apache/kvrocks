@@ -644,3 +644,47 @@ rocksdb::Status TimeSeriesMetadata::Decode(Slice *input) {
 
   return rocksdb::Status::OK();
 }
+
+
+void CuckooChainMetadata::Encode(std::string *dst) const {
+  Metadata::Encode(dst);
+
+  PutFixed16(dst, n_filters);
+  PutFixed16(dst, expansion);
+  PutFixed64(dst, base_capacity);
+  PutFixed8(dst, bucket_size);
+  PutFixed16(dst, max_iterations);
+  PutFixed64(dst, num_deleted_items);
+}
+
+rocksdb::Status CuckooChainMetadata::Decode(Slice *input) {
+  if (auto s = Metadata::Decode(input); !s.ok()) {
+    return s;
+  }
+
+  if (input->size() < 21) {
+    return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
+  }
+
+  GetFixed16(input, &n_filters);
+  GetFixed16(input, &expansion);
+  GetFixed64(input, &base_capacity);
+  GetFixed8(input, &bucket_size);
+  GetFixed16(input, &max_iterations);
+  GetFixed64(input, &num_deleted_items);
+
+  return rocksdb::Status::OK();
+}
+
+uint64_t CuckooChainMetadata::GetTotalCapacity() const {
+  if (expansion == 0 || n_filters == 1) {
+    return base_capacity;
+  }
+
+  // Calculate total capacity across all filters
+  uint64_t total = 0;
+  for (uint16_t i = 0; i < n_filters; i++) {
+    total += base_capacity * std::pow(expansion, i);
+  }
+  return total;
+}

@@ -22,6 +22,7 @@
 
 #include <rocksdb/status.h>
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -29,6 +30,21 @@
 #include "encoding.h"
 #include "storage/redis_db.h"
 #include "storage/redis_metadata.h"
+
+enum class FieldExpireResult : int64_t {
+  kFieldNotFound = -2,
+  kExpireNotSet = 0,
+  kExpireSet = 1,
+};
+
+enum class FieldPersistResult : int64_t {
+  kFieldNotFound = -2,
+  kNotVolatile = -1,
+  kPersisted = 1,
+};
+
+const uint64_t NoExpireTime = 0;
+const uint64_t ExpireVersionOffset = 8;
 
 struct FieldValue {
   std::string field;
@@ -68,8 +84,27 @@ class Hash : public SubKeyScanner {
                        std::vector<std::string> *values = nullptr);
   rocksdb::Status RandField(engine::Context &ctx, const Slice &user_key, int64_t command_count,
                             std::vector<FieldValue> *field_values, HashFetchType type = HashFetchType::kOnlyKey);
+  rocksdb::Status ExpireFields(engine::Context &ctx, const Slice &user_key, uint64_t expireat_ms,
+                               const std::vector<Slice> &fields, std::vector<FieldExpireResult> *results);
+  // Get TTL for fields in milliseconds.
+  // For each field, returns:
+  // -2 if the field does not exist.
+  // -1 if the field exists but has no associated expiration.
+  // A non-negative value representing the TTL in milliseconds.
+  rocksdb::Status TTLFields(engine::Context &ctx, const Slice &user_key, const std::vector<Slice> &fields,
+                            std::vector<int64_t> *results);
+
+  rocksdb::Status PersistFields(engine::Context &ctx, const Slice &user_key, const std::vector<Slice> &fields,
+                                std::vector<FieldPersistResult> *results);
 
  private:
+  // Get expire timestamp in milliseconds for a field
+  // Returns:
+  // 0 (NoExpireTime) if field has no associated expiration.
+  // A non-negative value representing the expire timestamp in milliseconds.
+  rocksdb::Status getExpireTimestampMS(engine::Context &ctx, const Slice &expire_key, uint64_t *expired_at);
+  void mGetExpireTimestampMS(engine::Context &ctx, const std::vector<Slice> &expire_keys,
+                             std::vector<uint64_t> *expired_ats, std::vector<rocksdb::Status> *statuses);
   rocksdb::Status GetMetadata(engine::Context &ctx, const Slice &ns_key, HashMetadata *metadata);
 
   friend struct FieldValueRetriever;

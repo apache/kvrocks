@@ -25,9 +25,11 @@
 #include <memory>
 #include <random>
 #include <string>
+#include <vector>
 
 #include "parse_util.h"
 #include "test_base.h"
+#include "time_util.h"
 #include "types/redis_hash.h"
 
 class RedisHashTest : public TestBase {
@@ -388,6 +390,131 @@ TEST_F(RedisHashTest, HRandField) {
   fvs.clear();
   s = hash_->RandField(*ctx_, key_, 0, &fvs);
   EXPECT_TRUE(s.ok() && fvs.size() == 0);
+
+  s = hash_->Del(*ctx_, key_);
+}
+
+TEST_F(RedisHashTest, ExpireFields) {
+  uint64_t ret = 0;
+  // Set up some fields
+  for (size_t i = 0; i < fields_.size(); i++) {
+    auto s = hash_->Set(*ctx_, key_, fields_[i], values_[i], &ret);
+    EXPECT_TRUE(s.ok() && ret == 1);
+  }
+
+  // Expire two fields
+  std::vector<Slice> fields_to_expire = {fields_[0], fields_[1]};
+  std::vector<FieldExpireResult> results;
+  uint64_t expire_time = util::GetTimeStampMS() + 1 * 1000;  // 2000 ms
+  auto s = hash_->ExpireFields(*ctx_, key_, expire_time, fields_to_expire, &results);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(results.size(), 2);
+  EXPECT_EQ(results[0], FieldExpireResult::kExpireSet);  // First field expired successfully
+  EXPECT_EQ(results[1], FieldExpireResult::kExpireSet);  // Second field expired successfully
+
+  // Try to expire non-existent field
+  std::vector<Slice> non_existent = {Slice("non_existent_field")};
+  results.clear();
+  s = hash_->ExpireFields(*ctx_, key_, expire_time, non_existent, &results);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(results.size(), 1);
+  EXPECT_EQ(results[0], FieldExpireResult::kFieldNotFound);  // Field doesn't exist
+
+  // Wait for 2 keys expired
+  std::this_thread::sleep_for(std::chrono::seconds(2));
+  std::string value;
+  s = hash_->Get(*ctx_, key_, fields_to_expire[0], &value);
+  EXPECT_TRUE(s.IsNotFound());
+
+  s = hash_->Del(*ctx_, key_);
+}
+
+TEST_F(RedisHashTest, TTLFields) {
+  uint64_t ret = 0;
+  // Set up some fields
+  for (size_t i = 0; i < fields_.size(); i++) {
+    auto s = hash_->Set(*ctx_, key_, fields_[i], values_[i], &ret);
+    EXPECT_TRUE(s.ok() && ret == 1);
+  }
+
+  // Get TTL for fields without expiration
+  std::vector<int64_t> results;
+  auto s = hash_->TTLFields(*ctx_, key_, fields_, &results);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(results.size(), fields_.size());
+  for (const auto &ttl : results) {
+    EXPECT_EQ(ttl, -1);  // No TTL set
+  }
+
+  // Set expiration on first field
+  std::vector<Slice> first_field = {fields_[0]};
+  uint64_t expire_time = util::GetTimeStampMS() + 30000;  // 30 seconds
+  std::vector<FieldExpireResult> expire_results;
+  s = hash_->ExpireFields(*ctx_, key_, expire_time, first_field, &expire_results);
+  EXPECT_TRUE(s.ok());
+
+  // Get TTL again
+  results.clear();
+  s = hash_->TTLFields(*ctx_, key_, fields_, &results);
+  EXPECT_TRUE(s.ok());
+  EXPECT_GE(results[0], 29000);  // Should be around 30 seconds
+  EXPECT_LE(results[0], 31000);
+  EXPECT_EQ(results[1], -1);  // No TTL
+  EXPECT_EQ(results[2], -1);  // No TTL
+
+  // Get TTL for non-existent field
+  std::vector<Slice> non_existent = {Slice("non_existent_field")};
+  results.clear();
+  s = hash_->TTLFields(*ctx_, key_, non_existent, &results);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(results.size(), 1);
+  EXPECT_EQ(results[0], -2);  // Field doesn't exist
+
+  s = hash_->Del(*ctx_, key_);
+}
+
+TEST_F(RedisHashTest, PersistFields) {
+  uint64_t ret = 0;
+  // Set up some fields
+  for (size_t i = 0; i < fields_.size(); i++) {
+    auto s = hash_->Set(*ctx_, key_, fields_[i], values_[i], &ret);
+    EXPECT_TRUE(s.ok() && ret == 1);
+  }
+
+  // Set expiration on first two fields
+  std::vector<Slice> fields_to_expire = {fields_[0], fields_[1]};
+  std::vector<FieldExpireResult> expire_results;
+  uint64_t expire_time = util::GetTimeStampMS() + 60000;
+  auto s = hash_->ExpireFields(*ctx_, key_, expire_time, fields_to_expire, &expire_results);
+  EXPECT_TRUE(s.ok());
+
+  // Persist the first field
+  std::vector<Slice> first_field = {fields_[0]};
+  std::vector<FieldPersistResult> persist_results;
+  s = hash_->PersistFields(*ctx_, key_, first_field, &persist_results);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(persist_results.size(), 1);
+  EXPECT_EQ(persist_results[0], FieldPersistResult::kPersisted);  // Expiration removed
+
+  // Check TTL - should be -1 now
+  std::vector<int64_t> ttl_results;
+  s = hash_->TTLFields(*ctx_, key_, first_field, &ttl_results);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(ttl_results[0], -1);
+
+  // Try to persist a field without TTL
+  std::vector<Slice> third_field = {fields_[2]};
+  persist_results.clear();
+  s = hash_->PersistFields(*ctx_, key_, third_field, &persist_results);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(persist_results[0], FieldPersistResult::kNotVolatile);  // Field exists but has no TTL
+
+  // Try to persist non-existent field
+  std::vector<Slice> non_existent = {Slice("non_existent_field")};
+  persist_results.clear();
+  s = hash_->PersistFields(*ctx_, key_, non_existent, &persist_results);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(persist_results[0], FieldPersistResult::kFieldNotFound);  // Field doesn't exist
 
   s = hash_->Del(*ctx_, key_);
 }

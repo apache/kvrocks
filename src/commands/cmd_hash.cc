@@ -540,9 +540,6 @@ class CommandHExpire : public Commander {
       return Commander::Parse(args);
     }
 
-    if (util::EqualICase(args[0], "hexpire") || util::EqualICase(args[0], "hpexpire")) {
-      return {Status::RedisParseErr, "mandatory argument FIELDS is missing or not in the right position"};
-    }
     if (util::EqualICase(args[3], "NX")) {
       condition_ = FieldExpireCondition::kFieldExpireTimeNotExists;
     } else if (util::EqualICase(args[3], "XX")) {

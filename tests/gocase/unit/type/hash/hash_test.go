@@ -1197,6 +1197,85 @@ var testHash = func(t *testing.T, configs util.KvrocksServerConfigs) {
 			require.Equal(t, "value2", vals["field2"])
 		})
 
+		t.Run("Expire field with conditions XX/NX", func(t *testing.T) {
+			testKey := "hexpire-conditions-test-xx-nx"
+			require.NoError(t, rdb.Del(ctx, testKey).Err())
+			require.NoError(t, rdb.HSet(ctx, testKey, "field1", "value1").Err())
+
+			// Set expiration only if field has TTL
+			result := rdb.Do(ctx, "HPEXPIRE", testKey, "100", "XX", "FIELDS", "1", "field1")
+			require.NoError(t, result.Err())
+			vals, err := result.Slice()
+			require.NoError(t, err)
+			require.Len(t, vals, 1)
+			require.EqualValues(t, 0, vals[0]) // field1 has no TTL, so not set
+
+			// see if the key expired
+			time.Sleep(120 * time.Millisecond)
+
+			hGetResult := rdb.HGet(ctx, testKey, "field1")
+			require.NoError(t, hGetResult.Err())
+			val, err := hGetResult.Result()
+			require.NoError(t, err)
+			require.EqualValues(t, "value1", val)
+
+			// Set expiration only if field has TTL
+			result = rdb.Do(ctx, "HPEXPIRE", testKey, "100", "NX", "FIELDS", "1", "field1")
+			require.NoError(t, result.Err())
+			vals, err = result.Slice()
+			require.NoError(t, err)
+			require.Len(t, vals, 1)
+			require.EqualValues(t, 1, vals[0]) // field1 has no TTL, so not set
+
+			time.Sleep(120 * time.Millisecond)
+
+			boolResult := rdb.HExists(ctx, testKey, "field1")
+			require.False(t, boolResult.Val())
+		})
+
+		t.Run("Expire field with conditions LT/GT", func(t *testing.T) {
+			testKey := "hexpire-conditions-test-xx-nx"
+			require.NoError(t, rdb.Del(ctx, testKey).Err())
+			require.NoError(t, rdb.HSet(ctx, testKey, "field1", "value1").Err())
+
+			// Set expiration only if field has TTL
+			result := rdb.Do(ctx, "HPEXPIRE", testKey, "1000", "FIELDS", "1", "field1")
+			require.NoError(t, result.Err())
+			vals, err := result.Slice()
+			require.NoError(t, err)
+			require.Len(t, vals, 1)
+			require.EqualValues(t, 1, vals[0])
+
+			// Set expiration only if field has TTL
+			result = rdb.Do(ctx, "HPEXPIRE", testKey, "1200", "LT", "FIELDS", "1", "field1")
+			require.NoError(t, result.Err())
+			vals, err = result.Slice()
+			require.NoError(t, err)
+			require.Len(t, vals, 1)
+			require.EqualValues(t, 0, vals[0])
+
+			result = rdb.Do(ctx, "HPEXPIRE", testKey, "500", "LT", "FIELDS", "1", "field1")
+			require.NoError(t, result.Err())
+			vals, err = result.Slice()
+			require.NoError(t, err)
+			require.Len(t, vals, 1)
+			require.EqualValues(t, 1, vals[0])
+
+			result = rdb.Do(ctx, "HPEXPIRE", testKey, "400", "GT", "FIELDS", "1", "field1")
+			require.NoError(t, result.Err())
+			vals, err = result.Slice()
+			require.NoError(t, err)
+			require.Len(t, vals, 1)
+			require.EqualValues(t, 0, vals[0])
+
+			result = rdb.Do(ctx, "HPEXPIRE", testKey, "1500", "GT", "FIELDS", "1", "field1")
+			require.NoError(t, result.Err())
+			vals, err = result.Slice()
+			require.NoError(t, err)
+			require.Len(t, vals, 1)
+			require.EqualValues(t, 1, vals[0])
+		})
+
 		t.Run("HEXPIRE/HTTL/HPERSIST wrong arguments", func(t *testing.T) {
 			testKey := "wrong-args-test"
 			require.NoError(t, rdb.Del(ctx, testKey).Err())

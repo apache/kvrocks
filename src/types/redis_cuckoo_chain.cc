@@ -20,9 +20,9 @@
 
 #include "redis_cuckoo_chain.h"
 
-#include <glog/logging.h>
-
 #include <cmath>
+
+#include "logging.h"
 
 #include "cuckoo_filter.h"
 
@@ -84,11 +84,8 @@ rocksdb::Status CuckooChain::Reserve(engine::Context &ctx, const Slice &user_key
   // Calculate the number of buckets needed for this filter
   uint32_t num_buckets = CuckooFilter::OptimalNumBuckets(capacity, bucket_size);
 
-  LOG(INFO) << "Creating cuckoo filter with capacity=" << capacity
-            << ", bucket_size=" << bucket_size
-            << ", num_buckets=" << num_buckets
-            << ", max_iterations=" << max_iterations
-            << ", expansion=" << static_cast<int>(expansion);
+  info("Creating cuckoo filter with capacity={}, bucket_size={}, num_buckets={}, max_iterations={}, expansion={}",
+       capacity, bucket_size, num_buckets, max_iterations, static_cast<int>(expansion));
 
   // Create a write batch for atomic operation
   auto batch = storage_->GetWriteBatchBase();

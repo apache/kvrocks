@@ -63,14 +63,19 @@ rocksdb::Status CuckooChain::Reserve(engine::Context &ctx, const Slice &user_key
   std::string ns_key = AppendNamespacePrefix(user_key);
 
   // Check if the key already exists
-  CuckooChainMetadata metadata;
-  rocksdb::Status s = getCuckooChainMetadata(ctx, ns_key, &metadata);
+  // Read without snapshot to ensure we see any committed data
+  std::string raw_value;
+  rocksdb::ReadOptions read_options;  // No snapshot
+  auto s = storage_->Get(ctx, read_options, metadata_cf_handle_, ns_key, &raw_value);
   if (s.ok()) {
     return rocksdb::Status::InvalidArgument("the key already exists");
   }
   if (!s.IsNotFound()) {
     return s;  // Return other errors
   }
+
+  // Initialize metadata for the new cuckoo filter
+  CuckooChainMetadata metadata;
 
   // Initialize metadata for the new cuckoo filter
   metadata.size = 0;

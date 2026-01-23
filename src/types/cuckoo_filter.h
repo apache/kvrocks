@@ -25,12 +25,20 @@
 #include <utility>
 #include <vector>
 
+#include "vendor/murmurhash2.h"
+
 namespace redis {
 
 // Cuckoo filter implementation from the paper:
 // "Cuckoo Filter: Practically Better Than Bloom" by Fan et al.
 // This is a bucket-based storage implementation where each bucket is stored
 // as an independent key-value pair in RocksDB
+//
+// Hash calculation follows RedisBloom's design:
+// - fp = hash % 255 + 1 (fingerprint, non-zero, range: 1-255)
+// - h1 = hash (primary hash)
+// - h2 = h1 ^ (fp * 0x5bd1e995) (alternate hash via XOR)
+// - bucket_index = hash % num_buckets (only apply modulo when indexing)
 class CuckooFilter {
  public:
   // Calculate the optimal number of buckets for the filter
@@ -44,18 +52,37 @@ class CuckooFilter {
     return power;
   }
 
-  // Generate fingerprint from hash (8-bit fingerprint, non-zero)
+  // Generate fingerprint from hash (8-bit fingerprint, non-zero, range: 1-255)
+  // Following RedisBloom: fp = hash % 255 + 1
   static uint8_t GenerateFingerprint(uint64_t hash) {
-    uint8_t fp = hash & 0xFF;
-    return fp == 0 ? 1 : fp;  // Ensure non-zero fingerprint
+    return static_cast<uint8_t>(hash % 255 + 1);
   }
 
-  // Calculate alternate bucket index using XOR
-  static uint32_t GetAltBucketIndex(uint32_t bucket_idx, uint8_t fingerprint, uint32_t num_buckets) {
-    // Use a simple hash of the fingerprint for the XOR operation
-    uint32_t fp_hash = fingerprint * 0x5bd1e995;  // MurmurHash2 constant
-    return (bucket_idx ^ fp_hash) % num_buckets;
+  // Calculate alternate hash using XOR (following RedisBloom)
+  // h2 = h1 ^ (fp * 0x5bd1e995)
+  // This preserves symmetry: GetAltHash(fp, GetAltHash(fp, h)) == h
+  static uint64_t GetAltHash(uint8_t fingerprint, uint64_t hash) {
+    return hash ^ (static_cast<uint64_t>(fingerprint) * 0x5bd1e995);
   }
+
+  // Legacy function for backward compatibility with tests
+  // Converts bucket index to hash, applies GetAltHash, then converts back to bucket index
+  static uint32_t GetAltBucketIndex(uint32_t bucket_idx, uint8_t fingerprint, uint32_t num_buckets) {
+    // Treat bucket_idx as a hash value for the calculation
+    uint64_t hash = bucket_idx;
+    uint64_t alt_hash = GetAltHash(fingerprint, hash);
+    // Convert back to bucket index
+    return static_cast<uint32_t>(alt_hash % num_buckets);
+  }
+
+  // Compute hash for a given item using MurmurHash2 (compatible with RedisBloom)
+  // This is the entry point for hashing items before they are inserted/checked in the filter
+  static uint64_t Hash(const char* data, size_t length) {
+    return HllMurMurHash64A(data, static_cast<int>(length), 0);
+  }
+
+  // Convenience overload for std::string
+  static uint64_t Hash(const std::string& item) { return Hash(item.data(), item.size()); }
 };
 
 }  // namespace redis

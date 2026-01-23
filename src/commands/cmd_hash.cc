@@ -673,6 +673,121 @@ class CommandHTTL : public Commander {
   std::vector<Slice> fields_;
 };
 
+class CommandHMSetEX : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() < 7) {
+      return {Status::RedisParseErr, errWrongNumOfArguments};
+    }
+
+    size_t pos = 2;
+
+    // Lambda to parse expiration value with validation
+    auto parse_expire_value = [](const std::string &value_str) -> uint64_t {
+      auto result = ParseInt<uint64_t>(value_str, 10);
+      if (!result || *result <= 0) {
+        return 0;
+      }
+      return result.GetValue();
+    };
+
+    if (pos < args.size() && util::EqualICase(args[pos], std::string_view("FIELDS"))) {
+      return {Status::RedisParseErr, "ERR Missing expiration option"};
+    }
+
+    // Parse expiration option - optional
+    params_.expire_params.option = SetEXExpireOption::kNoExpire;
+    while (pos < args.size()) {
+      const auto &opt = args[pos];
+      if (util::EqualICase(opt, "KEEPTTL")) {
+        params_.expire_params.option = SetEXExpireOption::kKEEPTTL;
+        pos++;
+      } else if (util::EqualICase(opt, "FNX")) {
+        params_.condition = SetEXFieldCondition::kFNX;
+        pos++;
+      } else if (util::EqualICase(opt, "FXX")) {
+        params_.condition = SetEXFieldCondition::kFXX;
+        pos++;
+      } else if (util::EqualICase(opt, "FIELDS")) {
+        if (params_.expire_params.option == SetEXExpireOption::kNoExpire) {
+          return {Status::RedisParseErr, "Invalid syntax: at least one expiration option is required before FIELDS"};
+        } else {
+          // FIELDS is a special case and should not be treated as an expiration option
+          break;
+        }
+      } else {
+        // got next must be a integer
+        auto value = parse_expire_value(args[pos + 1]);
+        params_.expire_params.value = value;
+        if (value == 0) {
+          return {Status::RedisParseErr, "Invalid expire time value"};
+        }
+        if (util::EqualICase(opt, "EX")) {
+          params_.expire_params.option = SetEXExpireOption::kEX;
+        } else if (util::EqualICase(opt, "PX")) {
+          params_.expire_params.option = SetEXExpireOption::kPX;
+        } else if (util::EqualICase(opt, "EXAT")) {
+          params_.expire_params.option = SetEXExpireOption::kEXAT;
+        } else if (util::EqualICase(opt, "PXAT")) {
+          params_.expire_params.option = SetEXExpireOption::kPXAT;
+        } else {
+          return {Status::RedisParseErr, "Invalid syntax: expected EX, PX, EXAT, PXAT, KEEPTTL, FNX or FXX"};
+        }
+        pos += 2;
+      }
+    }
+    // Parse FIELDS and field-value pairs
+    if (pos >= args.size() || !util::EqualICase(args[pos], "FIELDS")) {
+      return {Status::RedisParseErr, "mandatory argument FIELDS is missing"};
+    }
+    pos++;
+    if (pos >= args.size()) {
+      return {Status::RedisParseErr, "FIELDS requires numfields argument"};
+    }
+
+    auto num_fields_result = ParseInt<uint64_t>(args[pos], 10);
+    if (!num_fields_result) {
+      return {Status::RedisParseErr, errValueNotInteger};
+    }
+    if (*num_fields_result <= 0) {
+      return {Status::RedisParseErr, "numfields must be a positive integer"};
+    }
+    auto num_fields = *num_fields_result;
+    pos++;
+
+    // Parse field-value pairs
+    if (args.size() != pos + 2 * num_fields) {
+      return {Status::RedisParseErr, "number of field-value pairs does not match numfields"};
+    }
+
+    for (size_t i = 0; i < num_fields; i++) {
+      field_values_.emplace_back(args[pos], args[pos + 1]);
+      pos += 2;
+    }
+    return Commander::Parse(args);
+  }
+
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    uint64_t ret = 0;
+    redis::Hash hash_db(srv->storage, conn->GetNamespace());
+
+    auto s = hash_db.MSetEx(ctx, args_[1], field_values_, params_, &ret);
+    if (!s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+    if (ret == 0) {
+      *output = redis::Integer(0);
+    } else {
+      *output = redis::Integer(1);
+    }
+    return Status::OK();
+  }
+
+ private:
+  HSetExParams params_;
+  std::vector<FieldValue> field_values_;
+};
+
 REDIS_REGISTER_COMMANDS(Hash, MakeCmdAttr<CommandHGet>("hget", 3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandHIncrBy>("hincrby", 4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandHIncrByFloat>("hincrbyfloat", 4, "write", 1, 1, 1),
@@ -699,6 +814,7 @@ REDIS_REGISTER_COMMANDS(Hash, MakeCmdAttr<CommandHGet>("hget", 3, "read-only", 1
                         MakeCmdAttr<CommandHTTL>("hpttl", -5, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandHTTL>("hexpiretime", -5, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandHTTL>("hpexpiretime", -5, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandHPersist>("hpersist", -5, "write", 1, 1, 1), )
+                        MakeCmdAttr<CommandHPersist>("hpersist", -5, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandHMSetEX>("hsetex", -7, "write", 1, 1, 1), )
 
 }  // namespace redis

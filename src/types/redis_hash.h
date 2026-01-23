@@ -52,6 +52,31 @@ enum class FieldPersistResult : int64_t {
   kPersisted = 1,
 };
 
+enum class SetEXFieldCondition : int64_t {
+  kNoCondition = 0,
+  kFNX = 1,
+  kFXX = 2,
+};
+
+enum class SetEXExpireOption : int64_t {
+  kNoExpire = 0,
+  kEX = 1,
+  kPX = 2,
+  kEXAT = 3,
+  kPXAT = 4,
+  kKEEPTTL = 5,
+};
+
+struct ExpireParams {
+  SetEXExpireOption option = SetEXExpireOption::kNoExpire;
+  uint64_t value = 0;
+};
+
+struct HSetExParams {
+  SetEXFieldCondition condition = SetEXFieldCondition::kNoCondition;
+  ExpireParams expire_params;
+};
+
 const uint64_t NoExpireTime = 0;
 const uint64_t ExpireVersionOffset = 8;
 
@@ -97,7 +122,7 @@ class Hash : public SubKeyScanner {
                                const std::vector<Slice> &fields, std::vector<FieldExpireResult> *results,
                                FieldExpireCondition condition = FieldExpireCondition::kFieldNoExpireCondition);
   // Get TTL for fields in milliseconds.
-  // For each field, returns:
+  // For results:
   // -2 if the field does not exist.
   // -1 if the field exists but has no associated expiration.
   // A non-negative value representing the expire_time in milliseconds.
@@ -106,6 +131,9 @@ class Hash : public SubKeyScanner {
 
   rocksdb::Status PersistFields(engine::Context &ctx, const Slice &user_key, const std::vector<Slice> &fields,
                                 std::vector<FieldPersistResult> *results);
+
+  rocksdb::Status MSetEx(engine::Context &ctx, const Slice &user_key, const std::vector<FieldValue> &field_values,
+                         const HSetExParams &params, uint64_t *added_cnt);
 
  private:
   rocksdb::Status GetMetadata(engine::Context &ctx, const Slice &ns_key, HashMetadata *metadata);

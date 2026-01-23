@@ -29,7 +29,7 @@
 class RedisCuckooFilterTest : public TestBase {
  protected:
   explicit RedisCuckooFilterTest() : TestBase() {
-    cuckoo_ = std::make_unique<redis::CuckooChain>(storage_.get(), namespace_);
+    cuckoo_ = std::make_unique<redis::CuckooChain>(storage_.get(), "cuckoo_ns");
   }
   ~RedisCuckooFilterTest() override = default;
 
@@ -123,25 +123,71 @@ TEST_F(RedisCuckooFilterTest, OptimalNumBucketsCalculation) {
 }
 
 TEST_F(RedisCuckooFilterTest, FingerprintGeneration) {
-  // Test fingerprint generation ensures non-zero values
-  for (uint64_t hash = 0; hash < 256; ++hash) {
+  // Test fingerprint generation ensures non-zero values in range [1, 255]
+  // Following RedisBloom: fp = hash % 255 + 1
+  for (uint64_t hash = 0; hash < 1000; ++hash) {
     uint8_t fp = redis::CuckooFilter::GenerateFingerprint(hash);
-    ASSERT_NE(fp, 0) << "Fingerprint should never be zero";
+    ASSERT_GE(fp, 1) << "Fingerprint should be at least 1";
+    ASSERT_LE(fp, 255) << "Fingerprint should be at most 255";
   }
+
+  // Verify the formula: fp = hash % 255 + 1
+  ASSERT_EQ(redis::CuckooFilter::GenerateFingerprint(0), 1);
+  ASSERT_EQ(redis::CuckooFilter::GenerateFingerprint(254), 255);
+  ASSERT_EQ(redis::CuckooFilter::GenerateFingerprint(255), 1);
+  ASSERT_EQ(redis::CuckooFilter::GenerateFingerprint(256), 2);
 }
 
 TEST_F(RedisCuckooFilterTest, AlternateBucketCalculation) {
   uint32_t num_buckets = 1024;
 
-  // Test that alternate bucket is different from original
-  for (uint32_t bucket = 0; bucket < 100; ++bucket) {
+  // Test GetAltHash symmetry at hash level (following RedisBloom design)
+  // h2 = GetAltHash(fp, h1)
+  // h1 = GetAltHash(fp, h2)  <- this is the symmetry property
+  for (uint64_t hash = 0; hash < 100; ++hash) {
     for (uint8_t fp = 1; fp < 10; ++fp) {
-      uint32_t alt_bucket = redis::CuckooFilter::GetAltBucketIndex(bucket, fp, num_buckets);
-      ASSERT_LT(alt_bucket, num_buckets) << "Alternate bucket out of range";
+      uint64_t alt_hash = redis::CuckooFilter::GetAltHash(fp, hash);
 
-      // Applying alternate twice should give back original
-      uint32_t double_alt = redis::CuckooFilter::GetAltBucketIndex(alt_bucket, fp, num_buckets);
-      ASSERT_EQ(double_alt, bucket) << "Double alternate should give original bucket";
+      // Applying GetAltHash twice should return original hash
+      uint64_t double_alt_hash = redis::CuckooFilter::GetAltHash(fp, alt_hash);
+      ASSERT_EQ(double_alt_hash, hash) << "Double alternate hash should give original hash";
+
+      // Both hashes should map to valid bucket indices
+      uint32_t bucket1 = hash % num_buckets;
+      uint32_t bucket2 = alt_hash % num_buckets;
+      ASSERT_LT(bucket1, num_buckets) << "Bucket 1 out of range";
+      ASSERT_LT(bucket2, num_buckets) << "Bucket 2 out of range";
     }
   }
+}
+
+TEST_F(RedisCuckooFilterTest, HashFunction) {
+  // Test that Hash function produces consistent 64-bit values
+  std::string test_item = "hello";
+  uint64_t hash1 = redis::CuckooFilter::Hash(test_item);
+  uint64_t hash2 = redis::CuckooFilter::Hash(test_item.data(), test_item.size());
+
+  // Both methods should produce the same result
+  ASSERT_EQ(hash1, hash2) << "Hash methods should be consistent";
+
+  // Hash should be deterministic
+  uint64_t hash3 = redis::CuckooFilter::Hash(test_item);
+  ASSERT_EQ(hash1, hash3) << "Hash should be deterministic";
+
+  // Different items should produce different hashes (with high probability)
+  uint64_t hash_world = redis::CuckooFilter::Hash("world");
+  ASSERT_NE(hash1, hash_world) << "Different items should have different hashes";
+
+  // Empty string produces hash value 0 (this is expected with MurmurHash)
+  uint64_t hash_empty = redis::CuckooFilter::Hash("");
+  ASSERT_EQ(hash_empty, 0) << "Empty string should produce hash value 0 with MurmurHash";
+
+  // Even with hash=0, fingerprint should be non-zero
+  uint8_t fp_empty = redis::CuckooFilter::GenerateFingerprint(hash_empty);
+  ASSERT_EQ(fp_empty, 1) << "Fingerprint of hash=0 should be 1 (0 % 255 + 1)";
+
+  // Test that hash can be used with fingerprint generation
+  uint8_t fp = redis::CuckooFilter::GenerateFingerprint(hash1);
+  ASSERT_GE(fp, 1) << "Fingerprint should be at least 1";
+  ASSERT_LE(fp, 255) << "Fingerprint should be at most 255";
 }

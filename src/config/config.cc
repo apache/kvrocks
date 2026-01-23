@@ -188,6 +188,11 @@ Config::Config() {
       {"dir", true, new StringField(&dir, kDefaultDir)},
       {"backup-dir", false, new StringField(&backup_dir, kDefaultBackupDir)},
       {"log-dir", true, new StringField(&log_dir, "")},
+      {"cloud-storage-type", false, new StringField(&cloud_storage_type, "")},
+      {"cloud-storage-bucket", false, new StringField(&cloud_storage_bucket, "")},
+      {"cloud-storage-access-key", false, new StringField(&cloud_storage_access_key, "")},
+      {"cloud-storage-secret-key", false, new StringField(&cloud_storage_secret_key, "")},
+      {"cloud-storage-endpoint", false, new StringField(&cloud_storage_endpoint, "")},
       {"log-level", false, new EnumField<spdlog::level::level_enum>(&log_level, log_levels, spdlog::level::info)},
       {"pidfile", true, new StringField(&pidfile, kDefaultPidfile)},
       {"max-io-mb", false, new IntField(&max_io_mb, 0, 0, INT_MAX)},
@@ -411,6 +416,16 @@ void Config::initFieldValidator() {
          }
          return Status::OK();
        }},
+         // <--- Ensure this comma is here!
+      {"cloud-storage-type",
+       []([[maybe_unused]] const std::string &k, const std::string &v) -> Status {
+         if (v.empty()) return Status::OK();
+         static std::vector<std::string> supported = {"s3", "gcs", "azblob", "oss", "obs", "fs"};
+         if (std::find(supported.begin(), supported.end(), v) == supported.end()) {
+           return {Status::NotOK, "Unsupported cloud storage type: " + v};
+         }
+         return Status::OK();
+       }} // Last entry doesn't need a comma
   };
   for (const auto &iter : validators) {
     auto field_iter = fields_.find(iter.first);

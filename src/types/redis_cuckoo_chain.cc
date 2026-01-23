@@ -52,6 +52,12 @@ rocksdb::Status CuckooChain::Reserve(engine::Context &ctx, const Slice &user_key
     return rocksdb::Status::InvalidArgument("capacity must be larger than 0");
   }
 
+  // RedisBloom requires minimum capacity to ensure at least one bucket can be created
+  // With load factor 0.955, capacity=1 and bucket_size=4 results in 0 buckets
+  if (capacity < 2) {
+    return rocksdb::Status::InvalidArgument("capacity must be at least 2");
+  }
+
   if (bucket_size == 0 || bucket_size > 255) {
     return rocksdb::Status::InvalidArgument("bucket_size must be between 1 and 255");
   }

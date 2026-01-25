@@ -988,6 +988,69 @@ func testList(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.Equal(t, "bar", rdb.LRange(ctx, "target", 0, -1).Val()[0])
 	})
 
+	for listType, large := range largeValue {
+		t.Run(fmt.Sprintf("BRPOPLPUSH base case - %s", listType), func(t *testing.T) {
+			require.NoError(t, rdb.Del(ctx, "src{t}", "dst{t}").Err())
+			createList("src{t}", []string{"a", large, "c", "d"})
+			result := rdb.BRPopLPush(ctx, "src{t}", "dst{t}", time.Second)
+			require.Equal(t, "d", result.Val())
+			require.Equal(t, []string{"a", large, "c"}, rdb.LRange(ctx, "src{t}", 0, -1).Val())
+			require.Equal(t, []string{"d"}, rdb.LRange(ctx, "dst{t}", 0, -1).Val())
+		})
+
+		t.Run(fmt.Sprintf("BRPOPLPUSH with the same list as src and dst - %s", listType), func(t *testing.T) {
+			require.NoError(t, rdb.Del(ctx, "mylist{t}").Err())
+			createList("mylist{t}", []string{"a", large, "c"})
+			result := rdb.BRPopLPush(ctx, "mylist{t}", "mylist{t}", time.Second)
+			require.Equal(t, "c", result.Val())
+			require.Equal(t, []string{"c", "a", large}, rdb.LRange(ctx, "mylist{t}", 0, -1).Val())
+		})
+
+		t.Run(fmt.Sprintf("BRPOPLPUSH with existing target - %s", listType), func(t *testing.T) {
+			require.NoError(t, rdb.Del(ctx, "src{t}", "dst{t}").Err())
+			createList("src{t}", []string{"a", "b", "c", large})
+			createList("dst{t}", []string{"x"})
+			result := rdb.BRPopLPush(ctx, "src{t}", "dst{t}", time.Second)
+			require.Equal(t, large, result.Val())
+			require.Equal(t, []string{"a", "b", "c"}, rdb.LRange(ctx, "src{t}", 0, -1).Val())
+			require.Equal(t, []string{large, "x"}, rdb.LRange(ctx, "dst{t}", 0, -1).Val())
+		})
+	}
+
+	t.Run("BRPOPLPUSH block behavior", func(t *testing.T) {
+		rd := srv.NewTCPClient()
+		defer func() { require.NoError(t, rd.Close()) }()
+		require.NoError(t, rdb.Del(ctx, "blist{t}", "target{t}").Err())
+		require.NoError(t, rd.WriteArgs("brpoplpush", "blist{t}", "target{t}", "0"))
+		require.EqualValues(t, 3, rdb.RPush(ctx, "blist{t}", "foo", "bar", "baz").Val())
+		rd.MustRead(t, "$3")
+		require.Equal(t, []string{"baz"}, rdb.LRange(ctx, "target{t}", 0, -1).Val())
+		require.Equal(t, []string{"foo", "bar"}, rdb.LRange(ctx, "blist{t}", 0, -1).Val())
+	})
+
+	t.Run("BRPOPLPUSH timeout", func(t *testing.T) {
+		rd := srv.NewTCPClient()
+		defer func() { require.NoError(t, rd.Close()) }()
+		require.NoError(t, rdb.Del(ctx, "empty{t}").Err())
+		require.NoError(t, rd.WriteArgs("brpoplpush", "empty{t}", "dst{t}", "1"))
+		time.Sleep(1200 * time.Millisecond)
+		rd.MustRead(t, "$-1")
+	})
+
+	t.Run("BRPOPLPUSH against non list src key", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "src{t}", "dst{t}").Err())
+		require.NoError(t, rdb.Set(ctx, "src{t}", "x", 0).Err())
+		require.ErrorContains(t, rdb.BRPopLPush(ctx, "src{t}", "dst{t}", time.Second).Err(), "WRONGTYPE")
+	})
+
+	t.Run("BRPOPLPUSH against non list dst key", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "src{t}", "dst{t}").Err())
+		createList("src{t}", []string{"a", "b", "c"})
+		require.NoError(t, rdb.Set(ctx, "dst{t}", "x", 0).Err())
+		require.ErrorContains(t, rdb.BRPopLPush(ctx, "src{t}", "dst{t}", time.Second).Err(), "WRONGTYPE")
+		require.Equal(t, []string{"a", "b", "c"}, rdb.LRange(ctx, "src{t}", 0, -1).Val())
+	})
+
 	t.Run("LPOS rank negation overflow", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "mylist").Err())
 		util.ErrorRegexp(t, rdb.Do(ctx, "LPOS", "mylist", "foo", "RANK", "-9223372036854775808").Err(), ".*rank would overflow.*")

@@ -823,6 +823,87 @@ class CommandBLMove : public BlockingCommander {
   Server *srv_ = nullptr;
 };
 
+// BRPOPLPUSH is the blocking variant of RPOPLPUSH.
+// Deprecated since Redis 6.2, replaced by BLMOVE. Provided for legacy compatibility.
+// Equivalent to: BLMOVE source destination RIGHT LEFT timeout
+class CommandBRPopLPush : public BlockingCommander {
+ public:
+  CommandBRPopLPush() = default;
+  CommandBRPopLPush(const CommandBRPopLPush &) = delete;
+  CommandBRPopLPush &operator=(const CommandBRPopLPush &) = delete;
+
+  ~CommandBRPopLPush() override = default;
+
+  Status Parse(const std::vector<std::string> &args) override {
+    auto parse_result = ParseFloat(args[3]);
+    if (!parse_result) {
+      return {Status::RedisParseErr, errTimeoutIsNotFloat};
+    }
+    if (*parse_result < 0) {
+      return {Status::RedisParseErr, errTimeoutIsNegative};
+    }
+    timeout_ = static_cast<int64_t>(*parse_result * 1000 * 1000);
+
+    return Status::OK();
+  }
+
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    srv_ = srv;
+    InitConnection(conn);
+
+    redis::List list_db(srv->storage, conn->GetNamespace());
+    std::string elem;
+
+    auto s = list_db.LMove(ctx, args_[1], args_[2], /*src_left=*/false, /*dst_left=*/true, &elem);
+    if (!s.ok() && !s.IsNotFound()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+    if (!elem.empty()) {
+      *output = redis::BulkString(elem);
+      return Status::OK();
+    }
+
+    return StartBlocking(timeout_, output);
+  }
+
+  void BlockKeys() override { srv_->BlockOnKey(args_[1], conn_); }
+
+  void UnblockKeys() override { srv_->UnblockOnKey(args_[1], conn_); }
+
+  MultiLockGuard GetLocks() override {
+    std::vector<std::string> lock_keys{
+        ComposeNamespaceKey(conn_->GetNamespace(), args_[1], srv_->storage->IsSlotIdEncoded())};
+    if (args_[1] != args_[2]) {
+      lock_keys.emplace_back(ComposeNamespaceKey(conn_->GetNamespace(), args_[2], srv_->storage->IsSlotIdEncoded()));
+    }
+    return MultiLockGuard(srv_->storage->GetLockManager(), lock_keys);
+  }
+
+  bool OnBlockingWrite() override {
+    redis::List list_db(srv_->storage, conn_->GetNamespace());
+    std::string elem;
+    engine::Context ctx(srv_->storage);
+    auto s = list_db.LMove(ctx, args_[1], args_[2], /*src_left=*/false, /*dst_left=*/true, &elem);
+    if (!s.ok() && !s.IsNotFound()) {
+      conn_->Reply(redis::Error({Status::NotOK, s.ToString()}));
+      return true;
+    }
+
+    bool empty = elem.empty();
+    if (!empty) {
+      conn_->Reply(redis::BulkString(elem));
+    }
+
+    return !empty;
+  }
+
+  std::string NoopReply(const Connection *conn) override { return conn->NilString(); }
+
+ private:
+  int64_t timeout_ = 0;  // microseconds
+  Server *srv_ = nullptr;
+};
+
 class CommandLPos : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
@@ -896,6 +977,7 @@ class CommandLPos : public Commander {
 
 REDIS_REGISTER_COMMANDS(List, MakeCmdAttr<CommandBLPop>("blpop", -3, "write blocking", 1, -2, 1),
                         MakeCmdAttr<CommandBRPop>("brpop", -3, "write blocking", 1, -2, 1),
+                        MakeCmdAttr<CommandBRPopLPush>("brpoplpush", 4, "write blocking", 1, 2, 1),
                         MakeCmdAttr<CommandBLMPop>("blmpop", -5, "write blocking", CommandBLMPop::keyRangeGen),
                         MakeCmdAttr<CommandLIndex>("lindex", 3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandLInsert>("linsert", 5, "write slow", 1, 1, 1),

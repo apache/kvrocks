@@ -75,12 +75,12 @@ class CommandScript : public Commander {
     if (args_.size() == 2 && subcommand_ == "flush") {
       auto s = srv->ScriptFlush();
       if (!s) {
-        error("Failed to flush scripts: {}", s.Msg());
+        ERROR("Failed to flush scripts: {}", s.Msg());
         return s;
       }
       s = srv->Propagate(engine::kPropagateScriptCommand, args_);
       if (!s) {
-        error("Failed to propagate script command: {}", s.Msg());
+        ERROR("Failed to propagate script command: {}", s.Msg());
         return s;
       }
       *output = redis::RESP_OK;
@@ -125,10 +125,21 @@ uint64_t GenerateScriptFlags(uint64_t flags, const std::vector<std::string> &arg
   return flags;
 }
 
-REDIS_REGISTER_COMMANDS(Script, MakeCmdAttr<CommandEval>("eval", -3, "write no-script", GetScriptEvalKeyRange),
-                        MakeCmdAttr<CommandEvalSHA>("evalsha", -3, "write no-script", GetScriptEvalKeyRange),
-                        MakeCmdAttr<CommandEvalRO>("eval_ro", -3, "read-only no-script", GetScriptEvalKeyRange),
-                        MakeCmdAttr<CommandEvalSHARO>("evalsha_ro", -3, "read-only no-script", GetScriptEvalKeyRange),
-                        MakeCmdAttr<CommandScript>("script", -2, "exclusive no-script", NO_KEY, GenerateScriptFlags), )
+uint64_t GenerateEvalFlags(uint64_t flags, const std::vector<std::string> &, const Config &config) {
+  if (!config.lua_strict_key_accessing) {
+    return flags | kCmdExclusive;
+  }
+
+  return flags;
+}
+
+REDIS_REGISTER_COMMANDS(
+    Script,
+    MakeCmdAttr<CommandEval>("eval", -3, "write no-script skip-monitor", GetScriptEvalKeyRange, GenerateEvalFlags),
+    MakeCmdAttr<CommandEvalSHA>("evalsha", -3, "write no-script skip-monitor", GetScriptEvalKeyRange,
+                                GenerateEvalFlags),
+    MakeCmdAttr<CommandEvalRO>("eval_ro", -3, "read-only no-script skip-monitor", GetScriptEvalKeyRange),
+    MakeCmdAttr<CommandEvalSHARO>("evalsha_ro", -3, "read-only no-script skip-monitor", GetScriptEvalKeyRange),
+    MakeCmdAttr<CommandScript>("script", -2, "exclusive no-script skip-monitor", NO_KEY, GenerateScriptFlags), )
 
 }  // namespace redis

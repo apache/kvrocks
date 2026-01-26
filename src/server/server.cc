@@ -107,10 +107,10 @@ Server::Server(engine::Storage *storage, Config *config)
     if (!config->unixsocket.empty() && i == 0) {
       Status s = worker->ListenUnixSocket(config->unixsocket, config->unixsocketperm, config->backlog);
       if (!s.IsOK()) {
-        error("[server] Failed to listen on unix socket: {}. Error: {}", config->unixsocket, s.Msg());
+        ERROR("[server] Failed to listen on unix socket: {}. Error: {}", config->unixsocket, s.Msg());
         exit(1);
       }
-      info("[server] Listening on unix socket: {}", config->unixsocket);
+      INFO("[server] Listening on unix socket: {}", config->unixsocket);
     }
     worker_threads_.emplace_back(std::make_unique<WorkerThread>(std::move(worker)));
   }
@@ -128,7 +128,7 @@ Server::~Server() {
   while (GetFetchFileThreadNum() != 0) {
     usleep(100000);
     if (++counter == 600) {
-      warn("[server] Will force destroy the server after waiting 60s, leave {} fetch file threads are still running",
+      WARN("[server] Will force destroy the server after waiting 60s, leave {} fetch file threads are still running",
            GetFetchFileThreadNum());
       break;
     }
@@ -202,7 +202,7 @@ Status Server::Start() {
   }
 
   if (auto s = task_runner_.Start(); !s) {
-    warn("Failed to start task runner: {}", s.Msg());
+    WARN("Failed to start task runner: {}", s.Msg());
   }
   // setup server cron thread
   cron_thread_ = GET_OR_RET(util::CreateThread("server-cron", [this] { this->cron(); }));
@@ -242,7 +242,7 @@ Status Server::Start() {
   }));
 
   memory_startup_use_.store(Stats::GetMemoryRSS(), std::memory_order_relaxed);
-  info("[server] Ready to accept connections");
+  INFO("[server] Ready to accept connections");
 
   return Status::OK();
 }
@@ -263,13 +263,13 @@ void Server::Stop() {
 
 void Server::Join() {
   if (auto s = util::ThreadJoin(cron_thread_); !s) {
-    warn("Cron thread operation failed: {}", s.Msg());
+    WARN("Cron thread operation failed: {}", s.Msg());
   }
   if (auto s = util::ThreadJoin(compaction_checker_thread_); !s) {
-    warn("Compaction checker thread operation failed: {}", s.Msg());
+    WARN("Compaction checker thread operation failed: {}", s.Msg());
   }
   if (auto s = task_runner_.Join(); !s) {
-    warn("{}", s.Msg());
+    WARN("{}", s.Msg());
   }
   for (const auto &worker : worker_threads_) {
     worker->Join();
@@ -300,7 +300,7 @@ Status Server::AddMaster(const std::string &host, uint32_t port, bool force_reco
                                       [this]() {
                                         this->is_loading_ = false;
                                         if (auto s = task_runner_.Start(); !s) {
-                                          warn("Failed to start task runner: {}", s.Msg());
+                                          WARN("Failed to start task runner: {}", s.Msg());
                                         }
                                       });
   if (s.IsOK()) {
@@ -370,13 +370,47 @@ void Server::CleanupExitedSlaves() {
   }
 }
 
+std::vector<std::string> Server::RedactSensitiveTokens(const std::vector<std::string> &tokens) {
+  if (tokens.empty()) return tokens;
+  std::string cmd = util::ToLower(tokens[0]);
+  if (cmd != "auth" && cmd != "hello") return tokens;
+
+  std::vector<std::string> redacted_tokens = tokens;
+  if (cmd == "auth" && tokens.size() >= 2) {
+    // AUTH password -> redact password (arg 1)
+    redacted_tokens[1] = "(redacted)";
+  } else if (cmd == "hello" && tokens.size() >= 3) {
+    // HELLO [version] [AUTH [username] password] [SETNAME name]
+    for (size_t i = 1; i < tokens.size(); ++i) {
+      std::string arg = util::ToLower(tokens[i]);
+      if (arg == "auth" && i + 1 < tokens.size()) {
+        size_t remaining_args = tokens.size() - i - 1;
+        if (remaining_args >= 2) {
+          // Check if this follows the pattern AUTH username password
+          // In this case, redact the password (arg i+2)
+          redacted_tokens[i + 2] = "(redacted)";
+        } else if (remaining_args == 1) {
+          // This follows the pattern AUTH password
+          // Redact the password (arg i+1)
+          redacted_tokens[i + 1] = "(redacted)";
+        }
+        break;
+      }
+    }
+  }
+  return redacted_tokens;
+}
+
 void Server::FeedMonitorConns(redis::Connection *conn, const std::vector<std::string> &tokens) {
   if (monitor_clients_ <= 0) return;
 
   auto now_us = util::GetTimeStampUS();
   std::string output =
       fmt::format("{}.{} [{} {}]", now_us / 1000000, now_us % 1000000, conn->GetNamespace(), conn->GetAddr());
-  for (const auto &token : tokens) {
+
+  auto redacted_tokens = RedactSensitiveTokens(tokens);
+
+  for (const auto &token : redacted_tokens) {
     output += " \"";
     output += util::EscapeString(token);
     output += "\"";
@@ -674,7 +708,7 @@ void Server::WakeupBlockingConns(const std::string &key, size_t n_conns) {
     auto conn_ctx = iter->second.front();
     auto s = conn_ctx.owner->EnableWriteEvent(conn_ctx.fd);
     if (!s.IsOK()) {
-      error("[server] Failed to enable write event on blocked client {}: {}", conn_ctx.fd, s.Msg());
+      ERROR("[server] Failed to enable write event on blocked client {}: {}", conn_ctx.fd, s.Msg());
     }
     iter->second.pop_front();
   }
@@ -693,7 +727,7 @@ void Server::OnEntryAddedToStream(const std::string &ns, const std::string &key,
     if (consumer->ns == ns && entry_id > consumer->last_consumed_id) {
       auto s = consumer->owner->EnableWriteEvent(consumer->fd);
       if (!s.IsOK()) {
-        error("[server] Failed to enable write event on blocked stream consumer {}: {}", consumer->fd, s.Msg());
+        ERROR("[server] Failed to enable write event on blocked stream consumer {}: {}", consumer->fd, s.Msg());
       }
       it = iter->second.erase(it);
     } else {
@@ -725,7 +759,7 @@ void Server::WakeupWaitConnections(rocksdb::SequenceNumber seq) {
 
       auto s = it->second.conn->Owner()->EnableWriteEvent(it->second.conn->GetFD());
       if (!s.IsOK()) {
-        error("[server] Failed to enable write event on WAIT connection {}: {}", it->second.conn->GetFD(), s.Msg());
+        ERROR("[server] Failed to enable write event on WAIT connection {}: {}", it->second.conn->GetFD(), s.Msg());
       }
       it = wait_contexts_.erase(it);
       DecrBlockedClientNum();
@@ -735,9 +769,25 @@ void Server::WakeupWaitConnections(rocksdb::SequenceNumber seq) {
   }
 }
 
+void Server::WakeupWaitConnection(redis::Connection *conn, rocksdb::SequenceNumber seq) {
+  std::unique_lock<std::shared_mutex> guard(wait_contexts_mu_);
+  cleanupWaitConnection(conn);
+
+  size_t reached_replicas = GetReplicasReachedSequence(seq);
+  conn->Reply(redis::Integer(reached_replicas));
+
+  auto s = conn->Owner()->EnableWriteEvent(conn->GetFD());
+  if (!s.IsOK()) {
+    ERROR("[server] Failed to enable write event on WAIT connection {}: {}", conn->GetFD(), s.Msg());
+  }
+}
+
 void Server::CleanupWaitConnection(redis::Connection *conn) {
   std::unique_lock<std::shared_mutex> guard(wait_contexts_mu_);
+  cleanupWaitConnection(conn);
+}
 
+void Server::cleanupWaitConnection(redis::Connection *conn) {
   // Remove all wait contexts that match the given connection
   auto it = wait_contexts_.begin();
   int erased_count = 0;
@@ -754,8 +804,8 @@ void Server::CleanupWaitConnection(redis::Connection *conn) {
     }
   }
 
-  if (erased_count > 0) {
-    warn("[server] {} wait contexts found for connection with fd {}, expect 1", erased_count, conn->GetFD());
+  if (erased_count > 1) {
+    WARN("[server] {} wait contexts found for connection with fd {}, expect 1", erased_count, conn->GetFD());
   }
 }
 
@@ -867,11 +917,11 @@ void Server::cron() {
       if (!config_->compaction_checker_cron.IsEnabled() && config_->compact_cron.IsEnabled() &&
           config_->compact_cron.IsTimeMatch(&now)) {
         Status s = AsyncCompactDB();
-        info("[server] Schedule to compact the db, result: {}", s.Msg());
+        INFO("[server] Schedule to compact the db, result: {}", s.Msg());
       }
       if (config_->bgsave_cron.IsEnabled() && config_->bgsave_cron.IsTimeMatch(&now)) {
         Status s = AsyncBgSaveDB();
-        info("[server] Schedule to bgsave the db, result: {}", s.Msg());
+        INFO("[server] Schedule to bgsave the db, result: {}", s.Msg());
       }
       if (config_->dbsize_scan_cron.IsEnabled() && config_->dbsize_scan_cron.IsTimeMatch(&now)) {
         auto tokens = namespace_.List();
@@ -888,7 +938,7 @@ void Server::cron() {
 
         for (auto &ns : namespaces) {
           Status s = AsyncScanDBSize(ns);
-          info("[server] Schedule to recalculate the db size on namespace: {}, result: {}", ns, s.Msg());
+          INFO("[server] Schedule to recalculate the db size on namespace: {}, result: {}", ns, s.Msg());
         }
       }
     }
@@ -915,9 +965,9 @@ void Server::cron() {
             (now_secs - create_time_secs > 24 * 60 * 60)) {
           auto s = rocksdb::DestroyDB(config_->checkpoint_dir, rocksdb::Options());
           if (!s.ok()) {
-            warn("[server] Fail to clean checkpoint, error: {}", s.ToString());
+            WARN("[server] Fail to clean checkpoint, error: {}", s.ToString());
           } else {
-            info("[server] Clean checkpoint successfully");
+            INFO("[server] Clean checkpoint successfully");
           }
         }
       }
@@ -931,9 +981,9 @@ void Server::cron() {
     if (counter != 0 && counter % 600 == 0 && storage->IsDBInRetryableIOError()) {
       auto s = storage->GetDB()->Resume();
       if (s.ok()) {
-        warn("[server] Successfully resumed DB after retryable IO error");
+        WARN("[server] Successfully resumed DB after retryable IO error");
       } else {
-        error("[server] Failed to resume DB after retryable IO error: {}", s.ToString());
+        ERROR("[server] Failed to resume DB after retryable IO error: {}", s.ToString());
       }
       storage->SetDBInRetryableIOError(false);
     }
@@ -1008,6 +1058,26 @@ Server::InfoEntries Server::GetRocksDBInfo() {
                          cf_stats_map["memtable-limit-delays"]);
     entries.emplace_back("memtable_count_limit_stop[" + cf_handle->GetName() + "]",
                          cf_stats_map["memtable-limit-stops"]);
+
+    // Get the SST file count in all levels
+    std::string sst_file_at_level = "[";
+    for (int level = 0; level < KVROCKS_MAX_LSM_LEVEL; level++) {
+      std::string sst_file_count;
+      db->GetProperty(cf_handle, rocksdb::DB::Properties::kNumFilesAtLevelPrefix + std::to_string(level),
+                      &sst_file_count);
+      if (level != 0) {
+        sst_file_at_level += ",";
+      }
+      sst_file_at_level += sst_file_count;
+    }
+    entries.emplace_back("num_files_at_level[" + cf_handle->GetName() + "]", sst_file_at_level + "]");
+
+    // Get the estimate pending compaction bytes for the current column family
+    std::string estimate_pending_compaction_bytes;
+    db->GetProperty(cf_handle, rocksdb::DB::Properties::kEstimatePendingCompactionBytes,
+                    &estimate_pending_compaction_bytes);
+    entries.emplace_back("estimate_pending_compaction_bytes[" + cf_handle->GetName() + "]",
+                         estimate_pending_compaction_bytes);
   }
 
   auto rocksdb_stats = storage->GetDB()->GetDBOptions().statistics;
@@ -1145,23 +1215,24 @@ Server::InfoEntries Server::GetReplicationInfo() {
   }
 
   int idx = 0;
-  rocksdb::SequenceNumber latest_seq = storage->LatestSeqNumber();
 
   {
     std::shared_lock<std::shared_mutex> guard(slave_threads_mu_);
     entries.emplace_back("connected_slaves", slave_threads_.size());
+    rocksdb::SequenceNumber latest_seq = storage->LatestSeqNumber();
     for (const auto &slave : slave_threads_) {
       if (slave->IsStopped()) continue;
 
+      auto slave_ack_seq = slave->GetAckSeq();
       entries.emplace_back(
           "slave" + std::to_string(idx),
           fmt::format("ip={},port={},offset={},lag={}", slave->GetConn()->GetAnnounceIP(),
-                      slave->GetConn()->GetAnnouncePort(), slave->GetAckSeq(), latest_seq - slave->GetAckSeq()));
+                      slave->GetConn()->GetAnnouncePort(), slave_ack_seq >= latest_seq ? latest_seq : slave_ack_seq,
+                      slave_ack_seq >= latest_seq ? 0 : latest_seq - slave_ack_seq));
       ++idx;
     }
+    entries.emplace_back("master_repl_offset", latest_seq);
   }
-
-  entries.emplace_back("master_repl_offset", latest_seq);
 
   return entries;
 }
@@ -1433,7 +1504,7 @@ std::string Server::GetRocksDBStatsJson() const {
 // guarantee other threads don't access DB and its column families, then close db.
 bool Server::PrepareRestoreDB() {
   // Stop feeding slaves thread
-  info("[server] Disconnecting slaves...");
+  INFO("[server] Disconnecting slaves...");
   DisconnectSlaves();
 
   // If the DB is restored, the object 'db_' will be destroyed, but
@@ -1449,7 +1520,7 @@ bool Server::PrepareRestoreDB() {
   // To guarantee work threads don't access DB, we should release 'ExclusivityGuard'
   // ASAP to avoid user can't receive responses for long time, because the following
   // 'CloseDB' may cost much time to acquire DB mutex.
-  info("[server] Waiting workers for finishing executing commands...");
+  INFO("[server] Waiting workers for finishing executing commands...");
   while (!works_concurrency_rw_lock_.try_lock()) {
     if (replication_thread_->IsStopped()) {
       is_loading_ = false;
@@ -1460,22 +1531,22 @@ bool Server::PrepareRestoreDB() {
   works_concurrency_rw_lock_.unlock();
 
   // Stop task runner
-  info("[server] Stopping the task runner and clear task queue...");
+  INFO("[server] Stopping the task runner and clear task queue...");
   task_runner_.Cancel();
   if (auto s = task_runner_.Join(); !s) {
-    warn("[server] {}", s.Msg());
+    WARN("[server] {}", s.Msg());
   }
 
   // Cron thread, compaction checker thread, full synchronization thread
   // may always run in the background, we need to close db, so they don't actually work.
-  info("[server] Waiting for closing DB...");
+  INFO("[server] Waiting for closing DB...");
   storage->CloseDB();
   return true;
 }
 
 void Server::WaitNoMigrateProcessing() {
   if (config_->cluster_enabled) {
-    info("[server] Waiting until no migration task is running...");
+    INFO("[server] Waiting until no migration task is running...");
     slot_migrator->SetStopMigrationFlag(true);
     while (slot_migrator->GetCurrentSlotMigrationStage() != SlotMigrationStage::kNone) {
       usleep(500);
@@ -1502,7 +1573,7 @@ Status Server::AsyncCompactDB(const std::string &begin_key, const std::string &e
 
     auto s = storage->Compact(nullptr, begin.get(), end.get());
     if (!s.ok()) {
-      error("[task runner] Failed to do compaction: {}", s.ToString());
+      ERROR("[task runner] Failed to do compaction: {}", s.ToString());
     }
 
     std::lock_guard<std::mutex> lg(db_job_mu_);
@@ -1557,7 +1628,7 @@ Status Server::AsyncScanDBSize(const std::string &ns) {
     engine::Context ctx(storage);
     auto s = db.GetKeyNumStats(ctx, "", &stats);
     if (!s.ok()) {
-      error("failed to retrieve key num stats: {}", s.ToString());
+      ERROR("failed to retrieve key num stats: {}", s.ToString());
     }
 
     std::lock_guard<std::mutex> lg(db_job_mu_);
@@ -1568,91 +1639,6 @@ Status Server::AsyncScanDBSize(const std::string &ns) {
   });
 }
 
-Status Server::autoResizeBlockAndSST() {
-  auto total_size = storage->GetTotalSize(kDefaultNamespace);
-  uint64_t total_keys = 0, estimate_keys = 0;
-  for (const auto &cf_handle : *storage->GetCFHandles()) {
-    storage->GetDB()->GetIntProperty(cf_handle, rocksdb::DB::Properties::kEstimateNumKeys, &estimate_keys);
-    total_keys += estimate_keys;
-  }
-
-  if (total_size == 0 || total_keys == 0) {
-    return Status::OK();
-  }
-
-  auto average_kv_size = total_size / total_keys;
-  int target_file_size_base = 0;
-  int block_size = 0;
-  if (average_kv_size > 512 * KiB) {
-    target_file_size_base = 1024;
-    block_size = 1 * MiB;
-  } else if (average_kv_size > 256 * KiB) {
-    target_file_size_base = 512;
-    block_size = 512 * KiB;
-  } else if (average_kv_size > 32 * KiB) {
-    target_file_size_base = 256;
-    block_size = 256 * KiB;
-  } else if (average_kv_size > 1 * KiB) {
-    target_file_size_base = 128;
-    block_size = 32 * KiB;
-  } else if (average_kv_size > 128) {
-    target_file_size_base = 64;
-    block_size = 8 * KiB;
-  } else {
-    target_file_size_base = 16;
-    block_size = 2 * KiB;
-  }
-
-  if (target_file_size_base == config_->rocks_db.target_file_size_base &&
-      target_file_size_base == config_->rocks_db.write_buffer_size && block_size == config_->rocks_db.block_size) {
-    return Status::OK();
-  }
-
-  if (target_file_size_base != config_->rocks_db.target_file_size_base) {
-    auto old_target_file_size_base = config_->rocks_db.target_file_size_base;
-    auto s = config_->Set(this, "rocksdb.target_file_size_base", std::to_string(target_file_size_base));
-    info(
-        "[server] Resize rocksdb.target_file_size_base from {} to {}, "
-        "average_kv_size: {}, total_size: {}, total_keys: {}, result: {}",
-        old_target_file_size_base, target_file_size_base, average_kv_size, total_size, total_keys, s.Msg());
-    if (!s.IsOK()) {
-      return s;
-    }
-  }
-
-  if (target_file_size_base != config_->rocks_db.write_buffer_size) {
-    auto old_write_buffer_size = config_->rocks_db.write_buffer_size;
-    auto s = config_->Set(this, "rocksdb.write_buffer_size", std::to_string(target_file_size_base));
-    info(
-        "[server] Resize rocksdb.write_buffer_size from {} to {}, "
-        "average_kv_size: {}, total_size: {}, "
-        "total_keys: {}, result: {}",
-        old_write_buffer_size, target_file_size_base, average_kv_size, total_size, total_keys, s.Msg());
-    if (!s.IsOK()) {
-      return s;
-    }
-  }
-
-  if (block_size != config_->rocks_db.block_size) {
-    auto s = storage->SetOptionForAllColumnFamilies("table_factory.block_size", std::to_string(block_size));
-    info(
-        "[server] Resize rocksdb.block_size from {} to {}, "
-        "average_kv_size: {}, total_size: {}, "
-        "total_keys: {}, result: {}",
-        config_->rocks_db.block_size, block_size, average_kv_size, total_size, total_keys, s.Msg());
-    if (!s.IsOK()) {
-      return s;
-    }
-
-    config_->rocks_db.block_size = block_size;
-  }
-
-  auto s = config_->Rewrite(namespace_.List());
-  info("[server] Rewrite config, result: {}", s.Msg());
-
-  return Status::OK();
-}
-
 void Server::GetLatestKeyNumStats(const std::string &ns, KeyNumStats *stats) {
   auto iter = db_scan_infos_.find(ns);
   if (iter != db_scan_infos_.end()) {
@@ -1661,7 +1647,8 @@ void Server::GetLatestKeyNumStats(const std::string &ns, KeyNumStats *stats) {
   }
 }
 
-int64_t Server::GetLastScanTime(const std::string &ns) const {
+int64_t Server::GetLastScanTime(const std::string &ns) {
+  std::lock_guard<std::mutex> lg(db_job_mu_);
   auto iter = db_scan_infos_.find(ns);
   if (iter != db_scan_infos_.end()) {
     return iter->second.last_scan_time_secs;
@@ -1771,7 +1758,7 @@ void Server::KillClient(int64_t *killed, const std::string &addr, uint64_t id, u
       (type & kTypeMaster || (!addr.empty() && addr == master_host_ + ":" + std::to_string(master_port_)))) {
     // Stop replication thread and start a new one to replicate
     if (auto s = AddMaster(master_host_, master_port_, true); !s.IsOK()) {
-      error("[server] Failed to add master {}:{} with error: {}", master_host_, master_port_, s.Msg());
+      ERROR("[server] Failed to add master {}:{} with error: {}", master_host_, master_port_, s.Msg());
     }
     (*killed)++;
   }
@@ -1950,24 +1937,24 @@ void Server::AdjustOpenFilesLimit() {
 
   if (best_limit < max_files) {
     if (best_limit <= static_cast<int>(min_reserved_fds)) {
-      warn(
+      WARN(
           "[server] Your current 'ulimit -n' of {} is not enough for the server to start. "
           "Please increase your open file limit to at least {}. Exiting.",
           old_limit, max_files);
       exit(1);
     }
 
-    warn(
+    WARN(
         "[server] You requested max clients of {} and RocksDB max open files of {} "
         "requiring at least {} max file descriptors.",
         max_clients, rocksdb_max_open_file, max_files);
 
-    warn(
+    WARN(
         "[server] Server can't set maximum open files to {} "
         "because of OS error: {}",
         max_files, strerror(setrlimit_error));
   } else {
-    warn("[server] Increased maximum number of open files to {} (it's originally set to {})", max_files, old_limit);
+    WARN("[server] Increased maximum number of open files to {} (it's originally set to {})", max_files, old_limit);
   }
 }
 
@@ -1980,12 +1967,12 @@ void Server::AdjustWorkerThreads() {
   if (new_worker_threads > worker_threads_.size()) {
     delta = new_worker_threads - worker_threads_.size();
     increaseWorkerThreads(delta);
-    info("[server] Increase worker threads from {} to {}", worker_threads_.size(), new_worker_threads);
+    INFO("[server] Increase worker threads from {} to {}", worker_threads_.size(), new_worker_threads);
     return;
   }
 
   delta = worker_threads_.size() - new_worker_threads;
-  info("[server] Decrease worker threads from {} to {}", worker_threads_.size(), new_worker_threads);
+  INFO("[server] Decrease worker threads from {} to {}", worker_threads_.size(), new_worker_threads);
   decreaseWorkerThreads(delta);
 }
 
@@ -2084,7 +2071,7 @@ void Server::updateAllWatchedKeys() {
 }
 
 void Server::UpdateWatchedKeysFromArgs(const std::vector<std::string> &args, const redis::CommandAttributes &attr) {
-  if ((attr.GenerateFlags(args) & redis::kCmdWrite) && watched_key_size_ > 0) {
+  if ((attr.GenerateFlags(args, *GetConfig()) & redis::kCmdWrite) && watched_key_size_ > 0) {
     attr.ForEachKeyRange([this](const std::vector<std::string> &args,
                                 redis::CommandKeyRange range) { updateWatchedKeysFromRange(args, range); },
                          args, [this](const std::vector<std::string> &) { updateAllWatchedKeys(); });

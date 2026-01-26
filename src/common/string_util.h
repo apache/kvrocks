@@ -23,6 +23,7 @@
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -61,8 +62,9 @@ std::string StringToHex(std::string_view input);
 std::vector<std::string> TokenizeRedisProtocol(const std::string &value);
 std::string EscapeString(std::string_view s);
 std::string StringNext(std::string s);
+std::string StringDigest(std::string_view s);
 
-template <typename T, typename F>
+template <typename T, typename F, std::enable_if_t<std::is_invocable_v<F, typename T::value_type>, int> = 0>
 std::string StringJoin(const T &con, F &&f, std::string_view sep = ", ") {
   std::string res;
   bool is_first = true;
@@ -79,8 +81,7 @@ std::string StringJoin(const T &con, F &&f, std::string_view sep = ", ") {
 
 template <typename T>
 std::string StringJoin(const T &con, std::string_view sep = ", ") {
-  return StringJoin(
-      con, [](const auto &v) -> decltype(auto) { return v; }, sep);
+  return StringJoin(con, [](const auto &v) -> decltype(auto) { return v; }, sep);
 }
 
 }  // namespace util

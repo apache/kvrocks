@@ -140,7 +140,7 @@ $ ./x.py test go # run Golang (unit and integration) test cases
 ### Supported platforms
 
 * OS: Linux and macOS
-* arch: x86_64 and ARM
+* arch: x86_64, ARM and RISC-V
 
 ## Namespace
 

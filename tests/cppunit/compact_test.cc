@@ -28,6 +28,7 @@
 #include "storage/redis_metadata.h"
 #include "storage/storage.h"
 #include "types/redis_hash.h"
+#include "types/redis_timeseries.h"
 #include "types/redis_zset.h"
 
 TEST(Compact, Filter) {
@@ -198,6 +199,193 @@ TEST(Compact, SearchFilter) {
   sg = storage->Get(ctx, rocksdb::ReadOptions(), storage->GetCFHandle(ColumnFamilyID::Search), num_search_key,
                     &search_value);
   ASSERT_TRUE(sg.IsNotFound());
+
+  std::error_code ec;
+  std::filesystem::remove_all(config.db_dir, ec);
+  if (ec) {
+    std::cout << "Encounter filesystem error: " << ec << std::endl;
+  }
+}
+
+TEST(Compact, IndexFilter) {
+  Config config;
+  config.db_dir = "compactdb";
+  config.slot_id_encoded = false;
+
+  auto storage = std::make_unique<engine::Storage>(&config);
+  auto s = storage->Open();
+  assert(s.IsOK());
+
+  std::string ns = "test_compact_index";
+  auto timeseries = std::make_unique<redis::TimeSeries>(storage.get(), ns);
+  engine::Context ctx(storage.get());
+
+  std::string ts_del_key = "ts_del_key";
+  std::string ts_expire_key = "ts_expire_key";
+  std::string ts_keep_key = "ts_keep_key";
+  auto create_option = redis::TSCreateOption();
+  create_option.labels.push_back({"flag", "temp"});
+  ASSERT_TRUE(timeseries->Create(ctx, ts_del_key, create_option).ok());
+  ASSERT_TRUE(timeseries->Create(ctx, ts_expire_key, create_option).ok());
+  ASSERT_TRUE(timeseries->Create(ctx, ts_keep_key, create_option).ok());
+
+  redis::TSMGetOption mget_option;
+  mget_option.filter.labels_equals["flag"].insert("temp");
+  std::vector<redis::TSMGetResult> mget_result;
+  ASSERT_TRUE(timeseries->MGet(ctx, mget_option, false, &mget_result).ok());
+  ASSERT_EQ(mget_result.size(), 3);
+  ASSERT_EQ(mget_result[0].name, ts_del_key);
+  ASSERT_EQ(mget_result[1].name, ts_expire_key);
+  ASSERT_EQ(mget_result[2].name, ts_keep_key);
+
+  std::string ns_del_key = ComposeNamespaceKey(ns, ts_del_key, false);
+  ASSERT_TRUE(
+      storage->Delete(ctx, storage->DefaultWriteOptions(), storage->GetCFHandle(ColumnFamilyID::Metadata), ns_del_key)
+          .ok());
+  ASSERT_TRUE(timeseries->Expire(ctx, ts_expire_key, 1).ok());
+
+  ASSERT_TRUE(storage->Compact(nullptr, nullptr, nullptr).ok());
+
+  ASSERT_TRUE(timeseries->MGet(ctx, mget_option, false, &mget_result).ok());
+  ASSERT_EQ(mget_result.size(), 1);
+  ASSERT_EQ(mget_result[0].name, ts_keep_key);
+
+  std::error_code ec;
+  std::filesystem::remove_all(config.db_dir, ec);
+  if (ec) {
+    std::cout << "Encounter filesystem error: " << ec << std::endl;
+  }
+}
+
+TEST(Compact, TSRetention) {
+  Config config;
+  config.db_dir = "compactdb_tsretention";
+  config.slot_id_encoded = false;
+
+  auto storage = std::make_unique<engine::Storage>(&config);
+  auto s = storage->Open();
+  assert(s.IsOK());
+
+  std::string ns = "test_compact_tsretention";
+  auto timeseries = std::make_unique<redis::TimeSeries>(storage.get(), ns);
+  engine::Context ctx(storage.get());
+
+  std::string ts_key = "ts_key";
+  redis::TSCreateOption create_option;
+  create_option.chunk_size = 3;
+  create_option.retention_time = 100;
+  ASSERT_TRUE(timeseries->Create(ctx, ts_key, create_option).ok());
+
+  rocksdb::DB* db = storage->GetDB();
+  rocksdb::ReadOptions read_options;
+  read_options.fill_cache = false;
+  auto get_all_chunks = [&]() {
+    auto iter = std::unique_ptr<rocksdb::Iterator>(
+        db->NewIterator(read_options, storage->GetCFHandle(ColumnFamilyID::PrimarySubkey)));
+    std::vector<uint64_t> chunk_ids;
+    for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+      Slice slice(iter->key());
+      slice.remove_prefix(slice.size() - sizeof(uint64_t));
+      uint64_t chunk_id = 0;
+      GetFixed64(&slice, &chunk_id);
+      chunk_ids.push_back(chunk_id);
+    }
+    return chunk_ids;
+  };
+
+  // Add two chunk
+  std::vector<TSSample> samples = {{1, 1.0}, {2, 2.0}, {3, 3.0}, {4, 4.0}, {5, 5.0}, {10, 10.0}};
+  std::vector<TSChunk::AddResult> add_results;
+  ASSERT_TRUE(timeseries->MAdd(ctx, ts_key, samples, &add_results).ok());
+
+  // There should be two chunk key
+  auto chunk_ids = get_all_chunks();
+  ASSERT_EQ(chunk_ids.size(), 2);
+  ASSERT_EQ(chunk_ids[0], 1);
+  ASSERT_EQ(chunk_ids[1], 4);
+
+  // Add a sample to make last_timestamp = 110, then the first chunk is expired
+  samples = {{110, 110.0}};
+  ASSERT_TRUE(timeseries->MAdd(ctx, ts_key, samples, &add_results).ok());
+  ASSERT_TRUE(storage->Compact(nullptr, nullptr, nullptr).ok());
+
+  // Check the first chunk is deleted
+  chunk_ids = get_all_chunks();
+  ASSERT_EQ(chunk_ids.size(), 2);
+  ASSERT_EQ(chunk_ids[0], 4);
+  ASSERT_EQ(chunk_ids[1], 110);
+
+  // Check samples should be kept
+  redis::TSRangeOption range_option;
+  std::vector<TSSample> range_result;
+  ASSERT_TRUE(timeseries->Range(ctx, ts_key, range_option, &range_result).ok());
+  ASSERT_EQ(range_result.size(), 2);
+  ASSERT_EQ(range_result[0].ts, 10);
+  ASSERT_EQ(range_result[1].ts, 110);
+
+  std::error_code ec;
+  std::filesystem::remove_all(config.db_dir, ec);
+  if (ec) {
+    std::cout << "Encounter filesystem error: " << ec << std::endl;
+  }
+}
+
+TEST(Compact, TSDownstreamSubKey) {
+  Config config;
+  config.db_dir = "compactdb_tsdownstream";
+  config.slot_id_encoded = false;
+
+  auto storage = std::make_unique<engine::Storage>(&config);
+  auto s = storage->Open();
+  assert(s.IsOK());
+
+  std::string ns = "test_compact_tsdownstream";
+  auto timeseries = std::make_unique<redis::TimeSeries>(storage.get(), ns);
+  engine::Context ctx(storage.get());
+
+  rocksdb::DB* db = storage->GetDB();
+  rocksdb::ReadOptions read_options;
+  read_options.fill_cache = false;
+  auto get_all_ds_key = [&]() {
+    auto iter = std::unique_ptr<rocksdb::Iterator>(
+        db->NewIterator(read_options, storage->GetCFHandle(ColumnFamilyID::PrimarySubkey)));
+    std::vector<std::string> ds_keys;
+    for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+      Slice slice(iter->key());
+      slice.remove_prefix(slice.size() - sizeof(uint64_t));
+      ds_keys.push_back(slice.ToString());
+    }
+    return ds_keys;
+  };
+
+  std::string ts_key = "ts_key";
+  std::string dst_key1 = "dst_key1";
+  std::string dst_key2 = "dst_key2";
+  redis::TSCreateOption create_option;
+  ASSERT_TRUE(timeseries->Create(ctx, ts_key, create_option).ok());
+  ASSERT_TRUE(timeseries->Create(ctx, dst_key1, create_option).ok());
+  ASSERT_TRUE(timeseries->Create(ctx, dst_key2, create_option).ok());
+
+  // Create two downstream rule
+  redis::TSAggregator agg;
+  agg.type = redis::TSAggregatorType::AVG;
+  agg.bucket_duration = 100;
+  auto rule_res = redis::TSCreateRuleResult::kOK;
+  ASSERT_TRUE(timeseries->CreateRule(ctx, ts_key, dst_key1, agg, &rule_res).ok());
+  ASSERT_TRUE(timeseries->CreateRule(ctx, ts_key, dst_key2, agg, &rule_res).ok());
+
+  auto ds_keys = get_all_ds_key();
+  ASSERT_EQ(ds_keys.size(), 2);
+  ASSERT_EQ(ds_keys[0], dst_key1);
+  ASSERT_EQ(ds_keys[1], dst_key2);
+
+  // Recreate the downstream key
+  ASSERT_TRUE(static_cast<redis::Database*>(timeseries.get())->Del(ctx, dst_key1).ok());
+  ASSERT_TRUE(timeseries->Create(ctx, dst_key1, create_option).ok());
+  ASSERT_TRUE(storage->Compact(nullptr, nullptr, nullptr).ok());
+  ds_keys = get_all_ds_key();
+  ASSERT_EQ(ds_keys.size(), 1);
+  ASSERT_EQ(ds_keys[0], dst_key2);
 
   std::error_code ec;
   std::filesystem::remove_all(config.db_dir, ec);

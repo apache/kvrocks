@@ -115,13 +115,13 @@ struct BitfieldOperation {
 };
 
 namespace detail {
-// Let value add incr, according to the bits limit and overflow rule. The value is reguarded as a signed integer.
+// Let value add incr, according to the bits limit and overflow rule. The value is regarded as a signed integer.
 // Return true if overflow. Status is not ok iff calling BitfieldEncoding::IsSupportedBitLengths()
 // for given op return false.
 StatusOr<bool> SignedBitfieldPlus(uint64_t value, int64_t incr, uint8_t bits, BitfieldOverflowBehavior overflow,
                                   uint64_t *dst);
 
-// Let value add incr, according to the bits limit and overflow rule.  The value is reguarded as an unsigned integer.
+// Let value add incr, according to the bits limit and overflow rule.  The value is regarded as an unsigned integer.
 // Return true if overflow. Status is not ok iff calling BitfieldEncoding::IsSupportedBitLengths()
 // for given op return false.
 StatusOr<bool> UnsignedBitfieldPlus(uint64_t value, int64_t incr, uint8_t bits, BitfieldOverflowBehavior overflow,
@@ -144,11 +144,6 @@ class BitfieldValue {
   template <class T, std::enable_if_t<std::is_integral_v<T>, int> = 0>
   bool operator==(T rhs) const {
     return value_ == static_cast<uint64_t>(rhs);
-  }
-
-  template <class T>
-  friend bool operator==(T lhs, const BitfieldValue &rhs) {
-    return rhs == lhs;
   }
 
   BitfieldEncoding Encoding() const noexcept { return encoding_; }

@@ -64,7 +64,7 @@ rocksdb::Status Geo::Hash(engine::Context &ctx, const Slice &user_key, const std
   for (const auto &member : members) {
     auto iter = geo_points.find(member.ToString());
     if (iter == geo_points.end()) {
-      geo_hashes->emplace_back(std::string());
+      geo_hashes->emplace_back();
       continue;
     }
     geo_hashes->emplace_back(EncodeGeoHash(iter->second.longitude, iter->second.latitude));

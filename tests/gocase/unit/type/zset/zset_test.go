@@ -1497,6 +1497,14 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, enabledRES
 		})
 	}
 
+	t.Run(fmt.Sprintf("ZDIFF with invalid syntax - %s", encoding), func(t *testing.T) {
+		require.Error(t, rdb.Do(ctx, "zdiff").Err())
+		require.Error(t, rdb.Do(ctx, "zdiff", "1").Err())
+		require.Error(t, rdb.Do(ctx, "zdiff", "-2", "key1", "key2").Err())
+		require.Error(t, rdb.Do(ctx, "zdiff", "0", "key1").Err())
+		require.Error(t, rdb.Do(ctx, "zdiff", "3", "key1", "key2").Err())
+	})
+
 	t.Run(fmt.Sprintf("ZDIFF with two sets - %s", encoding), func(t *testing.T) {
 		createZset(rdb, ctx, "zseta", []redis.Z{
 			{Score: 1, Member: "a"},

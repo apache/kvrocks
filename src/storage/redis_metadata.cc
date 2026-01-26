@@ -547,6 +547,7 @@ void TimeSeriesMetadata::Encode(std::string *dst) const {
   PutFixed8(dst, static_cast<uint8_t>(chunk_type));
   PutFixed8(dst, static_cast<uint8_t>(duplicate_policy));
   PutSizedString(dst, source_key);
+  PutFixed64(dst, last_timestamp);
 }
 
 rocksdb::Status TimeSeriesMetadata::Decode(Slice *input) {
@@ -564,6 +565,7 @@ rocksdb::Status TimeSeriesMetadata::Decode(Slice *input) {
   Slice source_key_slice;
   GetSizedString(input, &source_key_slice);
   source_key = source_key_slice.ToString();
+  GetFixed64(input, &last_timestamp);
 
   return rocksdb::Status::OK();
 }

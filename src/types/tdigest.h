@@ -22,6 +22,9 @@
 
 #include <fmt/format.h>
 
+#include <map>
+#include <numeric>
+#include <variant>
 #include <vector>
 
 #include "common/status.h"
@@ -149,4 +152,160 @@ inline StatusOr<double> TDigestQuantile(TD&& td, double q) {
   // interpolate from adjacent centroids
   diff /= (lc.weight / 2 + rc.weight / 2);
   return Lerp(lc.mean, rc.mean, diff);
+}
+
+inline int DoubleCompare(double a, double b, double rel_eps = 1e-12, double abs_eps = 1e-9) {
+  double diff = a - b;
+  double adiff = std::abs(diff);
+  if (adiff <= abs_eps) return 0;
+  double maxab = std::max(std::abs(a), std::abs(b));
+  if (adiff <= maxab * rel_eps) return 0;
+  return (diff < 0) ? -1 : 1;
+}
+
+inline bool DoubleEqual(double a, double b, double rel_eps = 1e-12, double abs_eps = 1e-9) {
+  return DoubleCompare(a, b, rel_eps, abs_eps) == 0;
+}
+
+struct DoubleComparator {
+  bool operator()(const double& a, const double& b) const { return DoubleCompare(a, b) == -1; }
+};
+
+template <bool Reverse, typename TD>
+inline Status TDigestByRank(TD&& td, const std::vector<int>& inputs, std::vector<double>* result) {
+  result->clear();
+  result->resize(inputs.size(), std::numeric_limits<double>::quiet_NaN());
+
+  std::map<int, size_t> rank_to_index;
+  for (size_t i = 0; i < inputs.size(); ++i) {
+    rank_to_index[inputs[i]] = i;
+  }
+
+  auto it = rank_to_index.begin();
+  auto is_end = [&it, &rank_to_index]() -> bool { return it == rank_to_index.end(); };
+  auto iter = td.Begin();
+  double cumulative_weight = 0;
+  while (iter->Valid() && !is_end()) {
+    auto centroid = GET_OR_RET(iter->GetCentroid());
+    cumulative_weight += centroid.weight;
+    while (!is_end() && it->first < static_cast<int>(cumulative_weight)) {
+      (*result)[it->second] = centroid.mean;
+      ++it;
+    }
+    iter->Next();
+  }
+
+  while (!is_end() && it->first >= static_cast<int>(td.TotalWeight())) {
+    if constexpr (Reverse) {
+      (*result)[it->second] = -std::numeric_limits<double>::infinity();
+    } else {
+      (*result)[it->second] = std::numeric_limits<double>::infinity();
+    }
+    ++it;
+  }
+
+  // check if all results are valid
+  for (auto r : *result) {
+    if (std::isnan(r)) {
+      return Status{Status::InvalidArgument, "invalid result when getting byrank or byrevrank"};
+    }
+  }
+  return Status::OK();
+}
+
+template <bool Reverse, typename TD>
+inline Status TDigestRank(TD&& td, const std::vector<double>& inputs, std::vector<int>* result) {
+  std::map<double, size_t, DoubleComparator> value_to_index;
+  for (size_t i = 0; i < inputs.size(); ++i) {
+    value_to_index[inputs[i]] = i;
+  }
+
+  result->clear();
+  result->resize(inputs.size(), -2);
+
+  using MapType = decltype(value_to_index);
+  using IterType = std::conditional_t<Reverse, typename MapType::reverse_iterator, typename MapType::iterator>;
+  IterType it;
+  if constexpr (Reverse) {
+    it = value_to_index.rbegin();
+  } else {
+    it = value_to_index.begin();
+  }
+
+  auto is_end = [&it, &value_to_index]() -> bool {
+    if constexpr (Reverse) {
+      return it == value_to_index.rend();
+    } else {
+      return it == value_to_index.end();
+    }
+  };
+
+  // handle inputs larger than maximum in reverse order or smaller than minimum in forward order
+  if constexpr (Reverse) {
+    while (!is_end() && it->first > td.Max()) {
+      (*result)[it->second] = -1;
+      ++it;
+    }
+  } else {
+    while (!is_end() && it->first < td.Min()) {
+      (*result)[it->second] = -1;
+      ++it;
+    }
+  }
+
+  auto iter = td.Begin();
+  double cumulative_weight = 0;
+  while (iter->Valid() && !is_end()) {
+    auto centroid = GET_OR_RET(iter->GetCentroid());
+    auto input_value = it->first;
+    if (DoubleEqual(centroid.mean, input_value)) {
+      auto current_mean = centroid.mean;
+      auto current_mean_cumulative_weight = cumulative_weight + centroid.weight / 2;
+      cumulative_weight += centroid.weight;
+
+      // handle all next centroids which has the same mean
+      while (iter->Next()) {
+        auto next_centroid = GET_OR_RET(iter->GetCentroid());
+        if (!DoubleEqual(current_mean, next_centroid.mean)) {
+          // move back to the last equal centroid, because we will process it in the next loop
+          iter->Prev();
+          break;
+        }
+        current_mean_cumulative_weight += next_centroid.weight / 2;
+        cumulative_weight += next_centroid.weight;
+      }
+
+      (*result)[it->second] = static_cast<int>(current_mean_cumulative_weight);
+      ++it;
+      iter->Next();
+    } else if constexpr (Reverse) {
+      if (DoubleCompare(centroid.mean, input_value) > 0) {
+        cumulative_weight += centroid.weight;
+        iter->Next();
+      } else {
+        (*result)[it->second] = static_cast<int>(cumulative_weight);
+        ++it;
+      }
+    } else {
+      if (DoubleCompare(centroid.mean, input_value) < 0) {
+        cumulative_weight += centroid.weight;
+        iter->Next();
+      } else {
+        (*result)[it->second] = static_cast<int>(cumulative_weight);
+        ++it;
+      }
+    }
+  }
+
+  while (!is_end()) {
+    (*result)[it->second] = static_cast<int>(td.TotalWeight());
+    ++it;
+  }
+
+  for (auto r : *result) {
+    if (r <= -2) {
+      return Status{Status::InvalidArgument, "invalid result when computing rank or revrank"};
+    }
+  }
+  return Status::OK();
 }

@@ -111,7 +111,7 @@ class Database {
   [[nodiscard]] rocksdb::Status Expire(engine::Context &ctx, const Slice &user_key, uint64_t timestamp);
   [[nodiscard]] rocksdb::Status Del(engine::Context &ctx, const Slice &user_key);
   [[nodiscard]] rocksdb::Status MDel(engine::Context &ctx, const std::vector<Slice> &keys, uint64_t *deleted_cnt);
-  [[nodiscard]] rocksdb::Status Exists(engine::Context &ctx, const std::vector<Slice> &keys, int *ret);
+  [[nodiscard]] rocksdb::Status Exists(engine::Context &ctx, const std::vector<Slice> &keys, uint32_t *ret);
   [[nodiscard]] rocksdb::Status TTL(engine::Context &ctx, const Slice &user_key, int64_t *ttl);
   [[nodiscard]] rocksdb::Status GetExpireTime(engine::Context &ctx, const Slice &user_key, uint64_t *timestamp);
   [[nodiscard]] rocksdb::Status Type(engine::Context &ctx, const Slice &key, RedisType *type);
@@ -124,7 +124,7 @@ class Database {
   [[nodiscard]] rocksdb::Status Scan(engine::Context &ctx, const std::string &cursor, uint64_t limit,
                                      const std::string &prefix, const std::string &suffix_glob,
                                      std::vector<std::string> *keys, std::string *end_cursor = nullptr,
-                                     RedisType type = kRedisNone);
+                                     RedisType type = kRedisNone, std::optional<int> scan_slot = std::nullopt);
   [[nodiscard]] rocksdb::Status RandomKey(engine::Context &ctx, const std::string &cursor, std::string *key);
   std::string AppendNamespacePrefix(const Slice &user_key);
   [[nodiscard]] rocksdb::Status ClearKeysOfSlotRange(engine::Context &ctx, const rocksdb::Slice &ns,
@@ -155,7 +155,8 @@ class Database {
 
  private:
   // Already internal keys
-  [[nodiscard]] rocksdb::Status existsInternal(engine::Context &ctx, const std::vector<std::string> &keys, int *ret);
+  [[nodiscard]] rocksdb::Status existsInternal(engine::Context &ctx, const std::vector<std::string> &keys,
+                                               uint32_t *ret);
   [[nodiscard]] rocksdb::Status typeInternal(engine::Context &ctx, const Slice &key, RedisType *type);
 
   /// lookupKeyByPattern is a helper function of `Sort` to support `GET` and `BY` fields.

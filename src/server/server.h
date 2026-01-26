@@ -58,7 +58,7 @@
 #include "tls_util.h"
 #include "worker.h"
 
-constexpr const char *REDIS_VERSION = "4.0.0";
+constexpr const char *REDIS_VERSION = "7.0.0";
 
 struct DBScanInfo {
   // Last scan system clock in seconds
@@ -203,6 +203,7 @@ class Server {
   void CleanupExitedSlaves();
   bool IsSlave() const { return !master_host_.empty(); }
   void FeedMonitorConns(redis::Connection *conn, const std::vector<std::string> &tokens);
+  static std::vector<std::string> RedactSensitiveTokens(const std::vector<std::string> &tokens);
   void IncrFetchFileThread() { fetch_file_threads_num_++; }
   void DecrFetchFileThread() { fetch_file_threads_num_--; }
   int GetFetchFileThreadNum() const { return fetch_file_threads_num_; }
@@ -234,6 +235,7 @@ class Server {
   void BlockOnWait(redis::Connection *conn, rocksdb::SequenceNumber target_seq, uint64_t num_replicas);
   void WakeupWaitConnections(rocksdb::SequenceNumber seq);
   void CleanupWaitConnection(redis::Connection *conn);
+  void WakeupWaitConnection(redis::Connection *conn, rocksdb::SequenceNumber seq);
 
   // Helper methods for WAIT command
   size_t GetReplicasReachedSequence(rocksdb::SequenceNumber target_seq);
@@ -288,7 +290,7 @@ class Server {
   Status AsyncPurgeOldBackups(uint32_t num_backups_to_keep, uint32_t backup_max_keep_hours);
   Status AsyncScanDBSize(const std::string &ns);
   void GetLatestKeyNumStats(const std::string &ns, KeyNumStats *stats);
-  int64_t GetLastScanTime(const std::string &ns) const;
+  int64_t GetLastScanTime(const std::string &ns);
   StatusOr<std::vector<rocksdb::BatchResult>> PollUpdates(uint64_t next_sequence, int64_t count, bool is_strict) const;
 
   std::string GenerateCursorFromKeyName(const std::string &key_name, CursorType cursor_type, const char *prefix = "");
@@ -356,12 +358,14 @@ class Server {
   void cron();
   void recordInstantaneousMetrics();
   static void updateCachedTime();
-  Status autoResizeBlockAndSST();
   void updateWatchedKeysFromRange(const std::vector<std::string> &args, const redis::CommandKeyRange &range);
   void updateAllWatchedKeys();
   void increaseWorkerThreads(size_t delta);
   void decreaseWorkerThreads(size_t delta);
   void cleanupExitedWorkerThreads(bool force);
+  // Helper function to clean up wait contexts for a given connection
+  // It would not hold the wait_contexts_mu_ and the caller should hold it.
+  void cleanupWaitConnection(redis::Connection *conn);
 
   std::atomic<bool> stop_ = false;
   std::atomic<bool> is_loading_ = false;

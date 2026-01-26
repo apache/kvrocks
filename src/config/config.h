@@ -55,7 +55,11 @@ constexpr const size_t GiB = 1024L * MiB;
 constexpr const uint32_t kDefaultPort = 6666;
 
 constexpr const char *kDefaultNamespace = "__namespace";
+constexpr const char *kDatabaseNamespacePrefix = "db";
 constexpr int KVROCKS_MAX_LSM_LEVEL = 7;
+
+constexpr const uint64_t kDefaultRocksdbTTL = UINT64_MAX - 1;
+constexpr const uint64_t kDefaultRocksdbPeriodicCompactionSeconds = UINT64_MAX - 1;
 
 const std::vector<ConfigEnum<spdlog::level::level_enum>> log_levels{
     {"debug", spdlog::level::debug}, {"info", spdlog::level::info},      {"warning", spdlog::level::warn},
@@ -129,10 +133,10 @@ struct Config {
   int max_bitmap_to_string_mb = 16;
   bool master_use_repl_port = false;
   bool purge_backup_on_fullsync = false;
-  bool auto_resize_block_and_sst = true;
   int fullsync_recv_file_delay = 0;
   bool use_rsid_psync = false;
   bool replication_group_sync = false;
+  bool replication_no_slowdown = false;
   std::vector<std::string> binds;
   std::string dir;
   std::string db_dir;
@@ -171,6 +175,7 @@ struct Config {
   int migrate_batch_rate_limit_mb;
 
   bool redis_cursor_compatible = false;
+  int redis_databases = 0;
   bool resp3_enabled = false;
   int log_retention_days;
 
@@ -193,6 +198,8 @@ struct Config {
   bool txn_context_enabled = false;
 
   bool skip_block_cache_deallocation_on_close = false;
+
+  bool lua_strict_key_accessing = false;
 
   std::vector<double> histogram_bucket_boundaries;
 
@@ -242,6 +249,9 @@ struct Config {
     bool partition_filters;
     int64_t max_compaction_bytes;
     int64_t sst_file_delete_rate_bytes_per_sec = 0;
+    uint64_t periodic_compaction_seconds = kDefaultRocksdbPeriodicCompactionSeconds;
+    uint64_t ttl = kDefaultRocksdbTTL;
+    std::string daily_offpeak_time_utc;
 
     struct WriteOptions {
       bool sync;

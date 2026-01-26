@@ -22,6 +22,7 @@
 
 #include <memory>
 
+#include "string_util.h"
 #include "test_base.h"
 #include "time_util.h"
 #include "types/redis_string.h"
@@ -69,7 +70,7 @@ TEST_F(RedisStringTest, GetAndSet) {
 }
 
 TEST_F(RedisStringTest, MGetAndMSet) {
-  string_->MSet(*ctx_, pairs_, 0);
+  string_->MSet(*ctx_, pairs_);
   std::vector<Slice> keys;
   std::vector<std::string> values;
   keys.reserve(pairs_.size());
@@ -156,6 +157,152 @@ TEST_F(RedisStringTest, GetSet) {
   }
   auto s = string_->Del(*ctx_, key_);
 }
+
+TEST_F(RedisStringTest, DelEX) {
+  DelExOption option = {DelExOption::NONE, ""};
+  bool deleted = false;
+
+  std::string key = "test-string-key69";
+  std::string value = "test-strings-value69";
+  auto status = string_->Set(*ctx_, key, value);
+  ASSERT_TRUE(status.ok());
+  status = string_->Get(*ctx_, key, &value);
+  ASSERT_TRUE(status.ok() && !status.IsNotFound());
+  EXPECT_EQ("test-strings-value69", value);
+
+  // Check no args delete works
+  auto s = string_->DelEX(*ctx_, key, option, deleted);
+  EXPECT_TRUE(s.ok());
+  EXPECT_FALSE(s.IsNotFound());
+  EXPECT_TRUE(deleted);
+  EXPECT_EQ(option.type, DelExOption::NONE);
+  status = string_->Get(*ctx_, key, &value);
+  EXPECT_TRUE(!status.ok() && status.IsNotFound());
+  EXPECT_NE("test-strings-value69", value);
+
+  // Check no args delete on same key
+  s = string_->DelEX(*ctx_, key, option, deleted);
+  EXPECT_TRUE(s.IsNotFound());
+  EXPECT_FALSE(deleted);
+
+  // Check no args delete on invalid/notfound key
+  key = "random";
+  s = string_->DelEX(*ctx_, key, option, deleted);
+  EXPECT_TRUE(s.IsNotFound());
+  EXPECT_FALSE(deleted);
+  status = string_->Get(*ctx_, key, &value);
+  EXPECT_TRUE(!status.ok() && status.IsNotFound());
+
+  // Checking true false cases for all args
+  key = "test-string-key69";
+  value = "test-strings-value69";
+  status = string_->Set(*ctx_, key, value);
+  EXPECT_TRUE(status.ok());
+  option.type = DelExOption::IFDEQ;
+  option.value = "xxxxxxxxxxxxxxxx";
+  deleted = false;
+  s = string_->DelEX(*ctx_, key, option, deleted);
+  EXPECT_TRUE(s.ok());
+  EXPECT_FALSE(s.IsNotFound());
+  EXPECT_FALSE(deleted);
+  status = string_->Get(*ctx_, key, &value);
+  EXPECT_TRUE(status.ok() && !status.IsNotFound());
+  EXPECT_EQ("test-strings-value69", value);
+
+  option.type = DelExOption::IFDEQ;
+  option.value = util::StringDigest(value);
+  deleted = false;
+  s = string_->DelEX(*ctx_, key, option, deleted);
+  EXPECT_TRUE(s.ok());
+  EXPECT_FALSE(s.IsNotFound());
+  EXPECT_TRUE(deleted);
+  status = string_->Get(*ctx_, key, &value);
+  EXPECT_TRUE(!status.ok());
+  EXPECT_TRUE(status.IsNotFound());
+  EXPECT_NE("test-strings-value69", value);
+
+  key = "test-string-key69";
+  value = "test-strings-value69";
+  status = string_->Set(*ctx_, key, value);
+  EXPECT_TRUE(status.ok());
+  option.type = DelExOption::IFDNE;
+  option.value = util::StringDigest(value);
+  deleted = false;
+  s = string_->DelEX(*ctx_, key, option, deleted);
+  EXPECT_TRUE(s.ok());
+  EXPECT_FALSE(s.IsNotFound());
+  EXPECT_FALSE(deleted);
+  status = string_->Get(*ctx_, key, &value);
+  EXPECT_TRUE(status.ok() && !status.IsNotFound());
+  EXPECT_EQ("test-strings-value69", value);
+
+  option.type = DelExOption::IFDNE;
+  option.value = "xxxxxxxxxxxxxxxx";
+  deleted = false;
+  s = string_->DelEX(*ctx_, key, option, deleted);
+  EXPECT_TRUE(s.ok());
+  EXPECT_FALSE(s.IsNotFound());
+  EXPECT_TRUE(deleted);
+  status = string_->Get(*ctx_, key, &value);
+  EXPECT_TRUE(!status.ok());
+  EXPECT_TRUE(status.IsNotFound());
+  EXPECT_NE("test-strings-value69", value);
+
+  key = "test-string-key69";
+  value = "test-strings-value69";
+  status = string_->Set(*ctx_, key, value);
+  EXPECT_TRUE(status.ok());
+  option.type = DelExOption::IFEQ;
+  option.value = "random";
+  deleted = false;
+  s = string_->DelEX(*ctx_, key, option, deleted);
+  EXPECT_TRUE(s.ok());
+  EXPECT_FALSE(s.IsNotFound());
+  EXPECT_FALSE(deleted);
+  status = string_->Get(*ctx_, key, &value);
+  EXPECT_TRUE(status.ok() && !status.IsNotFound());
+  EXPECT_EQ("test-strings-value69", value);
+
+  option.type = DelExOption::IFEQ;
+  option.value = "test-strings-value69";
+  deleted = false;
+  s = string_->DelEX(*ctx_, key, option, deleted);
+  EXPECT_TRUE(s.ok());
+  EXPECT_FALSE(s.IsNotFound());
+  EXPECT_TRUE(deleted);
+  status = string_->Get(*ctx_, key, &value);
+  EXPECT_TRUE(!status.ok());
+  EXPECT_TRUE(status.IsNotFound());
+  EXPECT_NE("test-strings-value69", value);
+
+  key = "test-string-key69";
+  value = "test-strings-value69";
+  status = string_->Set(*ctx_, key, value);
+  EXPECT_TRUE(status.ok());
+  option.type = DelExOption::IFNE;
+  option.value = "test-strings-value69";
+  deleted = false;
+  s = string_->DelEX(*ctx_, key, option, deleted);
+  EXPECT_TRUE(s.ok());
+  EXPECT_FALSE(s.IsNotFound());
+  EXPECT_FALSE(deleted);
+  status = string_->Get(*ctx_, key, &value);
+  EXPECT_TRUE(status.ok() && !status.IsNotFound());
+  EXPECT_EQ("test-strings-value69", value);
+
+  option.type = DelExOption::IFNE;
+  option.value = "random";
+  deleted = false;
+  s = string_->DelEX(*ctx_, key, option, deleted);
+  EXPECT_TRUE(s.ok());
+  EXPECT_FALSE(s.IsNotFound());
+  EXPECT_TRUE(deleted);
+  status = string_->Get(*ctx_, key, &value);
+  EXPECT_TRUE(!status.ok());
+  EXPECT_TRUE(status.IsNotFound());
+  EXPECT_NE("test-strings-value69", value);
+}
+
 TEST_F(RedisStringTest, GetDel) {
   for (auto &pair : pairs_) {
     string_->Set(*ctx_, pair.key.ToString(), pair.value.ToString());
@@ -186,7 +333,7 @@ TEST_F(RedisStringTest, MSetXX) {
 
 TEST_F(RedisStringTest, MSetNX) {
   bool flag = false;
-  string_->MSetNX(*ctx_, pairs_, 0, &flag);
+  string_->MSetNX(*ctx_, pairs_, &flag);
   EXPECT_TRUE(flag);
   std::vector<Slice> keys;
   std::vector<std::string> values;
@@ -202,7 +349,7 @@ TEST_F(RedisStringTest, MSetNX) {
   std::vector<StringPair> new_pairs{
       {"a", "1"}, {"b", "2"}, {"c", "3"}, {pairs_[0].key, pairs_[0].value}, {"d", "4"},
   };
-  string_->MSetNX(*ctx_, pairs_, 0, &flag);
+  string_->MSetNX(*ctx_, pairs_, &flag);
   EXPECT_FALSE(flag);
 
   for (auto &pair : pairs_) {
@@ -217,6 +364,71 @@ TEST_F(RedisStringTest, MSetNXWithTTL) {
   auto s = string_->TTL(*ctx_, key_, &ttl);
   EXPECT_TRUE(ttl >= 2000 && ttl <= 4000);
   s = string_->Del(*ctx_, key_);
+}
+
+TEST_F(RedisStringTest, MSetEX) {
+  {
+    bool flag = false;
+    string_->MSetEX(*ctx_, pairs_, {0, StringSetType::NX, false}, &flag);
+    EXPECT_TRUE(flag);
+    std::vector<Slice> keys;
+    std::vector<std::string> values;
+    keys.reserve(pairs_.size());
+    for (const auto &pair : pairs_) {
+      keys.emplace_back(pair.key);
+    }
+    string_->MGet(*ctx_, keys, &values);
+    for (const auto &pair : pairs_) {
+      int64_t ttl = 0;
+      auto s = string_->TTL(*ctx_, pair.key.ToString(), &ttl);
+      EXPECT_EQ(ttl, -1);
+    }
+  }
+  {
+    bool flag = false;
+    pairs_.emplace_back(StringPair{"a", "1"});
+    string_->MSetEX(*ctx_, pairs_, {0, StringSetType::XX, true}, &flag);
+    EXPECT_FALSE(flag);
+  }
+  for (auto &pair : pairs_) {
+    auto s = string_->Del(*ctx_, pair.key);
+  }
+}
+
+TEST_F(RedisStringTest, MSetEXWithTTL) {
+  {
+    bool flag = false;
+    string_->MSetEX(*ctx_, pairs_, {util::GetTimeStampMS() + 3000, StringSetType::NONE, false}, &flag);
+    EXPECT_TRUE(flag);
+    for (const auto &pair : pairs_) {
+      int64_t ttl = 0;
+      auto s = string_->TTL(*ctx_, pair.key.ToString(), &ttl);
+      EXPECT_TRUE(ttl >= 2000 && ttl <= 4000);
+    }
+  }
+  {
+    bool flag = false;
+    pairs_[0].value = "new-test-strings-value1";
+    pairs_[1].value = "new-test-strings-value2";
+    string_->MSetEX(*ctx_, pairs_, {0, StringSetType::XX, true}, &flag);
+    EXPECT_TRUE(flag);
+    std::vector<Slice> keys;
+    std::vector<std::string> values;
+    keys.reserve(pairs_.size());
+    for (const auto &pair : pairs_) {
+      keys.emplace_back(pair.key);
+    }
+    string_->MGet(*ctx_, keys, &values);
+    for (size_t i = 0; i < pairs_.size(); i++) {
+      EXPECT_EQ(pairs_[i].value, values[i]);
+      int64_t ttl = 0;
+      auto s = string_->TTL(*ctx_, pairs_[i].key.ToString(), &ttl);
+      EXPECT_TRUE(ttl >= 2000 && ttl <= 4000);
+    }
+  }
+  for (auto &pair : pairs_) {
+    auto s = string_->Del(*ctx_, pair.key);
+  }
 }
 
 TEST_F(RedisStringTest, SetEX) {

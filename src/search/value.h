@@ -77,8 +77,7 @@ struct Value : std::variant<Null, Numeric, String, StringArray, NumericArray> {
     } else if (Is<String>()) {
       return Get<String>();
     } else if (Is<StringArray>()) {
-      return util::StringJoin(
-          Get<StringArray>(), [](const auto &v) -> decltype(auto) { return v; }, sep);
+      return util::StringJoin(Get<StringArray>(), sep);
     } else if (Is<NumericArray>()) {
       return util::StringJoin(
           Get<NumericArray>(), [](const auto &v) -> decltype(auto) { return std::to_string(v); }, sep);
@@ -97,8 +96,7 @@ struct Value : std::variant<Null, Numeric, String, StringArray, NumericArray> {
     } else if (Is<StringArray>()) {
       auto tag = dynamic_cast<redis::TagFieldMetadata *>(meta);
       char sep = tag ? tag->separator : ',';
-      return util::StringJoin(
-          Get<StringArray>(), [](const auto &v) -> decltype(auto) { return v; }, std::string(1, sep));
+      return util::StringJoin(Get<StringArray>(), std::string(1, sep));
     } else if (Is<NumericArray>()) {
       return util::StringJoin(Get<NumericArray>(), [](const auto &v) -> decltype(auto) { return std::to_string(v); });
     }

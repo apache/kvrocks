@@ -77,6 +77,10 @@ Status Namespace::LoadAndRewrite() {
   auto s = loadFromDB(&db_tokens);
   if (!s.IsOK()) return s;
 
+  if (!db_tokens.empty() && config->redis_databases > 0) {
+    return {Status::NotOK, "cannot enable redis-databases when namespaces exist in db"};
+  }
+
   if (!db_tokens.empty() && !config->repl_namespace_enabled) {
     return {Status::NotOK, "cannot switch off repl_namespace_enabled when namespaces exist in db"};
   }
@@ -138,6 +142,13 @@ Status Namespace::Set(const std::string& ns, const std::string& token) {
   }
 
   std::unique_lock lock(tokens_mu_);
+  if (auto iter = tokens_.find(token); iter != tokens_.end()) {
+    if (iter->second == ns) {  // nothing changed
+      return Status::OK();
+    } else {  // new token is occupied by another namespace
+      return {Status::NotOK, kErrTokenExists};
+    }
+  }
   for (const auto& iter : tokens_) {
     if (iter.second == ns) {  // need to delete the old token first
       tokens_.erase(iter.first);

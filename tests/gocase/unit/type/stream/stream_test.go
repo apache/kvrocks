@@ -2289,6 +2289,144 @@ func TestStreamOffset(t *testing.T) {
 			}}, r)
 		}
 	})
+
+	t.Run("XPENDING idle time and delivered count, issue #3178", func(t *testing.T) {
+		streamName := "mystream-3178"
+		groupName := "mygroup-3178"
+		consumerName := "myconsumer-3178"
+
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+		require.NoError(t, rdb.XGroupCreateMkStream(ctx, streamName, groupName, "$").Err())
+		msgID := "1-0"
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     msgID,
+			Values: []string{"data", "value"},
+		}).Err())
+
+		result, err := rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    groupName,
+			Consumer: consumerName,
+			Streams:  []string{streamName, ">"},
+			Count:    1,
+			NoAck:    false,
+		}).Result()
+		require.NoError(t, err)
+		require.Len(t, result, 1)
+		require.Len(t, result[0].Messages, 1)
+		require.Equal(t, msgID, result[0].Messages[0].ID)
+
+		// Wait to allow idle time to accumulate
+		time.Sleep(100 * time.Millisecond)
+		pendingEntries, err := rdb.XPendingExt(ctx, &redis.XPendingExtArgs{
+			Stream:   streamName,
+			Group:    groupName,
+			Start:    "-",
+			End:      "+",
+			Count:    10,
+			Consumer: consumerName,
+		}).Result()
+		require.NoError(t, err)
+		require.Len(t, pendingEntries, 1)
+
+		pendingEntry := pendingEntries[0]
+		require.Equal(t, msgID, pendingEntry.ID)
+		require.Equal(t, consumerName, pendingEntry.Consumer)
+		require.Greater(t, pendingEntry.Idle, time.Millisecond)
+		require.Less(t, pendingEntry.Idle, 10*time.Second)
+		require.EqualValues(t, 1, pendingEntry.RetryCount)
+
+		// Read the same message again to increase delivery count
+		_, err = rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    groupName,
+			Consumer: consumerName,
+			Streams:  []string{streamName, "0"},
+			Count:    1,
+			NoAck:    false,
+		}).Result()
+		require.NoError(t, err)
+		time.Sleep(100 * time.Millisecond)
+		pendingEntries, err = rdb.XPendingExt(ctx, &redis.XPendingExtArgs{
+			Stream:   streamName,
+			Group:    groupName,
+			Start:    "-",
+			End:      "+",
+			Count:    10,
+			Consumer: consumerName,
+		}).Result()
+		require.NoError(t, err)
+		require.Len(t, pendingEntries, 1)
+		pendingEntry = pendingEntries[0]
+		require.EqualValues(t, 2, pendingEntry.RetryCount)
+		require.Greater(t, pendingEntry.Idle, time.Millisecond)
+		require.Less(t, pendingEntry.Idle, 10*time.Second)
+	})
+
+	t.Run("XREADGROUP BLOCK concurrent readers should not receive double responses", func(t *testing.T) {
+		streamName := "test-concurrent-xreadgroup-block"
+		groupName := "test-group"
+
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+		require.NoError(t, rdb.XGroupCreateMkStream(ctx, streamName, groupName, "0").Err())
+
+		// Create multiple clients to simulate concurrent blocking readers
+		numReaders := 5
+		numIterations := 20
+		clients := make([]*redis.Client, numReaders)
+		for i := 0; i < numReaders; i++ {
+			clients[i] = srv.NewClient()
+			defer clients[i].Close()
+		}
+
+		errorCh := make(chan error, numReaders*numIterations)
+		doneCh := make(chan bool, numReaders)
+
+		// Start concurrent blocking readers
+		for i := 0; i < numReaders; i++ {
+			go func(id int) {
+				defer func() { doneCh <- true }()
+				for j := 0; j < numIterations; j++ {
+					_, err := clients[id].XReadGroup(ctx, &redis.XReadGroupArgs{
+						Group:    groupName,
+						Consumer: fmt.Sprintf("reader%d", id),
+						Streams:  []string{streamName, ">"},
+						Count:    1,
+						Block:    50 * time.Millisecond,
+					}).Result()
+					// redis.Nil is expected when block times out with no data
+					if err != nil && err != redis.Nil {
+						errorCh <- err
+					}
+				}
+			}(i)
+		}
+
+		// Concurrently add messages while readers are blocking
+		go func() {
+			for i := 0; i < 100; i++ {
+				rdb.XAdd(ctx, &redis.XAddArgs{
+					Stream: streamName,
+					Values: []string{"msg", strconv.Itoa(i)},
+				})
+				time.Sleep(5 * time.Millisecond)
+			}
+		}()
+
+		// Wait for all readers to complete
+		for i := 0; i < numReaders; i++ {
+			<-doneCh
+		}
+		close(errorCh)
+
+		// Collect any errors - there should be none
+		var errors []error
+		for err := range errorCh {
+			errors = append(errors, err)
+		}
+		require.Empty(t, errors, "XREADGROUP BLOCK should not produce protocol errors under concurrent load")
+
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+	})
 }
 
 func parseStreamEntryID(id string) (ts int64, seqNum int64) {

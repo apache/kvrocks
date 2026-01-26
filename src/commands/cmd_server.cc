@@ -71,6 +71,9 @@ class CommandNamespace : public Commander {
     if (config->repl_namespace_enabled && config->IsSlave() && sub_command != "get") {
       return {Status::RedisExecErr, "namespace is read-only for slave"};
     }
+    if (config->redis_databases > 0) {
+      return {Status::RedisExecErr, "namespace command is not allowed when redis-databases > 0"};
+    }
     if (args_.size() == 3 && sub_command == "get") {
       if (args_[2] == "*") {
         std::vector<std::string> namespaces;
@@ -93,15 +96,15 @@ class CommandNamespace : public Commander {
     } else if (args_.size() == 4 && sub_command == "set") {
       Status s = srv->GetNamespace()->Set(args_[2], args_[3]);
       *output = s.IsOK() ? redis::RESP_OK : redis::Error(s);
-      warn("Updated namespace: {} with token: {}, addr: {}, result: {}", args_[2], args_[3], conn->GetAddr(), s.Msg());
+      WARN("Updated namespace: {} with token: {}, addr: {}, result: {}", args_[2], args_[3], conn->GetAddr(), s.Msg());
     } else if (args_.size() == 4 && sub_command == "add") {
       Status s = srv->GetNamespace()->Add(args_[2], args_[3]);
       *output = s.IsOK() ? redis::RESP_OK : redis::Error(s);
-      warn("New namespace: {} with token: {}, addr: {}, result: {}", args_[2], args_[3], conn->GetAddr(), s.Msg());
+      WARN("New namespace: {} with token: {}, addr: {}, result: {}", args_[2], args_[3], conn->GetAddr(), s.Msg());
     } else if (args_.size() == 3 && sub_command == "del") {
       Status s = srv->GetNamespace()->Del(args_[2]);
       *output = s.IsOK() ? redis::RESP_OK : redis::Error(s);
-      warn("Deleted namespace: {}, addr: {}, result: {}", args_[2], conn->GetAddr(), s.Msg());
+      WARN("Deleted namespace: {}, addr: {}, result: {}", args_[2], conn->GetAddr(), s.Msg());
     } else if (args_.size() == 2 && sub_command == "current") {
       *output = redis::BulkString(conn->GetNamespace());
     } else {
@@ -145,13 +148,13 @@ class CommandFlushDB : public Commander {
     if (srv->GetConfig()->cluster_enabled) {
       if (srv->slot_migrator->IsMigrationInProgress()) {
         srv->slot_migrator->SetStopMigrationFlag(true);
-        info("Stop migration task for flushdb");
+        INFO("Stop migration task for flushdb");
       }
     }
     redis::Database redis(srv->storage, conn->GetNamespace());
 
     auto s = redis.FlushDB(ctx);
-    warn("DB keys in namespace: {} was flushed, addr: {}", conn->GetNamespace(), conn->GetAddr());
+    WARN("DB keys in namespace: {} was flushed, addr: {}", conn->GetNamespace(), conn->GetAddr());
     if (s.ok()) {
       *output = redis::RESP_OK;
       return Status::OK();
@@ -167,7 +170,7 @@ class CommandFlushAll : public Commander {
     if (srv->GetConfig()->cluster_enabled) {
       if (srv->slot_migrator->IsMigrationInProgress()) {
         srv->slot_migrator->SetStopMigrationFlag(true);
-        info("Stop migration task for flushall");
+        INFO("Stop migration task for flushall");
       }
     }
 
@@ -175,7 +178,7 @@ class CommandFlushAll : public Commander {
 
     auto s = redis.FlushAll(ctx);
     if (s.ok()) {
-      warn("All DB keys was flushed, addr: {}", conn->GetAddr());
+      WARN("All DB keys was flushed, addr: {}", conn->GetAddr());
       *output = redis::RESP_OK;
       return Status::OK();
     }
@@ -201,8 +204,31 @@ class CommandPing : public Commander {
 
 class CommandSelect : public Commander {
  public:
-  Status Execute([[maybe_unused]] engine::Context &ctx, [[maybe_unused]] Server *srv, [[maybe_unused]] Connection *conn,
-                 std::string *output) override {
+  Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    Config *config = srv->GetConfig();
+    // If redis-databases is 0, just return OK (default behavior)
+    if (config->redis_databases == 0) {
+      *output = redis::RESP_OK;
+      return Status::OK();
+    }
+
+    // Parse database index
+    auto parse_result = ParseInt<int>(args_[1], 10);
+    if (!parse_result) {
+      return {Status::RedisParseErr, "Invalid DB number"};
+    }
+    int db_index = *parse_result;
+    // Validate database index range
+    if (db_index < 0 || db_index >= config->redis_databases) {
+      return {Status::RedisParseErr, "DB number is out of range"};
+    }
+
+    // DB 0 uses default namespace
+    std::string ns = kDefaultNamespace;
+    if (db_index > 0) {
+      ns = std::string(kDatabaseNamespacePrefix) + std::to_string(db_index);
+    }
+    conn->SetNamespace(ns);
     *output = redis::RESP_OK;
     return Status::OK();
   }
@@ -223,7 +249,7 @@ class CommandConfig : public Commander {
       if (!s.IsOK()) return s;
 
       *output = redis::RESP_OK;
-      info("# CONFIG REWRITE executed with success");
+      INFO("# CONFIG REWRITE executed with success");
     } else if (args_.size() == 3 && sub_command == "get") {
       std::vector<std::string> values;
       config->Get(args_[2], &values);
@@ -616,7 +642,7 @@ class CommandShutdown : public Commander {
   Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, [[maybe_unused]] Connection *conn,
                  [[maybe_unused]] std::string *output) override {
     if (!srv->IsStopped()) {
-      info("SHUTDOWN command received, stopping the server");
+      INFO("SHUTDOWN command received, stopping the server");
       srv->Stop();
     }
     return Status::OK();
@@ -926,7 +952,7 @@ class CommandScan : public CommandScanBase {
     std::vector<std::string> keys;
     std::string end_key;
 
-    const auto s = redis_db.Scan(ctx, key_name, limit_, prefix_, suffix_glob_, &keys, &end_key, type_);
+    const auto s = redis_db.Scan(ctx, key_name, limit_, prefix_, suffix_glob_, &keys, &end_key, type_, scan_slot_);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -966,7 +992,7 @@ class CommandCompact : public Commander {
     if (!s.IsOK()) return s;
 
     *output = redis::RESP_OK;
-    info("Compact was triggered by manual with executed success");
+    INFO("Compact was triggered by manual with executed success");
     return Status::OK();
   }
 };
@@ -979,7 +1005,7 @@ class CommandBGSave : public Commander {
     if (!s.IsOK()) return s;
 
     *output = redis::RESP_OK;
-    info("BGSave was triggered by manual with executed success");
+    INFO("BGSave was triggered by manual with executed success");
     return Status::OK();
   }
 };
@@ -992,7 +1018,7 @@ class CommandFlushBackup : public Commander {
     if (!s.IsOK()) return s;
 
     *output = redis::RESP_OK;
-    info("flushbackup was triggered by manual with executed success");
+    INFO("flushbackup was triggered by manual with executed success");
     return Status::OK();
   }
 };
@@ -1050,7 +1076,7 @@ class CommandSlaveOf : public Commander {
       }
 
       *output = redis::RESP_OK;
-      warn("MASTER MODE enabled (user request from '{}')", conn->GetAddr());
+      WARN("MASTER MODE enabled (user request from '{}')", conn->GetAddr());
       return Status::OK();
     }
 
@@ -1059,9 +1085,9 @@ class CommandSlaveOf : public Commander {
     s = srv->AddMaster(host_, port_, false);
     if (s.IsOK()) {
       *output = redis::RESP_OK;
-      warn("SLAVE OF {}:{} enabled (user request from '{}')", host_, port_, conn->GetAddr());
+      WARN("SLAVE OF {}:{} enabled (user request from '{}')", host_, port_, conn->GetAddr());
     } else {
-      error("SLAVE OF {}:{} (user request from '{}') encounter error: {}", host_, port_, conn->GetAddr(), s.Msg());
+      ERROR("SLAVE OF {}:{} (user request from '{}') encounter error: {}", host_, port_, conn->GetAddr(), s.Msg());
     }
 
     return s;
@@ -1164,7 +1190,7 @@ class CommandRestore : public Commander {
     redis::Database redis(srv->storage, conn->GetNamespace());
 
     if (!replace_) {
-      int count = 0;
+      uint32_t count = 0;
       db_status = redis.Exists(ctx, {args_[1]}, &count);
       if (!db_status.ok()) {
         return {Status::RedisExecErr, db_status.ToString()};
@@ -1326,7 +1352,7 @@ class CommandDump : public Commander {
     rocksdb::Status db_status;
     std::string &key = args_[1];
     redis::Database redis(srv->storage, conn->GetNamespace());
-    int count = 0;
+    uint32_t count = 0;
 
     db_status = redis.Exists(ctx, {key}, &count);
     if (!db_status.ok()) {
@@ -1529,7 +1555,7 @@ class CommandFlushMemTable : public Commander {
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
     *output = redis::RESP_OK;
-    info("FLUSHMEMTABLE is triggered and executed successfully");
+    INFO("FLUSHMEMTABLE is triggered and executed successfully");
     return Status::OK();
   }
 
@@ -1544,7 +1570,7 @@ class CommandFlushBlockCache : public Commander {
     srv->storage->FlushBlockCache();
 
     *output = redis::RESP_OK;
-    info("FLUSHBLOCKCACHE is triggered and executed successfully");
+    INFO("FLUSHBLOCKCACHE is triggered and executed successfully");
     return Status::OK();
   }
 };
@@ -1555,8 +1581,8 @@ REDIS_REGISTER_COMMANDS(
     MakeCmdAttr<CommandSelect>("select", 2, "read-only", NO_KEY),
     MakeCmdAttr<CommandInfo>("info", -1, "read-only ok-loading", NO_KEY),
     MakeCmdAttr<CommandRole>("role", 1, "read-only ok-loading", NO_KEY),
-    MakeCmdAttr<CommandConfig>("config", -2, "read-only admin", NO_KEY, GenerateConfigFlag),
-    MakeCmdAttr<CommandNamespace>("namespace", -2, "read-only admin", NO_KEY, GenerateNamespaceFlag),
+    MakeCmdAttr<CommandConfig>("config", -2, "read-only admin skip-monitor", NO_KEY, GenerateConfigFlag),
+    MakeCmdAttr<CommandNamespace>("namespace", -2, "read-only admin skip-monitor", NO_KEY, GenerateNamespaceFlag),
     MakeCmdAttr<CommandKeys>("keys", 2, "read-only slow", NO_KEY),
     MakeCmdAttr<CommandFlushDB>("flushdb", 1, "write no-dbsize-check exclusive", NO_KEY),
     MakeCmdAttr<CommandFlushAll>("flushall", 1, "write no-dbsize-check exclusive admin", NO_KEY),
@@ -1586,7 +1612,7 @@ REDIS_REGISTER_COMMANDS(
     MakeCmdAttr<CommandSlaveOf>("replicaof", 3, "read-only exclusive no-script admin", NO_KEY),
     MakeCmdAttr<CommandStats>("stats", 1, "read-only", NO_KEY),
     MakeCmdAttr<CommandRdb>("rdb", -3, "write exclusive admin", NO_KEY),
-    MakeCmdAttr<CommandReset>("reset", 1, "ok-loading bypass-multi no-script", NO_KEY),
+    MakeCmdAttr<CommandReset>("reset", 1, "ok-loading bypass-multi no-script admin", NO_KEY),
     MakeCmdAttr<CommandApplyBatch>("applybatch", -2, "write no-multi", NO_KEY),
     MakeCmdAttr<CommandDump>("dump", 2, "read-only", 1, 1, 1),
     MakeCmdAttr<CommandPollUpdates>("pollupdates", -2, "read-only admin", NO_KEY),

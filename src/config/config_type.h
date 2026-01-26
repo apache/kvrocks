@@ -272,7 +272,7 @@ class IntWithUnitField : public ConfigField {
   Status Set(const std::string &v) override { return ReadFrom(v); }
 
   Status ReadFrom(const std::string &val) {
-    auto [num, rest] = GET_OR_RET(TryParseInt<T>(val.c_str(), 10));
+    auto [num, rest] = GET_OR_RET(TryParseInt<T>(val, 10));
 
     if (*rest == 0) {
       *receiver_ = num;

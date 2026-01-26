@@ -20,6 +20,7 @@
 
 #include "commander.h"
 #include "error_constants.h"
+#include "event_util.h"
 #include "io_util.h"
 #include "scope_exit.h"
 #include "server/redis_reply.h"
@@ -57,7 +58,7 @@ class CommandPSync : public Commander {
   }
 
   Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
-    info(
+    INFO(
         "Slave {}, listening port: {}, announce ip: {} asks for synchronization "
         "with next sequence: {}, replication id: {}, and local sequence: {}",
         conn->GetAddr(), conn->GetListeningPort(), conn->GetAnnounceIP(), next_repl_seq_,
@@ -67,7 +68,7 @@ class CommandPSync : public Commander {
     // Check replication id of the last sequence log
     if (new_psync_ && srv->GetConfig()->use_rsid_psync) {
       std::string replid_in_wal = srv->storage->GetReplIdFromWalBySeq(next_repl_seq_ - 1);
-      info("Replication id in WAL: {}", replid_in_wal);
+      INFO("Replication id in WAL: {}", replid_in_wal);
 
       // We check replication id only when WAL has this sequence, since there may be no WAL,
       // Or WAL may have nothing when starting from db of old version kvrocks.
@@ -104,12 +105,12 @@ class CommandPSync : public Commander {
       std::string err = redis::Error(s);
       s = util::SockSend(conn->GetFD(), err, conn->GetBufferEvent());
       if (!s.IsOK()) {
-        warn("failed to send error message to the replica: {}", s.Msg());
+        WARN("failed to send error message to the replica: {}", s.Msg());
       }
       conn->EnableFlag(redis::Connection::kCloseAsync);
-      warn("Failed to add replica: {} to start incremental syncing", conn->GetAddr());
+      WARN("Failed to add replica: {} to start incremental syncing", conn->GetAddr());
     } else {
-      info("New replica: {} was added, start incremental syncing", conn->GetAddr());
+      INFO("New replica: {} was added, start incremental syncing", conn->GetAddr());
     }
     return s;
   }
@@ -137,7 +138,7 @@ class CommandPSync : public Commander {
       auto batch = iter->GetBatch();
       if (seq != batch.sequence) {
         if (seq > batch.sequence) {
-          error("checkWALBoundary with sequence: {}, but GetWALIter return older sequence: {}", seq, batch.sequence);
+          ERROR("checkWALBoundary with sequence: {}, but GetWALIter return older sequence: {}", seq, batch.sequence);
         }
         return {Status::NotOK};
       }
@@ -230,18 +231,18 @@ class CommandFetchMeta : public Commander {
       std::string files;
       auto s = engine::Storage::ReplDataManager::GetFullReplDataInfo(srv->storage, &files);
       if (!s.IsOK()) {
-        warn("[replication] Failed to get full data file info: {}", s.Msg());
+        WARN("[replication] Failed to get full data file info: {}", s.Msg());
         s = util::SockSend(repl_fd, redis::Error({Status::RedisErrorNoPrefix, "can't create db checkpoint"}), bev);
         if (!s.IsOK()) {
-          warn("[replication] Failed to send error response: {}", s.Msg());
+          WARN("[replication] Failed to send error response: {}", s.Msg());
         }
         return;
       }
       // Send full data file info
       if (auto s = util::SockSend(repl_fd, files + CRLF, bev)) {
-        info("[replication] Succeed sending full data file info to {}", ip);
+        INFO("[replication] Succeed sending full data file info to {}", ip);
       } else {
-        warn("[replication] Fail to send full data file info {}, error: {}", ip, s.Msg());
+        WARN("[replication] Fail to send full data file info {}, error: {}", ip, s.Msg());
       }
       auto now_secs = static_cast<time_t>(util::GetTimeStamp());
       srv->storage->SetCheckpointAccessTimeSecs(now_secs);
@@ -298,9 +299,9 @@ class CommandFetchFile : public Commander {
           s = util::SockSendFile(repl_fd, *fd, file_size, bev);
         }
         if (s) {
-          info("[replication] Succeed sending file {} to {}", file, ip);
+          INFO("[replication] Succeed sending file {} to {}", file, ip);
         } else {
-          warn("[replication] Fail to send file {} to {}, error: {}", file, ip, s.Msg());
+          WARN("[replication] Fail to send file {} to {}, error: {}", file, ip, s.Msg());
           break;
         }
         fd.Close();
@@ -312,7 +313,7 @@ class CommandFetchFile : public Commander {
           auto shortest = static_cast<uint64_t>(static_cast<double>(file_size) /
                                                 static_cast<double>(max_replication_bytes) * (1000 * 1000));
           if (duration < shortest) {
-            info("[replication] Need to sleep {} ms since of sending files too quickly", (shortest - duration) / 1000);
+            INFO("[replication] Need to sleep {} ms since of sending files too quickly", (shortest - duration) / 1000);
             usleep(shortest - duration);
           }
         }
@@ -344,7 +345,9 @@ class CommandDBName : public Commander {
   }
 };
 
-class CommandWait : public Commander {
+class CommandWait : public Commander,
+                    private EventCallbackBase<CommandWait>,
+                    private EvbufCallbackBase<CommandWait, false> {
  public:
   Status Parse(const std::vector<std::string> &args) override {
     auto num_replicas_result = ParseInt<int64_t>(args[1], 10);
@@ -353,6 +356,13 @@ class CommandWait : public Commander {
     }
 
     num_replicas_ = *num_replicas_result;
+
+    auto timeout_result = ParseInt<int64_t>(args[2], 10);
+    if (!timeout_result || *timeout_result < 0) {
+      return {Status::RedisParseErr, "timeout should be a non-negative integer"};
+    }
+
+    timeout_ = *timeout_result * 1000;
 
     return Commander::Parse(args);
   }
@@ -375,16 +385,101 @@ class CommandWait : public Commander {
       return Status::OK();
     }
 
+    conn_ = conn;
+    srv_ = srv;
+
     // Block the connection and wait for replicas to catch up
     srv->BlockOnWait(conn, current_seq, num_replicas_);
+
+    // set callback to use the callbacks defined in this class
+    SetCB(conn->GetBufferEvent());
+
+    // Disable read event so the connection will not process any other commands
+    // Disable write event so the connection will not send response
+    bufferevent_disable(conn->GetBufferEvent(), EV_READ | EV_WRITE);
+
+    if (timeout_ > 0) {
+      initTimer(current_seq, timeout_);
+    }
 
     // The connection will be woken up by WakeupWaitConnections when enough replicas
     // have reached the target sequence
     return {Status::BlockingCmd};
   }
 
+  void OnWrite(bufferevent *bev) {
+    // Before unblocking, we must confirm that the wait condition has actually been met or that a timeout occurred.
+    // Ideally, write callback is called after WAIT response is sent, but it may be called for previous commands.
+    // so we need to check if the connection is still waiting.
+    // For example, considering the following scenario:
+    // 1. SET k1 v1
+    // 2. WAIT 1 0
+    // 3. SET k1 v2
+    // After WAIT 1 0 is executed, the connection is blocked, and the write callback is called for SET k1 v1.
+    size_t reached_replicas = srv_->GetReplicasReachedSequence(target_seq_);
+    bool wait_condition_met = (reached_replicas >= num_replicas_);
+
+    // The timer is reset in the TimerCB before the connection is woken up.
+    // If the timer is null, it means we were woken up by a timeout.
+    bool timed_out = (timeout_ > 0 && timer_ == nullptr);
+
+    if (!wait_condition_met && !timed_out) {
+      return;  // This is a premature write, so we do nothing and keep the connection blocked.
+    }
+
+    if (timer_ != nullptr) {
+      timer_.reset();
+    }
+
+    conn_->SetCB(bev);
+
+    bufferevent_enable(bev, EV_READ);
+    // We need to manually trigger the read event since we will stop processing commands
+    // in connection after the blocking command, so there may have some commands to be processed.
+    // Related issue: https://github.com/apache/kvrocks/issues/831
+    bufferevent_trigger(bev, EV_READ, BEV_TRIG_IGNORE_WATERMARKS);
+  }
+
+  void TimerCB(int, int16_t) {
+    timer_.reset();
+    // Wake up the connection upon timeout.
+    // WakeupWaitConnection will hold the lock of the connection during the execution,
+    // holding the lock is necessary to avoid race condition that timeout and replication ack happen at the same time.
+    srv_->WakeupWaitConnection(conn_, target_seq_);
+  }
+
+  void OnEvent(bufferevent *bev, int16_t events) {
+    if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
+      if (timer_ != nullptr) {
+        timer_.reset();
+      }
+    }
+
+    conn_->OnEvent(bev, events);
+  }
+
  private:
+  // variables used for timeout only
+  int64_t timeout_ = 0;  // microseconds
+  UniqueEvent timer_;
+  rocksdb::SequenceNumber target_seq_ = 0;
+
+  // variables used for all cases
+  Server *srv_ = nullptr;
   uint64_t num_replicas_ = 0;
+  Connection *conn_ = nullptr;
+
+  void initTimer(rocksdb::SequenceNumber target_seq, int64_t timeout) {
+    target_seq_ = target_seq;
+
+    // init timer
+    auto bev = conn_->GetBufferEvent();
+    timer_.reset(NewTimer(bufferevent_get_base(bev)));
+    int64_t timeout_second = timeout / 1000 / 1000;
+    int64_t timeout_microsecond = timeout % (1000 * 1000);
+    timeval tm = {timeout_second, static_cast<int>(timeout_microsecond)};
+    evtimer_add(timer_.get(), &tm);
+  }
 };
 
 REDIS_REGISTER_COMMANDS(Replication, MakeCmdAttr<CommandReplConf>("replconf", -3, "read-only no-script", NO_KEY),
@@ -392,6 +487,6 @@ REDIS_REGISTER_COMMANDS(Replication, MakeCmdAttr<CommandReplConf>("replconf", -3
                         MakeCmdAttr<CommandFetchMeta>("_fetch_meta", 1, "read-only no-multi no-script", NO_KEY),
                         MakeCmdAttr<CommandFetchFile>("_fetch_file", 2, "read-only no-multi no-script", NO_KEY),
                         MakeCmdAttr<CommandDBName>("_db_name", 1, "read-only no-multi", NO_KEY),
-                        MakeCmdAttr<CommandWait>("wait", 2, "read-only no-multi no-script blocking", NO_KEY), )
+                        MakeCmdAttr<CommandWait>("wait", 3, "read-only no-multi no-script blocking", NO_KEY), )
 
 }  // namespace redis

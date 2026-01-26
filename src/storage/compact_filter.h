@@ -150,4 +150,28 @@ class SearchFilterFactory : public rocksdb::CompactionFilterFactory {
   engine::Storage *stor_ = nullptr;
 };
 
+class IndexFilter : public rocksdb::CompactionFilter {
+ public:
+  explicit IndexFilter(Storage *storage) : stor_(storage) {}
+
+  const char *Name() const override { return "IndexFilter"; }
+  bool Filter(int level, const Slice &key, const Slice &value, std::string *new_value, bool *modified) const override;
+
+ private:
+  engine::Storage *stor_ = nullptr;
+};
+
+class IndexFilterFactory : public rocksdb::CompactionFilterFactory {
+ public:
+  explicit IndexFilterFactory(engine::Storage *storage) : stor_(storage) {}
+  const char *Name() const override { return "IndexFilterFactory"; }
+  std::unique_ptr<rocksdb::CompactionFilter> CreateCompactionFilter(
+      [[maybe_unused]] const rocksdb::CompactionFilter::Context &context) override {
+    return std::unique_ptr<rocksdb::CompactionFilter>(new IndexFilter(stor_));
+  }
+
+ private:
+  engine::Storage *stor_ = nullptr;
+};
+
 }  // namespace engine

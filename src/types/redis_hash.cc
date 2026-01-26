@@ -599,8 +599,8 @@ rocksdb::Status Hash::ExpireFields(engine::Context &ctx, const Slice &user_key, 
     // set new expired time
     std::string expire_value;
     PutFixed64(&expire_value, expireat_ms);
-    auto sub_key_expire = GetSubKeyExpireInternalKey(user_key, field, metadata.version);
-    s = batch->Put(sub_key_expire, expire_value);
+    auto sub_expire_key = GetSubKeyExpireInternalKey(user_key, field, metadata.version);
+    s = batch->Put(sub_expire_key, expire_value);
     if (!s.ok()) return s;
     results->push_back(FieldExpireResult::kExpireSet);  // Expiration set successfully
   }

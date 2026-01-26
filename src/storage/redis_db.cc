@@ -605,8 +605,8 @@ rocksdb::Status SubKeyScanner::Scan(engine::Context &ctx, RedisType type, const 
   return iter->status();
 }
 
-rocksdb::Slice SubKeyScanner::GetSubKeyExpireInternalKey(const Slice &user_key, const Slice &hash_field,
-                                                         uint64_t metadata_version) {
+std::string SubKeyScanner::GetSubKeyExpireInternalKey(const Slice &user_key, const Slice &hash_field,
+                                                      uint64_t metadata_version) {
   std::string ns_key = AppendNamespacePrefix(user_key);
   InternalKey sub_expire_key =
       InternalKey(ns_key, hash_field, metadata_version + ExpireVersionOffset, storage_->IsSlotIdEncoded());
@@ -634,14 +634,15 @@ void SubKeyScanner::MGetSubKeyExpireTimestampMS(engine::Context &ctx, const Slic
   expired_ats->resize(hash_fields.size());
   std::vector<rocksdb::PinnableSlice> expire_values(hash_fields.size());
   statuses->resize(hash_fields.size());
-  std::vector<Slice> full_expire_keys;
+  std::vector<std::string> full_expire_keys;
+  std::vector<Slice> full_expire_keys_slice;
   full_expire_keys.reserve(hash_fields.size());
   for (const auto &hash_field : hash_fields) {
-    auto sub_expire_key = GetSubKeyExpireInternalKey(user_key, hash_field, metadata_version);
-    full_expire_keys.emplace_back(std::move(sub_expire_key));
+    full_expire_keys.emplace_back(GetSubKeyExpireInternalKey(user_key, hash_field, metadata_version));
+    full_expire_keys_slice.emplace_back(full_expire_keys.back());
   }
   storage_->MultiGet(ctx, ctx.GetReadOptions(), storage_->GetDB()->DefaultColumnFamily(), full_expire_keys.size(),
-                     full_expire_keys.data(), expire_values.data(), statuses->data());
+                     full_expire_keys_slice.data(), expire_values.data(), statuses->data());
   for (size_t i = 0; i < hash_fields.size(); i++) {
     if ((*statuses)[i].ok()) {
       (*expired_ats)[i] = DecodeFixed64(expire_values[i].data());

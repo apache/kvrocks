@@ -77,6 +77,7 @@ rocksdb::Status Hash::IncrBy(engine::Context &ctx, const Slice &user_key, const 
                              int64_t *new_value) {
   bool exists = false;
   int64_t old_value = 0;
+  bool expired = false;
   std::string ns_key = AppendNamespacePrefix(user_key);
 
   HashMetadata metadata;
@@ -93,18 +94,20 @@ rocksdb::Status Hash::IncrBy(engine::Context &ctx, const Slice &user_key, const 
       s = GetSubKeyExpireTimestampMS(ctx, user_key, field, metadata.version, &expire_at);
       if (!s.ok() && !s.IsNotFound()) return s;
       if (expire_at != NoExpireTime && expire_at < util::GetTimeStampMS()) {
+        expired = true;
         old_value = 0;
-      } else {
-        auto parse_result = ParseInt<int64_t>(value_bytes, 10);
-        if (!parse_result) {
-          return rocksdb::Status::InvalidArgument(parse_result.Msg());
-        }
-        if (isspace(value_bytes[0])) {
-          return rocksdb::Status::InvalidArgument("value is not an integer");
-        }
-        old_value = *parse_result;
-        exists = true;
       }
+    }
+    if (s.ok() && !expired) {
+      auto parse_result = ParseInt<int64_t>(value_bytes, 10);
+      if (!parse_result) {
+        return rocksdb::Status::InvalidArgument(parse_result.Msg());
+      }
+      if (isspace(value_bytes[0])) {
+        return rocksdb::Status::InvalidArgument("value is not an integer");
+      }
+      old_value = *parse_result;
+      exists = true;
     }
   }
   if ((increment < 0 && old_value < 0 && increment < (LLONG_MIN - old_value)) ||
@@ -133,7 +136,7 @@ rocksdb::Status Hash::IncrByFloat(engine::Context &ctx, const Slice &user_key, c
                                   double *new_value) {
   bool exists = false;
   double old_value = 0;
-
+  bool expired = false;
   std::string ns_key = AppendNamespacePrefix(user_key);
 
   HashMetadata metadata;
@@ -150,15 +153,17 @@ rocksdb::Status Hash::IncrByFloat(engine::Context &ctx, const Slice &user_key, c
       s = GetSubKeyExpireTimestampMS(ctx, user_key, field, metadata.version, &expire_at);
       if (!s.ok() && !s.IsNotFound()) return s;
       if (expire_at != NoExpireTime && expire_at < util::GetTimeStampMS()) {
+        expired = true;
         old_value = 0;
-      } else {
-        auto value_stat = ParseFloat(value_bytes);
-        if (!value_stat || isspace(value_bytes[0])) {
-          return rocksdb::Status::InvalidArgument("value is not a number");
-        }
-        old_value = *value_stat;
-        exists = true;
       }
+    }
+    if (s.ok() && !expired) {
+      auto value_stat = ParseFloat(value_bytes);
+      if (!value_stat || isspace(value_bytes[0])) {
+        return rocksdb::Status::InvalidArgument("value is not a number");
+      }
+      old_value = *value_stat;
+      exists = true;
     }
   }
   double n = old_value + increment;

@@ -585,13 +585,15 @@ rocksdb::Status SubKeyScanner::Scan(engine::Context &ctx, RedisType type, const 
       break;
     }
     InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
-    uint64_t expire_at = NoExpireTime;
-    s = GetSubKeyExpireTimestampMS(ctx, user_key, ikey.GetSubKey(), metadata.version, &expire_at);
-    if (!s.ok() && !s.IsNotFound()) {
-      return s;
-    }
-    if (expire_at != NoExpireTime && expire_at < util::GetTimeStampMS()) {
-      continue;
+    if (type == kRedisHash) {
+      uint64_t expire_at = NoExpireTime;
+      s = GetSubKeyExpireTimestampMS(ctx, user_key, ikey.GetSubKey(), metadata.version, &expire_at);
+      if (!s.ok() && !s.IsNotFound()) {
+        return s;
+      }
+      if (expire_at != NoExpireTime && expire_at < util::GetTimeStampMS()) {
+        continue;
+      }
     }
     keys->emplace_back(ikey.GetSubKey().ToString());
     if (values != nullptr) {

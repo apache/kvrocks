@@ -25,7 +25,6 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
-#include <cstdint>
 #include <random>
 #include <utility>
 
@@ -78,6 +77,7 @@ rocksdb::Status Hash::IncrBy(engine::Context &ctx, const Slice &user_key, const 
   bool exists = false;
   int64_t old_value = 0;
   bool expired = false;
+
   std::string ns_key = AppendNamespacePrefix(user_key);
 
   HashMetadata metadata;
@@ -91,8 +91,8 @@ rocksdb::Status Hash::IncrBy(engine::Context &ctx, const Slice &user_key, const 
     if (!s.ok() && !s.IsNotFound()) return s;
     if (s.ok()) {
       uint64_t expire_at = NoExpireTime;
-      s = GetSubKeyExpireTimestampMS(ctx, user_key, field, metadata.version, &expire_at);
-      if (!s.ok() && !s.IsNotFound()) return s;
+      rocksdb::Status expire_s = GetSubKeyExpireTimestampMS(ctx, user_key, field, metadata.version, &expire_at);
+      if (!expire_s.ok() && !expire_s.IsNotFound()) return expire_s;
       if (expire_at != NoExpireTime && expire_at < util::GetTimeStampMS()) {
         expired = true;
         old_value = 0;
@@ -137,6 +137,7 @@ rocksdb::Status Hash::IncrByFloat(engine::Context &ctx, const Slice &user_key, c
   bool exists = false;
   double old_value = 0;
   bool expired = false;
+
   std::string ns_key = AppendNamespacePrefix(user_key);
 
   HashMetadata metadata;
@@ -150,8 +151,8 @@ rocksdb::Status Hash::IncrByFloat(engine::Context &ctx, const Slice &user_key, c
     if (!s.ok() && !s.IsNotFound()) return s;
     if (s.ok()) {
       uint64_t expire_at = NoExpireTime;
-      s = GetSubKeyExpireTimestampMS(ctx, user_key, field, metadata.version, &expire_at);
-      if (!s.ok() && !s.IsNotFound()) return s;
+      rocksdb::Status expire_s = GetSubKeyExpireTimestampMS(ctx, user_key, field, metadata.version, &expire_at);
+      if (!expire_s.ok() && !expire_s.IsNotFound()) return expire_s;
       if (expire_at != NoExpireTime && expire_at < util::GetTimeStampMS()) {
         expired = true;
         old_value = 0;
@@ -308,6 +309,7 @@ rocksdb::Status Hash::MSet(engine::Context &ctx, const Slice &user_key, const st
   s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) return s;
   std::unordered_set<std::string_view> field_set;
+
   std::vector<rocksdb::Slice> keys;
   std::vector<rocksdb::Slice> origin_keys;
   std::vector<std::string> keys_encoded;
@@ -319,6 +321,7 @@ rocksdb::Status Hash::MSet(engine::Context &ctx, const Slice &user_key, const st
     if (!field_set.insert(it->field).second) {
       continue;
     }
+
     origin_keys.emplace_back(it->field);
     keys_encoded.push_back(InternalKey(ns_key, it->field, metadata.version, storage_->IsSlotIdEncoded()).Encode());
     keys.emplace_back(keys_encoded.back());

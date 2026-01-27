@@ -22,7 +22,6 @@
 
 #include <rocksdb/status.h>
 
-#include <cstdint>
 #include <string>
 #include <vector>
 

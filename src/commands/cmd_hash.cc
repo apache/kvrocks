@@ -588,7 +588,6 @@ class CommandHPersist : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
     // HPERSIST key FIELDS numfields field [field ...]
-    // Minimum: HPERSIST key FIELDS 1 field = 5 args
     if (args.size() < 5) {
       return {Status::RedisParseErr, errWrongNumOfArguments};
     }
@@ -606,7 +605,6 @@ class CommandHPersist : public Commander {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    // Return array of results
     std::vector<std::string> result_strings;
     result_strings.reserve(results.size());
     for (const auto &r : results) {
@@ -624,7 +622,6 @@ class CommandHTTL : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
     // HTTL key FIELDS numfields field [field ...]
-    // Minimum: HTTL key FIELDS 1 field = 5 args
     if (args.size() < 5) {
       return {Status::RedisParseErr, errWrongNumOfArguments};
     }
@@ -644,9 +641,6 @@ class CommandHTTL : public Commander {
 
     auto current_time_ms = static_cast<int64_t>(util::GetTimeStampMS());
 
-    // httl returns time in seconds, hpttl returns time in milliseconds as TTLFields
-    // hexpiretime returns expire_time in seconds, hpexpiretime returns expire_time in milliseconds as TTLFields already
-    // does
     for (auto &r : results) {
       if (r > 0) {
         if (util::EqualICase(args_[0], "httl")) {
@@ -656,7 +650,6 @@ class CommandHTTL : public Commander {
         } else if (util::EqualICase(args_[0], "hexpiretime")) {
           r = r / 1000;
         } else if (util::EqualICase(args_[0], "hpexpiretime")) {
-          // do nothing as TTLFields already returns expire_time in milliseconds
         }
       }
     }
@@ -676,13 +669,13 @@ class CommandHTTL : public Commander {
 class CommandHMSetEX : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
+    // HSETEX key [FNX | FXX] [EX seconds | PX milliseconds |
+    // EXAT unix-time-seconds | PXAT unix-time-milliseconds | KEEPTTL]
+    // FIELDS numfields field value [field value ...]
     if (args.size() < 7) {
       return {Status::RedisParseErr, errWrongNumOfArguments};
     }
 
-    size_t pos = 2;
-
-    // Lambda to parse expiration value with validation
     auto parse_expire_value = [](const std::string &value_str) -> uint64_t {
       auto result = ParseInt<uint64_t>(value_str, 10);
       if (!result || *result <= 0) {
@@ -691,11 +684,11 @@ class CommandHMSetEX : public Commander {
       return result.GetValue();
     };
 
+    size_t pos = 2;
     if (pos < args.size() && util::EqualICase(args[pos], std::string_view("FIELDS"))) {
       return {Status::RedisParseErr, "ERR Missing expiration option"};
     }
 
-    // Parse expiration option - optional
     params_.expire_params.option = SetEXExpireOption::kNoExpire;
     while (pos < args.size()) {
       const auto &opt = args[pos];
@@ -712,11 +705,9 @@ class CommandHMSetEX : public Commander {
         if (params_.expire_params.option == SetEXExpireOption::kNoExpire) {
           return {Status::RedisParseErr, "Invalid syntax: at least one expiration option is required before FIELDS"};
         } else {
-          // FIELDS is a special case and should not be treated as an expiration option
           break;
         }
       } else {
-        // got next must be a integer
         auto value = parse_expire_value(args[pos + 1]);
         params_.expire_params.value = value;
         if (value == 0) {
@@ -736,7 +727,6 @@ class CommandHMSetEX : public Commander {
         pos += 2;
       }
     }
-    // Parse FIELDS and field-value pairs
     if (pos >= args.size() || !util::EqualICase(args[pos], "FIELDS")) {
       return {Status::RedisParseErr, "mandatory argument FIELDS is missing"};
     }
@@ -755,7 +745,6 @@ class CommandHMSetEX : public Commander {
     auto num_fields = *num_fields_result;
     pos++;
 
-    // Parse field-value pairs
     if (args.size() != pos + 2 * num_fields) {
       return {Status::RedisParseErr, "number of field-value pairs does not match numfields"};
     }

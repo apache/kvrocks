@@ -1543,6 +1543,24 @@ var testHash = func(t *testing.T, configs util.KvrocksServerConfigs) {
 			result = rdb.Do(ctx, "HEXPIRE", testKey, "60", "FIELDS", "3", "field1", "field2")
 			require.Error(t, result.Err())
 		})
+
+		t.Run("HASH COMPACT", func(t *testing.T) {
+			testKey := "hash-compact-test"
+			require.NoError(t, rdb.Del(ctx, testKey).Err())
+			require.NoError(t, rdb.HSet(ctx, testKey, "field1", "value1").Err())
+
+			// Set expiration to 300 ms
+			rdb.Do(ctx, "HPEXPIRE", testKey, 300, "FIELDS", "1", "field1")
+
+			// Wait for expiration
+			time.Sleep(350 * time.Millisecond)
+
+			// Field should be expired
+			val := rdb.HGet(ctx, testKey, "field1")
+			require.Error(t, val.Err())
+
+			require.NoError(t, rdb.Do(ctx, "COMPACT").Err())
+		})
 	}
 }
 

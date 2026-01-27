@@ -30,6 +30,7 @@
 #include "storage/redis_metadata.h"
 #include "time_util.h"
 #include "types/redis_bitmap.h"
+#include "types/redis_hash.h"
 #include "types/redis_timeseries.h"
 
 namespace engine {
@@ -152,6 +153,48 @@ bool SubKeyFilter::Filter([[maybe_unused]] int level, const Slice &key, const Sl
       return false;
     }
     return expired;
+  } else if (metadata.Type() == kRedisHash) {
+    auto md_expired = IsMetadataExpired(ikey, metadata);
+    if (md_expired) {
+      return true;
+    }
+
+    auto db = stor_->GetDB();
+
+    // Hash field subkeys come in pairs:
+    // 1. Field value key with version = metadata.version
+    // 2. Field expire key with version = metadata.version + ExpireVersionOffset (8)
+    // They are processed independently in compaction, so we must handle both in Filter to ensure consistency.
+    // To avoid orphaning, we check expire time when processing key, but compaction filter handle key one by one, so we
+    // have to left the orphaned key exists here.
+    if (ikey.GetVersion() == metadata.version) {  // when there is an hash field
+      std::string ns_key = ComposeNamespaceKey(ikey.GetNamespace(), ikey.GetKey(), stor_->IsSlotIdEncoded());
+      InternalKey expire_ikey(ns_key, ikey.GetSubKey(), metadata.version + ExpireVersionOffset,
+                              stor_->IsSlotIdEncoded());
+      std::string expire_key = expire_ikey.Encode();
+      std::string expire_value;
+      auto expire_status =
+          db->Get(rocksdb::ReadOptions(), stor_->GetCFHandle(ColumnFamilyID::PrimarySubkey), expire_key, &expire_value);
+      if (expire_status.ok() && expire_value.size() >= sizeof(uint64_t)) {
+        uint64_t expire_at = DecodeFixed64(expire_value.data());
+        uint64_t now = util::GetTimeStampMS();
+        if (expire_at < now) {
+          return true;
+        }
+      }
+      return false;
+    } else if (ikey.GetVersion() == metadata.version + ExpireVersionOffset) {  // when there is an hash field expire key
+      std::string ns_key = ComposeNamespaceKey(ikey.GetNamespace(), ikey.GetKey(), stor_->IsSlotIdEncoded());
+      InternalKey origin_ikey(ns_key, ikey.GetSubKey(), metadata.version, stor_->IsSlotIdEncoded());
+      std::string origin_key = origin_ikey.Encode();
+      std::string origin_value;
+      auto origin_status =
+          db->Get(rocksdb::ReadOptions(), stor_->GetCFHandle(ColumnFamilyID::PrimarySubkey), origin_key, &origin_value);
+      if (origin_status.IsNotFound()) {
+        return true;
+      }
+    }
+    return false;
   }
 
   return IsMetadataExpired(ikey, metadata) || (metadata.Type() == kRedisBitmap && redis::Bitmap::IsEmptySegment(value));

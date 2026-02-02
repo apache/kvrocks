@@ -40,6 +40,10 @@ class CuckooChain : public Database {
   rocksdb::Status Reserve(engine::Context &ctx, const Slice &user_key, uint64_t capacity, uint8_t bucket_size,
                           uint16_t max_iterations, uint8_t expansion);
 
+  // CF.ADD command - adds an item to the cuckoo filter
+  // Returns true if item was added, false if item already exists (probably)
+  rocksdb::Status Add(engine::Context &ctx, const Slice &user_key, const Slice &item, bool *added);
+
  private:
   // Get metadata for the cuckoo filter
   rocksdb::Status getCuckooChainMetadata(engine::Context &ctx, const Slice &ns_key, CuckooChainMetadata *metadata);
@@ -48,6 +52,14 @@ class CuckooChain : public Database {
   // Format: cf:{namespace}:{user_key}:{filter_index}:{bucket_index}
   std::string getBucketKey(const Slice &ns_key, const CuckooChainMetadata &metadata,
                            uint16_t filter_index, uint32_t bucket_index);
+
+  // Kick-out insertion: try to insert fingerprint by evicting existing ones
+  rocksdb::Status kickOutInsert(engine::Context &ctx, const Slice &ns_key, const CuckooChainMetadata &metadata,
+                                uint16_t filter_index, uint32_t num_buckets, uint8_t fingerprint,
+                                uint64_t hash, bool *inserted);
+
+  // Create a new sub-filter for expansion
+  rocksdb::Status expandFilter(engine::Context &ctx, const Slice &ns_key, CuckooChainMetadata *metadata);
 };
 
 }  // namespace redis

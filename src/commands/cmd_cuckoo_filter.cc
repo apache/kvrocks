@@ -102,8 +102,41 @@ class CommandCFReserve : public Commander {
   uint8_t expansion_ = kCFDefaultExpansion;
 };
 
-// Register the CF.RESERVE command
+class CommandCFAdd : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    // CF.ADD key item
+    if (args.size() != 3) {
+      return {Status::RedisParseErr, "wrong number of arguments"};
+    }
+    return Commander::Parse(args);
+  }
+
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    redis::CuckooChain cuckoo_db(srv->storage, conn->GetNamespace());
+    bool added = false;
+    auto s = cuckoo_db.Add(ctx, args_[1], args_[2], &added);
+
+    if (!s.ok()) {
+      if (s.IsNotFound()) {
+        return {Status::RedisExecErr, "key not found"};
+      }
+      if (s.IsAborted()) {
+        // Filter is full
+        return {Status::RedisExecErr, s.ToString()};
+      }
+      return {Status::RedisExecErr, "failed to add item to cuckoo filter"};
+    }
+
+    // Return 1 if added, 0 if already exists (though we don't check for duplicates in this version)
+    *output = redis::Integer(added ? 1 : 0);
+    return Status::OK();
+  }
+};
+
+// Register the CF.RESERVE and CF.ADD commands
 REDIS_REGISTER_COMMANDS(CuckooFilter,
-                        MakeCmdAttr<CommandCFReserve>("cf.reserve", -3, "write", 1, 1, 1))
+                        MakeCmdAttr<CommandCFReserve>("cf.reserve", -3, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandCFAdd>("cf.add", 3, "write", 1, 1, 1))
 
 }  // namespace redis

@@ -63,7 +63,9 @@ FeedSlaveThread::FeedSlaveThread(Server *srv, redis::Connection *conn, rocksdb::
       next_repl_seq_(next_repl_seq),
       req_(srv),
       max_delay_bytes_(srv->GetConfig()->max_replication_delay_bytes),
-      max_delay_updates_(srv->GetConfig()->max_replication_delay_updates) {}
+      max_delay_updates_(srv->GetConfig()->max_replication_delay_updates),
+      max_replication_lag_(srv->GetConfig()->max_replication_lag),
+      send_timeout_ms_(srv->GetConfig()->replication_send_timeout_ms) {}
 
 Status FeedSlaveThread::Start() {
   auto s = util::CreateThread("feed-replica", [this] {
@@ -184,6 +186,21 @@ void FeedSlaveThread::loop() {
   while (!IsStopped()) {
     auto curr_seq = next_repl_seq_.load();
 
+    // Check replication lag - disconnect slow consumers before WAL is exhausted
+    // Skip check if max_replication_lag_ is 0 (feature disabled)
+    if (max_replication_lag_ > 0) {
+      auto latest_seq = srv_->storage->LatestSeqNumber();
+      if (latest_seq > curr_seq) {
+        auto lag = static_cast<int64_t>(latest_seq - curr_seq);
+        if (lag > max_replication_lag_) {
+          ERROR("Replication lag {} exceeds max allowed {} for slave {}:{}, disconnecting to prevent WAL exhaustion",
+                lag, max_replication_lag_, conn_->GetAnnounceIP(), conn_->GetListeningPort());
+          Stop();
+          return;
+        }
+      }
+    }
+
     if (!iter_ || !iter_->Valid()) {
       if (iter_) INFO("WAL was rotated, would reopen again");
       if (!srv_->storage->WALHasNewData(curr_seq) || !srv_->storage->GetWALIter(curr_seq, &iter_).IsOK()) {
@@ -221,10 +238,12 @@ void FeedSlaveThread::loop() {
         batches_bulk += redis::BulkString("_getack");
       }
 
-      // Send entire bulk which contain multiple batches
-      auto s = util::SockSend(conn_->GetFD(), batches_bulk, conn_->GetBufferEvent());
+      // Send entire bulk which contain multiple batches with timeout
+      // This prevents blocking indefinitely on slow consumers
+      auto s = util::SockSendWithTimeout(conn_->GetFD(), batches_bulk, conn_->GetBufferEvent(), send_timeout_ms_);
       if (!s.IsOK()) {
-        ERROR("Write error while sending batch to slave: {}. batches: 0x{}", s.Msg(), util::StringToHex(batches_bulk));
+        ERROR("Write error while sending batch to slave {}:{}: {}. batch_size={}", conn_->GetAnnounceIP(),
+              conn_->GetListeningPort(), s.Msg(), batches_bulk.size());
         Stop();
         return;
       }
@@ -260,9 +279,14 @@ void ReplicationThread::CallbacksStateMachine::ConnEventCB(bufferevent *bev, int
   }
   if (events & (BEV_EVENT_ERROR | BEV_EVENT_EOF)) {
     ERROR("[replication] connection error/eof, reconnect the master");
-    // Wait a bit and reconnect
+    // Wait with exponential backoff before reconnecting
+    constexpr int kMaxBackoffSeconds = 60;
+    constexpr int kMaxShiftBits = 6;  // Cap shift to avoid UB; 2^6 = 64 then clamped to 60
     repl_->repl_state_.store(kReplConnecting, std::memory_order_relaxed);
-    std::this_thread::sleep_for(std::chrono::seconds(1));
+    int attempts = repl_->reconnect_attempts_.fetch_add(1, std::memory_order_relaxed);
+    int backoff_secs = std::min(1 << std::min(attempts, kMaxShiftBits), kMaxBackoffSeconds);
+    WARN("[replication] waiting {} seconds before reconnecting (attempt {})", backoff_secs, attempts + 1);
+    std::this_thread::sleep_for(std::chrono::seconds(backoff_secs));
     Stop();
     Start();
   }
@@ -634,6 +658,7 @@ ReplicationThread::CBState ReplicationThread::tryPSyncReadCB(bufferevent *bev) {
   } else {
     // PSYNC is OK, use IncrementBatchLoop
     INFO("[replication] PSync is ok, start increment batch loop");
+    reconnect_attempts_.store(0, std::memory_order_relaxed);  // Reset backoff counter on successful connection
     return CBState::NEXT;
   }
 }
@@ -879,6 +904,7 @@ ReplicationThread::CBState ReplicationThread::fullSyncReadCB(bufferevent *bev) {
         return CBState::RESTART;
       }
       INFO("[replication] Succeeded restoring the backup, fullsync was finish");
+      reconnect_attempts_.store(0, std::memory_order_relaxed);  // Reset backoff counter on successful fullsync
       post_fullsync_cb_();
 
       // It needs to reload namespaces from DB after the full sync is done,

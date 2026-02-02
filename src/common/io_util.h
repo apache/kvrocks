@@ -54,6 +54,10 @@ Status Pwrite(int fd, const std::string &data, off_t offset);
 Status SockSend(int fd, const std::string &data, ssl_st *ssl);
 Status SockSend(int fd, const std::string &data, bufferevent *bev);
 
+// Send with timeout - returns error if send would block for longer than timeout_ms
+Status SockSendWithTimeout(int fd, const std::string &data, int timeout_ms);
+Status SockSendWithTimeout(int fd, const std::string &data, bufferevent *bev, int timeout_ms);
+
 Status SockSendFile(int out_fd, int in_fd, size_t size, ssl_st *ssl);
 Status SockSendFile(int out_fd, int in_fd, size_t size, bufferevent *bev);
 

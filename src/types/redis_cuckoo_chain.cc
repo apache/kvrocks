@@ -60,7 +60,7 @@ rocksdb::Status CuckooChain::Reserve(engine::Context &ctx, const Slice &user_key
     return rocksdb::Status::InvalidArgument("capacity must be larger than 0");
   }
 
-  // RedisBloom requires minimum capacity to ensure at least one bucket can be created
+  // Require minimum capacity to ensure at least one bucket can be created
   // With load factor 0.955, capacity=1 and bucket_size=4 results in 0 buckets
   if (capacity < 2) {
     return rocksdb::Status::InvalidArgument("capacity must be at least 2");
@@ -289,6 +289,62 @@ rocksdb::Status CuckooChain::commitSubFilterAndMetadata(engine::Context &ctx, co
   if (!s.ok()) return s;
 
   return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+}
+
+rocksdb::Status CuckooChain::Exists(engine::Context &ctx, const Slice &user_key, const Slice &item, bool *exists) {
+  std::string ns_key = AppendNamespacePrefix(user_key);
+
+  CuckooChainMetadata metadata(false);
+  auto s = getCuckooChainMetadata(ctx, ns_key, &metadata);
+  if (!s.ok()) return s;
+
+  s = validateMetadata(metadata);
+  if (!s.ok()) return s;
+
+  uint64_t hash = CuckooFilter::Hash(item.data(), item.size());
+  uint8_t fingerprint = CuckooFilter::GenerateFingerprint(hash);
+
+  for (uint16_t filter_idx = 0; filter_idx < metadata.n_filters; ++filter_idx) {
+    uint64_t filter_capacity = 0;
+    if (!CalculateFilterCapacity(metadata.base_capacity, metadata.expansion, filter_idx, &filter_capacity) ||
+        !CuckooFilter::IsCapacitySupported(filter_capacity, metadata.bucket_size)) {
+      return rocksdb::Status::Corruption("invalid metadata: filter capacity is too large");
+    }
+    uint32_t num_buckets = 0;
+    s = CuckooFilter::OptimalNumBuckets(filter_capacity, metadata.bucket_size, &num_buckets);
+    if (!s.ok()) return s;
+
+    uint32_t bucket1_idx = hash % num_buckets;
+    uint64_t alt_hash = CuckooFilter::GetAltHash(fingerprint, hash);
+    uint32_t bucket2_idx = alt_hash % num_buckets;
+
+    CuckooPageSet pages(storage_, ctx, ns_key, metadata, storage_->IsSlotIdEncoded());
+
+    uint8_t slot = 0;
+    s = pages.GetBucketSlot(filter_idx, num_buckets, bucket1_idx, 0, &slot);
+    if (!s.ok()) return s;
+    for (size_t i = 0; i < metadata.bucket_size; ++i) {
+      s = pages.GetBucketSlot(filter_idx, num_buckets, bucket1_idx, static_cast<uint32_t>(i), &slot);
+      if (!s.ok()) return s;
+      if (slot == fingerprint) {
+        *exists = true;
+        return rocksdb::Status::OK();
+      }
+    }
+
+    if (bucket1_idx == bucket2_idx) continue;
+    for (size_t i = 0; i < metadata.bucket_size; ++i) {
+      s = pages.GetBucketSlot(filter_idx, num_buckets, bucket2_idx, static_cast<uint32_t>(i), &slot);
+      if (!s.ok()) return s;
+      if (slot == fingerprint) {
+        *exists = true;
+        return rocksdb::Status::OK();
+      }
+    }
+  }
+
+  *exists = false;
+  return rocksdb::Status::OK();
 }
 
 }  // namespace redis

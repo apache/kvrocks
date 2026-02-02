@@ -47,6 +47,10 @@ class CuckooChain : public Database {
   // Duplicate items are allowed, so added is true whenever insertion succeeds.
   rocksdb::Status Add(engine::Context &ctx, const Slice &user_key, const Slice &item, bool *added);
 
+  // CF.EXISTS command - checks if an item might exist in the cuckoo filter
+  // Returns true if item might exist (false positive possible), false if definitely doesn't exist
+  rocksdb::Status Exists(engine::Context &ctx, const Slice &user_key, const Slice &item, bool *exists);
+
  private:
   // Loads metadata for a cuckoo filter key.
   rocksdb::Status getCuckooChainMetadata(engine::Context &ctx, const Slice &ns_key, CuckooChainMetadata *metadata);

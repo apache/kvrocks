@@ -351,3 +351,215 @@ TEST_F(RedisCuckooFilterTest, ReserveParameterCombinations) {
     }
   }
 }
+
+TEST_F(RedisCuckooFilterTest, AddBasic) {
+  // First reserve a filter
+  auto s = cuckoo_->Reserve(*ctx_, key_, 1000, 4, 500, 2);
+  ASSERT_TRUE(s.ok()) << "Failed to reserve: " << s.ToString();
+
+  // Add an item
+  bool added = false;
+  s = cuckoo_->Add(*ctx_, key_, "item1", &added);
+  ASSERT_TRUE(s.ok()) << "Failed to add item: " << s.ToString();
+  ASSERT_TRUE(added) << "Item should have been added";
+}
+
+TEST_F(RedisCuckooFilterTest, AddMultipleItems) {
+  // Reserve a filter
+  auto s = cuckoo_->Reserve(*ctx_, key_, 1000, 4, 500, 2);
+  ASSERT_TRUE(s.ok());
+
+  // Add multiple items
+  std::vector<std::string> items = {"apple", "banana", "cherry", "date", "elderberry"};
+  for (const auto& item : items) {
+    bool added = false;
+    s = cuckoo_->Add(*ctx_, key_, item, &added);
+    ASSERT_TRUE(s.ok()) << "Failed to add item: " << item;
+    ASSERT_TRUE(added) << "Item should have been added: " << item;
+  }
+}
+
+TEST_F(RedisCuckooFilterTest, AddToNonExistentFilter) {
+  // Try to add to a filter that doesn't exist
+  bool added = false;
+  auto s = cuckoo_->Add(*ctx_, "nonexistent_key", "item1", &added);
+  ASSERT_FALSE(s.ok());
+  ASSERT_TRUE(s.IsNotFound()) << "Should return NotFound error";
+}
+
+TEST_F(RedisCuckooFilterTest, AddWithDifferentBucketSizes) {
+  // Test with different bucket sizes
+  std::vector<uint8_t> bucket_sizes = {1, 2, 4, 8, 16};
+
+  for (size_t i = 0; i < bucket_sizes.size(); ++i) {
+    std::string test_key = key_ + "_bucket_" + std::to_string(bucket_sizes[i]);
+    auto s = cuckoo_->Reserve(*ctx_, test_key, 100, bucket_sizes[i], 500, 2);
+    ASSERT_TRUE(s.ok()) << "Failed to reserve with bucket_size=" << static_cast<int>(bucket_sizes[i]);
+
+    // Add some items
+    for (int j = 0; j < 10; ++j) {
+      std::string item = "item_" + std::to_string(j);
+      bool added = false;
+      s = cuckoo_->Add(*ctx_, test_key, item, &added);
+      ASSERT_TRUE(s.ok()) << "Failed to add item with bucket_size=" << static_cast<int>(bucket_sizes[i]);
+      ASSERT_TRUE(added);
+    }
+  }
+}
+
+TEST_F(RedisCuckooFilterTest, AddDuplicateItems) {
+  // Reserve a filter
+  auto s = cuckoo_->Reserve(*ctx_, key_, 1000, 4, 500, 2);
+  ASSERT_TRUE(s.ok());
+
+  // Add the same item multiple times (Cuckoo Filter allows duplicates)
+  std::string item = "duplicate_item";
+  for (int i = 0; i < 5; ++i) {
+    bool added = false;
+    s = cuckoo_->Add(*ctx_, key_, item, &added);
+    ASSERT_TRUE(s.ok()) << "Iteration " << i;
+    ASSERT_TRUE(added) << "Should allow duplicate items";
+  }
+}
+
+TEST_F(RedisCuckooFilterTest, AddManyItems) {
+  // Reserve a filter with moderate capacity
+  uint64_t capacity = 1000;
+  auto s = cuckoo_->Reserve(*ctx_, key_, capacity, 4, 500, 2);
+  ASSERT_TRUE(s.ok());
+
+  // Add many items (should succeed without hitting limits)
+  int num_items = 100;
+  for (int i = 0; i < num_items; ++i) {
+    std::string item = "item_" + std::to_string(i);
+    bool added = false;
+    s = cuckoo_->Add(*ctx_, key_, item, &added);
+    ASSERT_TRUE(s.ok()) << "Failed at item " << i;
+    ASSERT_TRUE(added);
+  }
+}
+
+TEST_F(RedisCuckooFilterTest, AddSmallFilterCapacity) {
+  // Test with very small capacity to trigger potential full filter scenario
+  uint64_t small_capacity = 10;
+  auto s = cuckoo_->Reserve(*ctx_, key_, small_capacity, 2, 500, 0);  // expansion=0 means no auto-growth
+  ASSERT_TRUE(s.ok());
+
+  // Add items up to capacity
+  // With bucket_size=2 and capacity=10, we should have very limited space
+  bool full = false;
+  for (int i = 0; i < 100; ++i) {
+    std::string item = "item_" + std::to_string(i);
+    bool added = false;
+    s = cuckoo_->Add(*ctx_, key_, item, &added);
+
+    if (!s.ok()) {
+      // Filter is full
+      ASSERT_TRUE(s.IsAborted()) << "Should be Aborted status when full";
+      full = true;
+      break;
+    }
+  }
+
+  // We expect the filter to become full at some point
+  ASSERT_TRUE(full) << "Small filter should eventually become full";
+}
+
+TEST_F(RedisCuckooFilterTest, AddEmptyItem) {
+  // Reserve a filter
+  auto s = cuckoo_->Reserve(*ctx_, key_, 1000, 4, 500, 2);
+  ASSERT_TRUE(s.ok());
+
+  // Add empty string
+  bool added = false;
+  s = cuckoo_->Add(*ctx_, key_, "", &added);
+  ASSERT_TRUE(s.ok()) << "Should be able to add empty string";
+  ASSERT_TRUE(added);
+}
+
+TEST_F(RedisCuckooFilterTest, AddLongItem) {
+  // Reserve a filter
+  auto s = cuckoo_->Reserve(*ctx_, key_, 1000, 4, 500, 2);
+  ASSERT_TRUE(s.ok());
+
+  // Add a very long string
+  std::string long_item(10000, 'x');
+  bool added = false;
+  s = cuckoo_->Add(*ctx_, key_, long_item, &added);
+  ASSERT_TRUE(s.ok()) << "Should be able to add long string";
+  ASSERT_TRUE(added);
+}
+
+TEST_F(RedisCuckooFilterTest, AddBinaryData) {
+  // Reserve a filter
+  auto s = cuckoo_->Reserve(*ctx_, key_, 1000, 4, 500, 2);
+  ASSERT_TRUE(s.ok());
+
+  // Add binary data (including null bytes)
+  std::string binary_item = std::string("\x00\x01\x02\xFF\xFE", 5);
+  bool added = false;
+  s = cuckoo_->Add(*ctx_, key_, binary_item, &added);
+  ASSERT_TRUE(s.ok()) << "Should be able to add binary data";
+  ASSERT_TRUE(added);
+}
+
+TEST_F(RedisCuckooFilterTest, AddWithVariousCapacities) {
+  // Test that Add works correctly with different filter capacities
+  std::vector<uint64_t> capacities = {10, 100, 1000, 10000};
+
+  for (size_t i = 0; i < capacities.size(); ++i) {
+    std::string test_key = key_ + "_cap_" + std::to_string(capacities[i]);
+    auto s = cuckoo_->Reserve(*ctx_, test_key, capacities[i], 4, 500, 2);
+    ASSERT_TRUE(s.ok());
+
+    // Add a reasonable number of items relative to capacity
+    int num_items = std::min(static_cast<int>(capacities[i] / 10), 50);
+    for (int j = 0; j < num_items; ++j) {
+      std::string item = "item_" + std::to_string(j);
+      bool added = false;
+      s = cuckoo_->Add(*ctx_, test_key, item, &added);
+      ASSERT_TRUE(s.ok()) << "Failed for capacity=" << capacities[i] << ", item=" << j;
+      ASSERT_TRUE(added);
+    }
+  }
+}
+
+TEST_F(RedisCuckooFilterTest, AddConsistentHashing) {
+  // Verify that the same item always hashes to the same buckets
+  auto s = cuckoo_->Reserve(*ctx_, key_, 1000, 4, 500, 2);
+  ASSERT_TRUE(s.ok());
+
+  std::string item = "test_item";
+
+  // Calculate hash for the item
+  uint64_t hash1 = redis::CuckooFilter::Hash(item);
+  uint64_t hash2 = redis::CuckooFilter::Hash(item);
+
+  // Hashing should be deterministic
+  ASSERT_EQ(hash1, hash2) << "Hash should be consistent for the same item";
+
+  // Fingerprint should be consistent
+  uint8_t fp1 = redis::CuckooFilter::GenerateFingerprint(hash1);
+  uint8_t fp2 = redis::CuckooFilter::GenerateFingerprint(hash2);
+  ASSERT_EQ(fp1, fp2) << "Fingerprint should be consistent";
+
+  // Add the item
+  bool added = false;
+  s = cuckoo_->Add(*ctx_, key_, item, &added);
+  ASSERT_TRUE(s.ok());
+  ASSERT_TRUE(added);
+}
+
+TEST_F(RedisCuckooFilterTest, AddDifferentItemsProduceDifferentHashes) {
+  // Verify that different items produce different hashes
+  std::vector<std::string> items = {"item1", "item2", "item3", "different", "another"};
+  std::set<uint64_t> hashes;
+
+  for (const auto& item : items) {
+    uint64_t hash = redis::CuckooFilter::Hash(item);
+    hashes.insert(hash);
+  }
+
+  // All items should have unique hashes (with very high probability)
+  ASSERT_EQ(hashes.size(), items.size()) << "Different items should produce different hashes";
+}

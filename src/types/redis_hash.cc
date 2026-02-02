@@ -121,7 +121,14 @@ rocksdb::Status Hash::IncrBy(engine::Context &ctx, const Slice &user_key, const 
   s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) return s;
   s = batch->Put(sub_key, std::to_string(*new_value));
+
+  // if key expired we need to clean the ttl
   if (!s.ok()) return s;
+  if (expired) {
+    auto sub_key_expire = GetSubKeyExpireInternalKey(user_key, field, metadata.version);
+    s = batch->Delete(sub_key_expire);
+    if (!s.ok()) return s;
+  }
   if (!exists) {
     metadata.size += 1;
     std::string bytes;
@@ -179,6 +186,15 @@ rocksdb::Status Hash::IncrByFloat(engine::Context &ctx, const Slice &user_key, c
   if (!s.ok()) return s;
   s = batch->Put(sub_key, std::to_string(*new_value));
   if (!s.ok()) return s;
+
+  // if key expired we need to clean the ttl
+  if (!s.ok()) return s;
+  if (expired) {
+    auto sub_key_expire = GetSubKeyExpireInternalKey(user_key, field, metadata.version);
+    s = batch->Delete(sub_key_expire);
+    if (!s.ok()) return s;
+  }
+
   if (!exists) {
     metadata.size += 1;
     std::string bytes;
@@ -343,17 +359,30 @@ rocksdb::Status Hash::MSet(engine::Context &ctx, const Slice &user_key, const st
     const rocksdb::Slice field_key = keys[field_index];
     bool exists = false;
 
-    if (metadata.size > 0) {
-      rocksdb::Status &field_status = statuses_vector[field_index];
-      if (!field_status.ok() && !field_status.IsNotFound()) {
-        return field_status;
+    rocksdb::Status &field_status = statuses_vector[field_index];
+    if (!field_status.ok() && !field_status.IsNotFound()) {
+      return field_status;
+    }
+    if (field_status.ok()) {
+      if (nx || values_vector[field_index] == values[field_index]) {
+        continue;
       }
-      if (field_status.ok()) {
-        if (nx || values_vector[field_index] == values[field_index]) {
-          continue;
-        }
-        exists = true;
-      }
+
+      exists = true;
+    }
+
+    uint64_t expire_at = expire_ats[field_index];
+    rocksdb::Status &expire_status = expire_statuses[field_index];
+    if (!expire_status.ok() && !expire_status.IsNotFound()) {
+      return expire_status;
+    }
+
+    // try expired as not exists
+    if (expire_at != NoExpireTime && expire_at < util::GetTimeStampMS()) {
+      exists = false;
+      auto sub_key_expire = GetSubKeyExpireInternalKey(user_key, origin_keys[field_index], metadata.version);
+      s = batch->Delete(sub_key_expire);
+      if (!s.ok()) return s;
     }
 
     if (!exists) {
@@ -362,17 +391,6 @@ rocksdb::Status Hash::MSet(engine::Context &ctx, const Slice &user_key, const st
 
     s = batch->Put(field_key, values[field_index]);
     if (!s.ok()) return s;
-    uint64_t expire_at = expire_ats[field_index];
-    rocksdb::Status &expire_status = expire_statuses[field_index];
-    if (!expire_status.ok() && !expire_status.IsNotFound()) {
-      return expire_status;
-    }
-    // this key was once expired but the expire time exists may block the read
-    if (expire_at != NoExpireTime && expire_at < util::GetTimeStampMS()) {
-      auto sub_key_expire = GetSubKeyExpireInternalKey(user_key, origin_keys[field_index], metadata.version);
-      s = batch->Delete(sub_key_expire);
-      if (!s.ok()) return s;
-    }
   }
 
   if (added > 0 || ttl_updated) {
@@ -419,6 +437,8 @@ rocksdb::Status Hash::RangeByLex(engine::Context &ctx, const Slice &user_key, co
       iter->SeekForPrev(start_key);
     }
   }
+
+  auto current_timestamp_ms = util::GetTimeStampMS();
   int64_t pos = 0;
   for (; iter->Valid() && iter->key().starts_with(prefix_key); (!spec.reversed ? iter->Next() : iter->Prev())) {
     InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
@@ -438,6 +458,14 @@ rocksdb::Status Hash::RangeByLex(engine::Context &ctx, const Slice &user_key, co
     }
     if (spec.offset >= 0 && pos++ < spec.offset) continue;
 
+    uint64_t expire_at = NoExpireTime;
+    auto s = GetSubKeyExpireTimestampMS(ctx, user_key, ikey.GetSubKey(), metadata.version, &expire_at);
+    if (!s.ok() && !s.IsNotFound()) {
+      return s;
+    }
+    if (expire_at != NoExpireTime && expire_at < current_timestamp_ms) {
+      continue;
+    }
     field_values->emplace_back(ikey.GetSubKey().ToString(), iter->value().ToString());
     if (spec.count > 0 && field_values->size() >= static_cast<unsigned>(spec.count)) break;
   }

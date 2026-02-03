@@ -137,6 +137,7 @@ struct Config {
   bool use_rsid_psync = false;
   bool replication_group_sync = false;
   bool replication_no_slowdown = false;
+  bool replication_enable_sequence_padding = false;
   std::vector<std::string> binds;
   std::string dir;
   std::string db_dir;

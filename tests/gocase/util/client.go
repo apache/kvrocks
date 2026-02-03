@@ -202,7 +202,7 @@ func PausableTCPProxy(ctx context.Context, t testing.TB, to string, pauseCh <-ch
 
 					// Set read deadline to allow checking pause state periodically
 					if conn, ok := src.(net.Conn); ok {
-						conn.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
+						_ = conn.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
 					}
 
 					n, err := src.Read(buffer)
@@ -237,7 +237,7 @@ func PausableTCPProxy(ctx context.Context, t testing.TB, to string, pauseCh <-ch
 				break LISTEN_LOOP
 
 			default:
-				listener.(*net.TCPListener).SetDeadline(time.Now().Add(100 * time.Millisecond))
+				_ = listener.(*net.TCPListener).SetDeadline(time.Now().Add(100 * time.Millisecond))
 				conn, err := listener.Accept()
 				if err != nil {
 					if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
@@ -259,7 +259,7 @@ func PausableTCPProxy(ctx context.Context, t testing.TB, to string, pauseCh <-ch
 					// "to_master" = reading from slave (conn), writing to master (dest)
 					errGrp.Go(copyBytes(dest, conn, "to_slave"))
 					errGrp.Go(copyBytes(conn, dest, "to_master"))
-					errGrp.Wait()
+					_ = errGrp.Wait()
 					conn.Close()
 					dest.Close()
 				}()

@@ -574,9 +574,10 @@ func TestClusterReset(t *testing.T) {
 
 	t.Run("cannot reset cluster if the db is migrating the slot", func(t *testing.T) {
 		slotNum := 2
-		// slow down the migration speed to avoid breaking other test cases
-		require.NoError(t, rdb0.ConfigSet(ctx, "migrate-speed", "128").Err())
-		for i := 0; i < 1024; i++ {
+		// slow down the migration speed to ensure we can observe the "start" state
+		// before migration completes (especially on fast hardware like macOS ARM)
+		require.NoError(t, rdb0.ConfigSet(ctx, "migrate-speed", "64").Err())
+		for i := 0; i < 2048; i++ {
 			require.NoError(t, rdb0.RPush(ctx, "my-list", fmt.Sprintf("element%d", i)).Err())
 		}
 

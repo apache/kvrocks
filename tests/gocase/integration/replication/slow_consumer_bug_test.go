@@ -175,7 +175,7 @@ func TestSlowConsumerBlocksIndefinitely(t *testing.T) {
 	//
 	// For this test, we use low values to see the fix in action quickly
 	master := util.StartServer(t, map[string]string{
-		"max-replication-lag":         "50",  // Very low: disconnect when lag > 50 sequences
+		"max-replication-lag":         "50",   // Very low: disconnect when lag > 50 sequences
 		"replication-send-timeout-ms": "3000", // 3 second timeout
 	})
 	defer master.Close()

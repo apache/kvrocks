@@ -54,9 +54,7 @@ class CuckooFilter {
 
   // Generate fingerprint from hash (8-bit fingerprint, non-zero, range: 1-255)
   // Following RedisBloom: fp = hash % 255 + 1
-  static uint8_t GenerateFingerprint(uint64_t hash) {
-    return static_cast<uint8_t>(hash % 255 + 1);
-  }
+  static uint8_t GenerateFingerprint(uint64_t hash) { return static_cast<uint8_t>(hash % 255 + 1); }
 
   // Calculate alternate hash using XOR (following RedisBloom)
   // h2 = h1 ^ (fp * 0x5bd1e995)
@@ -77,9 +75,7 @@ class CuckooFilter {
 
   // Compute hash for a given item using MurmurHash2 (compatible with RedisBloom)
   // This is the entry point for hashing items before they are inserted/checked in the filter
-  static uint64_t Hash(const char* data, size_t length) {
-    return HllMurMurHash64A(data, static_cast<int>(length), 0);
-  }
+  static uint64_t Hash(const char* data, size_t length) { return HllMurMurHash64A(data, static_cast<int>(length), 0); }
 
   // Convenience overload for std::string
   static uint64_t Hash(const std::string& item) { return Hash(item.data(), item.size()); }

@@ -59,8 +59,8 @@ enum RedisType : uint8_t {
 };
 
 inline constexpr const std::array<std::string_view, kRedisTypeMax> RedisTypeNames = {
-    "none",      "string", "hash",      "list",      "set",         "zset",      "bitmap",
-    "sortedint", "stream", "MBbloom--", "ReJSON-RL", "hyperloglog", "TDIS-TYPE", "timeseries", "cuckoofilter"};
+    "none",   "string",    "hash",      "list",        "set",       "zset",       "bitmap",      "sortedint",
+    "stream", "MBbloom--", "ReJSON-RL", "hyperloglog", "TDIS-TYPE", "timeseries", "cuckoofilter"};
 
 struct RedisTypes {
   RedisTypes(std::initializer_list<RedisType> list) {
@@ -358,8 +358,12 @@ class CuckooChainMetadata : public Metadata {
 
   explicit CuckooChainMetadata(bool generate_version = true)
       : Metadata(kRedisCuckooFilter, generate_version),
-        n_filters(0), expansion(0), base_capacity(0),
-        bucket_size(0), max_iterations(0), num_deleted_items(0) {}
+        n_filters(0),
+        expansion(0),
+        base_capacity(0),
+        bucket_size(0),
+        max_iterations(0),
+        num_deleted_items(0) {}
 
   void Encode(std::string *dst) const override;
   using Metadata::Decode;

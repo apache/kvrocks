@@ -50,13 +50,13 @@ class CuckooChain : public Database {
 
   // Generate key for a specific bucket in bucket-based storage
   // Format: cf:{namespace}:{user_key}:{filter_index}:{bucket_index}
-  std::string getBucketKey(const Slice &ns_key, const CuckooChainMetadata &metadata,
-                           uint16_t filter_index, uint32_t bucket_index);
+  std::string getBucketKey(const Slice &ns_key, const CuckooChainMetadata &metadata, uint16_t filter_index,
+                           uint32_t bucket_index);
 
   // Kick-out insertion: try to insert fingerprint by evicting existing ones
   rocksdb::Status kickOutInsert(engine::Context &ctx, const Slice &ns_key, const CuckooChainMetadata &metadata,
-                                uint16_t filter_index, uint32_t num_buckets, uint8_t fingerprint,
-                                uint64_t hash, bool *inserted);
+                                uint16_t filter_index, uint32_t num_buckets, uint8_t fingerprint, uint64_t hash,
+                                bool *inserted);
 
   // Create a new sub-filter for expansion
   rocksdb::Status expandFilter(engine::Context &ctx, const Slice &ns_key, CuckooChainMetadata *metadata);

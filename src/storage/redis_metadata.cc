@@ -645,7 +645,6 @@ rocksdb::Status TimeSeriesMetadata::Decode(Slice *input) {
   return rocksdb::Status::OK();
 }
 
-
 void CuckooChainMetadata::Encode(std::string *dst) const {
   Metadata::Encode(dst);
 

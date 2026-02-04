@@ -23,9 +23,8 @@
 #include <cmath>
 #include <unordered_map>
 
-#include "logging.h"
-
 #include "cuckoo_filter.h"
+#include "logging.h"
 
 namespace redis {
 
@@ -34,8 +33,8 @@ rocksdb::Status CuckooChain::getCuckooChainMetadata(engine::Context &ctx, const 
   return Database::GetMetadata(ctx, {kRedisCuckooFilter}, ns_key, metadata);
 }
 
-std::string CuckooChain::getBucketKey(const Slice &ns_key, const CuckooChainMetadata &metadata,
-                                      uint16_t filter_index, uint32_t bucket_index) {
+std::string CuckooChain::getBucketKey(const Slice &ns_key, const CuckooChainMetadata &metadata, uint16_t filter_index,
+                                      uint32_t bucket_index) {
   // Create a sub-key that includes both filter index and bucket index
   std::string sub_key;
   PutFixed16(&sub_key, filter_index);
@@ -141,9 +140,8 @@ static bool tryInsertInBucket(std::string &bucket_data, uint8_t bucket_size, uin
 }
 
 // Helper function: read bucket from storage and ensure correct size
-static rocksdb::Status readBucket(engine::Storage *storage, engine::Context &ctx,
-                                  const std::string &bucket_key, uint8_t bucket_size,
-                                  std::string *bucket_data) {
+static rocksdb::Status readBucket(engine::Storage *storage, engine::Context &ctx, const std::string &bucket_key,
+                                  uint8_t bucket_size, std::string *bucket_data) {
   rocksdb::ReadOptions read_opts = ctx.DefaultScanOptions();
   auto s = storage->Get(ctx, read_opts, bucket_key, bucket_data);
   if (!s.ok() && !s.IsNotFound()) {
@@ -312,9 +310,8 @@ rocksdb::Status CuckooChain::Add(engine::Context &ctx, const Slice &user_key, co
 }
 
 rocksdb::Status CuckooChain::kickOutInsert(engine::Context &ctx, const Slice &ns_key,
-                                            const CuckooChainMetadata &metadata, uint16_t filter_index,
-                                            uint32_t num_buckets, uint8_t fingerprint, uint64_t hash,
-                                            bool *inserted) {
+                                           const CuckooChainMetadata &metadata, uint16_t filter_index,
+                                           uint32_t num_buckets, uint8_t fingerprint, uint64_t hash, bool *inserted) {
   *inserted = false;
 
   // Track modified buckets to write atomically at the end
@@ -402,8 +399,7 @@ rocksdb::Status CuckooChain::kickOutInsert(engine::Context &ctx, const Slice &ns
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status CuckooChain::expandFilter(engine::Context &ctx, const Slice &ns_key,
-                                          CuckooChainMetadata *metadata) {
+rocksdb::Status CuckooChain::expandFilter(engine::Context &ctx, const Slice &ns_key, CuckooChainMetadata *metadata) {
   if (metadata->n_filters >= UINT16_MAX) {
     return rocksdb::Status::Aborted("maximum number of filters reached");
   }

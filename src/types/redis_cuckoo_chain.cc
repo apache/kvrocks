@@ -100,7 +100,7 @@ rocksdb::Status CuckooChain::Reserve(engine::Context &ctx, const Slice &user_key
 
   // Create a write batch for atomic operation
   auto batch = storage_->GetWriteBatchBase();
-  WriteBatchLogData log_data(kRedisCuckooFilter, {"CF.RESERVE", user_key.ToString()});
+  WriteBatchLogData log_data(kRedisCuckooFilter, std::vector<std::string>{"CF.RESERVE", user_key.ToString()});
   batch->PutLogData(log_data.Encode());
 
   // Store the metadata
@@ -226,7 +226,7 @@ rocksdb::Status CuckooChain::Add(engine::Context &ctx, const Slice &user_key, co
     if (target_bucket_data != nullptr) {
       // Successfully inserted, write to storage atomically
       auto batch = storage_->GetWriteBatchBase();
-      WriteBatchLogData log_data(kRedisCuckooFilter, {"CF.ADD", user_key.ToString()});
+      WriteBatchLogData log_data(kRedisCuckooFilter, std::vector<std::string>{"CF.ADD", user_key.ToString()});
       batch->PutLogData(log_data.Encode());
       batch->Put(target_bucket_key, *target_bucket_data);
 
@@ -249,11 +249,11 @@ rocksdb::Status CuckooChain::Add(engine::Context &ctx, const Slice &user_key, co
   uint32_t num_buckets = CuckooFilter::OptimalNumBuckets(filter_capacity, metadata.bucket_size);
 
   bool inserted = false;
-  s = kickOutInsert(ctx, ns_key, metadata, last_filter_idx, num_buckets, fingerprint, hash, &inserted);
+  s = kickOutInsert(ctx, user_key, ns_key, metadata, last_filter_idx, num_buckets, fingerprint, hash, &inserted);
   if (s.ok() && inserted) {
     // Update metadata after successful kick-out
     auto batch = storage_->GetWriteBatchBase();
-    WriteBatchLogData log_data(kRedisCuckooFilter, {"CF.ADD", user_key.ToString()});
+    WriteBatchLogData log_data(kRedisCuckooFilter, std::vector<std::string>{"CF.ADD", user_key.ToString()});
     batch->PutLogData(log_data.Encode());
 
     metadata.size++;
@@ -288,7 +288,7 @@ rocksdb::Status CuckooChain::Add(engine::Context &ctx, const Slice &user_key, co
     bucket1_data[0] = fingerprint;
 
     auto batch = storage_->GetWriteBatchBase();
-    WriteBatchLogData log_data(kRedisCuckooFilter, {"CF.ADD", user_key.ToString()});
+    WriteBatchLogData log_data(kRedisCuckooFilter, std::vector<std::string>{"CF.ADD", user_key.ToString()});
     batch->PutLogData(log_data.Encode());
     batch->Put(bucket1_key, bucket1_data);
 
@@ -309,7 +309,7 @@ rocksdb::Status CuckooChain::Add(engine::Context &ctx, const Slice &user_key, co
   return rocksdb::Status::Aborted("filter is full");
 }
 
-rocksdb::Status CuckooChain::kickOutInsert(engine::Context &ctx, const Slice &ns_key,
+rocksdb::Status CuckooChain::kickOutInsert(engine::Context &ctx, const Slice &user_key, const Slice &ns_key,
                                            const CuckooChainMetadata &metadata, uint16_t filter_index,
                                            uint32_t num_buckets, uint8_t fingerprint, uint64_t hash, bool *inserted) {
   *inserted = false;
@@ -385,7 +385,7 @@ rocksdb::Status CuckooChain::kickOutInsert(engine::Context &ctx, const Slice &ns
   // Write all modified buckets atomically
   if (*inserted && !modified_buckets.empty()) {
     auto batch = storage_->GetWriteBatchBase();
-    WriteBatchLogData log_data(kRedisCuckooFilter, {"CF.ADD", user_key.ToString()});
+    WriteBatchLogData log_data(kRedisCuckooFilter, std::vector<std::string>{"CF.ADD", user_key.ToString()});
     batch->PutLogData(log_data.Encode());
 
     for (const auto &entry : modified_buckets) {
@@ -409,7 +409,7 @@ rocksdb::Status CuckooChain::expandFilter(engine::Context &ctx, const Slice &ns_
 
   // Write updated metadata
   auto batch = storage_->GetWriteBatchBase();
-  WriteBatchLogData log_data(kRedisCuckooFilter, {"CF.EXPAND", ""});
+  WriteBatchLogData log_data(kRedisCuckooFilter, std::vector<std::string>{"CF.EXPAND", ""});
   batch->PutLogData(log_data.Encode());
 
   std::string metadata_bytes;

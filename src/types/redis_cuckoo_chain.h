@@ -54,9 +54,9 @@ class CuckooChain : public Database {
                            uint32_t bucket_index);
 
   // Kick-out insertion: try to insert fingerprint by evicting existing ones
-  rocksdb::Status kickOutInsert(engine::Context &ctx, const Slice &ns_key, const CuckooChainMetadata &metadata,
-                                uint16_t filter_index, uint32_t num_buckets, uint8_t fingerprint, uint64_t hash,
-                                bool *inserted);
+  rocksdb::Status kickOutInsert(engine::Context &ctx, const Slice &user_key, const Slice &ns_key,
+                                const CuckooChainMetadata &metadata, uint16_t filter_index, uint32_t num_buckets,
+                                uint8_t fingerprint, uint64_t hash, bool *inserted);
 
   // Create a new sub-filter for expansion
   rocksdb::Status expandFilter(engine::Context &ctx, const Slice &ns_key, CuckooChainMetadata *metadata);

@@ -35,6 +35,7 @@
 #include "types/redis_hash.h"
 #include "types/redis_list.h"
 #include "types/redis_set.h"
+#include "types/redis_sortedint.h"
 #include "types/redis_string.h"
 #include "types/redis_zset.h"
 #include "vendor/crc64.h"
@@ -451,6 +452,9 @@ StatusOr<RedisObjValue> RDB::loadRdbObject(int type, [[maybe_unused]] const std:
       elements = GET_OR_RET(LoadListWithQuickList(type));
     }
     return elements;
+  } else if (type == RDBTypeSortedint) {
+    auto ids = GET_OR_RET(LoadSortedintObject());
+    return ids;
   }
 
   return {Status::RedisParseErr, fmt::format("unsupported type: {}", type)};
@@ -506,6 +510,11 @@ Status RDB::saveRdbObject(engine::Context &ctx, int type, const std::string &key
       uint64_t list_size = 0;
       db_status = list_db.Push(ctx, key, insert_elements, false, &list_size);
     }
+  } else if (type == RDBTypeSortedint) {  // ← ADD THIS WHOLE BLOCK
+    const auto &ids = std::get<std::vector<uint64_t>>(obj);
+    redis::Sortedint sortedint_db(storage_, ns_);
+    uint64_t added_cnt = 0;
+    db_status = sortedint_db.Add(ctx, key, ids, &added_cnt);
   } else {
     return {Status::RedisExecErr, fmt::format("unsupported save type: {}", type)};
   }
@@ -730,6 +739,8 @@ Status RDB::SaveObjectType(const RedisType type) {
     robj_type = RDBTypeSet;
   } else if (type == kRedisZSet) {
     robj_type = RDBTypeZSet2;
+  } else if (type == kRedisSortedint) {  // ← ADD THIS
+    robj_type = RDBTypeSortedint;
   } else {
     WARN("Invalid or Not supported object type: {}", (int)type);
     return {Status::NotOK, "Invalid or Not supported object type"};
@@ -783,6 +794,23 @@ Status RDB::SaveObject(const std::string &key, const RedisType type) {
     }
 
     return SaveHashObject(field_values);
+  } else if (type == kRedisSortedint) {
+    redis::Sortedint sortedint_db(storage_, ns_);
+    std::vector<uint64_t> ids;
+    SortedintRangeSpec spec;
+    spec.min = 0;
+    spec.max = std::numeric_limits<uint64_t>::max();
+    spec.minex = false;
+    spec.maxex = false;
+    spec.offset = 0;
+    spec.count = std::numeric_limits<int>::max();
+    spec.reversed = false;
+    int size = 0;
+    auto s = sortedint_db.RangeByValue(ctx, key, spec, &ids, &size);
+    if (!s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+    return SaveSortedintObject(ids);
   } else if (type == kRedisBitmap) {
     std::string value;
     redis::Bitmap bitmap_db(storage_, ns_);
@@ -983,4 +1011,36 @@ Status RDB::rdbSaveZipListObject(const std::string &elem) {
   zl_ptr[ziplist_size - 1] = zlEnd;
 
   return SaveStringObject(zl_string);
+}
+
+Status RDB::SaveSortedintObject(const std::vector<uint64_t> &ids) {
+  if (ids.empty()) {
+    WARN("the size of sortedint is zero");
+    return {Status::NotOK, "the size of sortedint is zero"};
+  }
+
+  auto status = RdbSaveLen(ids.size());
+  if (!status.IsOK()) return status;
+
+  for (const auto &id : ids) {
+    status = SaveStringObject(std::to_string(id));
+    if (!status.IsOK()) return status;
+  }
+
+  return Status::OK();
+}
+
+StatusOr<std::vector<uint64_t>> RDB::LoadSortedintObject() {
+  auto len = GET_OR_RET(loadObjectLen(nullptr));
+  std::vector<uint64_t> ids;
+  if (len == 0) {
+    return ids;
+  }
+
+  for (size_t i = 0; i < len; i++) {
+    auto id_str = GET_OR_RET(LoadStringObject());
+    auto id = GET_OR_RET(ParseInt<uint64_t>(id_str, 10));
+    ids.push_back(id);
+  }
+  return ids;
 }

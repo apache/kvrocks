@@ -54,6 +54,7 @@ constexpr const int RDBTypeListQuickList2 = 18;
 constexpr const int RDBTypeStreamListPack2 = 19;
 constexpr const int RDBTypeSetListPack = 20;
 constexpr const int RDBTypeStreamListPack3 = 21;
+constexpr const int RDBTypeSortedint = 22;
 // NOTE: when adding new Redis object encoding type, update isObjectType.
 
 // Quick list node encoding
@@ -67,8 +68,8 @@ constexpr int MinRDBVersion = 6;
 
 class RdbStream;
 
-using RedisObjValue =
-    std::variant<std::string, std::vector<std::string>, std::vector<MemberScore>, std::map<std::string, std::string>>;
+using RedisObjValue = std::variant<std::string, std::vector<std::string>, std::vector<MemberScore>,
+                                   std::map<std::string, std::string>, std::vector<uint64_t>>;
 
 class RDB {
  public:
@@ -130,6 +131,10 @@ class RDB {
   // Hash
   Status SaveHashObject(const std::vector<FieldValue> &field_value);
 
+  // SortedInt
+  Status SaveSortedintObject(const std::vector<uint64_t> &ids);
+  StatusOr<std::vector<uint64_t>> LoadSortedintObject();
+
  private:
   engine::Storage *storage_;
   std::string ns_;
@@ -150,7 +155,7 @@ class RDB {
 
   /*0-5 is the basic type of Redis objects and 9-21 is the encoding type of Redis objects.
    Redis allow basic is 0-7 and 6/7 is for the module type which we don't support here.*/
-  static bool isObjectType(int type) { return (type >= 0 && type <= 5) || (type >= 9 && type <= 21); };
+  static bool isObjectType(int type) { return (type >= 0 && type <= 5) || (type >= 9 && type <= 22); };
   static bool isEmptyRedisObject(const RedisObjValue &value);
   static int rdbEncodeInteger(long long value, unsigned char *enc);
   Status rdbSaveBinaryDoubleValue(double val);

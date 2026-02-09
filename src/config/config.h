@@ -126,6 +126,8 @@ struct Config {
   int replication_recv_timeout_ms = 3200;
   int max_replication_delay_bytes = 16 * 1024;  // 16KB default
   int max_replication_delay_updates = 16;       // 16 updates default
+  int64_t max_replication_lag = 0;          // 0 = disabled, otherwise max sequences before disconnecting slow consumer
+  int replication_send_timeout_ms = 30000;  // 30 second timeout for socket sends to replicas
   int max_db_size = 0;
   int max_replication_mb = 0;
   int max_io_mb = 0;

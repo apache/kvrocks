@@ -84,6 +84,11 @@ func testIncr(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.EqualValues(t, 1, rdb.IncrBy(ctx, "expired-str", 1).Val())
 	})
 
+	t.Run("INCR fails against key with empty value", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "novar", "", 0).Err())
+		util.ErrorRegexp(t, rdb.Incr(ctx, "novar").Err(), "ERR.*")
+	})
+
 	t.Run("INCR fails against key with spaces (left)", func(t *testing.T) {
 		require.NoError(t, rdb.Set(ctx, "novar", "    11", 0).Err())
 		util.ErrorRegexp(t, rdb.Incr(ctx, "novar").Err(), "ERR.*")

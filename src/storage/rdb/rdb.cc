@@ -964,7 +964,6 @@ Status RDB::SaveSortedintObject(const std::vector<uint64_t> &ids) {
       if (!status.IsOK()) return status;
     }
   } else {
-    WARN("the size of sortedint is zero");
     return {Status::NotOK, "the size of sortedint is zero"};
   }
   return Status::OK();

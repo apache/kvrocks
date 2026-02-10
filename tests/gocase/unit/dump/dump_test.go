@@ -193,3 +193,30 @@ func TestDump_IntegerEncoding(t *testing.T) {
 		require.Equal(t, v, got)
 	}
 }
+
+func TestDump_SortedInt(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{})
+	defer srv.Close()
+
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	key := "test_sortedint_key"
+	require.NoError(t, rdb.Del(ctx, key).Err())
+
+	require.EqualValues(t, 5, rdb.Do(ctx, "SIADD", key, 5, 12, 23, 89, 100).Val())
+	require.EqualValues(t, 5, rdb.Do(ctx, "SICARD", key).Val())
+	require.EqualValues(t, "sortedint", rdb.Type(ctx, key).Val())
+
+	serialized, err := rdb.Dump(ctx, key).Result()
+	require.NoError(t, err)
+
+	restoredKey := fmt.Sprintf("restore_%s", key)
+	require.NoError(t, rdb.RestoreReplace(ctx, restoredKey, 0, serialized).Err())
+
+	require.EqualValues(t, "set", rdb.Type(ctx, restoredKey).Val())
+	members := rdb.SMembers(ctx, restoredKey).Val()
+	expectedMembers := []string{"5", "12", "23", "89", "100"}
+	require.ElementsMatch(t, expectedMembers, members)
+}

@@ -798,9 +798,9 @@ Status RDB::SaveObject(const std::string &key, const RedisType type) {
       return {Status::RedisExecErr, s.ToString()};
     }
     return SaveStringObject(value);
+  } else if (type == kRedisSortedint) {
     redis::Sortedint sortedint_db(storage_, ns_);
     std::vector<uint64_t> ids;
-
     SortedintRangeSpec spec;
     spec.min = 0;
     spec.max = std::numeric_limits<uint64_t>::max();
@@ -809,13 +809,11 @@ Status RDB::SaveObject(const std::string &key, const RedisType type) {
     spec.offset = 0;
     spec.count = std::numeric_limits<int>::max();
     spec.reversed = false;
-
     int size = 0;
-    auto s = sortedint_db.RangeByValue(ctx, key, spec, &ids, &size);
-    if (!s.ok()) {
-      return {Status::RedisExecErr, s.ToString()};
+    auto si_status = sortedint_db.RangeByValue(ctx, key, spec, &ids, &size);
+    if (!si_status.ok()) {
+      return {Status::RedisExecErr, si_status.ToString()};
     }
-
     return SaveSortedintObject(ids);
   } else {
     WARN("Invalid or Not supported object type: {}", (int)type);

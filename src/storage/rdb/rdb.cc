@@ -35,6 +35,7 @@
 #include "types/redis_bitmap.h"
 #include "types/redis_bitmap_string.h"
 #include "types/redis_hash.h"
+#include "types/redis_json.h"
 #include "types/redis_list.h"
 #include "types/redis_set.h"
 #include "types/redis_sortedint.h"
@@ -723,7 +724,7 @@ Status RDB::Dump(const std::string &key, const RedisType type) {
 
 Status RDB::SaveObjectType(const RedisType type) {
   int robj_type = -1;
-  if (type == kRedisString || type == kRedisBitmap) {
+  if (type == kRedisString || type == kRedisBitmap || type == kRedisJson) {
     robj_type = RDBTypeString;
   } else if (type == kRedisHash) {
     robj_type = RDBTypeHash;
@@ -798,6 +799,20 @@ Status RDB::SaveObject(const std::string &key, const RedisType type) {
       return {Status::RedisExecErr, s.ToString()};
     }
     return SaveStringObject(value);
+  } else if (type == kRedisJson) {
+    redis::Json json_db(storage_, ns_);
+    JsonValue value;
+    auto s = json_db.Get(ctx, key, {}, &value);
+    if (!s.ok() && !s.IsNotFound()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+    std::string json_str;
+    Config *config = storage_->GetConfig();
+    auto dump_status = value.Dump(&json_str, config->json_max_nesting_depth);
+    if (!dump_status.IsOK()) {
+      return {Status::RedisExecErr, dump_status.Msg()};
+    }
+    return SaveStringObject(json_str);
   } else if (type == kRedisSortedint) {
     redis::Sortedint sortedint_db(storage_, ns_);
     std::vector<uint64_t> ids;

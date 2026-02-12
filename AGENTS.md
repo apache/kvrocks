@@ -44,7 +44,7 @@ While working on Apache Kvrocks, please remember:
 ./x.py test go tests/gocase/unit/...
 ```
 
-### Lint 
+### Lint
 
 You must run the formatter and linters before submitting code changes. This ensures code quality and consistency across the project. It requires installing `clang-format`, `clang-tidy`, and `golangci-lint` locally. Please refer to the CONTRIBUTING.md for setup instructions.
 

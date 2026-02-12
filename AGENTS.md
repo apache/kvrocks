@@ -94,6 +94,8 @@ Apache Kvrocks is a distributed key-value NoSQL database compatible with the Red
 - `METADATA_ENCODING_VERSION=1` (default): Encodes 64-bit size and expire time in milliseconds.
 - `METADATA_ENCODING_VERSION=0`: Legacy encoding.
 
+Refer to https://kvrocks.apache.org/community/data-structure-on-rocksdb for more details.
+
 ## Coding Style and Naming Conventions
 
 - C++ formatting follows `.clang-format` (Google-based, 2-space indent, 120-column limit, sorted includes).

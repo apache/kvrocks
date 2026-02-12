@@ -6,7 +6,7 @@ While working on Apache Kvrocks, please remember:
 
 - Always use English in code and comments.
 - Only add meaningful comments when the code's behavior is difficult to understand.
-- Only add meaningful tests when they actually verify internal behaviors; otherwise, don't create them unless requested.
+- Add or update tests to cover externally observable behavior and regressions when you change or add functionality.
 - Always run the formatter before submitting changes.
 
 ## Build and Development Commands

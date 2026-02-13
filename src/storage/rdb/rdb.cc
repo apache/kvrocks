@@ -35,6 +35,7 @@
 #include "types/redis_bitmap.h"
 #include "types/redis_bitmap_string.h"
 #include "types/redis_hash.h"
+#include "types/redis_hyperloglog.h"
 #include "types/redis_list.h"
 #include "types/redis_set.h"
 #include "types/redis_sortedint.h"
@@ -723,7 +724,7 @@ Status RDB::Dump(const std::string &key, const RedisType type) {
 
 Status RDB::SaveObjectType(const RedisType type) {
   int robj_type = -1;
-  if (type == kRedisString || type == kRedisBitmap) {
+  if (type == kRedisString || type == kRedisBitmap || type == kRedisHyperLogLog) {
     robj_type = RDBTypeString;
   } else if (type == kRedisHash) {
     robj_type = RDBTypeHash;
@@ -815,6 +816,12 @@ Status RDB::SaveObject(const std::string &key, const RedisType type) {
       return {Status::RedisExecErr, si_status.ToString()};
     }
     return SaveSortedintObject(ids);
+  } else if (type == kRedisHyperLogLog) {
+    redis::HyperLogLog hll_db(storage_, ns_);
+    std::string value;
+    auto s = hll_db.Get(ctx, key, &value);
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+    return SaveStringObject(value);
   } else {
     WARN("Invalid or Not supported object type: {}", (int)type);
     return {Status::NotOK, "Invalid or Not supported object type"};

@@ -126,7 +126,7 @@ func TestPollUpdates_Basic(t *testing.T) {
 			rdb0.Set(ctx, fmt.Sprintf("key-%d", i), i, 0)
 		}
 
-		updates := make([]any, 0)
+		updates := make([]any, 0, 10)
 		result, err := rdb0.Do(ctx, "POLLUPDATES", 0, "MAX", 6).Result()
 		require.NoError(t, err)
 		pollUpdates := parsePollUpdatesResult(t, result.(map[interface{}]interface{}), false)

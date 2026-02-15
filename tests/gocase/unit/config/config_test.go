@@ -55,7 +55,7 @@ func TestRenameCommand(t *testing.T) {
 	require.Equal(t, []interface{}{}, rdb.Do(ctx, "KEYSNEW", "*").Val())
 	require.NoError(t, rdb.Do(ctx, "SETNEW", "key", "1").Err())
 	require.Equal(t, "1", rdb.Do(ctx, "GETNEW", "key").Val())
-	val := []string{}
+	val := make([]string, 0, 4)
 	for _, v := range rdb.Do(ctx, "config", "get", "rename-command").Val().([]interface{}) {
 		val = append(val, v.(string))
 	}

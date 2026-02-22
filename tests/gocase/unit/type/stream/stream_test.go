@@ -24,6 +24,7 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -313,7 +314,7 @@ var streamTests = func(t *testing.T, configs util.KvrocksServerConfigs) {
 	t.Run("XREVRANGE returns the reverse of XRANGE", func(t *testing.T) {
 		items := rdb.XRange(ctx, "mystream", "-", "+").Val()
 		revItems := rdb.XRevRange(ctx, "mystream", "+", "-").Val()
-		util.ReverseSlice(revItems)
+		slices.Reverse(revItems)
 		require.EqualValues(t, items, revItems)
 	})
 

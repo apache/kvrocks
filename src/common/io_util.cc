@@ -29,7 +29,10 @@
 #include <poll.h>
 #include <sys/types.h>
 
+#include <chrono>
+
 #include "fmt/ostream.h"
+#include "scope_exit.h"
 #include "server/tls_util.h"
 
 #ifdef __linux__
@@ -466,6 +469,100 @@ Status SockSend(int fd, const std::string &data, [[maybe_unused]] bufferevent *b
 #else
   return SockSend(fd, data);
 #endif
+}
+
+Status SockSendWithTimeout(int fd, const std::string &data, int timeout_ms) {
+  // Fall back to blocking send if timeout is non-positive
+  if (timeout_ms <= 0) {
+    return SockSend(fd, data);
+  }
+
+  ssize_t n = 0;
+  auto start = std::chrono::steady_clock::now();
+
+  while (n < static_cast<ssize_t>(data.size())) {
+    // Check if we've exceeded the timeout
+    auto elapsed =
+        std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
+    if (elapsed >= timeout_ms) {
+      return {Status::NotOK, fmt::format("send timeout after {} ms, sent {} of {} bytes", elapsed, n, data.size())};
+    }
+
+    // Calculate remaining timeout
+    int remaining_ms = timeout_ms - static_cast<int>(elapsed);
+
+    // Wait for socket to be writable with timeout
+    int ready = AeWait(fd, AE_WRITABLE, remaining_ms);
+    if (ready == 0) {
+      return {Status::NotOK, fmt::format("send timeout waiting for socket, sent {} of {} bytes", n, data.size())};
+    }
+    if (ready < 0) {
+      return Status::FromErrno("poll error while sending");
+    }
+
+    ssize_t nwritten = write(fd, data.data() + n, data.size() - n);
+    if (nwritten == -1) {
+      if (errno == EAGAIN || errno == EWOULDBLOCK) {
+        // Socket buffer is full, continue waiting
+        continue;
+      }
+      return Status::FromErrno();
+    }
+    n += nwritten;
+  }
+  return Status::OK();
+}
+
+Status SockSendWithTimeout(int fd, const std::string &data, [[maybe_unused]] bufferevent *bev, int timeout_ms) {
+  // Fall back to blocking send if timeout is non-positive
+  if (timeout_ms <= 0) {
+    return SockSend(fd, data, bev);
+  }
+
+#ifdef ENABLE_OPENSSL
+  auto ssl = bufferevent_openssl_get_ssl(bev);
+  if (ssl) {
+    // Save original flags and set socket to non-blocking for timeout support
+    int orig_flags = fcntl(fd, F_GETFL);
+    if (orig_flags == -1) return Status::FromErrno("fcntl(F_GETFL)");
+
+    auto s = SockSetBlocking(fd, 0);
+    if (!s.IsOK()) return s;
+
+    // Restore original flags on scope exit
+    auto restore_flags = MakeScopeExit([fd, orig_flags] { fcntl(fd, F_SETFL, orig_flags); });
+
+    ssize_t n = 0;
+    auto start = std::chrono::steady_clock::now();
+
+    while (n < static_cast<ssize_t>(data.size())) {
+      auto elapsed =
+          std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
+      if (elapsed >= timeout_ms) {
+        return {Status::NotOK,
+                fmt::format("SSL send timeout after {} ms, sent {} of {} bytes", elapsed, n, data.size())};
+      }
+
+      int remaining_ms = timeout_ms - static_cast<int>(elapsed);
+      int ready = AeWait(fd, AE_WRITABLE, remaining_ms);
+      if (ready <= 0) {
+        return {Status::NotOK, fmt::format("SSL send timeout waiting for socket, sent {} of {} bytes", n, data.size())};
+      }
+
+      int nwritten = SSL_write(ssl, data.data() + n, static_cast<int>(data.size() - n));
+      if (nwritten <= 0) {
+        int err = SSL_get_error(ssl, nwritten);
+        if (err == SSL_ERROR_WANT_WRITE || err == SSL_ERROR_WANT_READ) {
+          continue;
+        }
+        return {Status::NotOK, fmt::format("SSL_write error: {}", err)};
+      }
+      n += nwritten;
+    }
+    return Status::OK();
+  }
+#endif
+  return SockSendWithTimeout(fd, data, timeout_ms);
 }
 
 StatusOr<int> SockConnect(const std::string &host, uint32_t port, [[maybe_unused]] ssl_st *ssl, int conn_timeout,

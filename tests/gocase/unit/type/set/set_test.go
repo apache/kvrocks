@@ -562,7 +562,7 @@ var setTests = func(t *testing.T, configs util.KvrocksServerConfigs) {
 
 	t.Run("SPOP with <count> hashtable", func(t *testing.T) {
 		CreateSet(t, rdb, ctx, "myset", []interface{}{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"})
-		var array []string
+		array := make([]string, 0, 8)
 		var popNum = []int64{11, 9, 0, 4, 1, 0, 1, 9}
 		for _, i := range popNum {
 			cmd := rdb.SPopN(ctx, "myset", i)
@@ -576,7 +576,7 @@ var setTests = func(t *testing.T, configs util.KvrocksServerConfigs) {
 
 	t.Run("SPOP with <count> intset", func(t *testing.T) {
 		CreateSet(t, rdb, ctx, "myset", []interface{}{1, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 2, 20, 21, 22, 23, 24, 25, 26, 3, 4, 5, 6, 7, 8, 9})
-		var array []string
+		array := make([]string, 0, 8)
 		var popNum = []int64{11, 9, 0, 4, 1, 0, 1, 9}
 		for _, i := range popNum {
 			cmd := rdb.SPopN(ctx, "myset", i)

@@ -130,6 +130,9 @@ class RDB {
   // Hash
   Status SaveHashObject(const std::vector<FieldValue> &field_value);
 
+  // SortedInt
+  Status SaveSortedintObject(const std::vector<uint64_t> &ids);
+
  private:
   engine::Storage *storage_;
   std::string ns_;

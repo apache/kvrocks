@@ -21,9 +21,7 @@
 #include <storage/batch_extractor.h>
 
 #include <ctime>
-#include <vector>
 
-#include "cluster/cluster_defs.h"
 #include "command_parser.h"
 #include "commander.h"
 #include "commands/scan_base.h"
@@ -1577,41 +1575,6 @@ class CommandFlushBlockCache : public Commander {
   }
 };
 
-// Syntax: FLUSHSLOTS <slot_ranges>
-class CommandFlushSlots : public Commander {
- public:
-  Status Parse(const std::vector<std::string> &args) override {
-    if (args.size() != 2) {
-      return {Status::RedisParseErr, errWrongNumOfArguments};
-    }
-
-    return CommandTable::ParseSlotRanges(args.back(), slot_ranges_);
-  }
-
-  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
-    if (!srv->GetConfig()->cluster_enabled) {
-      return {Status::RedisExecErr, "Cluster mode is not enabled"};
-    }
-    if (srv->slot_migrator->IsMigrationInProgress()) {
-      return {Status::RedisExecErr, "Cannot flush slot when migration is in progress"};
-    }
-
-    std::string ns = conn->GetNamespace();
-    Database redis(srv->storage, ns);
-    for (const auto &slot_range : slot_ranges_) {
-      if (auto s = redis.ClearKeysOfSlotRange(ctx, ns, slot_range); !s.ok()) {
-        return {Status::RedisExecErr, s.ToString()};
-      }
-    }
-
-    *output = redis::RESP_OK;
-    return Status::OK();
-  }
-
- private:
-  std::vector<SlotRange> slot_ranges_;
-};
-
 REDIS_REGISTER_COMMANDS(
     Server, MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loading auth", NO_KEY),
     MakeCmdAttr<CommandPing>("ping", -1, "read-only", NO_KEY),
@@ -1655,6 +1618,5 @@ REDIS_REGISTER_COMMANDS(
     MakeCmdAttr<CommandPollUpdates>("pollupdates", -2, "read-only admin", NO_KEY),
     MakeCmdAttr<CommandSST>("sst", -3, "write exclusive admin", 1, 1, 1),
     MakeCmdAttr<CommandFlushMemTable>("flushmemtable", -1, "exclusive write", NO_KEY),
-    MakeCmdAttr<CommandFlushBlockCache>("flushblockcache", 1, "exclusive write", NO_KEY),
-    MakeCmdAttr<CommandFlushSlots>("flushslots", 2, "exclusive write", NO_KEY), )
+    MakeCmdAttr<CommandFlushBlockCache>("flushblockcache", 1, "exclusive write", NO_KEY), )
 }  // namespace redis

@@ -95,7 +95,7 @@ rocksdb::Status CuckooChain::Reserve(engine::Context &ctx, const Slice &user_key
   // Calculate the number of buckets needed for this filter
   uint32_t num_buckets = CuckooFilter::OptimalNumBuckets(capacity, bucket_size);
 
-  info("Creating cuckoo filter with capacity={}, bucket_size={}, num_buckets={}, max_iterations={}, expansion={}",
+  INFO("Creating cuckoo filter with capacity={}, bucket_size={}, num_buckets={}, max_iterations={}, expansion={}",
        capacity, bucket_size, num_buckets, max_iterations, static_cast<int>(expansion));
 
   // Create a write batch for atomic operation

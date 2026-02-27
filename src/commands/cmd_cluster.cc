@@ -243,7 +243,8 @@ class CommandClusterX : public Commander {
       return CommandTable::ParseSlotRanges(args.back(), slot_ranges_);
     }
 
-    return {Status::RedisParseErr, "CLUSTERX command, CLUSTERX VERSION|MYID|SETNODEID|SETNODES|SETSLOT|MIGRATE|FLUSHSLOTS"};
+    return {Status::RedisParseErr,
+            "CLUSTERX command, CLUSTERX VERSION|MYID|SETNODEID|SETNODES|SETSLOT|MIGRATE|FLUSHSLOTS"};
   }
 
   Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {

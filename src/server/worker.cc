@@ -404,8 +404,17 @@ void Worker::MigrateConnection(Worker *target, redis::Connection *conn) {
   }
   bufferevent_base_set(target->base_, bev);
   conn->SetCB(bev);
-  bufferevent_enable(bev, EV_READ | EV_WRITE);
   conn->SetOwner(target);
+  // Update the worker pointer in paused_conns_ before re-enabling events so
+  // that ClientPauseUnpause routes the resume to the correct worker.
+  if (conn->IsPaused()) {
+    srv->UpdatePausedConnWorker(conn, target);
+    // Do not re-enable EV_READ for a paused connection; it will be re-enabled
+    // by ResumeFromPause when the pause expires or CLIENT UNPAUSE is called.
+    bufferevent_enable(bev, EV_WRITE);
+  } else {
+    bufferevent_enable(bev, EV_READ | EV_WRITE);
+  }
 }
 
 void Worker::DetachConnection(redis::Connection *conn) {
@@ -428,6 +437,7 @@ void Worker::FreeConnection(redis::Connection *conn) {
   removeConnection(conn->GetFD());
   srv->ResetWatchedKeys(conn);
   srv->CleanupWaitConnection(conn);
+  if (conn->IsPaused()) srv->RemovePausedConn(conn);
   if (rate_limit_group_) {
     bufferevent_remove_from_rate_limit_group(conn->GetBufferEvent());
   }
@@ -465,6 +475,16 @@ Status Worker::EnableWriteEvent(int fd) {
   }
 
   return {Status::NotOK, "connection doesn't exist"};
+}
+
+void Worker::ResumeConnectionFromPause(int fd, uint64_t id) {
+  std::unique_lock<std::mutex> lock(conns_mu_);
+  auto iter = conns_.find(fd);
+  // Validate that the connection still exists and has the same id to avoid
+  // use-after-free if the connection was freed between pause and unpause.
+  if (iter != conns_.end() && iter->second->GetID() == id) {
+    iter->second->ResumeFromPause();
+  }
 }
 
 Status Worker::Reply(int fd, const std::string &reply) {

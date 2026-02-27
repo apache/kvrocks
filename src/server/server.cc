@@ -36,6 +36,7 @@
 #include <memory>
 #include <mutex>
 #include <shared_mutex>
+#include <unordered_set>
 #include <utility>
 
 #include "commands/command_parser.h"
@@ -994,7 +995,97 @@ void Server::cron() {
     }
 
     CleanupExitedSlaves();
+
+    // CLIENT PAUSE timeout check
+    if (client_pause_end_time_ != 0) {
+      uint64_t now_ms = util::GetTimeStampMS();
+      if (now_ms >= client_pause_end_time_) {
+        ClientPauseUnpause();
+      }
+    }
+
     recordInstantaneousMetrics();
+  }
+}
+
+void Server::SetClientPause(uint64_t end_time_ms, PauseMode mode) {
+  std::lock_guard<std::mutex> lock(client_pause_mu_);
+  client_pause_end_time_ = end_time_ms;
+  client_pause_mode_ = mode;
+}
+
+void Server::ClientPauseUnpause() {
+  std::vector<PausedConnEntry> to_resume;
+  {
+    std::lock_guard<std::mutex> lock(client_pause_mu_);
+    client_pause_end_time_ = 0;
+    client_pause_mode_ = PauseMode::kOff;
+    to_resume.swap(paused_conns_);
+  }
+  // Resume via the worker so fd+id validation under conns_mu_ serializes with FreeConnection.
+  for (auto &entry : to_resume) {
+    entry.worker->ResumeConnectionFromPause(entry.fd, entry.id);
+  }
+}
+
+bool Server::PauseIfNeeded(redis::Connection *conn, const std::string &cmd_name, uint64_t cmd_flags) {
+  if (client_pause_end_time_.load() == 0) {
+    return false;
+  }
+  if (conn->GetClientType() & kTypeSlave) {
+    return false;
+  }
+  // CLIENT subcommands (PAUSE/UNPAUSE) are exempt to avoid deadlock.
+  if (util::EqualICase(cmd_name, "client")) {
+    return false;
+  }
+
+  // Re-read mode under the lock to avoid a TOCTOU race with SetClientPause.
+  std::lock_guard<std::mutex> lock(client_pause_mu_);
+  if (client_pause_end_time_.load() == 0) {
+    return false;
+  }
+
+  auto mode = client_pause_mode_.load();
+  bool should_pause = false;
+  if (mode == PauseMode::kAll) {
+    should_pause = true;
+  } else if (mode == PauseMode::kWrite) {
+    if (cmd_flags & redis::kCmdWrite) {
+      should_pause = true;
+    } else {
+      static const std::unordered_set<std::string> kWriteModeSpecialCmds = {
+          "eval", "evalsha", "publish", "pfcount", "wait",
+      };
+      should_pause = kWriteModeSpecialCmds.count(cmd_name) > 0;
+    }
+  }
+  if (!should_pause) {
+    return false;
+  }
+
+  if (!conn->IsPaused()) {
+    conn->SuspendForPause();
+    paused_conns_.push_back({conn->Owner(), conn->GetFD(), conn->GetID()});
+  }
+  return true;
+}
+
+void Server::RemovePausedConn(redis::Connection *conn) {
+  std::lock_guard<std::mutex> lock(client_pause_mu_);
+  paused_conns_.erase(
+      std::remove_if(paused_conns_.begin(), paused_conns_.end(),
+                     [conn](const PausedConnEntry &e) { return e.fd == conn->GetFD() && e.id == conn->GetID(); }),
+      paused_conns_.end());
+}
+
+void Server::UpdatePausedConnWorker(redis::Connection *conn, Worker *new_worker) {
+  std::lock_guard<std::mutex> lock(client_pause_mu_);
+  for (auto &entry : paused_conns_) {
+    if (entry.fd == conn->GetFD() && entry.id == conn->GetID()) {
+      entry.worker = new_worker;
+      return;
+    }
   }
 }
 

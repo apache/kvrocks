@@ -25,11 +25,13 @@
 
 #include <array>
 #include <atomic>
+#include <condition_variable>
 #include <cstddef>
 #include <cstdint>
 #include <list>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <set>
 #include <shared_mutex>
 #include <string>
@@ -109,6 +111,12 @@ enum class CursorType : uint8_t {
   kTypeHash = 2,  // cursor for HSCAN
   kTypeSet = 3,   // cursor for SSCAN
   kTypeZSet = 4,  // cursor for ZSCAN
+};
+
+enum class PauseMode {
+  kOff = 0,
+  kAll = 1,
+  kWrite = 2,
 };
 struct CursorDictElement;
 
@@ -328,6 +336,14 @@ class Server {
   std::shared_lock<std::shared_mutex> WorkConcurrencyGuard();
   std::unique_lock<std::shared_mutex> WorkExclusivityGuard();
 
+  // CLIENT PAUSE / CLIENT UNPAUSE
+  void SetClientPause(uint64_t end_time_ms, PauseMode mode);
+  // Returns true if the connection was suspended (caller must stop processing further commands).
+  bool PauseIfNeeded(redis::Connection *conn, const std::string &cmd_name, uint64_t cmd_flags);
+  void ClientPauseUnpause();
+  void RemovePausedConn(redis::Connection *conn);
+  void UpdatePausedConnWorker(redis::Connection *conn, Worker *new_worker);
+
   Stats stats;
   engine::Storage *storage;
   MemoryProfiler memory_profiler;
@@ -450,4 +466,17 @@ class Server {
   std::atomic<uint16_t> cursor_counter_ = {0};
   using CursorDictType = std::array<CursorDictElement, CURSOR_DICT_SIZE>;
   std::unique_ptr<CursorDictType> cursor_dict_;
+
+  // CLIENT PAUSE state
+  std::atomic<uint64_t> client_pause_end_time_{0};
+  std::atomic<PauseMode> client_pause_mode_{PauseMode::kOff};
+  std::mutex client_pause_mu_;
+  // Fields are captured while the connection is alive; ClientPauseUnpause never
+  // dereferences the pointer after releasing the lock, preventing use-after-free.
+  struct PausedConnEntry {
+    Worker *worker;
+    int fd;
+    uint64_t id;
+  };
+  std::vector<PausedConnEntry> paused_conns_;
 };

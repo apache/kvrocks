@@ -1413,8 +1413,8 @@ Server::InfoEntries Server::GetCpuInfo() {  // NOLINT(readability-convert-member
     thread_cpu_times[i] = util::ThreadGetCPUTime(worker_threads_[i]->GetNativeHandle());
   }
   entries.emplace_back(
-      "thread_cpu_time",
-      fmt::format("[{}]", util::StringJoin(thread_cpu_times, [](auto v) { return fmt::format("{:.3f}", v); }, ",")));
+      "worker_cpu_time",
+      fmt::format("[{}]", util::StringJoin(thread_cpu_times, [](auto v) { return std::to_string(v); }, ",")));
 
   return entries;
 }

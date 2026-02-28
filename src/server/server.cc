@@ -27,7 +27,6 @@
 #include <sys/utsname.h>
 
 #include <algorithm>
-#include <array>
 #include <atomic>
 #include <cstdint>
 #include <cstdlib>

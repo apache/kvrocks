@@ -116,6 +116,8 @@ class WorkerThread {
   void Join();
   bool IsTerminated() const { return worker_->IsTerminated(); }
 
+  std::thread::native_handle_type GetNativeHandle() { return t_.native_handle(); }
+
  private:
   std::thread t_;
   std::unique_ptr<Worker> worker_;

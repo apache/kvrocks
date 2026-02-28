@@ -95,6 +95,11 @@ Worker::~Worker() {
     iter->Close();
   }
 
+  for (const auto &lev : listen_events_) {
+    evconnlistener_free(lev);
+  }
+  listen_events_.clear();
+
   timer_.reset();
   if (rate_limit_group_) {
     bufferevent_rate_limit_group_free(rate_limit_group_);
@@ -325,6 +330,7 @@ void Worker::Stop(uint32_t wait_seconds) {
     // It's unnecessary to close the listener fd since we have set the LEV_OPT_CLOSE_ON_FREE flag
     evconnlistener_free(lev);
   }
+  listen_events_.clear();
   // wait_seconds == 0 means stop immediately, or it will wait N seconds
   // for the worker to process the remaining requests before stopping.
   if (wait_seconds > 0) {

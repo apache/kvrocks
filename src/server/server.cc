@@ -1403,10 +1403,10 @@ Server::InfoEntries Server::GetCpuInfo() {  // NOLINT(readability-convert-member
 
   rusage self_ru;
   getrusage(RUSAGE_SELF, &self_ru);
-  entries.emplace_back("used_cpu_sys", static_cast<float>(self_ru.ru_stime.tv_sec) +
-                                           static_cast<float>(self_ru.ru_stime.tv_usec / 1000000));
+  entries.emplace_back(
+      "used_cpu_sys", static_cast<float>(self_ru.ru_stime.tv_sec) + static_cast<float>(self_ru.ru_stime.tv_usec) / 1e6);
   entries.emplace_back("used_cpu_user", static_cast<float>(self_ru.ru_utime.tv_sec) +
-                                            static_cast<float>(self_ru.ru_utime.tv_usec / 1000000));
+                                            static_cast<float>(self_ru.ru_utime.tv_usec) / 1e6);
 
   std::vector<double> thread_cpu_times(worker_threads_.size());
   for (std::size_t i{0}; i < worker_threads_.size(); ++i) {

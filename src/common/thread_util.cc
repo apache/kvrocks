@@ -63,17 +63,15 @@ double ThreadGetCPUTime(std::thread::native_handle_type thread_id) {
   }
 
   clockid_t clock_id;
-  int ret = pthread_getcpuclockid(thread_id, &clock_id);
-
-  if (ret != 0) {
+  if (pthread_getcpuclockid(thread_id, &clock_id) != 0) {
     return -1.0f;
   }
 
   timespec ts;
-  if (clock_gettime(clock_id, &ts) == 0) {
-    return static_cast<double>(ts.tv_sec) + static_cast<double>(ts.tv_nsec) / 1e9;
+  if (clock_gettime(clock_id, &ts) != 0) {
+    return -1.0f;
   }
-  return -1.0f;
+  return static_cast<double>(ts.tv_sec) + static_cast<double>(ts.tv_nsec) / 1e9;
 }
 #endif
 

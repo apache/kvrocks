@@ -62,7 +62,7 @@ double ThreadGetCPUTime(std::thread::native_handle_type thread_id) {
     return 0.0;
   }
 
-  clockid_t clock_id;
+  clockid_t clock_id = 0;
   if (pthread_getcpuclockid(thread_id, &clock_id) != 0) {
     return 0.0;
   }

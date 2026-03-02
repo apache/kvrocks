@@ -271,6 +271,17 @@ func TestBitmap(t *testing.T) {
 		require.EqualValues(t, []string{"\x55\xff\x00\xaa"}, GetBitmap(t, rdb, ctx, "s"))
 	})
 
+	t.Run("BITOP DIFF|DIFF1|ANDOR|ONE don't change the string with single input key", func(t *testing.T) {
+		Set2SetBit(t, rdb, ctx, "a", []byte("\x01\x02\xff"))
+		Set2SetBit(t, rdb, ctx, "b", []byte("\x01\x02\xff"))
+		Set2SetBit(t, rdb, ctx, "c", []byte("\x01\x02\xff"))
+		require.NoError(t, rdb.BitOpDiff(ctx, "res1", "a", "b", "c").Err())
+		require.NoError(t, rdb.BitOpDiff1(ctx, "res2", "a", "b", "c").Err())
+		require.NoError(t, rdb.BitOpAndOr(ctx, "res3", "a", "b", "c").Err())
+		require.NoError(t, rdb.BitOpOne(ctx, "res4", "a", "b", "c").Err())
+		require.EqualValues(t, []string{"\x00\x00\x00", "\x00\x01\x00", "\x01\x02\xff", "\x00\x00\x00"}, GetBitmap(t, rdb, ctx, "res1", "res2", "res3", "res4"))
+	})
+
 	t.Run("BITOP AND|OR|XOR don't change the string with single input key", func(t *testing.T) {
 		Set2SetBit(t, rdb, ctx, "a", []byte("\x01\x02\xff"))
 		require.NoError(t, rdb.BitOpAnd(ctx, "res1", "a").Err())

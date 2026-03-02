@@ -3,11 +3,19 @@ module github.com/apache/kvrocks/tests/gocase
 go 1.24.0
 
 require (
+<<<<<<< HEAD
 	github.com/redis/go-redis/v9 v9.17.2
 	github.com/shirou/gopsutil/v4 v4.25.12
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/exp v0.0.0-20251219203646-944ab1f22d93
 	golang.org/x/sync v0.19.0
+=======
+	github.com/redis/go-redis/v9 v9.12.0
+	github.com/shirou/gopsutil/v4 v4.25.4
+	github.com/stretchr/testify v1.10.0
+	golang.org/x/exp v0.0.0-20250506013437-ce4c2cf36ca6
+	golang.org/x/sync v0.14.0
+>>>>>>> 2c95f35b (Add testcases)
 )
 
 require (

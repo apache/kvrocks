@@ -602,6 +602,13 @@ rocksdb::Status Bitmap::BitOp(engine::Context &ctx, BitOpFlags op_flag, const st
                 lres[2] |= lp[i][k + 2];
                 lres[3] |= lp[i][k + 3];
               }
+              // For Diff1, we need the OR of ALL keys (including the first)
+              if (op_flag == kBitOpDiff1) {
+                lres[0] |= lp[0][k + 0];
+                lres[1] |= lp[0][k + 1];
+                lres[2] |= lp[0][k + 2];
+                lres[3] |= lp[0][k + 3];
+              }
               k += 4;
               lres += 4;
               j += sizeof(uint64_t) * 4;
@@ -680,6 +687,10 @@ rocksdb::Status Bitmap::BitOp(engine::Context &ctx, BitOpFlags op_flag, const st
         for (; j < frag_maxlen; j++) {
           output = (fragments[0].size() <= j) ? 0 : fragments[0][j];
           if (op_flag == kBitOpNot) output = ~output;
+          // For Diff1, disjunction starts with the first key's value
+          if (op_flag == kBitOpDiff1) {
+            disjunction = output;
+          }
           for (uint64_t i = 1; i < frag_numkeys; i++) {
             byte = (fragments[i].size() <= j) ? 0 : fragments[i][j];
             switch (op_flag) {

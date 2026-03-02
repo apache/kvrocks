@@ -67,7 +67,7 @@ func TestClientPause(t *testing.T) {
 	})
 
 	t.Run("CLIENT UNPAUSE releases paused clients immediately", func(t *testing.T) {
-		require.NoError(t, adminClient.Do(ctx, "CLIENT", "PAUSE", "10000").Err())
+		require.NoError(t, adminClient.Do(ctx, "CLIENT", "PAUSE", "10000", "WRITE").Err())
 
 		writeClient := srv.NewClientWithOption(&redis.Options{Password: "admin"})
 		defer func() { require.NoError(t, writeClient.Close()) }()

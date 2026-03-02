@@ -41,7 +41,7 @@ void ThreadSetName(const char *name) {
 #ifdef __APPLE__
 double ThreadGetCPUTime(std::thread::native_handle_type thread_id) {
   if (!thread_id) {
-    return -1.0;
+    return 0.0;
   }
 
   mach_port_t mach_thread = pthread_mach_thread_np(thread_id);
@@ -50,7 +50,7 @@ double ThreadGetCPUTime(std::thread::native_handle_type thread_id) {
   mach_msg_type_number_t count = THREAD_BASIC_INFO_COUNT;
 
   if (thread_info(mach_thread, THREAD_BASIC_INFO, (thread_info_t)&info, &count) != KERN_SUCCESS) {
-    return -1.0;
+    return 0.0;
   }
 
   return (static_cast<double>(info.user_time.seconds) + static_cast<double>(info.user_time.microseconds) / 1e6) +
@@ -59,17 +59,17 @@ double ThreadGetCPUTime(std::thread::native_handle_type thread_id) {
 #else
 double ThreadGetCPUTime(std::thread::native_handle_type thread_id) {
   if (!thread_id) {
-    return -1.0;
+    return 0.0;
   }
 
   clockid_t clock_id;
   if (pthread_getcpuclockid(thread_id, &clock_id) != 0) {
-    return -1.0;
+    return 0.0;
   }
 
   timespec ts;
   if (clock_gettime(clock_id, &ts) != 0) {
-    return -1.0;
+    return 0.0;
   }
   return static_cast<double>(ts.tv_sec) + static_cast<double>(ts.tv_nsec) / 1e9;
 }

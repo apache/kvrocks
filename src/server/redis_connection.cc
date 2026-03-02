@@ -227,13 +227,13 @@ bool Connection::CanMigrate() const {
          && subscribe_channels_.empty() && subscribe_patterns_.empty();  // not subscribing any channel
 }
 
-void Connection::SuspendForPause() {
+void Connection::Pause() {
   if (is_paused_) return;
   is_paused_ = true;
   bufferevent_disable(bev_, EV_READ);
 }
 
-void Connection::ResumeFromPause() {
+void Connection::Unpause() {
   if (!is_paused_) return;
   is_paused_ = false;
   bufferevent_enable(bev_, EV_READ);
@@ -469,7 +469,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     auto cmd_flags = attributes->GenerateFlags(cmd_tokens, *config);
 
     // Push the command back and stop processing; it will be re-executed after unpause.
-    if (srv_->PauseIfNeeded(this, cmd_name, cmd_flags)) {
+    if (srv_->PauseConnIfNeeded(this, cmd_name, cmd_flags)) {
       to_process_cmds->push_front(std::move(cmd_tokens));
       return;
     }

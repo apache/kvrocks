@@ -177,8 +177,8 @@ class Connection : public EvbufCallbackBase<Connection> {
   bool CanMigrate() const;
 
   // CLIENT PAUSE async suspend/resume
-  void SuspendForPause();
-  void ResumeFromPause();
+  void Pause();
+  void Unpause();
   bool IsPaused() const { return is_paused_; }
 
   // Multi exec

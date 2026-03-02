@@ -644,14 +644,14 @@ class CommandClient : public Commander {
         return {Status::RedisExecErr, errAdminPermissionRequired};
       }
       uint64_t now_ms = util::GetTimeStampMS();
-      srv->SetClientPause(now_ms + pause_timeout_ms_, pause_mode_);
+      srv->PauseConns(now_ms + pause_timeout_ms_, pause_mode_);
       *output = redis::RESP_OK;
       return Status::OK();
     } else if (subcommand_ == "unpause") {
       if (!conn->IsAdmin()) {
         return {Status::RedisExecErr, errAdminPermissionRequired};
       }
-      srv->ClientPauseUnpause();
+      srv->UnpauseConns();
       *output = redis::RESP_OK;
       return Status::OK();
     }

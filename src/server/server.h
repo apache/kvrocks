@@ -337,12 +337,11 @@ class Server {
   std::unique_lock<std::shared_mutex> WorkExclusivityGuard();
 
   // CLIENT PAUSE / CLIENT UNPAUSE
-  void SetClientPause(uint64_t end_time_ms, PauseMode mode);
+  void PauseConns(uint64_t end_time_ms, PauseMode mode);
   // Returns true if the connection was suspended (caller must stop processing further commands).
-  bool PauseIfNeeded(redis::Connection *conn, const std::string &cmd_name, uint64_t cmd_flags);
-  void ClientPauseUnpause();
+  bool PauseConnIfNeeded(redis::Connection *conn, const std::string &cmd_name, uint64_t cmd_flags);
+  void UnpauseConns();
   void RemovePausedConn(redis::Connection *conn);
-  void UpdatePausedConnWorker(redis::Connection *conn, Worker *new_worker);
 
   Stats stats;
   engine::Storage *storage;
@@ -467,11 +466,11 @@ class Server {
   using CursorDictType = std::array<CursorDictElement, CURSOR_DICT_SIZE>;
   std::unique_ptr<CursorDictType> cursor_dict_;
 
-  // CLIENT PAUSE state
-  std::atomic<uint64_t> client_pause_end_time_{0};
-  std::atomic<PauseMode> client_pause_mode_{PauseMode::kOff};
-  std::mutex client_pause_mu_;
-  // Fields are captured while the connection is alive; ClientPauseUnpause never
+  // Conn pause state (CLIENT PAUSE)
+  std::atomic<uint64_t> conn_pause_end_time_{0};
+  std::atomic<PauseMode> conn_pause_mode_{PauseMode::kOff};
+  std::mutex conn_pause_mu_;
+  // Fields are captured while the connection is alive; UnpauseConns never
   // dereferences the pointer after releasing the lock, preventing use-after-free.
   struct PausedConnEntry {
     Worker *worker;

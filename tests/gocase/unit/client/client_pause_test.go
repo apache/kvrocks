@@ -81,9 +81,16 @@ func TestClientPause(t *testing.T) {
 		}()
 
 		time.Sleep(100 * time.Millisecond)
+		// k2 should not exist yet because the SET is still blocked by the pause.
+		require.Equal(t, redis.Nil, unpauseClient.Get(ctx, "k2").Err())
+
 		require.NoError(t, unpauseClient.Do(ctx, "CLIENT", "UNPAUSE").Err())
 		wg.Wait()
 		require.Less(t, time.Since(start).Milliseconds(), int64(5000))
+		// After UNPAUSE the blocked SET should have completed, so k2 must be "v2".
+		val, err := unpauseClient.Get(ctx, "k2").Result()
+		require.NoError(t, err)
+		require.Equal(t, "v2", val)
 	})
 
 	t.Run("CLIENT PAUSE WRITE blocks write but not read commands", func(t *testing.T) {

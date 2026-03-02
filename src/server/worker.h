@@ -60,7 +60,7 @@ class Worker : EventCallbackBase<Worker>, EvconnlistenerBase<Worker> {
   Status AddConnection(redis::Connection *c);
   Status EnableWriteEvent(int fd);
   Status Reply(int fd, const std::string &reply);
-  void ResumeConnectionFromPause(int fd, uint64_t id);
+  void UnpauseConnection(int fd, uint64_t id);
   void BecomeMonitorConn(redis::Connection *conn);
   void QuitMonitorConn(redis::Connection *conn);
   void FeedMonitorConns(redis::Connection *conn, const std::string &response);

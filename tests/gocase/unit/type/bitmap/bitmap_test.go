@@ -579,4 +579,345 @@ func TestBitmap(t *testing.T) {
 		}
 	})
 
+	t.Run("BITOP DIFF|DIFF1|ANDOR|ONE with long bitmaps (fast path)", func(t *testing.T) {
+		// Use bitmaps longer than 32 bytes to trigger fast path (sizeof(uint64_t) * 4)
+		Set2SetBit(t, rdb, ctx, "a", makeLongBitmap([]byte{0x01, 0x02, 0xff}, 40))
+		Set2SetBit(t, rdb, ctx, "b", makeLongBitmap([]byte{0x01, 0x02, 0xff}, 40))
+		Set2SetBit(t, rdb, ctx, "c", makeLongBitmap([]byte{0x01, 0x02, 0xff}, 40))
+		
+		require.NoError(t, rdb.BitOpDiff(ctx, "res1", "a", "b", "c").Err())
+		require.NoError(t, rdb.BitOpDiff1(ctx, "res2", "a", "b", "c").Err())
+		require.NoError(t, rdb.BitOpAndOr(ctx, "res3", "a", "b", "c").Err())
+		require.NoError(t, rdb.BitOpOne(ctx, "res4", "a", "b", "c").Err())
+		
+		expected := make([]string, 4)
+		for i := range expected {
+			expected[i] = makeExpectedBitmap(makeLongBitmap([]byte{0x00, 0x00, 0x00}, 40))
+		}
+		expected[2] = makeExpectedBitmap(makeLongBitmap([]byte{0x01, 0x02, 0xff}, 40)) // BitOpAndOr
+		
+		require.EqualValues(t, expected, GetBitmap(t, rdb, ctx, "res1", "res2", "res3", "res4"))
+	})
+
+	t.Run("BITOP DIFF1 with different long bitmaps", func(t *testing.T) {
+		// Test Diff1: (~first) & (all_or)
+		Set2SetBit(t, rdb, ctx, "a", makeLongBitmap([]byte{0xaa, 0x55, 0xff}, 40))
+		Set2SetBit(t, rdb, ctx, "b", makeLongBitmap([]byte{0x55, 0xaa, 0x00}, 40))
+		Set2SetBit(t, rdb, ctx, "c", makeLongBitmap([]byte{0x00, 0x00, 0x00}, 40))
+		
+		require.NoError(t, rdb.BitOpDiff1(ctx, "res", "a", "b", "c").Err())
+		
+		// ~a = 0x55aa00, all_or = 0xffaaff
+		// result = 0x55aa00 & 0xffaaff = 0x55aa00
+		expected := makeExpectedBitmap(makeLongBitmap([]byte{0x55, 0xaa, 0x00}, 40))
+		require.EqualValues(t, expected, rdb.Get(ctx, "res").Val())
+	})
+
+	t.Run("BITOP DIFF with different long bitmaps", func(t *testing.T) {
+		// Test Diff: first & ~(others_or)
+		Set2SetBit(t, rdb, ctx, "a", makeLongBitmap([]byte{0xaa, 0x55, 0xff}, 40))
+		Set2SetBit(t, rdb, ctx, "b", makeLongBitmap([]byte{0x55, 0xaa, 0x00}, 40))
+		Set2SetBit(t, rdb, ctx, "c", makeLongBitmap([]byte{0x00, 0x00, 0x00}, 40))
+		
+		require.NoError(t, rdb.BitOpDiff(ctx, "res", "a", "b", "c").Err())
+		
+		// a = 0xaa55ff, others_or = 0x55aa00
+		// result = 0xaa55ff & ~0x55aa00 = 0xaa55ff & 0xaa55ff = 0xaa55ff
+		expected := makeExpectedBitmap(makeLongBitmap([]byte{0xaa, 0x55, 0xff}, 40))
+		require.EqualValues(t, expected, rdb.Get(ctx, "res").Val())
+	})
+
+	t.Run("BITOP AndOr with different long bitmaps", func(t *testing.T) {
+		// Test AndOr: first & (others_or)
+		Set2SetBit(t, rdb, ctx, "a", makeLongBitmap([]byte{0xaa, 0x55, 0xff}, 40))
+		Set2SetBit(t, rdb, ctx, "b", makeLongBitmap([]byte{0x55, 0xaa, 0x00}, 40))
+		Set2SetBit(t, rdb, ctx, "c", makeLongBitmap([]byte{0x00, 0x00, 0x00}, 40))
+		
+		require.NoError(t, rdb.BitOpAndOr(ctx, "res", "a", "b", "c").Err())
+		
+		// a = 0xaa55ff, others_or = 0x55aa00
+		// result = 0xaa55ff & 0x55aa00 = 0x000500
+		expected := makeExpectedBitmap(makeLongBitmap([]byte{0x00, 0x05, 0x00}, 40))
+		require.EqualValues(t, expected, rdb.Get(ctx, "res").Val())
+	})
+
+	t.Run("BITOP One with different long bitmaps", func(t *testing.T) {
+		// Test One: (a XOR b XOR c) AND ~(a AND b AND c)
+		Set2SetBit(t, rdb, ctx, "a", makeLongBitmap([]byte{0xaa, 0x55, 0xff}, 40))
+		Set2SetBit(t, rdb, ctx, "b", makeLongBitmap([]byte{0x55, 0xaa, 0x00}, 40))
+		Set2SetBit(t, rdb, ctx, "c", makeLongBitmap([]byte{0x00, 0x00, 0x00}, 40))
+		
+		require.NoError(t, rdb.BitOpOne(ctx, "res", "a", "b", "c").Err())
+		
+		// First byte: 0xaa ^ 0x55 ^ 0x00 = 0xff, 0xaa & 0x55 & 0x00 = 0x00, result = 0xff & ~0x00 = 0xff
+		// Second byte: 0x55 ^ 0xaa ^ 0x00 = 0xff, 0x55 & 0xaa & 0x00 = 0x00, result = 0xff & ~0x00 = 0xff
+		// Third byte: 0xff ^ 0x00 ^ 0x00 = 0xff, 0xff & 0x00 & 0x00 = 0x00, result = 0xff & ~0x00 = 0xff
+		expected := makeExpectedBitmap(makeLongBitmap([]byte{0xff, 0xff, 0xff}, 40))
+		require.EqualValues(t, expected, rdb.Get(ctx, "res").Val())
+	})
+
+	t.Run("BITOP DIFF1 fuzzing with long bitmaps", func(t *testing.T) {
+		for i := 0; i < 5; i++ {
+			require.NoError(t, rdb.FlushAll(ctx).Err())
+			numVec := util.RandomInt(5) + 2
+			var vec [][]byte
+			var veckeys []string
+			for j := 0; j < int(numVec); j++ {
+				// Generate long bitmaps (>32 bytes) to trigger fast path
+				str := util.RandString(33, 100, util.Binary)
+				vec = append(vec, []byte(str))
+				veckeys = append(veckeys, "vector_"+strconv.Itoa(j))
+				Set2SetBit(t, rdb, ctx, "vector_"+strconv.Itoa(j), []byte(str))
+			}
+			
+			// Test Diff1
+			require.NoError(t, rdb.BitOpDiff1(ctx, "target", veckeys...).Err())
+			expected := SimulateBitOpDiff1(vec)
+			require.EqualValues(t, expected, rdb.Get(ctx, "target").Val())
+		}
+	})
+
+	t.Run("BITOP DIFF fuzzing with long bitmaps", func(t *testing.T) {
+		for i := 0; i < 5; i++ {
+			require.NoError(t, rdb.FlushAll(ctx).Err())
+			numVec := util.RandomInt(5) + 2
+			var vec [][]byte
+			var veckeys []string
+			for j := 0; j < int(numVec); j++ {
+				// Generate long bitmaps (>32 bytes) to trigger fast path
+				str := util.RandString(33, 100, util.Binary)
+				vec = append(vec, []byte(str))
+				veckeys = append(veckeys, "vector_"+strconv.Itoa(j))
+				Set2SetBit(t, rdb, ctx, "vector_"+strconv.Itoa(j), []byte(str))
+			}
+			
+			// Test Diff
+			require.NoError(t, rdb.BitOpDiff(ctx, "target", veckeys...).Err())
+			expected := SimulateBitOpDiff(vec)
+			require.EqualValues(t, expected, rdb.Get(ctx, "target").Val())
+		}
+	})
+
+	t.Run("BITOP AndOr fuzzing with long bitmaps", func(t *testing.T) {
+		for i := 0; i < 5; i++ {
+			require.NoError(t, rdb.FlushAll(ctx).Err())
+			numVec := util.RandomInt(5) + 2
+			var vec [][]byte
+			var veckeys []string
+			for j := 0; j < int(numVec); j++ {
+				// Generate long bitmaps (>32 bytes) to trigger fast path
+				str := util.RandString(33, 100, util.Binary)
+				vec = append(vec, []byte(str))
+				veckeys = append(veckeys, "vector_"+strconv.Itoa(j))
+				Set2SetBit(t, rdb, ctx, "vector_"+strconv.Itoa(j), []byte(str))
+			}
+			
+			// Test AndOr
+			require.NoError(t, rdb.BitOpAndOr(ctx, "target", veckeys...).Err())
+			expected := SimulateBitOpAndOr(vec)
+			require.EqualValues(t, expected, rdb.Get(ctx, "target").Val())
+		}
+	})
+
+	t.Run("BITOP One fuzzing with long bitmaps", func(t *testing.T) {
+		for i := 0; i < 5; i++ {
+			require.NoError(t, rdb.FlushAll(ctx).Err())
+			numVec := util.RandomInt(5) + 2
+			var vec [][]byte
+			var veckeys []string
+			for j := 0; j < int(numVec); j++ {
+				// Generate long bitmaps (>32 bytes) to trigger fast path
+				str := util.RandString(33, 100, util.Binary)
+				vec = append(vec, []byte(str))
+				veckeys = append(veckeys, "vector_"+strconv.Itoa(j))
+				Set2SetBit(t, rdb, ctx, "vector_"+strconv.Itoa(j), []byte(str))
+			}
+			
+			// Test One
+			require.NoError(t, rdb.BitOpOne(ctx, "target", veckeys...).Err())
+			expected := SimulateBitOpOne(vec)
+			require.EqualValues(t, expected, rdb.Get(ctx, "target").Val())
+		}
+	})
 }
+
+// Helper functions for testing fast path
+
+// makeLongBitmap creates a long bitmap by repeating the pattern
+func makeLongBitmap(pattern []byte, length int) []byte {
+	result := make([]byte, length)
+	for i := 0; i < length; i++ {
+		result[i] = pattern[i%len(pattern)]
+	}
+	return result
+}
+
+// makeExpectedBitmap creates expected string from a byte slice
+func makeExpectedBitmap(data []byte) string {
+	return string(data)
+}
+
+// SimulateBitOpDiff1 simulates BitOpDiff1: (~first) & (all_or)
+func SimulateBitOpDiff1(vec [][]byte) string {
+	if len(vec) == 0 {
+		return ""
+	}
+	
+	// Find max length
+	maxlen := 0
+	for _, v := range vec {
+		if len(v) > maxlen {
+			maxlen = len(v)
+		}
+	}
+	
+	// Calculate all_or
+	allOr := make([]byte, maxlen)
+	for i := 0; i < maxlen; i++ {
+		for j := range vec {
+			if i < len(vec[j]) {
+				allOr[i] |= vec[j][i]
+			}
+		}
+	}
+	
+	// Calculate (~first) & allOr
+	result := make([]byte, maxlen)
+	for i := 0; i < maxlen; i++ {
+		if i < len(vec[0]) {
+			result[i] = (^vec[0][i]) & allOr[i]
+		} else {
+			result[i] = allOr[i]
+		}
+	}
+	
+	return string(result)
+}
+
+// SimulateBitOpDiff simulates BitOpDiff: first & ~(others_or)
+func SimulateBitOpDiff(vec [][]byte) string {
+	if len(vec) == 0 {
+		return ""
+	}
+	
+	// Find max length
+	maxlen := 0
+	for _, v := range vec {
+		if len(v) > maxlen {
+			maxlen = len(v)
+		}
+	}
+	
+	// Calculate others_or
+	othersOr := make([]byte, maxlen)
+	for i := 0; i < maxlen; i++ {
+		for j := 1; j < len(vec); j++ {
+			if i < len(vec[j]) {
+				othersOr[i] |= vec[j][i]
+			}
+		}
+	}
+	
+	// Calculate first & ~othersOr
+	result := make([]byte, maxlen)
+	for i := 0; i < maxlen; i++ {
+		if i < len(vec[0]) {
+			result[i] = vec[0][i] & (^othersOr[i])
+		} else {
+			result[i] = 0
+		}
+	}
+	
+	return string(result)
+}
+
+// SimulateBitOpAndOr simulates BitOpAndOr: first & (others_or)
+func SimulateBitOpAndOr(vec [][]byte) string {
+	if len(vec) == 0 {
+		return ""
+	}
+	
+	// Find max length
+	maxlen := 0
+	for _, v := range vec {
+		if len(v) > maxlen {
+			maxlen = len(v)
+		}
+	}
+	
+	// Calculate others_or
+	othersOr := make([]byte, maxlen)
+	for i := 0; i < maxlen; i++ {
+		for j := 1; j < len(vec); j++ {
+			if i < len(vec[j]) {
+				othersOr[i] |= vec[j][i]
+			}
+		}
+	}
+	
+	// Calculate first & othersOr
+	result := make([]byte, maxlen)
+	for i := 0; i < maxlen; i++ {
+		if i < len(vec[0]) {
+			result[i] = vec[0][i] & othersOr[i]
+		} else {
+			result[i] = 0
+		}
+	}
+	
+	return string(result)
+}
+
+// SimulateBitOpOne simulates BitOpOne: (all_xor) & ~(all_and)
+func SimulateBitOpOne(vec [][]byte) string {
+	if len(vec) == 0 {
+		return ""
+	}
+	
+	// Find max length
+	maxlen := 0
+	for _, v := range vec {
+		if len(v) > maxlen {
+			maxlen = len(v)
+		}
+	}
+	
+	// Calculate all_xor
+	allXor := make([]byte, maxlen)
+	for i := 0; i < maxlen; i++ {
+		for j := range vec {
+			if i < len(vec[j]) {
+				allXor[i] ^= vec[j][i]
+			}
+		}
+	}
+	
+	// Calculate all_and
+	allAnd := make([]byte, maxlen)
+	for i := 0; i < maxlen; i++ {
+		// Initialize with the first key's value or 0 if out of bounds
+		if i < len(vec[0]) {
+			allAnd[i] = vec[0][i]
+		} else {
+			allAnd[i] = 0
+		}
+		// AND with all other keys
+		for j := 1; j < len(vec); j++ {
+			if i < len(vec[j]) {
+				allAnd[i] &= vec[j][i]
+			} else {
+				// If key j is shorter at this position, treat it as 0
+				allAnd[i] &= 0
+			}
+		}
+	}
+
+	// Calculate all_xor & ~all_and
+	result := make([]byte, maxlen)
+	for i := 0; i < maxlen; i++ {
+		result[i] = allXor[i] & (^allAnd[i])
+	}
+
+	return string(result)
+}
+

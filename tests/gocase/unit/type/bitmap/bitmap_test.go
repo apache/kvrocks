@@ -635,9 +635,10 @@ func TestBitmap(t *testing.T) {
 		
 		require.NoError(t, rdb.BitOpAndOr(ctx, "res", "a", "b", "c").Err())
 		
-		// a = 0xaa55ff, others_or = 0x55aa00
-		// result = 0xaa55ff & 0x55aa00 = 0x000500
-		expected := makeExpectedBitmap(makeLongBitmap([]byte{0x00, 0x05, 0x00}, 40))
+		// First byte: b|c = 0x55|0x00 = 0x55, a & (b|c) = 0xaa & 0x55 = 0x00
+		// Second byte: b|c = 0xaa|0x00 = 0xaa, a & (b|c) = 0x55 & 0xaa = 0x00
+		// Third byte: b|c = 0x00|0x00 = 0x00, a & (b|c) = 0xff & 0x00 = 0x00
+		expected := makeExpectedBitmap(makeLongBitmap([]byte{0x00, 0x00, 0x00}, 40))
 		require.EqualValues(t, expected, rdb.Get(ctx, "res").Val())
 	})
 

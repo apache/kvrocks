@@ -743,11 +743,15 @@ func TestBitmap(t *testing.T) {
 
 // Helper functions for testing fast path
 
-// makeLongBitmap creates a long bitmap by repeating the pattern
+// makeLongBitmap creates a long bitmap with pattern as prefix and zeros as padding
 func makeLongBitmap(pattern []byte, length int) []byte {
 	result := make([]byte, length)
 	for i := 0; i < length; i++ {
-		result[i] = pattern[i%len(pattern)]
+		if i < len(pattern) {
+			result[i] = pattern[i]
+		} else {
+			result[i] = 0
+		}
 	}
 	return result
 }

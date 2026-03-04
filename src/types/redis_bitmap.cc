@@ -747,6 +747,19 @@ rocksdb::Status Bitmap::BitOp(engine::Context &ctx, BitOpFlags op_flag, const st
           } else {
             frag_maxlen = kBitmapSegmentBytes;
           }
+        } else if (op_flag == kBitOpDiff || op_flag == kBitOpDiff1 || op_flag == kBitOpAndOr ||
+                   op_flag == kBitOpOne) {
+          // For DIFF, DIFF1, ANDOR, and ONE operations, we need to ensure
+          // frag_maxlen is correctly set for the last segment
+          if (frag_index == stop_index) {
+            if (max_bitmap_size == (frag_index + 1) * kBitmapSegmentBytes) {
+              frag_maxlen = kBitmapSegmentBytes;
+            } else {
+              frag_maxlen = max_bitmap_size % kBitmapSegmentBytes;
+            }
+          } else {
+            frag_maxlen = kBitmapSegmentBytes;
+          }
         }
         std::string sub_key = InternalKey(ns_key, std::to_string(frag_index * kBitmapSegmentBytes),
                                           res_metadata.version, storage_->IsSlotIdEncoded())

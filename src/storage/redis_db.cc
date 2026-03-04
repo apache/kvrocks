@@ -24,7 +24,6 @@
 #include <utility>
 
 #include "cluster/redis_slot.h"
-#include "common/scope_exit.h"
 #include "common/string_util.h"
 #include "db_util.h"
 #include "parse_util.h"
@@ -242,8 +241,9 @@ rocksdb::Status Database::GetExpireTime(engine::Context &ctx, const Slice &user_
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status Database::GetKeyNumStats(engine::Context &ctx, const std::string &prefix, KeyNumStats *stats) {
-  return Keys(ctx, prefix, "*", nullptr, stats);
+rocksdb::Status Database::GetKeyNumStats(engine::Context &ctx, const std::string &prefix, KeyNumStats *stats,
+                                         const std::vector<SlotRange> *slot_ranges) {
+  return KeysParallel(ctx, prefix, "*", nullptr, stats, slot_ranges);
 }
 
 rocksdb::Status Database::Keys(engine::Context &ctx, const std::string &prefix, const std::string &suffix_glob,
@@ -310,6 +310,174 @@ rocksdb::Status Database::Keys(engine::Context &ctx, const std::string &prefix, 
 
   if (stats && stats->n_expires > 0) {
     stats->avg_ttl = ttl_sum / stats->n_expires / 1000;
+  }
+
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status Database::KeysParallel(engine::Context &ctx, const std::string &prefix, const std::string &suffix_glob,
+                                       std::vector<std::string> *keys, KeyNumStats *stats,
+                                       const std::vector<SlotRange> *current_slot_ranges) {
+  if (!storage_->IsSlotIdEncoded()) {
+    return Keys(ctx, prefix, "*", nullptr, stats);
+  }
+  if (current_slot_ranges->empty()) {
+    return rocksdb::Status::InvalidArgument("slot_ranges is empty");
+  }
+
+  int total_slots = 0;
+  for (const auto &range : *current_slot_ranges) {
+    total_slots += (range.end - range.start + 1);
+  }
+
+  int parallelism = storage_->GetDBScanKeyParallelism();
+
+  std::vector<std::vector<SlotRange>> thread_ranges(parallelism);
+  int slots_per_thread = total_slots / parallelism;
+  int remain_slots = total_slots % parallelism;
+
+  int current_slot_count = 0;
+  int current_thread = 0;
+  int slots_for_current_thread = slots_per_thread + (current_thread < remain_slots ? 1 : 0);
+
+  for (const auto &range : *current_slot_ranges) {
+    int range_size = range.end - range.start + 1;
+    int range_start = range.start;
+    int remaining_in_range = range_size;
+
+    while (remaining_in_range > 0 && current_thread < parallelism) {
+      int slots_to_take = std::min(remaining_in_range, slots_for_current_thread - current_slot_count);
+
+      int take_end = range_start + slots_to_take - 1;
+      thread_ranges[current_thread].emplace_back(range_start, take_end);
+
+      range_start += slots_to_take;
+      remaining_in_range -= slots_to_take;
+      current_slot_count += slots_to_take;
+
+      if (current_slot_count >= slots_for_current_thread) {
+        current_thread++;
+        if (current_thread < parallelism) {
+          slots_for_current_thread = slots_per_thread + (current_thread < remain_slots ? 1 : 0);
+          current_slot_count = 0;
+        }
+      }
+    }
+  }
+
+  std::vector<std::thread> workers;
+  std::vector<rocksdb::Status> thread_statuses(parallelism);
+  std::vector<std::vector<std::string>> thread_keys(parallelism);
+  std::vector<KeyNumStats> thread_stats(parallelism);
+
+  for (int i = 0; i < parallelism; ++i) {
+    workers.emplace_back([&, i]() {
+      for (const auto &range : thread_ranges[i]) {
+        auto status = ProcessSlotRange(ctx, prefix, suffix_glob, range.start, range.end,
+                                       keys ? &thread_keys[i] : nullptr, stats ? &thread_stats[i] : nullptr);
+        if (!status.ok()) {
+          thread_statuses[i] = status;
+          return;
+        }
+      }
+      thread_statuses[i] = rocksdb::Status::OK();
+    });
+  }
+
+  for (auto &worker : workers) {
+    worker.join();
+  }
+
+  for (const auto &status : thread_statuses) {
+    if (!status.ok()) {
+      return status;
+    }
+  }
+
+  if (keys) {
+    for (auto &thread_key : thread_keys) {
+      keys->insert(keys->end(), std::make_move_iterator(thread_key.begin()), std::make_move_iterator(thread_key.end()));
+    }
+  }
+
+  if (stats) {
+    for (auto &thread_stat : thread_stats) {
+      stats->n_key += thread_stat.n_key;
+      stats->n_expired += thread_stat.n_expired;
+      stats->n_expires += thread_stat.n_expires;
+      stats->ttl_sum += thread_stat.ttl_sum;
+    }
+
+    if (stats->n_expires > 0) {
+      stats->avg_ttl = stats->ttl_sum / stats->n_expires / 1000;
+    }
+  }
+
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status Database::ProcessSlotRange(engine::Context &ctx, const std::string &prefix,
+                                           const std::string &suffix_glob, int start_slot, int end_slot,
+                                           std::vector<std::string> *keys, KeyNumStats *stats) {
+  info("[ProcessSlotRangeOptimize] Begin batch {}-{}", start_slot, end_slot);
+
+  uint64_t ttl_sum = 0;
+  KeyNumStats local_stats{0, 0, 0, 0, 0};
+
+  auto iter = util::UniqueIterator(ctx, ctx.GetReadOptions(), metadata_cf_handle_);
+
+  for (uint16_t slot_id = start_slot; slot_id <= end_slot; ++slot_id) {  // use iter with slot_id
+    std::string ns_prefix = ComposeNamespaceKey(namespace_, "", false);
+    PutFixed16(&ns_prefix, slot_id);
+    ns_prefix.append(prefix);
+
+    uint64_t current_n_key = 0;
+
+    iter->Seek(ns_prefix);
+    for (; iter->Valid(); iter->Next()) {
+      if (!iter->key().starts_with(ns_prefix)) {
+        break;
+      }
+
+      auto [_, user_key] = ExtractNamespaceKey(iter->key(), storage_->IsSlotIdEncoded());
+      if (!util::StringMatch(suffix_glob, user_key.ToString().substr(prefix.size()))) {
+        continue;
+      }
+
+      Metadata metadata(kRedisNone, false);
+      auto s = metadata.Decode(iter->value());
+      if (!s.ok()) continue;
+
+      if (metadata.Expired()) {
+        if (stats) local_stats.n_expired++;
+        continue;
+      }
+
+      if (stats) {
+        int64_t ttl = metadata.TTL();
+        local_stats.n_key++;
+        current_n_key++;
+        if (ttl != -1) {
+          local_stats.n_expires++;
+          if (ttl > 0) ttl_sum += ttl;
+        }
+      }
+
+      if (keys) {
+        keys->emplace_back(user_key.ToString());
+      }
+    }
+
+    info("[ProcessSlotRangeOptimize] current slotId is {}, keys size is {}", slot_id, current_n_key);
+
+    if (auto s = iter->status(); !s.ok()) {
+      return s;
+    }
+  }
+
+  local_stats.ttl_sum = ttl_sum;
+  if (stats) {
+    *stats = local_stats;
   }
 
   return rocksdb::Status::OK();

@@ -110,6 +110,7 @@ struct KeyNumStats {
   uint64_t n_expires = 0;
   uint64_t n_expired = 0;
   uint64_t avg_ttl = 0;
+  uint64_t ttl_sum = 0;
 };
 
 [[nodiscard]] uint16_t ExtractSlotId(Slice ns_key);

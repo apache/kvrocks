@@ -1634,7 +1634,7 @@ Status Server::AsyncScanDBSize(const std::string &ns) {
 
     KeyNumStats stats;
     engine::Context ctx(storage);
-    auto s = db.GetKeyNumStats(ctx, "", &stats);
+    auto s = db.GetKeyNumStats(ctx, "", &stats, GetSlotRanges());
     if (!s.ok()) {
       ERROR("failed to retrieve key num stats: {}", s.ToString());
     }

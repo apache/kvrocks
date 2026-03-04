@@ -164,6 +164,7 @@ struct Config {
   bool repl_namespace_enabled = false;
   std::string replica_announce_ip;
   uint32_t replica_announce_port = 0;
+  int dbsize_scan_key_parallelism;
 
   bool persist_cluster_nodes_enabled = true;
   bool slot_id_encoded = false;

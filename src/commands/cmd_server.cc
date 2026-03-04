@@ -332,7 +332,23 @@ class CommandDBSize : public Commander {
       srv->GetLatestKeyNumStats(ns, &stats);
       *output = redis::Integer(stats.n_key);
     } else if (args_.size() == 2 && util::EqualICase(args_[1], "scan")) {
-      Status s = srv->AsyncScanDBSize(ns);
+      auto local_ip_addresses = util::GetLocalIPAddresses();
+      std::vector<SlotInfo> infos;
+      Status s = srv->cluster->GetSlotsInfo(&infos);
+      std::vector<SlotRange> slot_ranges;
+      if (s.IsOK()) {
+        for (const auto &info : infos) {
+          for (const auto &n : info.nodes) {
+            if (std::find(local_ip_addresses.begin(), local_ip_addresses.end(), n.host) != local_ip_addresses.end()) {
+              slot_ranges.emplace_back(info.start, info.end);
+            }
+          }
+        }
+      } else {
+        return s;
+      }
+      srv->SetSlotRanges(slot_ranges);
+      s = srv->AsyncScanDBSize(ns);
       if (s.IsOK()) {
         *output = redis::RESP_OK;
       } else {

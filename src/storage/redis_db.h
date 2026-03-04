@@ -118,9 +118,17 @@ class Database {
   [[nodiscard]] rocksdb::Status Dump(engine::Context &ctx, const Slice &user_key, std::vector<std::string> *infos);
   [[nodiscard]] rocksdb::Status FlushDB(engine::Context &ctx);
   [[nodiscard]] rocksdb::Status FlushAll(engine::Context &ctx);
-  [[nodiscard]] rocksdb::Status GetKeyNumStats(engine::Context &ctx, const std::string &prefix, KeyNumStats *stats);
+  [[nodiscard]] rocksdb::Status GetKeyNumStats(engine::Context &ctx, const std::string &prefix, KeyNumStats *stats,
+                                               const std::vector<SlotRange> *slot_ranges);
   [[nodiscard]] rocksdb::Status Keys(engine::Context &ctx, const std::string &prefix, const std::string &suffix_glob,
                                      std::vector<std::string> *keys = nullptr, KeyNumStats *stats = nullptr);
+  [[nodiscard]] rocksdb::Status KeysParallel(engine::Context &ctx, const std::string &prefix,
+                                             const std::string &suffix_glob, std::vector<std::string> *keys = nullptr,
+                                             KeyNumStats *stats = nullptr,
+                                             const std::vector<SlotRange> *slot_ranges = nullptr);
+  [[nodiscard]] rocksdb::Status ProcessSlotRange(engine::Context &ctx, const std::string &prefix,
+                                                 const std::string &suffix_glob, int start_slot, int end_slot,
+                                                 std::vector<std::string> *keys, KeyNumStats *stats);
   [[nodiscard]] rocksdb::Status Scan(engine::Context &ctx, const std::string &cursor, uint64_t limit,
                                      const std::string &prefix, const std::string &suffix_glob,
                                      std::vector<std::string> *keys, std::string *end_cursor = nullptr,

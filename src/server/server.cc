@@ -1025,6 +1025,12 @@ void Server::UnpauseConns() {
   }
 }
 
+namespace {
+const std::unordered_set<std::string> kWriteModeSpecialCmds = {
+    "publish", "pfcount", "wait",
+};
+}  // namespace
+
 bool Server::PauseConnIfNeeded(redis::Connection *conn, const std::string &cmd_name, uint64_t cmd_flags) {
   if (conn_pause_end_time_.load() == 0) {
     return false;
@@ -1051,9 +1057,6 @@ bool Server::PauseConnIfNeeded(redis::Connection *conn, const std::string &cmd_n
     if (cmd_flags & redis::kCmdWrite) {
       should_pause = true;
     } else {
-      static const std::unordered_set<std::string> kWriteModeSpecialCmds = {
-          "eval", "evalsha", "publish", "pfcount", "wait",
-      };
       should_pause = kWriteModeSpecialCmds.count(cmd_name) > 0;
     }
   }

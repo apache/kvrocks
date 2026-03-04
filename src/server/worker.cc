@@ -416,6 +416,7 @@ void Worker::MigrateConnection(Worker *target, redis::Connection *conn) {
   }
   bufferevent_base_set(target->base_, bev);
   conn->SetCB(bev);
+  // SetOwner before bufferevent_enable so callbacks see the correct owner.
   conn->SetOwner(target);
   bufferevent_enable(bev, EV_READ | EV_WRITE);
 }

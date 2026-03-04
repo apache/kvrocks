@@ -43,6 +43,10 @@ const (
 	OR  BITOP = 1
 	XOR BITOP = 2
 	NOT BITOP = 3
+	DIFF   BITOP = 4
+	DIFF1  BITOP = 5
+	ANDOR  BITOP = 6
+	ONE    BITOP = 7
 )
 
 func Set2SetBit(t *testing.T, rdb *redis.Client, ctx context.Context, key string, bs []byte) {
@@ -88,7 +92,58 @@ func SimulateBitOp(op BITOP, values ...[]byte) string {
 			} else {
 				x = '0'
 			}
+			binaryResult = append(binaryResult, x)
+			continue
 		}
+
+		if op == DIFF || op == DIFF1 || op == ANDOR {
+			// Calculate OR of all keys except the first one
+			var othersOr byte = '0'
+			for j := 1; j < len(binaryArray); j++ {
+				othersOr = byte(int(othersOr) | int(binaryArray[j][i]-'0'))
+			}
+
+			left := int(x - '0')
+			switch op {
+			case DIFF:
+				// X & (~(Y1 | Y2 | ...))
+				left = left & ^(int(othersOr) - '0')
+			case DIFF1:
+				// (~X) & (Y1 | Y2 | ...)
+				left = (^left) & (int(othersOr) - '0')
+			case ANDOR:
+				// X & (Y1 | Y2 | ...)
+				left = left & (int(othersOr) - '0')
+			}
+			if left == 0 {
+				x = '0'
+			} else {
+				x = '1'
+			}
+			binaryResult = append(binaryResult, x)
+			continue
+		}
+
+		if op == ONE {
+			// Calculate AND and XOR of all keys
+			allAnd := binaryArray[0][i]
+			allXor := allAnd
+			for j := 1; j < len(binaryArray); j++ {
+				allAnd = byte(int(allAnd) & int(binaryArray[j][i]-'0'))
+				allXor = byte(int(allXor) ^ int(binaryArray[j][i]-'0'))
+			}
+			// (X1 ^ X2 ^ ...) & (~(X1 & X2 & ...))
+			left := (int(allXor) - '0') & ^(int(allAnd) - '0')
+			if left == 0 {
+				x = '0'
+			} else {
+				x = '1'
+			}
+			binaryResult = append(binaryResult, x)
+			continue
+		}
+
+		// Standard operations: AND, OR, XOR
 		for j := 1; j < len(binaryArray); j++ {
 			left := int(x - '0')
 			right := int(binaryArray[j][i] - '0')
@@ -532,6 +587,155 @@ func TestBitmap(t *testing.T) {
 		require.EqualValues(t, -1, cmd.Val())
 	})
 
+	// Test new BITOP operations: DIFF, DIFF1, ANDOR, ONE
+	t.Run("BITOP DIFF", func(t *testing.T) {
+		// X & (~(Y1 | Y2 | ...))
+		Set2SetBit(t, rdb, ctx, "x", []byte("\xff\x00"))
+		Set2SetBit(t, rdb, ctx, "y1", []byte("\x0f\x00"))
+		Set2SetBit(t, rdb, ctx, "y2", []byte("\xf0\x00"))
+
+		// Expected: (0xff & (~(0x0f | 0xf0))) = (0xff & 0x00) = 0x00
+		require.NoError(t, rdb.Do(ctx, "BITOP", "diff", "res", "x", "y1", "y2").Err())
+		require.EqualValues(t, []string{"\x00\x00"}, GetBitmap(t, rdb, ctx, "res"))
+	})
+
+	t.Run("BITOP DIFF1", func(t *testing.T) {
+		// (~X) & (Y1 | Y2 | ...)
+		Set2SetBit(t, rdb, ctx, "x", []byte("\xff\x00"))
+		Set2SetBit(t, rdb, ctx, "y1", []byte("\x0f\x00"))
+		Set2SetBit(t, rdb, ctx, "y2", []byte("\xf0\x00"))
+
+		// Expected: (~0xff & (0x0f | 0xf0)) = (0x00 & 0xff) = 0x00
+		require.NoError(t, rdb.Do(ctx, "BITOP", "diff1", "res", "x", "y1", "y2").Err())
+		require.EqualValues(t, []string{"\x00\x00"}, GetBitmap(t, rdb, ctx, "res"))
+	})
+
+	t.Run("BITOP ANDOR", func(t *testing.T) {
+		// X & (Y1 | Y2 | ...)
+		Set2SetBit(t, rdb, ctx, "x", []byte("\xff\x00"))
+		Set2SetBit(t, rdb, ctx, "y1", []byte("\x0f\x00"))
+		Set2SetBit(t, rdb, ctx, "y2", []byte("\xf0\x00"))
+
+		// Expected: (0xff & (0x0f | 0xf0)) = (0xff & 0xff) = 0xff
+		require.NoError(t, rdb.Do(ctx, "BITOP", "andor", "res", "x", "y1", "y2").Err())
+		require.EqualValues(t, []string{"\xff\x00"}, GetBitmap(t, rdb, ctx, "res"))
+	})
+
+	t.Run("BITOP ONE", func(t *testing.T) {
+		// (X1 ^ X2 ^ ...) & (~(X1 & X2 & ...))
+		Set2SetBit(t, rdb, ctx, "a", []byte("\x01\x00"))
+		Set2SetBit(t, rdb, ctx, "b", []byte("\x02\x00"))
+		Set2SetBit(t, rdb, ctx, "c", []byte("\x04\x00"))
+
+		// Expected: (0x01 ^ 0x02 ^ 0x04) & (~(0x01 & 0x02 & 0x04)) = 0x07 & 0xff = 0x07
+		require.NoError(t, rdb.Do(ctx, "BITOP", "one", "res", "a", "b", "c").Err())
+		require.EqualValues(t, []string{"\x07\x00"}, GetBitmap(t, rdb, ctx, "res"))
+	})
+
+	t.Run("BITOP DIFF with two bits same position", func(t *testing.T) {
+		Set2SetBit(t, rdb, ctx, "x", []byte("\x55\x55"))
+		Set2SetBit(t, rdb, ctx, "y", []byte("\x55\x55"))
+		// Expected: (0x55 & (~0x55)) = 0x00
+		require.NoError(t, rdb.Do(ctx, "BITOP", "diff", "res", "x", "y").Err())
+		require.EqualValues(t, []string{"\x00\x00"}, GetBitmap(t, rdb, ctx, "res"))
+	})
+
+	t.Run("BITOP DIFF1 with one bit", func(t *testing.T) {
+		Set2SetBit(t, rdb, ctx, "x", []byte("\x00\x00"))
+		Set2SetBit(t, rdb, ctx, "y1", []byte("\x01\x00"))
+		// Expected: (~0x00 & 0x01) = 0x01
+		require.NoError(t, rdb.Do(ctx, "BITOP", "diff1", "res", "x", "y1").Err())
+		require.EqualValues(t, []string{"\x01\x00"}, GetBitmap(t, rdb, ctx, "res"))
+	})
+
+	t.Run("BITOP ANDOR with zero in X", func(t *testing.T) {
+		Set2SetBit(t, rdb, ctx, "x", []byte("\x00\x00"))
+		Set2SetBit(t, rdb, ctx, "y", []byte("\xff\x00"))
+		// Expected: (0x00 & 0xff) = 0x00
+		require.NoError(t, rdb.Do(ctx, "BITOP", "andor", "res", "x", "y").Err())
+		require.EqualValues(t, []string{"\x00\x00"}, GetBitmap(t, rdb, ctx, "res"))
+	})
+
+	t.Run("BITOP ONE with multiple bits at same position", func(t *testing.T) {
+		Set2SetBit(t, rdb, ctx, "a", []byte("\x03\x00"))
+		Set2SetBit(t, rdb, ctx, "b", []byte("\x03\x00"))
+		// Expected: (0x03 ^ 0x03) & (~(0x03 & 0x03)) = 0x00 & ~0x03 = 0x00
+		require.NoError(t, rdb.Do(ctx, "BITOP", "one", "res", "a", "b").Err())
+		require.EqualValues(t, []string{"\x00\x00"}, GetBitmap(t, rdb, ctx, "res"))
+	})
+
+	t.Run("BITOP DIFF fuzzing", func(t *testing.T) {
+		for i := 0; i < 10; i++ {
+			require.NoError(t, rdb.FlushAll(ctx).Err())
+			numVec := util.RandomInt(5) + 2 // at least 2 keys
+			var vec [][]byte
+			var veckeys []interface{}
+			for j := 0; j < int(numVec); j++ {
+				str := util.RandString(0, 100, util.Binary)
+				vec = append(vec, []byte(str))
+				veckeys = append(veckeys, "vector_"+strconv.Itoa(j))
+				Set2SetBit(t, rdb, ctx, "vector_"+strconv.Itoa(j), []byte(str))
+			}
+			args := append([]interface{}{"BITOP", "diff", "target"}, veckeys...)
+			require.NoError(t, rdb.Do(ctx, args...).Err())
+			require.EqualValues(t, SimulateBitOp(DIFF, vec...), rdb.Get(ctx, "target").Val())
+		}
+	})
+
+	t.Run("BITOP DIFF1 fuzzing", func(t *testing.T) {
+		for i := 0; i < 10; i++ {
+			require.NoError(t, rdb.FlushAll(ctx).Err())
+			numVec := util.RandomInt(5) + 2 // at least 2 keys
+			var vec [][]byte
+			var veckeys []interface{}
+			for j := 0; j < int(numVec); j++ {
+				str := util.RandString(0, 100, util.Binary)
+				vec = append(vec, []byte(str))
+				veckeys = append(veckeys, "vector_"+strconv.Itoa(j))
+				Set2SetBit(t, rdb, ctx, "vector_"+strconv.Itoa(j), []byte(str))
+			}
+			args := append([]interface{}{"BITOP", "diff1", "target"}, veckeys...)
+			require.NoError(t, rdb.Do(ctx, args...).Err())
+			require.EqualValues(t, SimulateBitOp(DIFF1, vec...), rdb.Get(ctx, "target").Val())
+		}
+	})
+
+	t.Run("BITOP ANDOR fuzzing", func(t *testing.T) {
+		for i := 0; i < 10; i++ {
+			require.NoError(t, rdb.FlushAll(ctx).Err())
+			numVec := util.RandomInt(5) + 2 // at least 2 keys
+			var vec [][]byte
+			var veckeys []interface{}
+			for j := 0; j < int(numVec); j++ {
+				str := util.RandString(0, 100, util.Binary)
+				vec = append(vec, []byte(str))
+				veckeys = append(veckeys, "vector_"+strconv.Itoa(j))
+				Set2SetBit(t, rdb, ctx, "vector_"+strconv.Itoa(j), []byte(str))
+			}
+			args := append([]interface{}{"BITOP", "andor", "target"}, veckeys...)
+			require.NoError(t, rdb.Do(ctx, args...).Err())
+			require.EqualValues(t, SimulateBitOp(ANDOR, vec...), rdb.Get(ctx, "target").Val())
+		}
+	})
+
+	t.Run("BITOP ONE fuzzing", func(t *testing.T) {
+		for i := 0; i < 10; i++ {
+			require.NoError(t, rdb.FlushAll(ctx).Err())
+			numVec := util.RandomInt(5) + 2 // at least 2 keys
+			var vec [][]byte
+			var veckeys []interface{}
+			for j := 0; j < int(numVec); j++ {
+				str := util.RandString(0, 100, util.Binary)
+				vec = append(vec, []byte(str))
+				veckeys = append(veckeys, "vector_"+strconv.Itoa(j))
+				Set2SetBit(t, rdb, ctx, "vector_"+strconv.Itoa(j), []byte(str))
+			}
+			args := append([]interface{}{"BITOP", "one", "target"}, veckeys...)
+			require.NoError(t, rdb.Do(ctx, args...).Err())
+			require.EqualValues(t, SimulateBitOp(ONE, vec...), rdb.Get(ctx, "target").Val())
+		}
+	})
+
 	t.Run("BITPOS bit=1 fuzzy testing using SETBIT", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "str").Err())
 		var maxInt int64 = 524288
@@ -565,6 +769,165 @@ func TestBitmap(t *testing.T) {
 			if firstZeroPos > pos {
 				firstZeroPos = pos
 			}
+		}
+	})
+
+	// Test fast path (bitmap length >= 32 bytes)
+	t.Run("BITOP DIFF fast path", func(t *testing.T) {
+		// Create 40-byte bitmaps to trigger fast path
+		x := make([]byte, 40)
+		y1 := make([]byte, 40)
+		y2 := make([]byte, 40)
+		x[0] = 0xff
+		x[10] = 0xff
+		y1[0] = 0x0f
+		y1[10] = 0xf0
+		y2[0] = 0xf0
+		y2[10] = 0x0f
+
+		Set2SetBit(t, rdb, ctx, "x", x)
+		Set2SetBit(t, rdb, ctx, "y1", y1)
+		Set2SetBit(t, rdb, ctx, "y2", y2)
+
+		require.NoError(t, rdb.Do(ctx, "BITOP", "diff", "res", "x", "y1", "y2").Err())
+		result := rdb.Get(ctx, "res").Val()
+		expected := SimulateBitOp(DIFF, x, y1, y2)
+		require.EqualValues(t, expected, result)
+	})
+
+	t.Run("BITOP DIFF1 fast path", func(t *testing.T) {
+		x := make([]byte, 40)
+		y1 := make([]byte, 40)
+		y2 := make([]byte, 40)
+		x[0] = 0xff
+		x[10] = 0xff
+		y1[0] = 0x0f
+		y1[10] = 0xf0
+		y2[0] = 0xf0
+		y2[10] = 0x0f
+
+		Set2SetBit(t, rdb, ctx, "x", x)
+		Set2SetBit(t, rdb, ctx, "y1", y1)
+		Set2SetBit(t, rdb, ctx, "y2", y2)
+
+		require.NoError(t, rdb.Do(ctx, "BITOP", "diff1", "res", "x", "y1", "y2").Err())
+		result := rdb.Get(ctx, "res").Val()
+		expected := SimulateBitOp(DIFF1, x, y1, y2)
+		require.EqualValues(t, expected, result)
+	})
+
+	t.Run("BITOP ANDOR fast path", func(t *testing.T) {
+		x := make([]byte, 40)
+		y1 := make([]byte, 40)
+		y2 := make([]byte, 40)
+		x[0] = 0xff
+		x[10] = 0xff
+		y1[0] = 0x0f
+		y1[10] = 0xf0
+		y2[0] = 0xf0
+		y2[10] = 0x0f
+
+		Set2SetBit(t, rdb, ctx, "x", x)
+		Set2SetBit(t, rdb, ctx, "y1", y1)
+		Set2SetBit(t, rdb, ctx, "y2", y2)
+
+		require.NoError(t, rdb.Do(ctx, "BITOP", "andor", "res", "x", "y1", "y2").Err())
+		result := rdb.Get(ctx, "res").Val()
+		expected := SimulateBitOp(ANDOR, x, y1, y2)
+		require.EqualValues(t, expected, result)
+	})
+
+	t.Run("BITOP ONE fast path", func(t *testing.T) {
+		a := make([]byte, 40)
+		b := make([]byte, 40)
+		c := make([]byte, 40)
+		a[0] = 0x01
+		a[10] = 0x04
+		b[0] = 0x02
+		b[10] = 0x02
+		c[0] = 0x04
+		c[10] = 0x01
+
+		Set2SetBit(t, rdb, ctx, "a", a)
+		Set2SetBit(t, rdb, ctx, "b", b)
+		Set2SetBit(t, rdb, ctx, "c", c)
+
+		require.NoError(t, rdb.Do(ctx, "BITOP", "one", "res", "a", "b", "c").Err())
+		result := rdb.Get(ctx, "res").Val()
+		expected := SimulateBitOp(ONE, a, b, c)
+		require.EqualValues(t, expected, result)
+	})
+
+	t.Run("BITOP DIFF fuzzing with fast path", func(t *testing.T) {
+		for i := 0; i < 10; i++ {
+			require.NoError(t, rdb.FlushAll(ctx).Err())
+			numVec := util.RandomInt(5) + 2 // at least 2 keys
+			var vec [][]byte
+			var veckeys []interface{}
+			for j := 0; j < int(numVec); j++ {
+				// Create 40-byte bitmaps to trigger fast path
+				str := util.RandString(40, 100, util.Binary)
+				vec = append(vec, []byte(str))
+				veckeys = append(veckeys, "vector_"+strconv.Itoa(j))
+				Set2SetBit(t, rdb, ctx, "vector_"+strconv.Itoa(j), []byte(str))
+			}
+			args := append([]interface{}{"BITOP", "diff", "target"}, veckeys...)
+			require.NoError(t, rdb.Do(ctx, args...).Err())
+			require.EqualValues(t, SimulateBitOp(DIFF, vec...), rdb.Get(ctx, "target").Val())
+		}
+	})
+
+	t.Run("BITOP DIFF1 fuzzing with fast path", func(t *testing.T) {
+		for i := 0; i < 10; i++ {
+			require.NoError(t, rdb.FlushAll(ctx).Err())
+			numVec := util.RandomInt(5) + 2 // at least 2 keys
+			var vec [][]byte
+			var veckeys []interface{}
+			for j := 0; j < int(numVec); j++ {
+				str := util.RandString(40, 100, util.Binary)
+				vec = append(vec, []byte(str))
+				veckeys = append(veckeys, "vector_"+strconv.Itoa(j))
+				Set2SetBit(t, rdb, ctx, "vector_"+strconv.Itoa(j), []byte(str))
+			}
+			args := append([]interface{}{"BITOP", "diff1", "target"}, veckeys...)
+			require.NoError(t, rdb.Do(ctx, args...).Err())
+			require.EqualValues(t, SimulateBitOp(DIFF1, vec...), rdb.Get(ctx, "target").Val())
+		}
+	})
+
+	t.Run("BITOP ANDOR fuzzing with fast path", func(t *testing.T) {
+		for i := 0; i < 10; i++ {
+			require.NoError(t, rdb.FlushAll(ctx).Err())
+			numVec := util.RandomInt(5) + 2 // at least 2 keys
+			var vec [][]byte
+			var veckeys []interface{}
+			for j := 0; j < int(numVec); j++ {
+				str := util.RandString(40, 100, util.Binary)
+				vec = append(vec, []byte(str))
+				veckeys = append(veckeys, "vector_"+strconv.Itoa(j))
+				Set2SetBit(t, rdb, ctx, "vector_"+strconv.Itoa(j), []byte(str))
+			}
+			args := append([]interface{}{"BITOP", "andor", "target"}, veckeys...)
+			require.NoError(t, rdb.Do(ctx, args...).Err())
+			require.EqualValues(t, SimulateBitOp(ANDOR, vec...), rdb.Get(ctx, "target").Val())
+		}
+	})
+
+	t.Run("BITOP ONE fuzzing with fast path", func(t *testing.T) {
+		for i := 0; i < 10; i++ {
+			require.NoError(t, rdb.FlushAll(ctx).Err())
+			numVec := util.RandomInt(5) + 2 // at least 2 keys
+			var vec [][]byte
+			var veckeys []interface{}
+			for j := 0; j < int(numVec); j++ {
+				str := util.RandString(40, 100, util.Binary)
+				vec = append(vec, []byte(str))
+				veckeys = append(veckeys, "vector_"+strconv.Itoa(j))
+				Set2SetBit(t, rdb, ctx, "vector_"+strconv.Itoa(j), []byte(str))
+			}
+			args := append([]interface{}{"BITOP", "one", "target"}, veckeys...)
+			require.NoError(t, rdb.Do(ctx, args...).Err())
+			require.EqualValues(t, SimulateBitOp(ONE, vec...), rdb.Get(ctx, "target").Val())
 		}
 	})
 

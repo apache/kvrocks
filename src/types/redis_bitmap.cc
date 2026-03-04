@@ -579,6 +579,80 @@ rocksdb::Status Bitmap::BitOp(engine::Context &ctx, BitOpFlags op_flag, const st
             apply_fast_path_op([](uint64_t &a, uint64_t b) { a |= b; });
           } else if (op_flag == kBitOpXor) {
             apply_fast_path_op([](uint64_t &a, uint64_t b) { a ^= b; });
+          } else if (op_flag == kBitOpDiff) {
+            // X & (~(Y1 | Y2 | ...))
+            uint64_t others_or[4];
+            while (frag_minlen >= sizeof(uint64_t) * 4) {
+              for (uint64_t k = 0; k < 4; k++) {
+                others_or[k] = 0;
+                for (uint64_t i = 1; i < frag_numkeys; i++) {
+                  others_or[k] |= lp[i][k];
+                }
+                lres[k] = lres[k] & ~others_or[k];
+              }
+              for (uint64_t i = 1; i < frag_numkeys; i++) {
+                lp[i] += 4;
+              }
+              lres += 4;
+              j += sizeof(uint64_t) * 4;
+              frag_minlen -= sizeof(uint64_t) * 4;
+            }
+          } else if (op_flag == kBitOpDiff1) {
+            // (~X) & (Y1 | Y2 | ...)
+            uint64_t others_or[4];
+            while (frag_minlen >= sizeof(uint64_t) * 4) {
+              for (uint64_t k = 0; k < 4; k++) {
+                others_or[k] = 0;
+                for (uint64_t i = 1; i < frag_numkeys; i++) {
+                  others_or[k] |= lp[i][k];
+                }
+                lres[k] = ~lres[k] & others_or[k];
+              }
+              for (uint64_t i = 1; i < frag_numkeys; i++) {
+                lp[i] += 4;
+              }
+              lres += 4;
+              j += sizeof(uint64_t) * 4;
+              frag_minlen -= sizeof(uint64_t) * 4;
+            }
+          } else if (op_flag == kBitOpAndOr) {
+            // X & (Y1 | Y2 | ...)
+            uint64_t others_or[4];
+            while (frag_minlen >= sizeof(uint64_t) * 4) {
+              for (uint64_t k = 0; k < 4; k++) {
+                others_or[k] = 0;
+                for (uint64_t i = 1; i < frag_numkeys; i++) {
+                  others_or[k] |= lp[i][k];
+                }
+                lres[k] = lres[k] & others_or[k];
+              }
+              for (uint64_t i = 1; i < frag_numkeys; i++) {
+                lp[i] += 4;
+              }
+              lres += 4;
+              j += sizeof(uint64_t) * 4;
+              frag_minlen -= sizeof(uint64_t) * 4;
+            }
+          } else if (op_flag == kBitOpOne) {
+            // (X1 ^ X2 ^ ...) & (~(X1 & X2 & ...))
+            uint64_t all_and[4], all_xor[4];
+            while (frag_minlen >= sizeof(uint64_t) * 4) {
+              for (uint64_t k = 0; k < 4; k++) {
+                all_and[k] = lp[0][k];
+                all_xor[k] = lp[0][k];
+                for (uint64_t i = 1; i < frag_numkeys; i++) {
+                  all_and[k] &= lp[i][k];
+                  all_xor[k] ^= lp[i][k];
+                }
+                lres[k] = all_xor[k] & ~all_and[k];
+              }
+              for (uint64_t i = 0; i < frag_numkeys; i++) {
+                lp[i] += 4;
+              }
+              lres += 4;
+              j += sizeof(uint64_t) * 4;
+              frag_minlen -= sizeof(uint64_t) * 4;
+            }
           } else if (op_flag == kBitOpNot) {
             while (frag_minlen >= sizeof(uint64_t) * 4) {
               lres[0] = ~lres[0];
@@ -597,6 +671,46 @@ rocksdb::Status Bitmap::BitOp(engine::Context &ctx, BitOpFlags op_flag, const st
         for (; j < frag_maxlen; j++) {
           output = (fragments[0].size() <= j) ? 0 : fragments[0][j];
           if (op_flag == kBitOpNot) output = ~output;
+
+          // For DIFF, DIFF1, ANDOR, and ONE operations, we need special handling
+          if (op_flag == kBitOpDiff || op_flag == kBitOpDiff1 || op_flag == kBitOpAndOr) {
+            // Calculate OR of all keys except the first one
+            uint8_t others_or = 0;
+            for (uint64_t i = 1; i < frag_numkeys; i++) {
+              byte = (fragments[i].size() <= j) ? 0 : fragments[i][j];
+              others_or |= byte;
+            }
+
+            if (op_flag == kBitOpDiff) {
+              // X & (~(Y1 | Y2 | ...))
+              output = output & ~others_or;
+            } else if (op_flag == kBitOpDiff1) {
+              // (~X) & (Y1 | Y2 | ...)
+              output = ~output & others_or;
+            } else if (op_flag == kBitOpAndOr) {
+              // X & (Y1 | Y2 | ...)
+              output = output & others_or;
+            }
+            frag_res[j] = output;
+            continue;
+          }
+
+          if (op_flag == kBitOpOne) {
+            // Calculate AND and XOR of all keys
+            uint8_t all_and = (fragments[0].size() <= j) ? 0 : fragments[0][j];
+            uint8_t all_xor = all_and;
+            for (uint64_t i = 1; i < frag_numkeys; i++) {
+              byte = (fragments[i].size() <= j) ? 0 : fragments[i][j];
+              all_and &= byte;
+              all_xor ^= byte;
+            }
+            // (X1 ^ X2 ^ ...) & (~(X1 & X2 & ...))
+            output = all_xor & ~all_and;
+            frag_res[j] = output;
+            continue;
+          }
+
+          // Standard operations: AND, OR, XOR, NOT
           for (uint64_t i = 1; i < frag_numkeys; i++) {
             byte = (fragments[i].size() <= j) ? 0 : fragments[i][j];
             switch (op_flag) {
@@ -609,6 +723,8 @@ rocksdb::Status Bitmap::BitOp(engine::Context &ctx, BitOpFlags op_flag, const st
               case kBitOpXor:
                 output ^= byte;
                 break;
+              case kBitOpNot:
+                // NOT operation ignores other keys after the first one
               default:
                 break;
             }

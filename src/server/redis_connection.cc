@@ -470,6 +470,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
 
     // Push the command back and stop processing; it will be re-executed after unpause.
     if (srv_->PauseConnIfNeeded(this, cmd_name, cmd_flags)) {
+      multi_error_exit.Disable();  // Don't mark transaction as failed - we're deferring, not erroring
       to_process_cmds->push_front(std::move(cmd_tokens));
       return;
     }

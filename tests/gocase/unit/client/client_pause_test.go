@@ -183,4 +183,104 @@ func TestClientPause(t *testing.T) {
 
 		wg.Wait()
 	})
+
+	t.Run("CLIENT PAUSE blocks EXEC in MULTI/EXEC", func(t *testing.T) {
+		multiClient := srv.NewClientWithOption(&redis.Options{Password: "admin"})
+		defer func() { require.NoError(t, multiClient.Close()) }()
+
+		require.NoError(t, multiClient.Do(ctx, "MULTI").Err())
+		require.NoError(t, multiClient.Set(ctx, "multi_pause_key", "1", 0).Err())
+
+		// EXEC has no "write" flag (exclusive bypass-multi slow), so use ALL mode to block it.
+		go func() {
+			time.Sleep(50 * time.Millisecond)
+			require.NoError(t, adminClient.Do(ctx, "CLIENT", "PAUSE", "3000").Err())
+		}()
+		time.Sleep(150 * time.Millisecond)
+
+		var wg sync.WaitGroup
+		wg.Add(1)
+		var execStart time.Time
+		var execErr error
+		go func() {
+			defer wg.Done()
+			execStart = time.Now()
+			execErr = multiClient.Do(ctx, "EXEC").Err()
+		}()
+
+		time.Sleep(400 * time.Millisecond)
+		require.NoError(t, unpauseClient.Do(ctx, "CLIENT", "UNPAUSE").Err())
+		wg.Wait()
+
+		require.NoError(t, execErr)
+		require.GreaterOrEqual(t, time.Since(execStart).Milliseconds(), int64(400))
+		val, err := unpauseClient.Get(ctx, "multi_pause_key").Result()
+		require.NoError(t, err)
+		require.Equal(t, "1", val)
+	})
+
+	t.Run("CLIENT PAUSE blocks BLPOP wakeup until UNPAUSE", func(t *testing.T) {
+		blpopClient := srv.NewTCPClient()
+		defer func() { require.NoError(t, blpopClient.Close()) }()
+		require.NoError(t, blpopClient.WriteArgs("AUTH", "admin"))
+		blpopClient.MustRead(t, "+OK")
+
+		require.NoError(t, adminClient.Del(ctx, "blist").Err())
+		require.NoError(t, blpopClient.WriteArgs("BLPOP", "blist", "0"))
+
+		time.Sleep(50 * time.Millisecond)
+		require.NoError(t, adminClient.Do(ctx, "CLIENT", "PAUSE", "5000", "WRITE").Err())
+
+		pushClient := srv.NewClientWithOption(&redis.Options{Password: "admin"})
+		defer func() { require.NoError(t, pushClient.Close()) }()
+
+		var wg sync.WaitGroup
+		wg.Add(1)
+		var blpopDone time.Time
+		go func() {
+			defer wg.Done()
+			blpopClient.MustReadStrings(t, []string{"blist", "data"})
+			blpopDone = time.Now()
+		}()
+
+		var pushWg sync.WaitGroup
+		pushWg.Add(1)
+		go func() {
+			defer pushWg.Done()
+			require.NoError(t, pushClient.RPush(ctx, "blist", "data").Err())
+		}()
+
+		time.Sleep(200 * time.Millisecond)
+		unpauseStart := time.Now()
+		require.NoError(t, unpauseClient.Do(ctx, "CLIENT", "UNPAUSE").Err())
+		pushWg.Wait()
+		wg.Wait()
+
+		require.GreaterOrEqual(t, blpopDone.Sub(unpauseStart).Milliseconds(), int64(0))
+	})
+
+	t.Run("CLIENT PAUSE WRITE blocks EVAL until UNPAUSE", func(t *testing.T) {
+		require.NoError(t, adminClient.Do(ctx, "CLIENT", "PAUSE", "2000", "WRITE").Err())
+
+		evalClient := srv.NewClientWithOption(&redis.Options{Password: "admin"})
+		defer func() { require.NoError(t, evalClient.Close()) }()
+
+		var wg sync.WaitGroup
+		wg.Add(1)
+		start := time.Now()
+		var evalErr error
+		var evalVal interface{}
+		go func() {
+			defer wg.Done()
+			evalVal, evalErr = evalClient.Eval(ctx, `return redis.call('ping')`, []string{}).Result()
+		}()
+
+		time.Sleep(400 * time.Millisecond)
+		require.NoError(t, unpauseClient.Do(ctx, "CLIENT", "UNPAUSE").Err())
+		wg.Wait()
+
+		require.NoError(t, evalErr)
+		require.Equal(t, "PONG", evalVal)
+		require.GreaterOrEqual(t, time.Since(start).Milliseconds(), int64(400))
+	})
 }

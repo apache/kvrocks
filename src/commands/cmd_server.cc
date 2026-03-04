@@ -26,6 +26,7 @@
 #include "commander.h"
 #include "commands/scan_base.h"
 #include "common/io_util.h"
+#include "common/logging.h"
 #include "common/rdb_stream.h"
 #include "common/string_util.h"
 #include "common/time_util.h"
@@ -600,7 +601,9 @@ class CommandClient : public Commander {
       }
       return Status::OK();
     }
-    return {Status::RedisInvalidCmd, "Syntax error, try CLIENT LIST|INFO|KILL ip:port|GETNAME|SETNAME|REPLY|PAUSE|UNPAUSE"};
+    return {Status::RedisInvalidCmd,
+            "Syntax error, try CLIENT LIST|INFO|KILL ip:port|GETNAME|SETNAME|REPLY|"
+            "PAUSE|UNPAUSE"};
   }
 
   Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
@@ -645,6 +648,8 @@ class CommandClient : public Commander {
       }
       uint64_t now_ms = util::GetTimeStampMS();
       srv->PauseConns(now_ms + pause_timeout_ms_, pause_mode_);
+      WARN("CLIENT PAUSE executed, timeout={}ms, mode={}, addr: {}", pause_timeout_ms_,
+           pause_mode_ == PauseMode::kWrite ? "write" : "all", conn->GetAddr());
       *output = redis::RESP_OK;
       return Status::OK();
     } else if (subcommand_ == "unpause") {
@@ -656,7 +661,9 @@ class CommandClient : public Commander {
       return Status::OK();
     }
 
-    return {Status::RedisInvalidCmd, "Syntax error, try CLIENT LIST|INFO|KILL ip:port|GETNAME|SETNAME|REPLY|PAUSE|UNPAUSE"};
+    return {Status::RedisInvalidCmd,
+            "Syntax error, try CLIENT LIST|INFO|KILL ip:port|GETNAME|SETNAME|REPLY|"
+            "PAUSE|UNPAUSE"};
   }
 
  private:

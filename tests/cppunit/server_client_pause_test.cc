@@ -144,9 +144,9 @@ TEST_F(ServerClientPauseTest, WriteCommandBlockedInWriteMode) {
 }
 
 TEST_F(ServerClientPauseTest, SpecialCommandsBlockedInWriteMode) {
-  // WRITE mode: eval/evalsha/publish/pfcount/wait are also suspended.
+  // WRITE mode: publish/pfcount/wait are also suspended.
   server_->PauseConns(util::GetTimeStampMS() + 60000, PauseMode::kWrite);
-  for (const auto &cmd : {"eval", "evalsha", "publish", "pfcount", "wait"}) {
+  for (const auto &cmd : {"publish", "pfcount", "wait"}) {
     EXPECT_FALSE(CommandPassesThrough(cmd, 0 /* no write flag, but special */))
         << "Command '" << cmd << "' should be suspended in WRITE mode";
   }

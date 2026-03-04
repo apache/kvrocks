@@ -373,6 +373,10 @@ rocksdb::Status String::IncrBy(engine::Context &ctx, const std::string &user_key
 
   size_t offset = Metadata::GetOffsetAfterExpire(raw_value[0]);
   std::string value = raw_value.substr(offset);
+  if (s.ok() && value.empty()) {
+    return rocksdb::Status::InvalidArgument("value is not an integer or out of range");
+  }
+
   int64_t n = 0;
   if (!value.empty()) {
     auto parse_result = ParseInt<int64_t>(value, 10);

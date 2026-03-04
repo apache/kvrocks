@@ -711,3 +711,88 @@ func TestReplicationWatermark(t *testing.T) {
 	// The small command should be processed much faster than 1 second
 	require.Less(t, duration, 1*time.Second, "small command should be processed promptly")
 }
+
+func TestReplicationSlowConsumerConfig(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	// This test verifies the slow consumer protection config options are working:
+	// - max-replication-lag: threshold before disconnecting slow consumers
+	// - replication-send-timeout-ms: timeout for socket sends to replicas
+	master := util.StartServer(t, map[string]string{
+		"max-replication-lag":         "100000000",
+		"replication-send-timeout-ms": "30000",
+	})
+	defer master.Close()
+	masterClient := master.NewClient()
+	defer func() { require.NoError(t, masterClient.Close()) }()
+
+	slave := util.StartServer(t, map[string]string{})
+	defer slave.Close()
+	slaveClient := slave.NewClient()
+	defer func() { require.NoError(t, slaveClient.Close()) }()
+
+	t.Run("Slow consumer config options are readable and settable", func(t *testing.T) {
+		// Verify initial config values
+		maxLag := masterClient.ConfigGet(ctx, "max-replication-lag").Val()
+		require.Equal(t, "100000000", maxLag["max-replication-lag"])
+
+		sendTimeout := masterClient.ConfigGet(ctx, "replication-send-timeout-ms").Val()
+		require.Equal(t, "30000", sendTimeout["replication-send-timeout-ms"])
+
+		// Test CONFIG SET for max-replication-lag
+		require.NoError(t, masterClient.ConfigSet(ctx, "max-replication-lag", "50000000").Err())
+		maxLag = masterClient.ConfigGet(ctx, "max-replication-lag").Val()
+		require.Equal(t, "50000000", maxLag["max-replication-lag"])
+
+		// Test CONFIG SET for replication-send-timeout-ms
+		require.NoError(t, masterClient.ConfigSet(ctx, "replication-send-timeout-ms", "15000").Err())
+		sendTimeout = masterClient.ConfigGet(ctx, "replication-send-timeout-ms").Val()
+		require.Equal(t, "15000", sendTimeout["replication-send-timeout-ms"])
+
+		// Verify replication still works normally with these config options
+		util.SlaveOf(t, slaveClient, master)
+		util.WaitForSync(t, slaveClient)
+		require.Equal(t, "slave", util.FindInfoEntry(slaveClient, "role"))
+
+		require.NoError(t, masterClient.Set(ctx, "test_key", "test_value", 0).Err())
+		util.WaitForOffsetSync(t, masterClient, slaveClient, 5*time.Second)
+		require.Equal(t, "test_value", slaveClient.Get(ctx, "test_key").Val())
+	})
+}
+
+func TestReplicationExponentialBackoff(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	master := util.StartServer(t, map[string]string{})
+	defer master.Close()
+	masterClient := master.NewClient()
+	defer func() { require.NoError(t, masterClient.Close()) }()
+
+	slave := util.StartServer(t, map[string]string{})
+	defer slave.Close()
+	slaveClient := slave.NewClient()
+	defer func() { require.NoError(t, slaveClient.Close()) }()
+
+	t.Run("Slave uses exponential backoff on reconnection", func(t *testing.T) {
+		// Connect slave to master
+		util.SlaveOf(t, slaveClient, master)
+		util.WaitForSync(t, slaveClient)
+
+		// Kill the slave connection from master side to trigger reconnection
+		_, err := masterClient.ClientKillByFilter(ctx, "type", "slave").Result()
+		require.NoError(t, err)
+
+		// The slave should log backoff messages when reconnecting
+		// First reconnection attempt should wait 1 second
+		require.Eventually(t, func() bool {
+			return slave.LogFileMatches(t, ".*waiting 1 seconds before reconnecting.*")
+		}, 10*time.Second, 200*time.Millisecond, "slave should log backoff on first reconnection")
+
+		// Slave should eventually reconnect
+		require.Eventually(t, func() bool {
+			return util.FindInfoEntry(slaveClient, "master_link_status") == "up"
+		}, 15*time.Second, 500*time.Millisecond, "slave should reconnect with backoff")
+	})
+}

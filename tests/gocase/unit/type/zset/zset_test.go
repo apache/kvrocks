@@ -893,7 +893,7 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, enabledRES
 		createZset(rdb, ctx, "mzset", zsetInt)
 		require.Equal(t, zsetInt, rdb.ZRangeByScoreWithScores(ctx, "mzset", &redis.ZRangeBy{Min: "-inf", Max: "+inf"}).Val())
 		require.Equal(t, zsetInt, rdb.ZRangeArgsWithScores(ctx, redis.ZRangeArgs{Key: "mzset", Start: "-inf", Stop: "+inf", ByScore: true}).Val())
-		util.ReverseSlice(zsetInt)
+		slices.Reverse(zsetInt)
 		require.Equal(t, zsetInt, rdb.ZRevRangeByScoreWithScores(ctx, "mzset", &redis.ZRangeBy{Min: "-inf", Max: "+inf"}).Val())
 		require.Equal(t, zsetInt, rdb.ZRangeArgsWithScores(ctx, redis.ZRangeArgs{Key: "mzset", Start: "-inf", Stop: "+inf", ByScore: true, Rev: true}).Val())
 
@@ -907,7 +907,7 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, enabledRES
 		createZset(rdb, ctx, "mzset", zsetDouble)
 		require.Equal(t, zsetDouble, rdb.ZRangeByScoreWithScores(ctx, "mzset", &redis.ZRangeBy{Min: "-inf", Max: "+inf"}).Val())
 		require.Equal(t, zsetDouble, rdb.ZRangeArgsWithScores(ctx, redis.ZRangeArgs{Key: "mzset", Start: "-inf", Stop: "+inf", ByScore: true}).Val())
-		util.ReverseSlice(zsetDouble)
+		slices.Reverse(zsetDouble)
 		require.Equal(t, zsetDouble, rdb.ZRevRangeByScoreWithScores(ctx, "mzset", &redis.ZRangeBy{Min: "-inf", Max: "+inf"}).Val())
 		require.Equal(t, zsetDouble, rdb.ZRangeArgsWithScores(ctx, redis.ZRangeArgs{Key: "mzset", Start: "-inf", Stop: "+inf", ByScore: true, Rev: true}).Val())
 	})
@@ -1697,7 +1697,7 @@ func stressTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding 
 		delta := 0
 		for test := 0; test < 2; test++ {
 			auxArray := make(map[string]float64)
-			auxList := make([]redis.Z, 0)
+			auxList := make([]redis.Z, 0, 4)
 			rdb.Del(ctx, "myzset")
 			var score float64
 			for i := 0; i < elements; i++ {
@@ -1736,7 +1736,7 @@ func stressTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding 
 					}
 				}
 			})
-			var aux []string
+			aux := make([]string, 0, len(auxList))
 			for _, z := range auxList {
 				aux = append(aux, z.Member.(string))
 			}

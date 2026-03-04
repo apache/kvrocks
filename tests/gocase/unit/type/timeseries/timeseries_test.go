@@ -670,7 +670,7 @@ func testTimeSeries(t *testing.T, configs util.KvrocksServerConfigs) {
 			resultArray, ok := result.([]interface{})
 			require.True(t, ok, "Expected array result")
 
-			foundKeys := make([]string, 0)
+			foundKeys := make([]string, 0, len(resultArray))
 			for _, item := range resultArray {
 				itemArray, ok := item.([]interface{})
 				require.True(t, ok, "Expected item to be an array")

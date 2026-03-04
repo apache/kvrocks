@@ -37,7 +37,7 @@ import (
 )
 
 func getKeys(hash map[string]string) []string {
-	r := make([]string, 0)
+	r := make([]string, 0, len(hash))
 	for key := range hash {
 		r = append(r, key)
 	}
@@ -45,7 +45,7 @@ func getKeys(hash map[string]string) []string {
 }
 
 func getVals(hash map[string]string) []string {
-	r := make([]string, 0)
+	r := make([]string, 0, len(hash))
 	for _, val := range hash {
 		r = append(r, val)
 	}
@@ -275,14 +275,14 @@ var testHash = func(t *testing.T, configs util.KvrocksServerConfigs) {
 	})
 
 	t.Run("HGET against non existing key", func(t *testing.T) {
-		var rv []string
+		rv := make([]string, 0, 2)
 		rv = append(rv, rdb.HGet(ctx, "samllhash", "__123123123__").Val())
 		rv = append(rv, rdb.HGet(ctx, "bighash", "__123123123__").Val())
 		require.Equal(t, []string{"", ""}, rv)
 	})
 
 	t.Run("HSET in update and insert mode", func(t *testing.T) {
-		var rv []string
+		rv := make([]string, 0, 8)
 		k := getKeys(smallhash)[0]
 		rv = append(rv, fmt.Sprintf("%d", rdb.HSet(ctx, "smallhash", k, "newval1").Val()))
 		smallhash[k] = "newval1"
@@ -390,7 +390,7 @@ var testHash = func(t *testing.T, configs util.KvrocksServerConfigs) {
 	})
 
 	t.Run("HMSET - small hash", func(t *testing.T) {
-		var args []string
+		args := make([]string, 0, 2*len(smallhash))
 		for key := range smallhash {
 			newval := util.RandString(0, 8, util.Alpha)
 			smallhash[key] = newval
@@ -400,7 +400,7 @@ var testHash = func(t *testing.T, configs util.KvrocksServerConfigs) {
 	})
 
 	t.Run("HMSET - big hash", func(t *testing.T) {
-		var args []string
+		args := make([]string, 0, 2*len(bighash))
 		for key := range bighash {
 			newval := util.RandString(0, 8, util.Alpha)
 			bighash[key] = newval
@@ -410,7 +410,7 @@ var testHash = func(t *testing.T, configs util.KvrocksServerConfigs) {
 	})
 
 	t.Run("HMGET against non existing key and fields", func(t *testing.T) {
-		var rv [][]interface{}
+		rv := make([][]interface{}, 0, 8)
 		cmd1 := rdb.HMGet(ctx, "doesntexist", "__123123123__", "__456456456__")
 		rv = append(rv, cmd1.Val())
 		cmd2 := rdb.HMGet(ctx, "smallhash", "__123123123__", "__456456456__")
@@ -433,8 +433,8 @@ var testHash = func(t *testing.T, configs util.KvrocksServerConfigs) {
 	})
 
 	t.Run("HMGET - small hash", func(t *testing.T) {
-		var keys []string
-		var vals []string
+		keys := make([]string, 0, len(smallhash))
+		vals := make([]string, 0, len(smallhash))
 		for key, val := range smallhash {
 			keys = append(keys, key)
 			vals = append(vals, val)
@@ -451,8 +451,8 @@ var testHash = func(t *testing.T, configs util.KvrocksServerConfigs) {
 	})
 
 	t.Run("HMGET - big hash", func(t *testing.T) {
-		var keys []string
-		var vals []string
+		keys := make([]string, 0, len(bighash))
+		vals := make([]string, 0, len(bighash))
 		for key, val := range bighash {
 			keys = append(keys, key)
 			vals = append(vals, val)
@@ -537,7 +537,7 @@ var testHash = func(t *testing.T, configs util.KvrocksServerConfigs) {
 	})
 
 	t.Run("HDEL and return value", func(t *testing.T) {
-		var rv []string
+		rv := make([]string, 0, 8)
 		rv = append(rv, fmt.Sprintf("%d", rdb.HDel(ctx, "smallhash", "nokey").Val()))
 		rv = append(rv, fmt.Sprintf("%d", rdb.HDel(ctx, "bighash", "nokey").Val()))
 		k := getKeys(smallhash)[0]
@@ -569,7 +569,7 @@ var testHash = func(t *testing.T, configs util.KvrocksServerConfigs) {
 	})
 
 	t.Run("HEXISTS", func(t *testing.T) {
-		var rv []bool
+		rv := make([]bool, 0, 4)
 		k := getKeys(smallhash)[0]
 		rv = append(rv, rdb.HExists(ctx, "smallhash", k).Val())
 		rv = append(rv, rdb.HExists(ctx, "smallhash", "nokey").Val())
@@ -585,7 +585,7 @@ var testHash = func(t *testing.T, configs util.KvrocksServerConfigs) {
 	})
 
 	t.Run("HINCRBY against non existing hash key", func(t *testing.T) {
-		var rv []string
+		rv := make([]string, 0, 4)
 		rdb.HDel(ctx, "smallhash", "tmp")
 		rdb.HDel(ctx, "bighash", "tmp")
 		rv = append(rv, fmt.Sprintf("%d", rdb.HIncrBy(ctx, "smallhash", "tmp", 2).Val()))
@@ -596,7 +596,7 @@ var testHash = func(t *testing.T, configs util.KvrocksServerConfigs) {
 	})
 
 	t.Run("HINCRBY against hash key created by hincrby itself", func(t *testing.T) {
-		var rv []string
+		rv := make([]string, 0, 4)
 		rv = append(rv, fmt.Sprintf("%d", rdb.HIncrBy(ctx, "smallhash", "tmp", 3).Val()))
 		rv = append(rv, rdb.HGet(ctx, "smallhash", "tmp").Val())
 		rv = append(rv, fmt.Sprintf("%d", rdb.HIncrBy(ctx, "bighash", "tmp", 3).Val()))
@@ -685,7 +685,7 @@ var testHash = func(t *testing.T, configs util.KvrocksServerConfigs) {
 	})
 
 	t.Run("HINCRBYFLOAT against hash key originally set with HSET", func(t *testing.T) {
-		var rv []float64
+		rv := make([]float64, 0, 2)
 		rdb.HSet(ctx, "smallhash", "tmp", 100)
 		rdb.HSet(ctx, "bighash", "tmp", 100)
 		rv = append(rv, rdb.HIncrByFloat(ctx, "smallhash", "tmp", 2.5).Val())
@@ -750,7 +750,7 @@ var testHash = func(t *testing.T, configs util.KvrocksServerConfigs) {
 	})
 
 	t.Run("HSTRLEN against non existing field", func(t *testing.T) {
-		var rv []int64
+		rv := make([]int64, 0, 2)
 		rv = append(rv, rdb.Do(ctx, "hstrlen", "smallhash", "__123123123__").Val().(int64))
 		rv = append(rv, rdb.Do(ctx, "hstrlen", "bighash", "__123123123__").Val().(int64))
 		require.Equal(t, []int64{0, 0}, rv)
@@ -960,7 +960,7 @@ var testHash = func(t *testing.T, configs util.KvrocksServerConfigs) {
 			result, err = rdb.HRandField(ctx, "nonexistent-key", 1).Result()
 			require.NoError(t, err)
 			require.Len(t, result, 0)
-			var rv [][]interface{}
+			rv := make([][]interface{}, 0, 6)
 			resultWithValues, err := rdb.HRandFieldWithValues(ctx, testKey, 5).Result()
 			require.NoError(t, err)
 			require.Len(t, resultWithValues, 3)

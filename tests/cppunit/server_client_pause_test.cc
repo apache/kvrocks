@@ -62,7 +62,7 @@ class ServerClientPauseTest : public TestBase {
   }
 
   // Returns true if the command is allowed through (not suspended by CLIENT PAUSE).
-  bool CommandPassesThrough(const std::string &cmd_name, uint64_t cmd_flags) {
+  bool commandPassesThrough(const std::string &cmd_name, uint64_t cmd_flags) {
     bool suspended = server_->PauseConnIfNeeded(conn_.get(), cmd_name, cmd_flags);
     if (suspended) {
       // clean up: resume and remove from paused list so the test stays isolated
@@ -88,7 +88,7 @@ TEST_F(ServerClientPauseTest, SetPauseAllMode) {
   server_->PauseConns(future_ms, PauseMode::kAll);
 
   // Write command should be suspended (not pass through).
-  EXPECT_FALSE(CommandPassesThrough("set", redis::kCmdWrite));
+  EXPECT_FALSE(commandPassesThrough("set", redis::kCmdWrite));
   server_->UnpauseConns();
 }
 
@@ -98,8 +98,8 @@ TEST_F(ServerClientPauseTest, UnpauseClearsState) {
   server_->UnpauseConns();
 
   // After unpause, commands should pass through immediately.
-  EXPECT_TRUE(CommandPassesThrough("set", redis::kCmdWrite));
-  EXPECT_TRUE(CommandPassesThrough("get", redis::kCmdReadOnly));
+  EXPECT_TRUE(commandPassesThrough("set", redis::kCmdWrite));
+  EXPECT_TRUE(commandPassesThrough("get", redis::kCmdReadOnly));
 }
 
 TEST_F(ServerClientPauseTest, SetPauseOverwrite) {
@@ -108,7 +108,7 @@ TEST_F(ServerClientPauseTest, SetPauseOverwrite) {
 
   // Overwrite with a new pause – command should still be suspended.
   server_->PauseConns(util::GetTimeStampMS() + 60000, PauseMode::kAll);
-  EXPECT_FALSE(CommandPassesThrough("set", redis::kCmdWrite));
+  EXPECT_FALSE(commandPassesThrough("set", redis::kCmdWrite));
   server_->UnpauseConns();
 }
 
@@ -118,28 +118,28 @@ TEST_F(ServerClientPauseTest, SetPauseOverwrite) {
 
 TEST_F(ServerClientPauseTest, NotPausedWhenEndTimeIsZero) {
   // No pause set – any command should pass through immediately.
-  EXPECT_TRUE(CommandPassesThrough("set", redis::kCmdWrite));
-  EXPECT_TRUE(CommandPassesThrough("get", redis::kCmdReadOnly));
+  EXPECT_TRUE(commandPassesThrough("set", redis::kCmdWrite));
+  EXPECT_TRUE(commandPassesThrough("get", redis::kCmdReadOnly));
 }
 
 TEST_F(ServerClientPauseTest, ClientCommandIsExempt) {
   // "client" subcommands (PAUSE/UNPAUSE) are exempt from pausing to avoid deadlock.
   server_->PauseConns(util::GetTimeStampMS() + 60000, PauseMode::kAll);
-  EXPECT_TRUE(CommandPassesThrough("client", 0));
+  EXPECT_TRUE(commandPassesThrough("client", 0));
   server_->UnpauseConns();
 }
 
 TEST_F(ServerClientPauseTest, ReadCommandNotBlockedInWriteMode) {
   // WRITE mode: read-only commands must not be suspended.
   server_->PauseConns(util::GetTimeStampMS() + 60000, PauseMode::kWrite);
-  EXPECT_TRUE(CommandPassesThrough("get", redis::kCmdReadOnly));
+  EXPECT_TRUE(commandPassesThrough("get", redis::kCmdReadOnly));
   server_->UnpauseConns();
 }
 
 TEST_F(ServerClientPauseTest, WriteCommandBlockedInWriteMode) {
   // WRITE mode: write commands should be suspended.
   server_->PauseConns(util::GetTimeStampMS() + 60000, PauseMode::kWrite);
-  EXPECT_FALSE(CommandPassesThrough("set", redis::kCmdWrite));
+  EXPECT_FALSE(commandPassesThrough("set", redis::kCmdWrite));
   server_->UnpauseConns();
 }
 
@@ -147,7 +147,7 @@ TEST_F(ServerClientPauseTest, SpecialCommandsBlockedInWriteMode) {
   // WRITE mode: publish/pfcount/wait are also suspended.
   server_->PauseConns(util::GetTimeStampMS() + 60000, PauseMode::kWrite);
   for (const auto &cmd : {"publish", "pfcount", "wait"}) {
-    EXPECT_FALSE(CommandPassesThrough(cmd, 0 /* no write flag, but special */))
+    EXPECT_FALSE(commandPassesThrough(cmd, 0 /* no write flag, but special */))
         << "Command '" << cmd << "' should be suspended in WRITE mode";
   }
   server_->UnpauseConns();
@@ -156,8 +156,8 @@ TEST_F(ServerClientPauseTest, SpecialCommandsBlockedInWriteMode) {
 TEST_F(ServerClientPauseTest, AllCommandsBlockedInAllMode) {
   // ALL mode: even read-only commands are suspended.
   server_->PauseConns(util::GetTimeStampMS() + 60000, PauseMode::kAll);
-  EXPECT_FALSE(CommandPassesThrough("get", redis::kCmdReadOnly));
-  EXPECT_FALSE(CommandPassesThrough("set", redis::kCmdWrite));
+  EXPECT_FALSE(commandPassesThrough("get", redis::kCmdReadOnly));
+  EXPECT_FALSE(commandPassesThrough("set", redis::kCmdWrite));
   server_->UnpauseConns();
 }
 

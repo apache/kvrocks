@@ -32,6 +32,8 @@ namespace util {
 
 void ThreadSetName(const char *name);
 
+double ThreadGetCPUTime(std::thread::native_handle_type thread_id);
+
 template <typename F>
 StatusOr<std::thread> CreateThread(const char *name, F f) {
   try {

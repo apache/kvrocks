@@ -23,6 +23,7 @@
 #include <event2/util.h>
 #include <unistd.h>
 
+#include <atomic>
 #include <cstdint>
 #include <stdexcept>
 #include <string>
@@ -589,6 +590,7 @@ void WorkerThread::Start() {
 
   if (s) {
     t_ = std::move(*s);
+    native_thread_handle_.store(t_.native_handle(), std::memory_order_relaxed);
   } else {
     ERROR("[worker] Failed to start worker thread, err: {}", s.Msg());
     return;
@@ -597,7 +599,10 @@ void WorkerThread::Start() {
   INFO("[worker] Thread #{} started", fmt::streamed(t_.get_id()));
 }
 
-void WorkerThread::Stop(uint32_t wait_seconds) { worker_->Stop(wait_seconds); }
+void WorkerThread::Stop(uint32_t wait_seconds) {
+  native_thread_handle_.store(std::thread::native_handle_type{}, std::memory_order_relaxed);
+  worker_->Stop(wait_seconds);
+}
 
 void WorkerThread::Join() {
   if (auto s = util::ThreadJoin(t_); !s) {

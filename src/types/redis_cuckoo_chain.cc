@@ -22,9 +22,8 @@
 
 #include <cmath>
 
-#include "logging.h"
-
 #include "cuckoo_filter.h"
+#include "logging.h"
 
 namespace redis {
 
@@ -33,8 +32,8 @@ rocksdb::Status CuckooChain::getCuckooChainMetadata(engine::Context &ctx, const 
   return Database::GetMetadata(ctx, {kRedisCuckooFilter}, ns_key, metadata);
 }
 
-std::string CuckooChain::getBucketKey(const Slice &ns_key, const CuckooChainMetadata &metadata,
-                                      uint16_t filter_index, uint32_t bucket_index) {
+std::string CuckooChain::getBucketKey(const Slice &ns_key, const CuckooChainMetadata &metadata, uint16_t filter_index,
+                                      uint32_t bucket_index) {
   // Create a sub-key that includes both filter index and bucket index
   std::string sub_key;
   PutFixed16(&sub_key, filter_index);

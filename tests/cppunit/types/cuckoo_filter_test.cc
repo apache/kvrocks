@@ -19,6 +19,7 @@
  */
 
 #include <gtest/gtest.h>
+
 #include <memory>
 
 #include "storage/redis_db.h"
@@ -39,8 +40,7 @@ class RedisCuckooFilterTest : public TestBase {
   void SetUp() override {
     // Use a unique key for each test to avoid conflicts
     // Include test name to make debugging easier
-    const ::testing::TestInfo* const test_info =
-        ::testing::UnitTest::GetInstance()->current_test_info();
+    const ::testing::TestInfo* const test_info = ::testing::UnitTest::GetInstance()->current_test_info();
     key_ = std::string("cf_test_") + test_info->name();
   }
 
@@ -195,7 +195,6 @@ TEST_F(RedisCuckooFilterTest, HashFunction) {
   ASSERT_LE(fp, 255) << "Fingerprint should be at most 255";
 }
 
-
 TEST_F(RedisCuckooFilterTest, ReserveTooSmallCapacity) {
   // Test capacity = 1 (too small, following RedisBloom behavior)
   // With load factor 0.955 and bucket_size=4, this would result in 0 buckets
@@ -238,8 +237,7 @@ TEST_F(RedisCuckooFilterTest, ReserveVerifyMetadata) {
   s = cuckoo_->Reserve(*ctx_, key_, capacity * 2, bucket_size, max_iterations, expansion);
   ASSERT_FALSE(s.ok()) << "Second reserve with same key should fail";
   ASSERT_TRUE(s.IsInvalidArgument()) << "Should return InvalidArgument error";
-  ASSERT_NE(s.ToString().find("already exists"), std::string::npos)
-      << "Error message should mention 'already exists'";
+  ASSERT_NE(s.ToString().find("already exists"), std::string::npos) << "Error message should mention 'already exists'";
 
   // Verify we can still create filters with different keys
   s = cuckoo_->Reserve(*ctx_, "different_key", capacity, bucket_size, max_iterations, expansion);
@@ -250,7 +248,6 @@ TEST_F(RedisCuckooFilterTest, ReserveVerifyMetadata) {
   ASSERT_FALSE(s.ok()) << "Original key should still exist";
   ASSERT_NE(s.ToString().find("already exists"), std::string::npos);
 }
-
 
 TEST_F(RedisCuckooFilterTest, ReserveNoExpansion) {
   // expansion=0 means no auto-expansion when filter is full

@@ -46,8 +46,8 @@ class CuckooChain : public Database {
 
   // Generate key for a specific bucket in bucket-based storage
   // Format: cf:{namespace}:{user_key}:{filter_index}:{bucket_index}
-  std::string getBucketKey(const Slice &ns_key, const CuckooChainMetadata &metadata,
-                           uint16_t filter_index, uint32_t bucket_index);
+  std::string getBucketKey(const Slice &ns_key, const CuckooChainMetadata &metadata, uint16_t filter_index,
+                           uint32_t bucket_index);
 };
 
 }  // namespace redis

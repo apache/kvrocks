@@ -103,7 +103,6 @@ class CommandCFReserve : public Commander {
 };
 
 // Register the CF.RESERVE command
-REDIS_REGISTER_COMMANDS(CuckooFilter,
-                        MakeCmdAttr<CommandCFReserve>("cf.reserve", -3, "write", 1, 1, 1))
+REDIS_REGISTER_COMMANDS(CuckooFilter, MakeCmdAttr<CommandCFReserve>("cf.reserve", -3, "write", 1, 1, 1))
 
 }  // namespace redis

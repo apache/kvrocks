@@ -25,6 +25,7 @@
 #include <event2/listener.h>
 #include <event2/util.h>
 
+#include <atomic>
 #include <cstdint>
 #include <cstring>
 #include <lua.hpp>
@@ -104,7 +105,8 @@ class Worker : EventCallbackBase<Worker>, EvconnlistenerBase<Worker> {
 
 class WorkerThread {
  public:
-  explicit WorkerThread(std::unique_ptr<Worker> worker) : worker_(std::move(worker)) {}
+  explicit WorkerThread(std::unique_ptr<Worker> worker)
+      : native_thread_handle_{std::thread::native_handle_type{}}, worker_(std::move(worker)) {}
   ~WorkerThread() = default;
   WorkerThread(const WorkerThread &) = delete;
   WorkerThread(WorkerThread &&) = delete;
@@ -116,7 +118,10 @@ class WorkerThread {
   void Join();
   bool IsTerminated() const { return worker_->IsTerminated(); }
 
+  std::thread::native_handle_type GetNativeHandle() { return native_thread_handle_.load(std::memory_order_relaxed); }
+
  private:
   std::thread t_;
+  std::atomic<std::thread::native_handle_type> native_thread_handle_;
   std::unique_ptr<Worker> worker_;
 };

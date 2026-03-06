@@ -121,7 +121,7 @@ TEST_F(RedisCuckooFilterTest, OptimalNumBucketsCalculation) {
   ASSERT_EQ(num_buckets & (num_buckets - 1), 0) << "Number of buckets should be power of 2";
 
   // Should be able to hold the capacity with 95.5% load factor
-  uint32_t expected_min = static_cast<uint32_t>(capacity / bucket_size / 0.955);
+  auto expected_min = static_cast<uint32_t>(capacity / bucket_size / 0.955);
   ASSERT_GE(num_buckets, expected_min) << "Number of buckets too small for capacity";
 }
 

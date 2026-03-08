@@ -313,51 +313,41 @@ inline Status TDigestRank(TD&& td, const std::vector<double>& inputs, std::vecto
 template <typename TD>
 inline StatusOr<double> TDigestTrimmedMean(TD&& td, double low_cut_quantile, double high_cut_quantile) {
   if (td.Size() == 0) {
-    return Status{Status::InvalidArgument, "empty tdigest"};
+    return std::numeric_limits<double>::quiet_NaN();
   }
 
-  double low_boundary = std::numeric_limits<double>::quiet_NaN();
-  double high_boundary = std::numeric_limits<double>::quiet_NaN();
+  const double total_weight = td.TotalWeight();
+  const double leftmost_weight = std::floor(total_weight * low_cut_quantile);
+  const double rightmost_weight = std::ceil(total_weight * high_cut_quantile);
 
-  if (low_cut_quantile == 0.0) {
-    low_boundary = td.Min();
-  } else {
-    auto low_result = TDigestQuantile(td, low_cut_quantile);
-    if (!low_result) {
-      return low_result;
-    }
-    low_boundary = *low_result;
-  }
-
-  if (high_cut_quantile == 1.0) {
-    high_boundary = td.Max();
-  } else {
-    auto high_result = TDigestQuantile(td, high_cut_quantile);
-    if (!high_result) {
-      return high_result;
-    }
-    high_boundary = *high_result;
-  }
+  double count_done = 0.0;
+  double trimmed_sum = 0.0;
+  double trimmed_count = 0.0;
 
   auto iter = td.Begin();
-  double total_weight_in_range = 0;
-  double weighted_sum = 0;
-
   while (iter->Valid()) {
     auto centroid = GET_OR_RET(iter->GetCentroid());
+    const double n_weight = centroid.weight;
+    double count_add = n_weight;
 
-    if ((low_cut_quantile == 0.0 && high_cut_quantile == 1.0) ||
-        (centroid.mean >= low_boundary && centroid.mean <= high_boundary)) {
-      total_weight_in_range += centroid.weight;
-      weighted_sum += centroid.mean * centroid.weight;
+    count_add -= std::min(std::max(0.0, leftmost_weight - count_done), count_add);
+    count_add = std::min(std::max(0.0, rightmost_weight - count_done), count_add);
+
+    count_done += n_weight;
+
+    trimmed_sum += centroid.mean * count_add;
+    trimmed_count += count_add;
+
+    if (count_done >= rightmost_weight) {
+      break;
     }
 
     iter->Next();
   }
 
-  if (total_weight_in_range == 0) {
+  if (trimmed_count == 0.0) {
     return std::numeric_limits<double>::quiet_NaN();
   }
 
-  return weighted_sum / total_weight_in_range;
+  return trimmed_sum / trimmed_count;
 }

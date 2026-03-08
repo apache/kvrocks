@@ -519,7 +519,7 @@ class CommandTDigestTrimmedMean : public Commander {
     if (high_cut_quantile_ < 0.0 || high_cut_quantile_ > 1.0) {
       return {Status::RedisParseErr, "high cut quantile must be between 0 and 1"};
     }
-    if (low_cut_quantile_ >= high_cut_quantile_) {
+    if (DoubleCompare(low_cut_quantile_, high_cut_quantile_) >= 0) {
       return {Status::RedisParseErr, "low cut quantile must be less than high cut quantile"};
     }
 

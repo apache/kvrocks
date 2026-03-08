@@ -740,7 +740,7 @@ func tdigestTests(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.NoError(t, result.Err())
 		mean, err := strconv.ParseFloat(result.Val().(string), 64)
 		require.NoError(t, err)
-		require.InDelta(t, 5.5, mean, 1.0)
+		require.InDelta(t, 5.5, mean, 0.01)
 	})
 
 	t.Run("TDIGEST.TRIMMED_MEAN with no trimming", func(t *testing.T) {
@@ -752,7 +752,7 @@ func tdigestTests(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.NoError(t, result.Err())
 		mean, err := strconv.ParseFloat(result.Val().(string), 64)
 		require.NoError(t, err)
-		require.InDelta(t, 5.5, mean, 0.1)
+		require.InDelta(t, 5.5, mean, 0.01)
 	})
 
 	t.Run("TDIGEST.TRIMMED_MEAN with skewed data", func(t *testing.T) {
@@ -764,7 +764,7 @@ func tdigestTests(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.NoError(t, result.Err())
 		mean, err := strconv.ParseFloat(result.Val().(string), 64)
 		require.NoError(t, err)
-		require.Less(t, mean, 50.0)
+		require.InDelta(t, 2.8, mean, 0.01)
 	})
 
 	t.Run("TDIGEST.TRIMMED_MEAN wrong number of arguments", func(t *testing.T) {
@@ -788,13 +788,13 @@ func tdigestTests(t *testing.T, configs util.KvrocksServerConfigs) {
 	t.Run("TDIGEST.TRIMMED_MEAN with single value", func(t *testing.T) {
 		key := "tdigest_single"
 		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", key, "compression", "100").Err())
-		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", key, "42").Err())
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", key, "42", "42").Err())
 
 		result := rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN", key, "0.1", "0.9")
 		require.NoError(t, result.Err())
 		mean, err := strconv.ParseFloat(result.Val().(string), 64)
 		require.NoError(t, err)
-		require.InDelta(t, 42.0, mean, 0.001)
+		require.InDelta(t, 42.0, mean, 0.01)
 	})
 
 	t.Run("TDIGEST.TRIMMED_MEAN with extreme trimming", func(t *testing.T) {
@@ -804,13 +804,10 @@ func tdigestTests(t *testing.T, configs util.KvrocksServerConfigs) {
 
 		result := rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN", key, "0.4", "0.6")
 		require.NoError(t, result.Err())
-		meanStr := result.Val().(string)
-		if meanStr == "nan" {
-			return
-		}
-		mean, err := strconv.ParseFloat(meanStr, 64)
+		mean, err := strconv.ParseFloat(result.Val().(string), 64)
 		require.NoError(t, err)
-		require.Greater(t, mean, 0.0)
+		require.False(t, math.IsNaN(mean))
+		require.InDelta(t, 5.5, mean, 0.01)
 	})
 }
 

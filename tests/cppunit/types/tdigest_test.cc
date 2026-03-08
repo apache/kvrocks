@@ -540,16 +540,65 @@ TEST_F(RedisTDigestTest, TrimmedMean) {
   status = tdigest_->TrimmedMean(*ctx_, test_digest_name, 0.1, 0.9, &result);
   ASSERT_TRUE(status.ok()) << status.ToString();
   ASSERT_TRUE(result.mean.has_value());
-  EXPECT_NEAR(*result.mean, 5.5, 1.0) << "Trimmed mean should be approximately 5.5";
+  EXPECT_NEAR(*result.mean, 5.5, 0.01);
 
   status = tdigest_->TrimmedMean(*ctx_, test_digest_name, 0.0, 1.0, &result);
   ASSERT_TRUE(status.ok()) << status.ToString();
   ASSERT_TRUE(result.mean.has_value());
-  EXPECT_NEAR(*result.mean, 5.5, 0.1) << "Full range should equal complete mean";
+  EXPECT_NEAR(*result.mean, 5.5, 0.01);
 
   status = tdigest_->TrimmedMean(*ctx_, test_digest_name, 0.25, 0.75, &result);
   ASSERT_TRUE(status.ok()) << status.ToString();
   ASSERT_TRUE(result.mean.has_value());
-  EXPECT_GT(*result.mean, 3.0) << "Trimmed mean should be greater than 3.0";
-  EXPECT_LT(*result.mean, 8.0) << "Trimmed mean should be less than 8.0";
+  EXPECT_NEAR(*result.mean, 5.5, 0.01);
+}
+
+TEST_F(RedisTDigestTest, TrimmedMeanEmptyDigest) {
+  std::string test_digest_name = "test_digest_trimmed_mean_empty" + std::to_string(util::GetTimeStampMS());
+  bool exists = false;
+  auto status = tdigest_->Create(*ctx_, test_digest_name, {100}, &exists);
+  ASSERT_FALSE(exists);
+  ASSERT_TRUE(status.ok());
+
+  redis::TDigestTrimmedMeanResult result;
+  status = tdigest_->TrimmedMean(*ctx_, test_digest_name, 0.1, 0.9, &result);
+  ASSERT_TRUE(status.ok()) << status.ToString();
+  ASSERT_FALSE(result.mean.has_value());
+}
+
+TEST_F(RedisTDigestTest, TrimmedMeanUnorderedInput) {
+  std::string test_digest_name = "test_digest_trimmed_mean_unordered" + std::to_string(util::GetTimeStampMS());
+  bool exists = false;
+  auto status = tdigest_->Create(*ctx_, test_digest_name, {100}, &exists);
+  ASSERT_FALSE(exists);
+  ASSERT_TRUE(status.ok());
+
+  std::vector<double> values = {5, 2, 8, 1, 9, 3, 7, 4, 6, 10};
+  status = tdigest_->Add(*ctx_, test_digest_name, values);
+  ASSERT_TRUE(status.ok()) << status.ToString();
+
+  redis::TDigestTrimmedMeanResult result;
+  status = tdigest_->TrimmedMean(*ctx_, test_digest_name, 0.1, 0.9, &result);
+  ASSERT_TRUE(status.ok()) << status.ToString();
+  ASSERT_TRUE(result.mean.has_value());
+  EXPECT_NEAR(*result.mean, 5.5, 0.01);
+}
+
+TEST_F(RedisTDigestTest, TrimmedMeanComplexInput) {
+  std::string test_digest_name = "test_digest_trimmed_mean_complex" + std::to_string(util::GetTimeStampMS());
+  bool exists = false;
+  auto status = tdigest_->Create(*ctx_, test_digest_name, {100}, &exists);
+  ASSERT_FALSE(exists);
+  ASSERT_TRUE(status.ok());
+
+  std::vector<double> values = {-10, 5, -3, 5, 0, 5, 3, -5, 10, -10};
+  status = tdigest_->Add(*ctx_, test_digest_name, values);
+  ASSERT_TRUE(status.ok()) << status.ToString();
+
+  redis::TDigestTrimmedMeanResult result;
+  status = tdigest_->TrimmedMean(*ctx_, test_digest_name, 0.2, 0.8, &result);
+  ASSERT_TRUE(status.ok()) << status.ToString();
+  ASSERT_TRUE(result.mean.has_value());
+  ASSERT_FALSE(std::isnan(*result.mean));
+  EXPECT_NEAR(*result.mean, 5.0 / 6.0, 0.01);
 }

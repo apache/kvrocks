@@ -40,6 +40,9 @@ const (
 	errMsgKeyNotExist                     = "key does not exist"
 	errNumkeysMustBePositive              = "numkeys need to be a positive integer"
 	errCompressionParameterMustBePositive = "compression parameter needs to be a positive integer"
+	errMsgLowCutQuantileRange             = "low cut quantile must be between 0 and 1"
+	errMsgHighCutQuantileRange            = "high cut quantile must be between 0 and 1"
+	errMsgLowCutQuantileLess              = "low cut quantile must be less than high cut quantile"
 )
 
 type tdigestInfo struct {
@@ -779,10 +782,10 @@ func tdigestTests(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", key, "compression", "100").Err())
 		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", key, "1", "2", "3", "4", "5").Err())
 
-		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN", key, "-0.1", "0.9").Err(), "low cut quantile must be between 0 and 1")
-		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN", key, "0.1", "1.1").Err(), "high cut quantile must be between 0 and 1")
-		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN", key, "0.9", "0.1").Err(), "low cut quantile must be less than high cut quantile")
-		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN", key, "0.5", "0.5").Err(), "low cut quantile must be less than high cut quantile")
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN", key, "-0.1", "0.9").Err(), errMsgLowCutQuantileRange)
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN", key, "0.1", "1.1").Err(), errMsgHighCutQuantileRange)
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN", key, "0.9", "0.1").Err(), errMsgLowCutQuantileLess)
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN", key, "0.5", "0.5").Err(), errMsgLowCutQuantileLess)
 	})
 
 	t.Run("TDIGEST.TRIMMED_MEAN with single value", func(t *testing.T) {

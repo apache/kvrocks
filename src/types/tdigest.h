@@ -316,16 +316,6 @@ inline StatusOr<double> TDigestTrimmedMean(TD&& td, double low_cut_quantile, dou
     return Status{Status::InvalidArgument, "empty tdigest"};
   }
 
-  if (low_cut_quantile < 0.0 || low_cut_quantile > 1.0) {
-    return Status{Status::InvalidArgument, "low cut quantile must be between 0 and 1"};
-  }
-  if (high_cut_quantile < 0.0 || high_cut_quantile > 1.0) {
-    return Status{Status::InvalidArgument, "high cut quantile must be between 0 and 1"};
-  }
-  if (low_cut_quantile >= high_cut_quantile) {
-    return Status{Status::InvalidArgument, "low cut quantile must be less than high cut quantile"};
-  }
-
   double low_boundary = std::numeric_limits<double>::quiet_NaN();
   double high_boundary = std::numeric_limits<double>::quiet_NaN();
 

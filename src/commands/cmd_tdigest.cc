@@ -513,10 +513,10 @@ class CommandTDigestTrimmedMean : public Commander {
     }
     high_cut_quantile_ = *high_cut_quantile;
 
-    if (low_cut_quantile_ < 0.0 || low_cut_quantile_ > 1.0) {
+    if (!std::isfinite(low_cut_quantile_) || low_cut_quantile_ < 0.0 || low_cut_quantile_ > 1.0) {
       return {Status::RedisParseErr, errLowCutQuantileRange};
     }
-    if (high_cut_quantile_ < 0.0 || high_cut_quantile_ > 1.0) {
+    if (!std::isfinite(high_cut_quantile_) || high_cut_quantile_ < 0.0 || high_cut_quantile_ > 1.0) {
       return {Status::RedisParseErr, errHighCutQuantileRange};
     }
     if (DoubleCompare(low_cut_quantile_, high_cut_quantile_) >= 0) {

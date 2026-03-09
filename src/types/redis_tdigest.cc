@@ -771,6 +771,7 @@ rocksdb::Status TDigest::TrimmedMean(engine::Context& ctx, const Slice& digest_n
     }
 
     if (metadata.total_observations == 0) {
+      result->mean.reset();
       return rocksdb::Status::OK();
     }
 

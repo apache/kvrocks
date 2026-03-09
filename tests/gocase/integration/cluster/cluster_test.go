@@ -603,6 +603,56 @@ func TestClusterReset(t *testing.T) {
 	})
 }
 
+func TestClusterNodeFailFlag(t *testing.T) {
+	t.Parallel()
+	srv := util.StartServer(t, map[string]string{"cluster-enabled": "yes"})
+	defer srv.Close()
+
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	masterID := "07c37dfeb235213a872192d90877d0cd55635b91"
+	slaveID := "07c37dfeb235213a872192d90877d0cd55635b92"
+	require.NoError(t, rdb.Do(ctx, "clusterx", "SETNODEID", masterID).Err())
+
+	t.Run("slave,fail role is accepted by CLUSTERX SETNODES and reflected in CLUSTER NODES output", func(t *testing.T) {
+		clusterNodes := fmt.Sprintf("%s %s %d master - 0-16383\n", masterID, srv.Host(), srv.Port())
+		clusterNodes += fmt.Sprintf("%s %s %d slave,fail %s", slaveID, srv.Host(), srv.Port()+1, masterID)
+
+		require.NoError(t, rdb.Do(ctx, "clusterx", "SETNODES", clusterNodes, "1").Err())
+
+		nodes := rdb.ClusterNodes(ctx).Val()
+		// The failed slave must have "fail" in its flags field
+		require.Contains(t, nodes, "fail,slave")
+
+		// Verify the exact flags field for the slave line
+		for _, line := range strings.Split(strings.TrimRight(nodes, "\n"), "\n") {
+			if strings.Contains(line, slaveID) {
+				fields := strings.Fields(line)
+				require.GreaterOrEqual(t, len(fields), 3)
+				require.Equal(t, "fail,slave", fields[2])
+			}
+		}
+	})
+
+	t.Run("online slave has no fail flag in CLUSTER NODES output", func(t *testing.T) {
+		clusterNodes := fmt.Sprintf("%s %s %d master - 0-16383\n", masterID, srv.Host(), srv.Port())
+		clusterNodes += fmt.Sprintf("%s %s %d slave %s", slaveID, srv.Host(), srv.Port()+1, masterID)
+
+		require.NoError(t, rdb.Do(ctx, "clusterx", "SETNODES", clusterNodes, "2").Err())
+
+		nodes := rdb.ClusterNodes(ctx).Val()
+		for _, line := range strings.Split(strings.TrimRight(nodes, "\n"), "\n") {
+			if strings.Contains(line, slaveID) {
+				fields := strings.Fields(line)
+				require.GreaterOrEqual(t, len(fields), 3)
+				require.Equal(t, "slave", fields[2])
+			}
+		}
+	})
+}
+
 func TestClusterFlushSlots(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{"cluster-enabled": "yes"})
 	defer srv.Close()

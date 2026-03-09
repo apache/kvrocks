@@ -573,6 +573,7 @@ std::string Cluster::genNodesDescription() {
 
     // Flags
     if (node->id == myid_) node_str.append("myself,");
+    if (node->failed) node_str.append("fail,");
     if (node->role == kClusterMaster) {
       node_str.append("master - ");
     } else {
@@ -766,12 +767,17 @@ Status Cluster::parseClusterNodes(const std::string &nodes_str, ClusterNodes *no
 
     int port = *parse_result;
 
-    // 4) role
+    // 4) role (supports comma-separated flags, e.g. "slave,fail", for backward compatibility with plain "slave"/"master")
     int role = 0;
-    if (util::EqualICase(fields[3], "master")) {
+    bool node_failed = false;
+    auto role_flags = util::Split(fields[3], ",");
+    if (util::EqualICase(role_flags[0], "master")) {
       role = kClusterMaster;
-    } else if (util::EqualICase(fields[3], "slave") || util::EqualICase(fields[3], "replica")) {
+    } else if (util::EqualICase(role_flags[0], "slave") || util::EqualICase(role_flags[0], "replica")) {
       role = kClusterSlave;
+      for (const auto &flag : role_flags) {
+        if (util::EqualICase(flag, "fail")) node_failed = true;
+      }
     } else {
       return {Status::ClusterInvalidInfo, "Invalid cluster node role"};
     }
@@ -789,7 +795,9 @@ Status Cluster::parseClusterNodes(const std::string &nodes_str, ClusterNodes *no
         return {Status::ClusterInvalidInfo, errInvalidClusterNodeInfo};
       } else {
         // Create slave node
-        (*nodes)[id] = std::make_shared<ClusterNode>(id, host, port, role, master_id, slots);
+        auto node = std::make_shared<ClusterNode>(id, host, port, role, master_id, slots);
+        node->failed = node_failed;
+        (*nodes)[id] = node;
         continue;
       }
     }
@@ -843,7 +851,9 @@ Status Cluster::parseClusterNodes(const std::string &nodes_str, ClusterNodes *no
     }
 
     // Create master node
-    (*nodes)[id] = std::make_shared<ClusterNode>(id, host, port, role, master_id, slots);
+    auto master_node = std::make_shared<ClusterNode>(id, host, port, role, master_id, slots);
+    master_node->failed = node_failed;
+    (*nodes)[id] = master_node;
   }
 
   return Status::OK();

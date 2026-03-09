@@ -514,13 +514,13 @@ class CommandTDigestTrimmedMean : public Commander {
     high_cut_quantile_ = *high_cut_quantile;
 
     if (low_cut_quantile_ < 0.0 || low_cut_quantile_ > 1.0) {
-      return {Status::RedisParseErr, "low cut quantile must be between 0 and 1"};
+      return {Status::RedisParseErr, errLowCutQuantileRange};
     }
     if (high_cut_quantile_ < 0.0 || high_cut_quantile_ > 1.0) {
-      return {Status::RedisParseErr, "high cut quantile must be between 0 and 1"};
+      return {Status::RedisParseErr, errHighCutQuantileRange};
     }
     if (DoubleCompare(low_cut_quantile_, high_cut_quantile_) >= 0) {
-      return {Status::RedisParseErr, "low cut quantile must be less than high cut quantile"};
+      return {Status::RedisParseErr, errLowCutQuantileLess};
     }
 
     return Status::OK();

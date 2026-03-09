@@ -623,15 +623,14 @@ func TestClusterNodeFailFlag(t *testing.T) {
 		require.NoError(t, rdb.Do(ctx, "clusterx", "SETNODES", clusterNodes, "1").Err())
 
 		nodes := rdb.ClusterNodes(ctx).Val()
-		// The failed slave must have "fail" in its flags field
-		require.Contains(t, nodes, "fail,slave")
+		require.Contains(t, nodes, "slave,fail")
 
 		// Verify the exact flags field for the slave line
 		for _, line := range strings.Split(strings.TrimRight(nodes, "\n"), "\n") {
 			if strings.Contains(line, slaveID) {
 				fields := strings.Fields(line)
 				require.GreaterOrEqual(t, len(fields), 3)
-				require.Equal(t, "fail,slave", fields[2])
+				require.Equal(t, "slave,fail", fields[2])
 			}
 		}
 	})

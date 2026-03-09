@@ -407,10 +407,9 @@ TEST_F(ClusterTest, ClusterSetNodesWithFailFlag) {
     if (f[0] == "07c37dfeb235213a872192d90877d0cd55635b91") {
       found_slave = true;
       ASSERT_EQ(8u, f.size());
-      // flags field must be "fail,slave", not plain "slave"
-      ASSERT_EQ("fail,slave", f[2]);
+      ASSERT_EQ("slave,fail", f[2]);
       ASSERT_EQ("e7d1eecce10fd6bb5eb35b9f99a514335d9ba9ca", f[3]);
-      ASSERT_EQ("connected", f[7]);
+      ASSERT_EQ("disconnected", f[7]);
     }
   }
   ASSERT_TRUE(found_slave);

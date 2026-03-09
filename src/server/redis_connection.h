@@ -176,6 +176,11 @@ class Connection : public EvbufCallbackBase<Connection> {
   bool IsImporting() const { return importing_; }
   bool CanMigrate() const;
 
+  // CLIENT PAUSE async suspend/resume
+  void Pause();
+  void Unpause();
+  bool IsPaused() const { return is_paused_; }
+
   // Multi exec
   void SetInExec() { in_exec_ = true; }
   bool IsInExec() const { return in_exec_; }
@@ -230,6 +235,8 @@ class Connection : public EvbufCallbackBase<Connection> {
 
   ReplyMode reply_mode_ = ReplyMode::ON;
   std::vector<std::string> queued_replies_;
+
+  bool is_paused_ = false;
 };
 
 }  // namespace redis

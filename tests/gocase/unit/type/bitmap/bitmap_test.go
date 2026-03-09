@@ -568,4 +568,202 @@ func TestBitmap(t *testing.T) {
 		}
 	})
 
+	t.Run("BITOP DIFF", func(t *testing.T) {
+		require.NoError(t, rdb.FlushDB(ctx).Err())
+		// X = 1100, Y1 = 1010, Y2 = 0011
+		// X & ~(Y1 | Y2) = 1100 & ~1011 = 1100 & 0100 = 0100
+		Set2SetBit(t, rdb, ctx, "x", []byte("\x0c"))
+		Set2SetBit(t, rdb, ctx, "y1", []byte("\x0a"))
+		Set2SetBit(t, rdb, ctx, "y2", []byte("\x03"))
+		require.NoError(t, rdb.Do(ctx, "BITOP", "DIFF", "dest", "x", "y1", "y2").Err())
+		require.EqualValues(t, "\x04", rdb.Get(ctx, "dest").Val())
+	})
+
+	t.Run("BITOP DIFF1", func(t *testing.T) {
+		require.NoError(t, rdb.FlushDB(ctx).Err())
+		// X = 1100, Y1 = 1010, Y2 = 0011
+		// (Y1 | Y2) & ~X = 1011 & ~1100 = 1011 & 0011 = 0011
+		Set2SetBit(t, rdb, ctx, "x", []byte("\x0c"))
+		Set2SetBit(t, rdb, ctx, "y1", []byte("\x0a"))
+		Set2SetBit(t, rdb, ctx, "y2", []byte("\x03"))
+		require.NoError(t, rdb.Do(ctx, "BITOP", "DIFF1", "dest", "x", "y1", "y2").Err())
+		require.EqualValues(t, "\x03", rdb.Get(ctx, "dest").Val())
+	})
+
+	t.Run("BITOP ANDOR", func(t *testing.T) {
+		require.NoError(t, rdb.FlushDB(ctx).Err())
+		// X = 1100, Y1 = 1010, Y2 = 0011
+		// X & (Y1 | Y2) = 1100 & 1011 = 1000
+		Set2SetBit(t, rdb, ctx, "x", []byte("\x0c"))
+		Set2SetBit(t, rdb, ctx, "y1", []byte("\x0a"))
+		Set2SetBit(t, rdb, ctx, "y2", []byte("\x03"))
+		require.NoError(t, rdb.Do(ctx, "BITOP", "ANDOR", "dest", "x", "y1", "y2").Err())
+		require.EqualValues(t, "\x08", rdb.Get(ctx, "dest").Val())
+	})
+
+	t.Run("BITOP ONE", func(t *testing.T) {
+		require.NoError(t, rdb.FlushDB(ctx).Err())
+		// Use simpler test case
+		// X1 = 01 (bit 0), X2 = 10 (bit 1), X3 = 00 (none)
+		// Exactly one bit set: only bit 0 is set in one input
+		require.NoError(t, rdb.SetBit(ctx, "x1", 0, 1).Err())
+		require.NoError(t, rdb.SetBit(ctx, "x2", 1, 1).Err())
+		// x3 has no bits set
+		require.NoError(t, rdb.Do(ctx, "BITOP", "ONE", "dest", "x1", "x2", "x3").Err())
+		// Result should have both bits 0 and 1 set (each appears in exactly one input)
+		require.NoError(t, rdb.GetBit(ctx, "dest", 0).Err())
+		require.EqualValues(t, 1, rdb.GetBit(ctx, "dest", 0).Val())
+		require.NoError(t, rdb.GetBit(ctx, "dest", 1).Err())
+		require.EqualValues(t, 1, rdb.GetBit(ctx, "dest", 1).Val())
+	})
+
+	t.Run("BITOP operations with multiple keys", func(t *testing.T) {
+		require.NoError(t, rdb.FlushDB(ctx).Err())
+		// Use simple test case with bit positions
+		// a: bits 0,8 set
+		// b: bits 1,9 set
+		// c: bits 2,10 set
+		require.NoError(t, rdb.SetBit(ctx, "a", 0, 1).Err())
+		require.NoError(t, rdb.SetBit(ctx, "a", 8, 1).Err())
+		require.NoError(t, rdb.SetBit(ctx, "b", 1, 1).Err())
+		require.NoError(t, rdb.SetBit(ctx, "b", 9, 1).Err())
+		require.NoError(t, rdb.SetBit(ctx, "c", 2, 1).Err())
+		require.NoError(t, rdb.SetBit(ctx, "c", 10, 1).Err())
+
+		// DIFF: a & ~(b | c)
+		// a has bits 0,8; (b|c) has bits 1,2,9,10
+		// Result: bits 0,8 should be set
+		require.NoError(t, rdb.Do(ctx, "BITOP", "DIFF", "diff_res", "a", "b", "c").Err())
+		require.NoError(t, rdb.GetBit(ctx, "diff_res", 0).Err())
+		require.EqualValues(t, 1, rdb.GetBit(ctx, "diff_res", 0).Val())
+		require.NoError(t, rdb.GetBit(ctx, "diff_res", 8).Err())
+		require.EqualValues(t, 1, rdb.GetBit(ctx, "diff_res", 8).Val())
+
+		// DIFF1: (b | c) & ~a
+		// (b|c) has bits 1,2,9,10; a has bits 0,8
+		// Result: bits 1,2,9,10 should be set
+		require.NoError(t, rdb.Do(ctx, "BITOP", "DIFF1", "diff1_res", "a", "b", "c").Err())
+		require.NoError(t, rdb.GetBit(ctx, "diff1_res", 1).Err())
+		require.EqualValues(t, 1, rdb.GetBit(ctx, "diff1_res", 1).Val())
+		require.NoError(t, rdb.GetBit(ctx, "diff1_res", 2).Err())
+		require.EqualValues(t, 1, rdb.GetBit(ctx, "diff1_res", 2).Val())
+
+		// ANDOR: a & (b | c)
+		// a has bits 0,8; (b|c) has bits 1,2,9,10
+		// Result: none (no common bits)
+		require.NoError(t, rdb.Do(ctx, "BITOP", "ANDOR", "andor_res", "a", "b", "c").Err())
+		require.NoError(t, rdb.GetBit(ctx, "andor_res", 0).Err())
+		require.EqualValues(t, 0, rdb.GetBit(ctx, "andor_res", 0).Val())
+
+		// ONE: exactly one bit set among a, b, c
+		// a has bits 0,8; b has bits 1,9; c has bits 2,10
+		// All bits appear exactly once, so all should be set
+		require.NoError(t, rdb.Do(ctx, "BITOP", "ONE", "one_res", "a", "b", "c").Err())
+		require.NoError(t, rdb.GetBit(ctx, "one_res", 0).Err())
+		require.EqualValues(t, 1, rdb.GetBit(ctx, "one_res", 0).Val())
+		require.NoError(t, rdb.GetBit(ctx, "one_res", 1).Err())
+		require.EqualValues(t, 1, rdb.GetBit(ctx, "one_res", 1).Val())
+		require.NoError(t, rdb.GetBit(ctx, "one_res", 2).Err())
+		require.EqualValues(t, 1, rdb.GetBit(ctx, "one_res", 2).Val())
+	})
+
+	t.Run("BITOP new operations with large bitmaps", func(t *testing.T) {
+		require.NoError(t, rdb.FlushDB(ctx).Err())
+		// Create large bitmaps (256+ bytes) to trigger the fast path
+		// Set bits in a specific pattern
+		for i := 0; i < 32; i++ {
+			// x: bits at positions 0, 256, 512, ...
+			require.NoError(t, rdb.SetBit(ctx, "x", int64(i*256), 1).Err())
+			// y1: bits at positions 1, 257, 513, ...
+			require.NoError(t, rdb.SetBit(ctx, "y1", int64(i*256+1), 1).Err())
+			// y2: bits at positions 2, 258, 514, ...
+			require.NoError(t, rdb.SetBit(ctx, "y2", int64(i*256+2), 1).Err())
+		}
+
+		// DIFF: x & ~(y1 | y2)
+		require.NoError(t, rdb.Do(ctx, "BITOP", "DIFF", "diff_large", "x", "y1", "y2").Err())
+		// Check first few bits
+		require.NoError(t, rdb.GetBit(ctx, "diff_large", 0).Err())
+		require.EqualValues(t, 1, rdb.GetBit(ctx, "diff_large", 0).Val())
+		require.NoError(t, rdb.GetBit(ctx, "diff_large", 1).Err())
+		require.EqualValues(t, 0, rdb.GetBit(ctx, "diff_large", 1).Val())
+		require.NoError(t, rdb.GetBit(ctx, "diff_large", 2).Err())
+		require.EqualValues(t, 0, rdb.GetBit(ctx, "diff_large", 2).Val())
+		// Check a later bit
+		require.NoError(t, rdb.GetBit(ctx, "diff_large", 256).Err())
+		require.EqualValues(t, 1, rdb.GetBit(ctx, "diff_large", 256).Val())
+
+		// DIFF1: (y1 | y2) & ~x
+		require.NoError(t, rdb.Do(ctx, "BITOP", "DIFF1", "diff1_large", "x", "y1", "y2").Err())
+		// Check first few bits
+		require.NoError(t, rdb.GetBit(ctx, "diff1_large", 0).Err())
+		require.EqualValues(t, 0, rdb.GetBit(ctx, "diff1_large", 0).Val())
+		require.NoError(t, rdb.GetBit(ctx, "diff1_large", 1).Err())
+		require.EqualValues(t, 1, rdb.GetBit(ctx, "diff1_large", 1).Val())
+		require.NoError(t, rdb.GetBit(ctx, "diff1_large", 2).Err())
+		require.EqualValues(t, 1, rdb.GetBit(ctx, "diff1_large", 2).Val())
+
+		// ANDOR: x & (y1 | y2)
+		require.NoError(t, rdb.Do(ctx, "BITOP", "ANDOR", "andor_large", "x", "y1", "y2").Err())
+		// All should be 0 (no common bits)
+		require.NoError(t, rdb.GetBit(ctx, "andor_large", 0).Err())
+		require.EqualValues(t, 0, rdb.GetBit(ctx, "andor_large", 0).Val())
+	})
+
+	t.Run("BITOP ONE with large bitmaps", func(t *testing.T) {
+		require.NoError(t, rdb.FlushDB(ctx).Err())
+		// Create large bitmaps for ONE operation
+		// a1: bits at positions 0, 512, 1024
+		// a2: bits at positions 1, 513, 1025
+		// a3: bits at positions 2, 514, 1026
+		for i := 0; i < 3; i++ {
+			require.NoError(t, rdb.SetBit(ctx, "a1", int64(i*512), 1).Err())
+			require.NoError(t, rdb.SetBit(ctx, "a2", int64(i*512+1), 1).Err())
+			require.NoError(t, rdb.SetBit(ctx, "a3", int64(i*512+2), 1).Err())
+		}
+
+		// ONE: exactly one bit set among a1, a2, a3
+		require.NoError(t, rdb.Do(ctx, "BITOP", "ONE", "one_large", "a1", "a2", "a3").Err())
+		// All bits should be set since each appears in exactly one input
+		require.NoError(t, rdb.GetBit(ctx, "one_large", 0).Err())
+		require.EqualValues(t, 1, rdb.GetBit(ctx, "one_large", 0).Val())
+		require.NoError(t, rdb.GetBit(ctx, "one_large", 1).Err())
+		require.EqualValues(t, 1, rdb.GetBit(ctx, "one_large", 1).Val())
+		require.NoError(t, rdb.GetBit(ctx, "one_large", 2).Err())
+		require.EqualValues(t, 1, rdb.GetBit(ctx, "one_large", 2).Val())
+		require.NoError(t, rdb.GetBit(ctx, "one_large", 512).Err())
+		require.EqualValues(t, 1, rdb.GetBit(ctx, "one_large", 512).Val())
+		require.NoError(t, rdb.GetBit(ctx, "one_large", 513).Err())
+		require.EqualValues(t, 1, rdb.GetBit(ctx, "one_large", 513).Val())
+		require.NoError(t, rdb.GetBit(ctx, "one_large", 514).Err())
+		require.EqualValues(t, 1, rdb.GetBit(ctx, "one_large", 514).Val())
+	})
+
+	t.Run("BITOP operations with missing keys", func(t *testing.T) {
+		require.NoError(t, rdb.FlushDB(ctx).Err())
+		// x: bit 0 set
+		require.NoError(t, rdb.SetBit(ctx, "x", 0, 1).Err())
+		// y1 and y2 are missing (treated as all zeros)
+
+		// DIFF: x & ~(y1 | y2) = x & ~0 = x
+		require.NoError(t, rdb.Do(ctx, "BITOP", "DIFF", "diff_missing", "x", "y1", "y2").Err())
+		require.NoError(t, rdb.GetBit(ctx, "diff_missing", 0).Err())
+		require.EqualValues(t, 1, rdb.GetBit(ctx, "diff_missing", 0).Val())
+
+		// DIFF1: (y1 | y2) & ~x = 0 & ~x = 0
+		require.NoError(t, rdb.Do(ctx, "BITOP", "DIFF1", "diff1_missing", "x", "y1", "y2").Err())
+		require.NoError(t, rdb.GetBit(ctx, "diff1_missing", 0).Err())
+		require.EqualValues(t, 0, rdb.GetBit(ctx, "diff1_missing", 0).Val())
+
+		// ANDOR: x & (y1 | y2) = x & 0 = 0
+		require.NoError(t, rdb.Do(ctx, "BITOP", "ANDOR", "andor_missing", "x", "y1", "y2").Err())
+		require.NoError(t, rdb.GetBit(ctx, "andor_missing", 0).Err())
+		require.EqualValues(t, 0, rdb.GetBit(ctx, "andor_missing", 0).Val())
+
+		// ONE: exactly one bit set among x, y1, y2
+		require.NoError(t, rdb.Do(ctx, "BITOP", "ONE", "one_missing", "x", "y1", "y2").Err())
+		require.NoError(t, rdb.GetBit(ctx, "one_missing", 0).Err())
+		require.EqualValues(t, 1, rdb.GetBit(ctx, "one_missing", 0).Val())
+	})
+
 }

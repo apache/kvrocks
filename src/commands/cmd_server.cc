@@ -26,6 +26,7 @@
 #include "commander.h"
 #include "commands/scan_base.h"
 #include "common/io_util.h"
+#include "common/logging.h"
 #include "common/rdb_stream.h"
 #include "common/string_util.h"
 #include "common/time_util.h"
@@ -520,6 +521,34 @@ class CommandClient : public Commander {
       return Status::OK();
     }
 
+    if (subcommand_ == "unpause") {
+      if (args.size() != 2) {
+        return {Status::RedisParseErr, errInvalidSyntax};
+      }
+      return Status::OK();
+    }
+
+    if (subcommand_ == "pause") {
+      if (args.size() < 3 || args.size() > 4) {
+        return {Status::RedisParseErr, errInvalidSyntax};
+      }
+      auto parse_result = ParseInt<uint64_t>(args[2], 10);
+      if (!parse_result) {
+        return {Status::RedisParseErr, errValueNotInteger};
+      }
+      pause_timeout_ms_ = *parse_result;
+      pause_mode_ = PauseMode::kAll;
+      if (args.size() == 4) {
+        std::string mode = util::ToLower(args[3]);
+        if (mode == "write") {
+          pause_mode_ = PauseMode::kWrite;
+        } else if (mode != "all") {
+          return {Status::RedisParseErr, errInvalidSyntax};
+        }
+      }
+      return Status::OK();
+    }
+
     if ((subcommand_ == "kill")) {
       if (args.size() == 2) {
         return {Status::RedisParseErr, errInvalidSyntax};
@@ -572,7 +601,9 @@ class CommandClient : public Commander {
       }
       return Status::OK();
     }
-    return {Status::RedisInvalidCmd, "Syntax error, try CLIENT LIST|INFO|KILL ip:port|GETNAME|SETNAME|REPLY"};
+    return {Status::RedisInvalidCmd,
+            "Syntax error, try CLIENT LIST|INFO|KILL ip:port|GETNAME|SETNAME|REPLY|"
+            "PAUSE|UNPAUSE"};
   }
 
   Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
@@ -611,9 +642,28 @@ class CommandClient : public Commander {
         *output = redis::RESP_OK;
       }
       return Status::OK();
+    } else if (subcommand_ == "pause") {
+      if (!conn->IsAdmin()) {
+        return {Status::RedisExecErr, errAdminPermissionRequired};
+      }
+      uint64_t now_ms = util::GetTimeStampMS();
+      srv->PauseConns(now_ms + pause_timeout_ms_, pause_mode_);
+      WARN("CLIENT PAUSE executed, timeout={}ms, mode={}, addr: {}", pause_timeout_ms_,
+           pause_mode_ == PauseMode::kWrite ? "write" : "all", conn->GetAddr());
+      *output = redis::RESP_OK;
+      return Status::OK();
+    } else if (subcommand_ == "unpause") {
+      if (!conn->IsAdmin()) {
+        return {Status::RedisExecErr, errAdminPermissionRequired};
+      }
+      srv->UnpauseConns();
+      *output = redis::RESP_OK;
+      return Status::OK();
     }
 
-    return {Status::RedisInvalidCmd, "Syntax error, try CLIENT LIST|INFO|KILL ip:port|GETNAME|SETNAME|REPLY"};
+    return {Status::RedisInvalidCmd,
+            "Syntax error, try CLIENT LIST|INFO|KILL ip:port|GETNAME|SETNAME|REPLY|"
+            "PAUSE|UNPAUSE"};
   }
 
  private:
@@ -625,6 +675,8 @@ class CommandClient : public Commander {
   int64_t kill_type_ = 0;
   uint64_t id_ = 0;
   bool new_format_ = true;
+  uint64_t pause_timeout_ms_ = 0;
+  PauseMode pause_mode_ = PauseMode::kAll;
 };
 
 class CommandMonitor : public Commander {

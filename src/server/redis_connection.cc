@@ -209,6 +209,7 @@ std::string Connection::GetFlags() const {
   if (IsFlagEnabled(kMonitor)) flags.append("M");
   if (IsFlagEnabled(kAsking)) flags.append("A");
   if (!subscribe_channels_.empty() || !subscribe_patterns_.empty()) flags.append("P");
+  if (is_paused_) flags.append("z");
   if (flags.empty()) flags = "N";
   return flags;
 }
@@ -224,6 +225,21 @@ bool Connection::CanMigrate() const {
          && !IsFlagEnabled(redis::Connection::kCloseAfterReply)          // close after reply
          && saved_current_command_ == nullptr                            // not executing blocking command like BLPOP
          && subscribe_channels_.empty() && subscribe_patterns_.empty();  // not subscribing any channel
+}
+
+void Connection::Pause() {
+  if (is_paused_) return;
+  is_paused_ = true;
+  bufferevent_disable(bev_, EV_READ);
+}
+
+void Connection::Unpause() {
+  if (!is_paused_) return;
+  is_paused_ = false;
+  bufferevent_enable(bev_, EV_READ);
+  // Trigger OnRead so commands buffered in req_ during the pause are processed.
+  // Without this, no new data arrives on the socket and OnRead would never fire.
+  bufferevent_trigger(bev_, EV_READ, BEV_TRIG_IGNORE_WATERMARKS);
 }
 
 void Connection::SubscribeChannel(const std::string &channel) {
@@ -451,6 +467,14 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     }
 
     auto cmd_flags = attributes->GenerateFlags(cmd_tokens, *config);
+
+    // Push the command back and stop processing; it will be re-executed after unpause.
+    if (srv_->PauseConnIfNeeded(this, cmd_name, cmd_flags)) {
+      multi_error_exit.Disable();  // Don't mark transaction as failed - we're deferring, not erroring
+      to_process_cmds->push_front(std::move(cmd_tokens));
+      return;
+    }
+
     if (GetNamespace().empty()) {
       if (!password.empty()) {
         if (!(cmd_flags & kCmdAuth)) {

@@ -54,7 +54,12 @@ inline constexpr const char *errParsingNumkeys = "error parsing numkeys";
 inline constexpr const char *errNumkeysMustBePositive = "numkeys need to be a positive integer";
 inline constexpr const char *errWrongKeyword = "wrong keyword";
 inline constexpr const char *errInvalidRankValue = "rank needs to be non-negative";
-inline constexpr const char *errLowCutQuantileRange = "low cut quantile must be between 0 and 1";
-inline constexpr const char *errHighCutQuantileRange = "high cut quantile must be between 0 and 1";
-inline constexpr const char *errLowCutQuantileLess = "low cut quantile must be less than high cut quantile";
+inline constexpr const char *errParseLowCutQuantile = "T-Digest: error parsing low_cut_percentile";
+inline constexpr const char *errParseHighCutQuantile = "T-Digest: error parsing high_cut_percentile";
+inline constexpr const char *errLowCutQuantileRange =
+    "T-Digest: low_cut_percentile and high_cut_percentile should be in [0,1]";
+inline constexpr const char *errHighCutQuantileRange =
+    "T-Digest: low_cut_percentile and high_cut_percentile should be in [0,1]";
+inline constexpr const char *errLowCutQuantileLess =
+    "T-Digest: low_cut_percentile should be lower than high_cut_percentile";
 }  // namespace redis

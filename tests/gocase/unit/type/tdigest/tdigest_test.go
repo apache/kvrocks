@@ -40,9 +40,11 @@ const (
 	errMsgKeyNotExist                     = "key does not exist"
 	errNumkeysMustBePositive              = "numkeys need to be a positive integer"
 	errCompressionParameterMustBePositive = "compression parameter needs to be a positive integer"
-	errMsgLowCutQuantileRange             = "low cut quantile must be between 0 and 1"
-	errMsgHighCutQuantileRange            = "high cut quantile must be between 0 and 1"
-	errMsgLowCutQuantileLess              = "low cut quantile must be less than high cut quantile"
+	errMsgParseLowCutQuantile             = "T-Digest: error parsing low_cut_percentile"
+	errMsgParseHighCutQuantile            = "T-Digest: error parsing high_cut_percentile"
+	errMsgLowCutQuantileRange             = "T-Digest: low_cut_percentile and high_cut_percentile should be in [0,1]"
+	errMsgHighCutQuantileRange            = "T-Digest: low_cut_percentile and high_cut_percentile should be in [0,1]"
+	errMsgLowCutQuantileLess              = "T-Digest: low_cut_percentile should be lower than high_cut_percentile"
 )
 
 type tdigestInfo struct {
@@ -788,6 +790,17 @@ func tdigestTests(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN", key, "0.5", "0.5").Err(), errMsgLowCutQuantileLess)
 	})
 
+	t.Run("TDIGEST.TRIMMED_MEAN invalid quantile parsing", func(t *testing.T) {
+		key := "tdigest_invalid_parse"
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", key, "compression", "100").Err())
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", key, "1", "2", "3", "4", "5").Err())
+
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN", key, "abc", "0.9").Err(), errMsgParseLowCutQuantile)
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN", key, "nan", "0.9").Err(), errMsgParseLowCutQuantile)
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN", key, "0.1", "abc").Err(), errMsgParseHighCutQuantile)
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN", key, "0.1", "nan").Err(), errMsgParseHighCutQuantile)
+	})
+
 	t.Run("TDIGEST.TRIMMED_MEAN with single value", func(t *testing.T) {
 		key := "tdigest_single"
 		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", key, "compression", "100").Err())
@@ -810,6 +823,16 @@ func tdigestTests(t *testing.T, configs util.KvrocksServerConfigs) {
 		mean, err := strconv.ParseFloat(result.Val().(string), 64)
 		require.NoError(t, err)
 		require.InDelta(t, 5.5, mean, 0.01)
+	})
+
+	t.Run("TDIGEST.TRIMMED_MEAN with nearly equal quantiles", func(t *testing.T) {
+		key := "tdigest_nearly_equal"
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", key, "compression", "1000").Err())
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", key, "1", "2", "3", "4", "5", "6", "7", "8", "9", "10").Err())
+
+		result := rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN", key, "0.5", "0.5000000001")
+		require.NoError(t, result.Err())
+		require.Equal(t, "nan", result.Val())
 	})
 }
 

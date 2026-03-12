@@ -503,13 +503,13 @@ class CommandTDigestTrimmedMean : public Commander {
 
     auto low_cut_quantile = ParseFloat(args[2]);
     if (!low_cut_quantile) {
-      return {Status::RedisParseErr, errValueIsNotFloat};
+      return {Status::RedisParseErr, errParseLowCutQuantile};
     }
     low_cut_quantile_ = *low_cut_quantile;
 
     auto high_cut_quantile = ParseFloat(args[3]);
     if (!high_cut_quantile) {
-      return {Status::RedisParseErr, errValueIsNotFloat};
+      return {Status::RedisParseErr, errParseHighCutQuantile};
     }
     high_cut_quantile_ = *high_cut_quantile;
 
@@ -519,7 +519,7 @@ class CommandTDigestTrimmedMean : public Commander {
     if (!std::isfinite(high_cut_quantile_) || high_cut_quantile_ < 0.0 || high_cut_quantile_ > 1.0) {
       return {Status::RedisParseErr, errHighCutQuantileRange};
     }
-    if (DoubleCompare(low_cut_quantile_, high_cut_quantile_) >= 0) {
+    if (low_cut_quantile_ >= high_cut_quantile_) {
       return {Status::RedisParseErr, errLowCutQuantileLess};
     }
 

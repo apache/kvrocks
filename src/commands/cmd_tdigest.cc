@@ -45,6 +45,11 @@ constexpr auto kInfoUnmergedWeight = "Unmerged weight";
 constexpr auto kInfoObservations = "Observations";
 constexpr auto kInfoTotalCompressions = "Total compressions";
 constexpr auto kNan = "nan";
+
+constexpr const char *errParseLowCutQuantile = "error parsing low_cut_percentile";
+constexpr const char *errParseHighCutQuantile = "error parsing high_cut_percentile";
+constexpr const char *errCutQuantileRange = "low_cut_percentile and high_cut_percentile should be in [0,1]";
+constexpr const char *errLowCutQuantileLess = "low_cut_percentile should be lower than high_cut_percentile";
 }  // namespace
 
 class CommandTDigestCreate : public Commander {
@@ -514,10 +519,10 @@ class CommandTDigestTrimmedMean : public Commander {
     high_cut_quantile_ = *high_cut_quantile;
 
     if (!std::isfinite(low_cut_quantile_) || low_cut_quantile_ < 0.0 || low_cut_quantile_ > 1.0) {
-      return {Status::RedisParseErr, errLowCutQuantileRange};
+      return {Status::RedisParseErr, errCutQuantileRange};
     }
     if (!std::isfinite(high_cut_quantile_) || high_cut_quantile_ < 0.0 || high_cut_quantile_ > 1.0) {
-      return {Status::RedisParseErr, errHighCutQuantileRange};
+      return {Status::RedisParseErr, errCutQuantileRange};
     }
     if (low_cut_quantile_ >= high_cut_quantile_) {
       return {Status::RedisParseErr, errLowCutQuantileLess};

@@ -40,11 +40,11 @@ const (
 	errMsgKeyNotExist                     = "key does not exist"
 	errNumkeysMustBePositive              = "numkeys need to be a positive integer"
 	errCompressionParameterMustBePositive = "compression parameter needs to be a positive integer"
-	errMsgParseLowCutQuantile             = "T-Digest: error parsing low_cut_percentile"
-	errMsgParseHighCutQuantile            = "T-Digest: error parsing high_cut_percentile"
-	errMsgLowCutQuantileRange             = "T-Digest: low_cut_percentile and high_cut_percentile should be in [0,1]"
-	errMsgHighCutQuantileRange            = "T-Digest: low_cut_percentile and high_cut_percentile should be in [0,1]"
-	errMsgLowCutQuantileLess              = "T-Digest: low_cut_percentile should be lower than high_cut_percentile"
+	errMsgParseLowCutQuantile             = "error parsing low_cut_percentile"
+	errMsgParseHighCutQuantile            = "error parsing high_cut_percentile"
+	errMsgLowCutQuantileRange             = "low_cut_percentile and high_cut_percentile should be in [0,1]"
+	errMsgHighCutQuantileRange            = "low_cut_percentile and high_cut_percentile should be in [0,1]"
+	errMsgLowCutQuantileLess              = "low_cut_percentile should be lower than high_cut_percentile"
 )
 
 type tdigestInfo struct {

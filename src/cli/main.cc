@@ -28,6 +28,7 @@
 #include <event2/thread.h>
 
 #include <iomanip>
+#include <iostream>
 #include <memory>
 #include <ostream>
 
@@ -59,15 +60,17 @@ struct NewOpt {
   friend auto &operator<<(std::ostream &os, NewOpt) { return os << std::string(4, ' ') << std::setw(32); }
 } new_opt;
 
-static void PrintUsage(const char *program) {
-  std::cout << program << " implements the Redis protocol based on rocksdb" << std::endl
-            << "Usage:" << std::endl
-            << std::left << new_opt << "-c, --config <filename>" << "set config file to <filename>, or `-` for stdin"
-            << std::endl
-            << new_opt << "-v, --version" << "print version information" << std::endl
-            << new_opt << "-h, --help" << "print this help message" << std::endl
-            << new_opt << "--<config-key> <config-value>"
-            << "overwrite specific config option <config-key> to <config-value>" << std::endl;
+static void PrintUsage(const char *program, std::ostream &os = std::cout) {
+  os << program << " implements the Redis protocol based on RocksDB" << std::endl
+     << "Usage:" << std::endl
+     << std::left << new_opt << "-c, --config <filename>"
+     << "set config file to <filename>, or `-` for stdin" << std::endl
+     << new_opt << "-v, --version"
+     << "print version information" << std::endl
+     << new_opt << "-h, --help"
+     << "print this help message" << std::endl
+     << new_opt << "--<config-key> <config-value>"
+     << "overwrite specific config option <config-key> to <config-value>" << std::endl;
 }
 
 static CLIOptions ParseCommandLineOptions(int argc, char **argv) {
@@ -87,7 +90,7 @@ static CLIOptions ParseCommandLineOptions(int argc, char **argv) {
       auto key = std::string_view(argv[i] + 2);
       opts.cli_options.emplace_back(key, argv[++i]);
     } else {
-      PrintUsage(*argv);
+      PrintUsage(*argv, std::cerr);
       std::exit(1);
     }
   }
@@ -152,7 +155,7 @@ int main(int argc, char *argv[]) {
   Config config;
   Status s = config.Load(opts);
   if (!s.IsOK()) {
-    std::cout << "Failed to load config. Error: " << s.Msg() << std::endl;
+    std::cerr << "Failed to load config. Error: " << s.Msg() << std::endl;
     return 1;
   }
   const auto socket_fd_exit = MakeScopeExit([&config] {
@@ -162,7 +165,7 @@ int main(int argc, char *argv[]) {
   });
 
   if (auto s = InitSpdlog(config); !s) {
-    std::cout << "Failed to initialize logging system. Error: " << s.Msg() << std::endl;
+    std::cerr << "Failed to initialize logging system. Error: " << s.Msg() << std::endl;
     return 1;
   }
   INFO("kvrocks {}", PrintVersion());

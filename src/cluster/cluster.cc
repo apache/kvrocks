@@ -801,7 +801,7 @@ Status Cluster::parseClusterNodes(const std::string &nodes_str, ClusterNodes *no
         // Create slave node
         auto node = std::make_shared<ClusterNode>(id, host, port, role, master_id, slots);
         node->failed = node_failed;
-        (*nodes)[id] = node;
+        nodes->emplace(id, std::move(node));
         continue;
       }
     }
@@ -857,7 +857,7 @@ Status Cluster::parseClusterNodes(const std::string &nodes_str, ClusterNodes *no
     // Create master node
     auto master_node = std::make_shared<ClusterNode>(id, host, port, role, master_id, slots);
     master_node->failed = node_failed;
-    (*nodes)[id] = master_node;
+    nodes->emplace(id, std::move(master_node));
   }
 
   return Status::OK();

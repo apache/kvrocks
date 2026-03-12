@@ -809,7 +809,6 @@ func tdigestTests(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.NoError(t, result.Err())
 		mean, err := strconv.ParseFloat(result.Val().(string), 64)
 		require.NoError(t, err)
-		require.False(t, math.IsNaN(mean))
 		require.InDelta(t, 5.5, mean, 0.01)
 	})
 }

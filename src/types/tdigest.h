@@ -330,6 +330,7 @@ inline StatusOr<double> TDigestTrimmedMean(TD&& td, double low_cut_quantile, dou
     const double n_weight = centroid.weight;
     double count_add = n_weight;
 
+    // Keep only the portion of this centroid that overlaps with the trimmed rank range.
     count_add -= std::min(std::max(0.0, leftmost_weight - count_done), count_add);
     count_add = std::min(std::max(0.0, rightmost_weight - count_done), count_add);
 

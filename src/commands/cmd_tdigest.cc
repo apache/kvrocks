@@ -502,13 +502,13 @@ class CommandTDigestTrimmedMean : public Commander {
     key_name_ = args[1];
 
     auto low_cut_quantile = ParseFloat(args[2]);
-    if (!low_cut_quantile) {
+    if (!low_cut_quantile || std::isnan(*low_cut_quantile)) {
       return {Status::RedisParseErr, errParseLowCutQuantile};
     }
     low_cut_quantile_ = *low_cut_quantile;
 
     auto high_cut_quantile = ParseFloat(args[3]);
-    if (!high_cut_quantile) {
+    if (!high_cut_quantile || std::isnan(*high_cut_quantile)) {
       return {Status::RedisParseErr, errParseHighCutQuantile};
     }
     high_cut_quantile_ = *high_cut_quantile;

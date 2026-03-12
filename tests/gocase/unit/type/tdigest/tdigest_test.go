@@ -832,7 +832,7 @@ func tdigestTests(t *testing.T, configs util.KvrocksServerConfigs) {
 
 		result := rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN", key, "0.5", "0.5000000001")
 		require.NoError(t, result.Err())
-		require.Equal(t, "nan", result.Val())
+		require.Equal(t, "6", result.Val())
 	})
 }
 

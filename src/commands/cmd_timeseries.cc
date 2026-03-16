@@ -78,7 +78,7 @@ std::string FormatAddResultAsRedisReply(TSChunk::AddResult res) {
     case AddResultType::kBlock:
       return redis::Error({Status::NotOK, errDupBlock});
     default:
-      unreachable();
+      UNREACHABLE();
   }
   return "";
 }
@@ -93,7 +93,7 @@ std::string FormatTSSampleAsRedisReply(TSSample sample) {
 std::string_view FormatChunkTypeAsRedisReply(ChunkType chunk_type) {
   auto it = kChunkTypeMap.find(chunk_type);
   if (it == kChunkTypeMap.end()) {
-    unreachable();
+    UNREACHABLE();
   }
   return it->second;
 }
@@ -101,7 +101,7 @@ std::string_view FormatChunkTypeAsRedisReply(ChunkType chunk_type) {
 std::string_view FormatDuplicatePolicyAsRedisReply(DuplicatePolicy policy) {
   auto it = kDuplicatePolicyMap.find(policy);
   if (it == kDuplicatePolicyMap.end()) {
-    unreachable();
+    UNREACHABLE();
   }
   return it->second;
 }
@@ -109,7 +109,7 @@ std::string_view FormatDuplicatePolicyAsRedisReply(DuplicatePolicy policy) {
 std::string_view FormatAggregatorTypeAsRedisReply(TSAggregatorType aggregator) {
   auto it = kAggregatorTypeMap.find(aggregator);
   if (it == kAggregatorTypeMap.end()) {
-    unreachable();
+    UNREACHABLE();
   }
   return it->second;
 }
@@ -117,7 +117,7 @@ std::string_view FormatAggregatorTypeAsRedisReply(TSAggregatorType aggregator) {
 std::string_view GroupReducerTypeToString(GroupReducerType reducer) {
   auto it = kGroupReducerTypeMap.find(reducer);
   if (it == kGroupReducerTypeMap.end()) {
-    unreachable();
+    UNREACHABLE();
   }
   return it->second;
 }
@@ -154,7 +154,7 @@ std::string FormatCreateRuleResAsRedisReply(TSCreateRuleResult res) {
     case TSCreateRuleResult::kDstHasDestRule:
       return redis::Error({Status::NotOK, "the destination key already has a dst rule"});
     default:
-      unreachable();
+      UNREACHABLE();
   }
   return "";
 }

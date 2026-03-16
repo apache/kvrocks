@@ -26,8 +26,10 @@
 #include <optional>
 #include <string>
 
+#include "common/string_util.h"
 #include "parse_util.h"
 #include "storage/redis_metadata.h"
+#include "string_util.h"
 #include "time_util.h"
 
 namespace redis {
@@ -181,6 +183,41 @@ rocksdb::Status String::GetEx(engine::Context &ctx, const std::string &user_key,
   return rocksdb::Status::OK();
 }
 
+rocksdb::Status String::DelEX(engine::Context &ctx, const std::string &user_key, const DelExOption &option,
+                              bool &deleted) {
+  deleted = false;
+  std::string val;
+  std::string ns_key = AppendNamespacePrefix(user_key);
+  rocksdb::Status s = getValue(ctx, ns_key, &val);
+  if (!s.ok()) return s;
+
+  bool matched = false;
+  switch (option.type) {
+    case DelExOption::NONE:
+      matched = true;
+      break;
+    case DelExOption::IFDEQ:
+      matched = option.value == util::StringDigest(val);
+      break;
+    case DelExOption::IFDNE:
+      matched = option.value != util::StringDigest(val);
+      break;
+    case DelExOption::IFEQ:
+      matched = option.value == val;
+      break;
+    case DelExOption::IFNE:
+      matched = option.value != val;
+      break;
+    default:
+      return rocksdb::Status::InvalidArgument();
+  }
+  if (matched) {
+    s = storage_->Delete(ctx, storage_->DefaultWriteOptions(), metadata_cf_handle_, ns_key);
+    deleted = s.ok();
+  }
+  return s;
+}
+
 rocksdb::Status String::GetSet(engine::Context &ctx, const std::string &user_key, const std::string &new_value,
                                std::optional<std::string> &old_value) {
   auto s =
@@ -198,7 +235,7 @@ rocksdb::Status String::GetDel(engine::Context &ctx, const std::string &user_key
 
 rocksdb::Status String::Set(engine::Context &ctx, const std::string &user_key, const std::string &value) {
   std::vector<StringPair> pairs{StringPair{user_key, value}};
-  return MSet(ctx, pairs, /*expire=*/0);
+  return MSet(ctx, pairs);
 }
 
 rocksdb::Status String::Set(engine::Context &ctx, const std::string &user_key, const std::string &value,
@@ -336,6 +373,10 @@ rocksdb::Status String::IncrBy(engine::Context &ctx, const std::string &user_key
 
   size_t offset = Metadata::GetOffsetAfterExpire(raw_value[0]);
   std::string value = raw_value.substr(offset);
+  if (s.ok() && value.empty()) {
+    return rocksdb::Status::InvalidArgument("value is not an integer or out of range");
+  }
+
   int64_t n = 0;
   if (!value.empty()) {
     auto parse_result = ParseInt<int64_t>(value, 10);
@@ -393,46 +434,68 @@ rocksdb::Status String::IncrByFloat(engine::Context &ctx, const std::string &use
   return updateRawValue(ctx, ns_key, raw_value);
 }
 
-rocksdb::Status String::MSet(engine::Context &ctx, const std::vector<StringPair> &pairs, uint64_t expire_ms) {
+rocksdb::Status String::MSet(engine::Context &ctx, const std::vector<StringPair> &pairs, StringMSetArgs args,
+                             bool *flag = nullptr) {
+  if (flag) *flag = false;
+
+  std::vector<uint64_t> expires;
+  if (args.type != StringSetType::NONE || args.keep_ttl) {
+    expires.resize(pairs.size(), 0);
+    for (size_t i = 0; i < pairs.size(); i++) {
+      Metadata old_metadata(kRedisNone, false);
+      std::string ns_key = AppendNamespacePrefix(pairs[i].key);
+      auto s = GetMetadata(ctx, RedisTypes::All(), ns_key, &old_metadata);
+      if (!s.ok() && !s.IsNotFound()) return s;
+      if (s.ok() && !old_metadata.Expired()) {
+        if (args.type == StringSetType::NX) {
+          return rocksdb::Status::OK();
+        }
+        expires[i] = old_metadata.expire;
+      } else if (args.type == StringSetType::XX) {
+        return rocksdb::Status::OK();
+      }
+    }
+  }
+
   auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisString);
   auto s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) return s;
-  for (const auto &pair : pairs) {
-    std::string bytes;
+
+  for (size_t i = 0; i < pairs.size(); i++) {
     Metadata metadata(kRedisString, false);
-    metadata.expire = expire_ms;
+    if (args.keep_ttl) {
+      if (expires[i] != 0) {
+        metadata.expire = expires[i];
+      }
+    } else {
+      metadata.expire = args.expire;
+    }
+    std::string bytes;
     metadata.Encode(&bytes);
-    bytes.append(pair.value.data(), pair.value.size());
-    std::string ns_key = AppendNamespacePrefix(pair.key);
+    bytes.append(pairs[i].value.data(), pairs[i].value.size());
+    std::string ns_key = AppendNamespacePrefix(pairs[i].key);
     s = batch->Put(metadata_cf_handle_, ns_key, bytes);
     if (!s.ok()) return s;
   }
-  return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
-}
-
-rocksdb::Status String::MSetNX(engine::Context &ctx, const std::vector<StringPair> &pairs, uint64_t expire_ms,
-                               bool *flag) {
-  *flag = false;
-
-  int exists = 0;
-  std::vector<Slice> keys;
-  keys.reserve(pairs.size());
-
-  for (StringPair pair : pairs) {
-    std::string ns_key = AppendNamespacePrefix(pair.key);
-    keys.emplace_back(pair.key);
-  }
-
-  if (Exists(ctx, keys, &exists).ok() && exists > 0) {
-    return rocksdb::Status::OK();
-  }
-
-  rocksdb::Status s = MSet(ctx, pairs, /*expire_ms=*/expire_ms);
+  s = storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
   if (!s.ok()) return s;
 
-  *flag = true;
+  if (flag) *flag = true;
   return rocksdb::Status::OK();
+}
+
+rocksdb::Status String::MSet(engine::Context &ctx, const std::vector<StringPair> &pairs) {
+  return MSet(ctx, pairs, {/*expire=*/0, StringSetType::NONE, /*keep_ttl=*/false});
+}
+
+rocksdb::Status String::MSetEX(engine::Context &ctx, const std::vector<StringPair> &pairs, StringMSetArgs args,
+                               bool *flag) {
+  return MSet(ctx, pairs, args, flag);
+}
+
+rocksdb::Status String::MSetNX(engine::Context &ctx, const std::vector<StringPair> &pairs, bool *flag) {
+  return MSet(ctx, pairs, {/*expire=*/0, StringSetType::NX, /*keep_ttl=*/false}, flag);
 }
 
 // Change the value of user_key to a new_value if the current value of the key matches old_value.
@@ -654,6 +717,17 @@ rocksdb::Status String::LCS(engine::Context &ctx, const std::string &user_key1, 
     }
   }
 
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status String::Digest(engine::Context &ctx, const std::string &user_key, std::string *digest) {
+  std::string value;
+  auto s = Get(ctx, user_key, &value);
+  if (!s.ok()) {
+    return s;
+  }
+
+  *digest = util::StringDigest(value);
   return rocksdb::Status::OK();
 }
 

@@ -146,11 +146,6 @@ class BitfieldValue {
     return value_ == static_cast<uint64_t>(rhs);
   }
 
-  template <class T>
-  friend bool operator==(T lhs, const BitfieldValue &rhs) {
-    return rhs == lhs;
-  }
-
   BitfieldEncoding Encoding() const noexcept { return encoding_; }
 
   uint64_t Value() const noexcept { return value_; }

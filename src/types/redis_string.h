@@ -34,6 +34,15 @@ struct StringPair {
   Slice value;
 };
 
+struct DelExOption {
+  enum Type { NONE, IFDEQ, IFDNE, IFEQ, IFNE };
+  Type type;
+  std::string value;
+
+  DelExOption() : type(NONE) {}
+  DelExOption(Type type, std::string value) : type(type), value(std::move(value)) {}
+};
+
 enum class StringSetType { NONE, NX, XX };
 
 struct StringSetArgs {
@@ -41,6 +50,13 @@ struct StringSetArgs {
   uint64_t expire;
   StringSetType type;
   bool get;
+  bool keep_ttl;
+};
+
+struct StringMSetArgs {
+  // Expire time in mill seconds.
+  uint64_t expire;
+  StringSetType type;
   bool keep_ttl;
 };
 
@@ -82,6 +98,7 @@ class String : public Database {
   rocksdb::Status Get(engine::Context &ctx, const std::string &user_key, std::string *value);
   rocksdb::Status GetEx(engine::Context &ctx, const std::string &user_key, std::string *value,
                         std::optional<uint64_t> expire);
+  rocksdb::Status DelEX(engine::Context &ctx, const std::string &user_key, const DelExOption &option, bool &deleted);
   rocksdb::Status GetSet(engine::Context &ctx, const std::string &user_key, const std::string &new_value,
                          std::optional<std::string> &old_value);
   rocksdb::Status GetDel(engine::Context &ctx, const std::string &user_key, std::string *value);
@@ -100,13 +117,16 @@ class String : public Database {
   rocksdb::Status IncrByFloat(engine::Context &ctx, const std::string &user_key, double increment, double *new_value);
   std::vector<rocksdb::Status> MGet(engine::Context &ctx, const std::vector<Slice> &keys,
                                     std::vector<std::string> *values);
-  rocksdb::Status MSet(engine::Context &ctx, const std::vector<StringPair> &pairs, uint64_t expire_ms);
-  rocksdb::Status MSetNX(engine::Context &ctx, const std::vector<StringPair> &pairs, uint64_t expire_ms, bool *flag);
+  rocksdb::Status MSet(engine::Context &ctx, const std::vector<StringPair> &pairs, StringMSetArgs args, bool *flag);
+  rocksdb::Status MSet(engine::Context &ctx, const std::vector<StringPair> &pairs);
+  rocksdb::Status MSetEX(engine::Context &ctx, const std::vector<StringPair> &pairs, StringMSetArgs args, bool *flag);
+  rocksdb::Status MSetNX(engine::Context &ctx, const std::vector<StringPair> &pairs, bool *flag);
   rocksdb::Status CAS(engine::Context &ctx, const std::string &user_key, const std::string &old_value,
                       const std::string &new_value, uint64_t expire_ms, int *flag);
   rocksdb::Status CAD(engine::Context &ctx, const std::string &user_key, const std::string &value, int *flag);
   rocksdb::Status LCS(engine::Context &ctx, const std::string &user_key1, const std::string &user_key2,
                       StringLCSArgs args, StringLCSResult *rst);
+  rocksdb::Status Digest(engine::Context &ctx, const std::string &user_key, std::string *digest);
 
  private:
   rocksdb::Status getValue(engine::Context &ctx, const std::string &ns_key, std::string *value);

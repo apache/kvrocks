@@ -28,6 +28,7 @@
 #include <event2/thread.h>
 
 #include <iomanip>
+#include <iostream>
 #include <memory>
 #include <ostream>
 
@@ -50,7 +51,7 @@ Server *srv = nullptr;
 
 extern "C" void SignalHandler(int sig) {
   if (srv && !srv->IsStopped()) {
-    info("Signal {} ({}) received, stopping the server", strsignal(sig), sig);
+    INFO("Signal {} ({}) received, stopping the server", strsignal(sig), sig);
     srv->Stop();
   }
 }
@@ -59,15 +60,17 @@ struct NewOpt {
   friend auto &operator<<(std::ostream &os, NewOpt) { return os << std::string(4, ' ') << std::setw(32); }
 } new_opt;
 
-static void PrintUsage(const char *program) {
-  std::cout << program << " implements the Redis protocol based on rocksdb" << std::endl
-            << "Usage:" << std::endl
-            << std::left << new_opt << "-c, --config <filename>" << "set config file to <filename>, or `-` for stdin"
-            << std::endl
-            << new_opt << "-v, --version" << "print version information" << std::endl
-            << new_opt << "-h, --help" << "print this help message" << std::endl
-            << new_opt << "--<config-key> <config-value>"
-            << "overwrite specific config option <config-key> to <config-value>" << std::endl;
+static void PrintUsage(const char *program, std::ostream &os = std::cout) {
+  os << program << " implements the Redis protocol based on RocksDB" << std::endl
+     << "Usage:" << std::endl
+     << std::left << new_opt << "-c, --config <filename>"
+     << "set config file to <filename>, or `-` for stdin" << std::endl
+     << new_opt << "-v, --version"
+     << "print version information" << std::endl
+     << new_opt << "-h, --help"
+     << "print this help message" << std::endl
+     << new_opt << "--<config-key> <config-value>"
+     << "overwrite specific config option <config-key> to <config-value>" << std::endl;
 }
 
 static CLIOptions ParseCommandLineOptions(int argc, char **argv) {
@@ -87,7 +90,7 @@ static CLIOptions ParseCommandLineOptions(int argc, char **argv) {
       auto key = std::string_view(argv[i] + 2);
       opts.cli_options.emplace_back(key, argv[++i]);
     } else {
-      PrintUsage(*argv);
+      PrintUsage(*argv, std::cerr);
       std::exit(1);
     }
   }
@@ -152,7 +155,7 @@ int main(int argc, char *argv[]) {
   Config config;
   Status s = config.Load(opts);
   if (!s.IsOK()) {
-    std::cout << "Failed to load config. Error: " << s.Msg() << std::endl;
+    std::cerr << "Failed to load config. Error: " << s.Msg() << std::endl;
     return 1;
   }
   const auto socket_fd_exit = MakeScopeExit([&config] {
@@ -162,10 +165,10 @@ int main(int argc, char *argv[]) {
   });
 
   if (auto s = InitSpdlog(config); !s) {
-    std::cout << "Failed to initialize logging system. Error: " << s.Msg() << std::endl;
+    std::cerr << "Failed to initialize logging system. Error: " << s.Msg() << std::endl;
     return 1;
   }
-  info("kvrocks {}", PrintVersion());
+  INFO("kvrocks {}", PrintVersion());
   // Tricky: We don't expect that different instances running on the same port,
   // but the server use REUSE_PORT to support the multi listeners. So we connect
   // the listen port to check if the port has already listened or not.
@@ -173,7 +176,7 @@ int main(int argc, char *argv[]) {
     uint32_t ports[] = {config.port, config.tls_port, 0};
     for (uint32_t *port = ports; *port; ++port) {
       if (util::IsPortInUse(*port)) {
-        error("Could not create the server since the specified port {} is already in use", *port);
+        ERROR("Could not create the server since the specified port {} is already in use", *port);
         return 1;
       }
     }
@@ -182,7 +185,7 @@ int main(int argc, char *argv[]) {
   if (config.daemonize && !is_supervised) Daemonize();
   s = CreatePidFile(config.pidfile);
   if (!s.IsOK()) {
-    error("Failed to create pidfile: {}", s.Msg());
+    ERROR("Failed to create pidfile: {}", s.Msg());
     return 1;
   }
   auto pidfile_exit = MakeScopeExit([&config] { RemovePidFile(config.pidfile); });
@@ -197,14 +200,14 @@ int main(int argc, char *argv[]) {
   engine::Storage storage(&config);
   s = storage.Open();
   if (!s.IsOK()) {
-    error("Failed to open the database: {}", s.Msg());
+    ERROR("Failed to open the database: {}", s.Msg());
     return 1;
   }
   Server server(&storage, &config);
   srv = &server;
   s = srv->Start();
   if (!s.IsOK()) {
-    error("Failed to start server: {}", s.Msg());
+    ERROR("Failed to start server: {}", s.Msg());
     return 1;
   }
   srv->Join();

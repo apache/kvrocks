@@ -20,6 +20,8 @@
 
 #include "rdb.h"
 
+#include <limits>
+
 #include "common/encoding.h"
 #include "common/rdb_stream.h"
 #include "common/time_util.h"
@@ -35,6 +37,7 @@
 #include "types/redis_hash.h"
 #include "types/redis_list.h"
 #include "types/redis_set.h"
+#include "types/redis_sortedint.h"
 #include "types/redis_string.h"
 #include "types/redis_zset.h"
 #include "vendor/crc64.h"
@@ -75,8 +78,8 @@ constexpr const int MinRdbVersionToVerifyChecksum = 5;
 template <typename T>
 T LogWhenError(T &&s) {
   if (!s) {
-    warn("Short read or unsupported type loading DB. Unrecoverable error, aborting now.");
-    error("Unexpected EOF reading RDB file");
+    WARN("Short read or unsupported type loading DB. Unrecoverable error, aborting now.");
+    ERROR("Unexpected EOF reading RDB file");
   }
   return std::forward<T>(s);
 }
@@ -560,13 +563,13 @@ Status RDB::LoadRdb(engine::Context &ctx, uint32_t db_index, bool overwrite_exis
   buf[9] = '\0';
 
   if (memcmp(buf, "REDIS", 5) != 0) {
-    warn("Wrong signature trying to load DB from file");
+    WARN("Wrong signature trying to load DB from file");
     return {Status::NotOK, "Wrong signature trying to load DB from file"};
   }
 
   auto rdb_ver = std::atoi(buf + 5);
   if (rdb_ver < 1 || rdb_ver > SupportedRDBVersion) {
-    warn("Can't handle RDB format version {}", rdb_ver);
+    WARN("Can't handle RDB format version {}", rdb_ver);
     return {Status::NotOK, fmt::format("Can't handle RDB format version {}", rdb_ver)};
   }
 
@@ -611,14 +614,14 @@ Status RDB::LoadRdb(engine::Context &ctx, uint32_t db_index, bool overwrite_exis
       auto value = GET_OR_RET(LogWhenError(LoadStringObject()));
       continue;
     } else if (type == RDBOpcodeModuleAux) {
-      warn("RDB module not supported");
+      WARN("RDB module not supported");
       return {Status::NotOK, "RDB module not supported"};
     } else if (type == RDBOpcodeFunction || type == RDBOpcodeFunction2) {
-      warn("RDB function not supported");
+      WARN("RDB function not supported");
       return {Status::NotOK, "RDB function not supported"};
     } else {
       if (!isObjectType(type)) {
-        warn("Invalid or Not supported object type: {}", (int)type);
+        WARN("Invalid or Not supported object type: {}", (int)type);
         return {Status::NotOK, fmt::format("Invalid or Not supported object type {}", type)};
       }
     }
@@ -636,7 +639,7 @@ Status RDB::LoadRdb(engine::Context &ctx, uint32_t db_index, bool overwrite_exis
        * in an RDB file, instead we will silently discard it and
        * continue loading. */
       if (empty_keys_skipped++ < 10) {  // only log 10 empty keys, just as redis does.
-        warn("skipping empty key: {}", key);
+        WARN("skipping empty key: {}", key);
       }
       continue;
     } else if (expire_time_ms != 0 &&
@@ -651,7 +654,7 @@ Status RDB::LoadRdb(engine::Context &ctx, uint32_t db_index, bool overwrite_exis
       if (!s.IsNotFound()) {
         skip_exist_keys++;  // skip it even it's not okay
         if (!s.ok()) {
-          error("check key {} exist failed: {}", key, s.ToString());
+          ERROR("check key {} exist failed: {}", key, s.ToString());
         }
         continue;
       }
@@ -659,7 +662,7 @@ Status RDB::LoadRdb(engine::Context &ctx, uint32_t db_index, bool overwrite_exis
 
     auto ret = saveRdbObject(ctx, type, key, value, expire_time_ms);
     if (!ret.IsOK()) {
-      warn("save rdb object key {} failed: {}", key, ret.Msg());
+      WARN("save rdb object key {} failed: {}", key, ret.Msg());
     } else {
       load_keys++;
     }
@@ -671,16 +674,16 @@ Status RDB::LoadRdb(engine::Context &ctx, uint32_t db_index, bool overwrite_exis
     auto expected = GET_OR_RET(LogWhenError(stream_->GetCheckSum()));
     GET_OR_RET(LogWhenError(stream_->Read(reinterpret_cast<char *>(&chk_sum), RDBCheckSumLen)));
     if (chk_sum == 0) {
-      warn("RDB file was saved with checksum disabled: no check performed.");
+      WARN("RDB file was saved with checksum disabled: no check performed.");
     } else if (chk_sum != expected) {
-      warn("Wrong RDB checksum expected: {} got: {}", chk_sum, expected);
+      WARN("Wrong RDB checksum expected: {} got: {}", chk_sum, expected);
       return {Status::NotOK, "All objects were processed and loaded but the checksum is unexpected!"};
     }
   }
 
   std::string skip_info = (overwrite_exist_key ? ", exist keys skipped: " + std::to_string(skip_exist_keys) : "");
 
-  info("Done loading RDB, keys loaded: {}, keys expired: {}, empty keys skipped: {}{}", load_keys, expire_keys,
+  INFO("Done loading RDB, keys loaded: {}, keys expired: {}, empty keys skipped: {}{}", load_keys, expire_keys,
        empty_keys_skipped, skip_info);
 
   return Status::OK();
@@ -730,8 +733,10 @@ Status RDB::SaveObjectType(const RedisType type) {
     robj_type = RDBTypeSet;
   } else if (type == kRedisZSet) {
     robj_type = RDBTypeZSet2;
+  } else if (type == kRedisSortedint) {
+    robj_type = RDBTypeSet;
   } else {
-    warn("Invalid or Not supported object type: {}", (int)type);
+    WARN("Invalid or Not supported object type: {}", (int)type);
     return {Status::NotOK, "Invalid or Not supported object type"};
   }
   return stream_->Write((const char *)(&robj_type), 1);
@@ -793,8 +798,25 @@ Status RDB::SaveObject(const std::string &key, const RedisType type) {
       return {Status::RedisExecErr, s.ToString()};
     }
     return SaveStringObject(value);
+  } else if (type == kRedisSortedint) {
+    redis::Sortedint sortedint_db(storage_, ns_);
+    std::vector<uint64_t> ids;
+    SortedintRangeSpec spec;
+    spec.min = 0;
+    spec.max = std::numeric_limits<uint64_t>::max();
+    spec.minex = false;
+    spec.maxex = false;
+    spec.offset = 0;
+    spec.count = std::numeric_limits<int>::max();
+    spec.reversed = false;
+    int size = 0;
+    auto si_status = sortedint_db.RangeByValue(ctx, key, spec, &ids, &size);
+    if (!si_status.ok()) {
+      return {Status::RedisExecErr, si_status.ToString()};
+    }
+    return SaveSortedintObject(ids);
   } else {
-    warn("Invalid or Not supported object type: {}", (int)type);
+    WARN("Invalid or Not supported object type: {}", (int)type);
     return {Status::NotOK, "Invalid or Not supported object type"};
   }
 }
@@ -871,7 +893,7 @@ Status RDB::SaveListObject(const std::vector<std::string> &elems) {
       if (!status.IsOK()) return status;
     }
   } else {
-    warn("the size of elems is zero");
+    WARN("the size of elems is zero");
     return {Status::NotOK, "the size of elems is zero"};
   }
   return Status::OK();
@@ -887,7 +909,7 @@ Status RDB::SaveSetObject(const std::vector<std::string> &members) {
       if (!status.IsOK()) return status;
     }
   } else {
-    warn("the size of elems is zero");
+    WARN("the size of elems is zero");
     return {Status::NotOK, "the size of elems is zero"};
   }
   return Status::OK();
@@ -906,7 +928,7 @@ Status RDB::SaveZSetObject(const std::vector<MemberScore> &member_scores) {
       if (!status.IsOK()) return status;
     }
   } else {
-    warn("the size of member_scores is zero");
+    WARN("the size of member_scores is zero");
     return {Status::NotOK, "the size of ZSet is 0"};
   }
   return Status::OK();
@@ -925,8 +947,22 @@ Status RDB::SaveHashObject(const std::vector<FieldValue> &field_values) {
       if (!status.IsOK()) return status;
     }
   } else {
-    warn("the size of field_values is zero");
+    WARN("the size of field_values is zero");
     return {Status::NotOK, "the size of Hash is 0"};
+  }
+  return Status::OK();
+}
+Status RDB::SaveSortedintObject(const std::vector<uint64_t> &ids) {
+  if (ids.size() > 0) {
+    auto status = RdbSaveLen(ids.size());
+    if (!status.IsOK()) return status;
+
+    for (const auto &id : ids) {
+      status = SaveStringObject(std::to_string(id));
+      if (!status.IsOK()) return status;
+    }
+  } else {
+    return {Status::NotOK, "the size of sortedint is zero"};
   }
   return Status::OK();
 }

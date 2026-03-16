@@ -574,9 +574,10 @@ func TestClusterReset(t *testing.T) {
 
 	t.Run("cannot reset cluster if the db is migrating the slot", func(t *testing.T) {
 		slotNum := 2
-		// slow down the migration speed to avoid breaking other test cases
-		require.NoError(t, rdb0.ConfigSet(ctx, "migrate-speed", "128").Err())
-		for i := 0; i < 1024; i++ {
+		// slow down the migration speed to ensure we can observe the "start" state
+		// before migration completes (especially on fast hardware like macOS ARM)
+		require.NoError(t, rdb0.ConfigSet(ctx, "migrate-speed", "64").Err())
+		for i := 0; i < 2048; i++ {
 			require.NoError(t, rdb0.RPush(ctx, "my-list", fmt.Sprintf("element%d", i)).Err())
 		}
 
@@ -599,5 +600,97 @@ func TestClusterReset(t *testing.T) {
 		require.EqualValues(t, "-1", rdb0.Do(ctx, "clusterx", "version").Val())
 		// reset the cluster topology to avoid breaking other test cases
 		require.NoError(t, rdb0.Do(ctx, "clusterx", "SETNODES", clusterNodes, "1").Err())
+	})
+}
+
+func TestClusterNodeFailFlag(t *testing.T) {
+	t.Parallel()
+	srv := util.StartServer(t, map[string]string{"cluster-enabled": "yes"})
+	defer srv.Close()
+
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	masterID := "07c37dfeb235213a872192d90877d0cd55635b91"
+	slaveID := "07c37dfeb235213a872192d90877d0cd55635b92"
+	require.NoError(t, rdb.Do(ctx, "clusterx", "SETNODEID", masterID).Err())
+
+	t.Run("slave,fail role is accepted by CLUSTERX SETNODES and reflected in CLUSTER NODES output", func(t *testing.T) {
+		clusterNodes := fmt.Sprintf("%s %s %d master - 0-16383\n", masterID, srv.Host(), srv.Port())
+		clusterNodes += fmt.Sprintf("%s %s %d slave,fail %s", slaveID, srv.Host(), srv.Port()+1, masterID)
+
+		require.NoError(t, rdb.Do(ctx, "clusterx", "SETNODES", clusterNodes, "1").Err())
+
+		nodes := rdb.ClusterNodes(ctx).Val()
+		require.Contains(t, nodes, "slave,fail")
+
+		// Verify the exact flags field for the slave line
+		for _, line := range strings.Split(strings.TrimRight(nodes, "\n"), "\n") {
+			if strings.Contains(line, slaveID) {
+				fields := strings.Fields(line)
+				require.GreaterOrEqual(t, len(fields), 3)
+				require.Equal(t, "slave,fail", fields[2])
+			}
+		}
+	})
+
+	t.Run("online slave has no fail flag in CLUSTER NODES output", func(t *testing.T) {
+		clusterNodes := fmt.Sprintf("%s %s %d master - 0-16383\n", masterID, srv.Host(), srv.Port())
+		clusterNodes += fmt.Sprintf("%s %s %d slave %s", slaveID, srv.Host(), srv.Port()+1, masterID)
+
+		require.NoError(t, rdb.Do(ctx, "clusterx", "SETNODES", clusterNodes, "2").Err())
+
+		nodes := rdb.ClusterNodes(ctx).Val()
+		for _, line := range strings.Split(strings.TrimRight(nodes, "\n"), "\n") {
+			if strings.Contains(line, slaveID) {
+				fields := strings.Fields(line)
+				require.GreaterOrEqual(t, len(fields), 3)
+				require.Equal(t, "slave", fields[2])
+			}
+		}
+	})
+}
+
+func TestClusterFlushSlots(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{"cluster-enabled": "yes"})
+	defer srv.Close()
+
+	rdb := srv.NewClient()
+	defer func() {
+		require.NoError(t, rdb.Close())
+	}()
+
+	ctx := context.Background()
+	nodeID := "YYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY"
+	require.NoError(t, rdb.Do(ctx, "clusterx", "SETNODEID", nodeID).Err())
+	clusterNodes := fmt.Sprintf("%s %s %d master - 0-16383", nodeID, srv.Host(), srv.Port())
+	require.NoError(t, rdb.Do(ctx, "clusterx", "SETNODES", clusterNodes, "1").Err())
+
+	slotKeys := []string{"{3560}key", "{22179}key", "{48756}key", "{2977}key", "{4569}key",
+		"{460}key", "{4384}key", "{41432}key", "{46920}key", "{9073}key"}
+	initKeys := func(cli *redis.Client) error {
+		if err := cli.FlushDB(ctx).Err(); err != nil {
+			return err
+		}
+		for _, key := range slotKeys {
+			if err := cli.Set(ctx, key, "value", 0).Err(); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	t.Run("Flush slots", func(t *testing.T) {
+		require.NoError(t, initKeys(rdb))
+
+		r, err := rdb.Do(ctx, "clusterx", "flushslots", "0 2 4 6-9").Result()
+		require.NoError(t, err)
+		require.Equal(t, "OK", r)
+
+		expectedRemainingKeys := []string{slotKeys[1], slotKeys[3], slotKeys[5]}
+		keys, err := rdb.Keys(ctx, "*").Result()
+		require.NoError(t, err)
+		require.ElementsMatch(t, keys, expectedRemainingKeys)
 	})
 }

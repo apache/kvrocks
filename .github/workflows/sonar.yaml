@@ -28,15 +28,15 @@ jobs:
     runs-on: ubuntu-22.04
     if: github.event.workflow_run.conclusion == 'success' && github.repository_owner == 'apache'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           repository: ${{ github.event.workflow_run.head_repository.full_name }}
           ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
       - name: Install Build Wrapper
-        uses: SonarSource/sonarqube-scan-action/install-build-wrapper@v6.0.0
+        uses: SonarSource/sonarqube-scan-action/install-build-wrapper@v7.0.0
       - name: 'Download code coverage'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             let allArtifacts = await github.rest.actions.listWorkflowRunArtifacts({
@@ -62,7 +62,7 @@ jobs:
           mkdir -p build/CMakeFiles/CMakeTmp
           ls -a sonarcloud-data build
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: 3.x
 
@@ -73,7 +73,7 @@ jobs:
           echo "The PR number is ${PR_NUMBER:-<none>}"
 
       - name: SonarQube Scan
-        uses: SonarSource/sonarqube-scan-action@v6.0.0
+        uses: SonarSource/sonarqube-scan-action@v7.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONARCLOUD_TOKEN }}

@@ -78,7 +78,7 @@ struct IndexSelection : Visitor {
       return std::make_unique<NumericFieldScan>(order->field->CloneAs<FieldRef>(), Interval::Full(), order->order);
     } else {
       // current only numeric field is supported for ordering
-      unreachable();
+      UNREACHABLE();
     }
   }
 
@@ -131,7 +131,7 @@ struct IndexSelection : Visitor {
       return VisitExpr(v);
     }
 
-    unreachable();
+    UNREACHABLE();
   }
 
   std::unique_ptr<PlanOperator> MakeFullIndexFilter(QueryExpr *node) const {

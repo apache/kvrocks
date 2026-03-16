@@ -23,11 +23,13 @@
 #include <event2/util.h>
 #include <unistd.h>
 
+#include <atomic>
 #include <cstdint>
 #include <stdexcept>
 #include <string>
 
 #include "event2/bufferevent.h"
+#include "fmt/ostream.h"
 #include "io_util.h"
 #include "logging.h"
 #include "scope_exit.h"
@@ -61,7 +63,7 @@ Worker::Worker(Server *srv, Config *config) : srv(srv), base_(event_base_new()) 
 
   if (config->socket_fd != -1) {
     if (const Status s = listenFD(config->socket_fd, config->port, config->backlog); !s.IsOK()) {
-      error("[worker] Failed to listen to socket with fd: {}, Error: {}", config->socket_fd, s.Msg());
+      ERROR("[worker] Failed to listen to socket with fd: {}, Error: {}", config->socket_fd, s.Msg());
       exit(1);
     }
   } else {
@@ -70,10 +72,10 @@ Worker::Worker(Server *srv, Config *config) : srv(srv), base_(event_base_new()) 
     for (const uint32_t *port = ports; *port; ++port) {
       for (const auto &bind : config->binds) {
         if (const Status s = listenTCP(bind, *port, config->backlog); !s.IsOK()) {
-          error("[worker] Failed to listen on: {}:{}, Error: {}", bind, *port, s.Msg());
+          ERROR("[worker] Failed to listen on: {}:{}, Error: {}", bind, *port, s.Msg());
           exit(1);
         }
-        info("[worker] Listening on: {}:{}", bind, *port);
+        INFO("[worker] Listening on: {}:{}", bind, *port);
       }
     }
   }
@@ -93,6 +95,11 @@ Worker::~Worker() {
   for (const auto &iter : conns) {
     iter->Close();
   }
+
+  for (const auto &lev : listen_events_) {
+    evconnlistener_free(lev);
+  }
+  listen_events_.clear();
 
   timer_.reset();
   if (rate_limit_group_) {
@@ -114,18 +121,18 @@ void Worker::TimerCB(int, [[maybe_unused]] int16_t events) {
 void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd, [[maybe_unused]] sockaddr *address,
                               [[maybe_unused]] int socklen) {
   int local_port = util::GetLocalPort(fd);  // NOLINT
-  debug("[worker] New connection: fd={} from port: {} thread #{}", fd, local_port, fmt::streamed(tid_));
+  DEBUG("[worker] New connection: fd={} from port: {} thread #{}", fd, local_port, fmt::streamed(tid_));
 
   auto s = util::SockSetTcpKeepalive(fd, 120);
   if (!s.IsOK()) {
-    error("[worker] Failed to set tcp-keepalive on socket. Error: {}", s.Msg());
+    ERROR("[worker] Failed to set tcp-keepalive on socket. Error: {}", s.Msg());
     evutil_closesocket(fd);
     return;
   }
 
   s = util::SockSetTcpNoDelay(fd, 1);
   if (!s.IsOK()) {
-    error("[worker] Failed to set tcp-nodelay on socket. Error: {}", s.Msg());
+    ERROR("[worker] Failed to set tcp-nodelay on socket. Error: {}", s.Msg());
     evutil_closesocket(fd);
     return;
   }
@@ -140,7 +147,7 @@ void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd, [[ma
   if (uint32_t(local_port) == srv->GetConfig()->tls_port) {
     ssl = SSL_new(srv->ssl_ctx.get());
     if (!ssl) {
-      error("[worker] Failed to construct SSL structure for new connection: {}", fmt::streamed(SSLErrors{}));
+      ERROR("[worker] Failed to construct SSL structure for new connection: {}", fmt::streamed(SSLErrors{}));
       evutil_closesocket(fd);
       return;
     }
@@ -154,11 +161,11 @@ void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd, [[ma
   if (!bev) {
     auto socket_err = evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR());
 #ifdef ENABLE_OPENSSL
-    error("[worker] Failed to construct socket for new connection: {}, SSL error: {}", socket_err,
+    ERROR("[worker] Failed to construct socket for new connection: {}, SSL error: {}", socket_err,
           fmt::streamed(SSLErrors{}));
     if (ssl) SSL_free(ssl);
 #else
-    error("[worker] Failed to construct socket for new connection: {}", socket_err);
+    ERROR("[worker] Failed to construct socket for new connection: {}", socket_err);
 #endif
     evutil_closesocket(fd);
     return;
@@ -177,7 +184,7 @@ void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd, [[ma
     std::string err_msg = redis::Error({Status::NotOK, s.Msg()});
     s = util::SockSend(fd, err_msg, ssl);
     if (!s.IsOK()) {
-      warn("[worker] Failed to send error response to socket: {}", s.Msg());
+      WARN("[worker] Failed to send error response to socket: {}", s.Msg());
     }
     conn->Close();
     return;
@@ -195,7 +202,7 @@ void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd, [[ma
 
 void Worker::newUnixSocketConnection(evconnlistener *listener, evutil_socket_t fd, [[maybe_unused]] sockaddr *address,
                                      [[maybe_unused]] int socklen) {
-  debug("[worker] New connection: fd={} from unixsocket: {} thread #{}", fd, srv->GetConfig()->unixsocket,
+  DEBUG("[worker] New connection: fd={} from unixsocket: {} thread #{}", fd, srv->GetConfig()->unixsocket,
         fmt::streamed(tid_));
   event_base *base = evconnlistener_get_base(listener);
   auto ev_thread_safe_flags =
@@ -210,7 +217,7 @@ void Worker::newUnixSocketConnection(evconnlistener *listener, evutil_socket_t f
   if (!s.IsOK()) {
     s = util::SockSend(fd, redis::Error(s));
     if (!s.IsOK()) {
-      warn("[worker] Failed to send error response to socket: {}", s.Msg());
+      WARN("[worker] Failed to send error response to socket: {}", s.Msg());
     }
     conn->Close();
     return;
@@ -234,7 +241,7 @@ Status Worker::listenFD(int fd, uint32_t expected_port, int backlog) {
   evconnlistener *lev =
       NewEvconnlistener<&Worker::newTCPConnection>(base_, LEV_OPT_THREADSAFE | LEV_OPT_CLOSE_ON_FREE, backlog, dup_fd);
   listen_events_.emplace_back(lev);
-  info("[worker] Listening on dup'ed fd: {}", dup_fd);
+  INFO("[worker] Listening on dup'ed fd: {}", dup_fd);
   return Status::OK();
 }
 
@@ -314,7 +321,7 @@ Status Worker::ListenUnixSocket(const std::string &path, int perm, int backlog) 
 void Worker::Run(std::thread::id tid) {
   tid_ = tid;
   if (event_base_dispatch(base_) != 0) {
-    error("[worker] Failed to run server, err: {}", strerror(errno));
+    ERROR("[worker] Failed to run server, err: {}", strerror(errno));
   }
   is_terminated_ = true;
 }
@@ -324,6 +331,7 @@ void Worker::Stop(uint32_t wait_seconds) {
     // It's unnecessary to close the listener fd since we have set the LEV_OPT_CLOSE_ON_FREE flag
     evconnlistener_free(lev);
   }
+  listen_events_.clear();
   // wait_seconds == 0 means stop immediately, or it will wait N seconds
   // for the worker to process the remaining requests before stopping.
   if (wait_seconds > 0) {
@@ -379,8 +387,9 @@ redis::Connection *Worker::removeConnection(int fd) {
 // MigrateConnection moves the connection to another worker
 // when reducing the number of workers.
 //
-// To make it simple, we would close the connection if it's
-// blocked on a key or stream.
+// To make it simple, we do not migrate connections that are blocked on a key
+// or stream, or that are paused (CLIENT PAUSE). Such connections stay on the
+// worker being shut down and will be closed when it stops.
 void Worker::MigrateConnection(Worker *target, redis::Connection *conn) {
   if (!target || !conn) return;
 
@@ -390,8 +399,13 @@ void Worker::MigrateConnection(Worker *target, redis::Connection *conn) {
   // We cannot migrate the connection if it has a running command
   // since it will cause data race since the old worker may still process the command.
   if (!conn->CanMigrate()) {
-    // Need to enable read/write event again since we disabled them before
     bufferevent_enable(bev, EV_READ | EV_WRITE);
+    return;
+  }
+  // Paused connections are not migrated; they will be closed when the worker stops.
+  // Only re-enable WRITE here; READ must remain disabled to preserve the paused state.
+  if (conn->IsPaused()) {
+    bufferevent_enable(bev, EV_WRITE);
     return;
   }
 
@@ -403,8 +417,9 @@ void Worker::MigrateConnection(Worker *target, redis::Connection *conn) {
   }
   bufferevent_base_set(target->base_, bev);
   conn->SetCB(bev);
-  bufferevent_enable(bev, EV_READ | EV_WRITE);
+  // SetOwner before bufferevent_enable so callbacks see the correct owner.
   conn->SetOwner(target);
+  bufferevent_enable(bev, EV_READ | EV_WRITE);
 }
 
 void Worker::DetachConnection(redis::Connection *conn) {
@@ -427,6 +442,7 @@ void Worker::FreeConnection(redis::Connection *conn) {
   removeConnection(conn->GetFD());
   srv->ResetWatchedKeys(conn);
   srv->CleanupWaitConnection(conn);
+  if (conn->IsPaused()) srv->RemovePausedConn(conn);
   if (rate_limit_group_) {
     bufferevent_remove_from_rate_limit_group(conn->GetBufferEvent());
   }
@@ -464,6 +480,16 @@ Status Worker::EnableWriteEvent(int fd) {
   }
 
   return {Status::NotOK, "connection doesn't exist"};
+}
+
+void Worker::UnpauseConnection(int fd, uint64_t id) {
+  std::unique_lock<std::mutex> lock(conns_mu_);
+  auto iter = conns_.find(fd);
+  // Validate that the connection still exists and has the same id to avoid
+  // use-after-free if the connection was freed between pause and unpause.
+  if (iter != conns_.end() && iter->second->GetID() == id) {
+    iter->second->Unpause();
+  }
 }
 
 Status Worker::Reply(int fd, const std::string &reply) {
@@ -588,18 +614,22 @@ void WorkerThread::Start() {
 
   if (s) {
     t_ = std::move(*s);
+    native_thread_handle_.store(t_.native_handle(), std::memory_order_relaxed);
   } else {
-    error("[worker] Failed to start worker thread, err: {}", s.Msg());
+    ERROR("[worker] Failed to start worker thread, err: {}", s.Msg());
     return;
   }
 
-  info("[worker] Thread #{} started", fmt::streamed(t_.get_id()));
+  INFO("[worker] Thread #{} started", fmt::streamed(t_.get_id()));
 }
 
-void WorkerThread::Stop(uint32_t wait_seconds) { worker_->Stop(wait_seconds); }
+void WorkerThread::Stop(uint32_t wait_seconds) {
+  native_thread_handle_.store(std::thread::native_handle_type{}, std::memory_order_relaxed);
+  worker_->Stop(wait_seconds);
+}
 
 void WorkerThread::Join() {
   if (auto s = util::ThreadJoin(t_); !s) {
-    warn("[worker] {}", s.Msg());
+    WARN("[worker] {}", s.Msg());
   }
 }

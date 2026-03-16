@@ -55,6 +55,7 @@ constexpr const size_t GiB = 1024L * MiB;
 constexpr const uint32_t kDefaultPort = 6666;
 
 constexpr const char *kDefaultNamespace = "__namespace";
+constexpr const char *kDatabaseNamespacePrefix = "db";
 constexpr int KVROCKS_MAX_LSM_LEVEL = 7;
 
 constexpr const uint64_t kDefaultRocksdbTTL = UINT64_MAX - 1;
@@ -125,6 +126,8 @@ struct Config {
   int replication_recv_timeout_ms = 3200;
   int max_replication_delay_bytes = 16 * 1024;  // 16KB default
   int max_replication_delay_updates = 16;       // 16 updates default
+  int64_t max_replication_lag = 0;          // 0 = disabled, otherwise max sequences before disconnecting slow consumer
+  int replication_send_timeout_ms = 30000;  // 30 second timeout for socket sends to replicas
   int max_db_size = 0;
   int max_replication_mb = 0;
   int max_io_mb = 0;
@@ -174,6 +177,7 @@ struct Config {
   int migrate_batch_rate_limit_mb;
 
   bool redis_cursor_compatible = false;
+  int redis_databases = 0;
   bool resp3_enabled = false;
   int log_retention_days;
 

@@ -27,6 +27,7 @@ import (
 	"net"
 	"regexp"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -146,6 +147,122 @@ func SimpleTCPProxy(ctx context.Context, t testing.TB, to string, slowdown bool)
 					t.Fatalf("forward tcp stream failed, err: %v", err)
 				}
 
+			}
+		}
+	}()
+	return uint64(addr.Port)
+}
+
+// PausableTCPProxy creates a TCP proxy that can be paused/resumed via a channel.
+// Send true to pause, false to resume. Returns the proxy port.
+// When paused, the proxy stops reading from the source, causing the sender's
+// TCP buffer to fill up and eventually blocking writes.
+func PausableTCPProxy(ctx context.Context, t testing.TB, to string, pauseCh <-chan bool) uint64 {
+	addr, err := findFreePort()
+	if err != nil {
+		t.Fatalf("can't find a free port, %v", err)
+	}
+	from := addr.String()
+
+	listener, err := net.Listen("tcp", from)
+	if err != nil {
+		t.Fatalf("listen to %s failed, err: %v", from, err)
+	}
+
+	paused := &atomic.Bool{}
+
+	// Goroutine to handle pause/resume signals
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case p := <-pauseCh:
+				paused.Store(p)
+			}
+		}
+	}()
+
+	copyBytes := func(src, dest io.ReadWriter, direction string) func() error {
+		buffer := make([]byte, 4096)
+		return func() error {
+		COPY_LOOP:
+			for {
+				select {
+				case <-ctx.Done():
+					t.Log("forwarding tcp stream stopped")
+					break COPY_LOOP
+				default:
+					// When paused, only block reading from the master (to slave direction)
+					// This causes master's send buffer to fill, eventually blocking master's writes
+					if paused.Load() && direction == "to_slave" {
+						time.Sleep(time.Millisecond * 100)
+						continue
+					}
+
+					// Set read deadline to allow checking pause state periodically
+					if conn, ok := src.(net.Conn); ok {
+						_ = conn.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
+					}
+
+					n, err := src.Read(buffer)
+					if err != nil {
+						if errors.Is(err, io.EOF) {
+							break COPY_LOOP
+						}
+						if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+							continue
+						}
+						return err
+					}
+					_, err = dest.Write(buffer[:n])
+					if err != nil {
+						if errors.Is(err, io.EOF) {
+							break COPY_LOOP
+						}
+						return err
+					}
+				}
+			}
+			return nil
+		}
+	}
+
+	go func() {
+		defer listener.Close()
+	LISTEN_LOOP:
+		for {
+			select {
+			case <-ctx.Done():
+				break LISTEN_LOOP
+
+			default:
+				_ = listener.(*net.TCPListener).SetDeadline(time.Now().Add(100 * time.Millisecond))
+				conn, err := listener.Accept()
+				if err != nil {
+					if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+						continue
+					}
+					t.Logf("accept conn failed, err: %v", err)
+					continue
+				}
+				dest, err := net.Dial("tcp", to)
+				if err != nil {
+					t.Logf("dial to %s failed, err: %v", to, err)
+					conn.Close()
+					continue
+				}
+				go func() {
+					var errGrp errgroup.Group
+					// conn is from slave, dest is to master
+					// "to_slave" = reading from master (dest), writing to slave (conn)
+					// "to_master" = reading from slave (conn), writing to master (dest)
+					errGrp.Go(copyBytes(dest, conn, "to_slave"))
+					errGrp.Go(copyBytes(conn, dest, "to_master"))
+					_ = errGrp.Wait()
+					conn.Close()
+					dest.Close()
+				}()
 			}
 		}
 	}()

@@ -98,7 +98,7 @@ std::vector<TSSample> AggregateSamplesByRangeOption(std::vector<TSSample> sample
       case BucketTimestampType::Mid:
         return left + aggregator.bucket_duration / 2;
       default:
-        unreachable();
+        UNREACHABLE();
     }
     return 0;
   };
@@ -432,7 +432,7 @@ std::vector<TSSample> TSDownStreamMeta::AggregateMultiBuckets(
           sample.v = f64_auxs[1] - f64_auxs[0];
           break;
         default:
-          unreachable();
+          UNREACHABLE();
       }
       res.push_back(sample);
       // Reset aux info for the new bucket
@@ -501,7 +501,7 @@ void TSDownStreamMeta::AggregateLatestBucket(nonstd::span<const TSSample> sample
       }
       break;
     default:
-      unreachable();
+      UNREACHABLE();
   }
 }
 
@@ -541,7 +541,7 @@ void TSDownStreamMeta::ResetAuxs() {
       f64_auxs = {TSSample::NAN_VALUE, TSSample::NAN_VALUE};
       break;
     default:
-      unreachable();
+      UNREACHABLE();
   }
 }
 
@@ -945,7 +945,7 @@ double TSAggregator::AggregateSamplesValue(nonstd::span<const TSSample> samples)
       res = Reducer::Area(samples);
       break;
     default:
-      unreachable();
+      UNREACHABLE();
   }
 
   return res;

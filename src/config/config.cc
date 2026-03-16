@@ -206,6 +206,8 @@ Config::Config() {
       {"replication-no-slowdown", false, new YesNoField(&replication_no_slowdown, true)},
       {"replication-delay-bytes", false, new IntField(&max_replication_delay_bytes, 16 * 1024, 1, INT_MAX)},
       {"replication-delay-updates", false, new IntField(&max_replication_delay_updates, 16, 1, INT_MAX)},
+      {"max-replication-lag", false, new Int64Field(&max_replication_lag, 0, 0, INT64_MAX)},
+      {"replication-send-timeout-ms", false, new IntField(&replication_send_timeout_ms, 30000, 1000, 300000)},
       {"use-rsid-psync", true, new YesNoField(&use_rsid_psync, false)},
       {"profiling-sample-ratio", false, new IntField(&profiling_sample_ratio, 0, 0, 100)},
       {"profiling-sample-record-max-len", false, new IntField(&profiling_sample_record_max_len, 256, 0, INT_MAX)},
@@ -233,6 +235,7 @@ Config::Config() {
       {"log-retention-days", true, new IntField(&log_retention_days, -1, -1, INT_MAX)},
       {"persist-cluster-nodes-enabled", false, new YesNoField(&persist_cluster_nodes_enabled, true)},
       {"redis-cursor-compatible", false, new YesNoField(&redis_cursor_compatible, true)},
+      {"redis-databases", true, new IntField(&redis_databases, 0, 0, INT_MAX)},
       {"resp3-enabled", false, new YesNoField(&resp3_enabled, true)},
       {"repl-namespace-enabled", false, new YesNoField(&repl_namespace_enabled, false)},
       {"proto-max-bulk-len", false,
@@ -276,7 +279,7 @@ Config::Config() {
       {"rocksdb.cache_index_and_filter_blocks", true, new YesNoField(&rocks_db.cache_index_and_filter_blocks, true)},
       {"rocksdb.block_cache_size", true, new IntField(&rocks_db.block_cache_size, 0, 0, INT_MAX)},
       {"rocksdb.block_cache_type", true,
-       new EnumField<BlockCacheType>(&rocks_db.block_cache_type, cache_types, BlockCacheType::kCacheTypeLRU)},
+       new EnumField<BlockCacheType>(&rocks_db.block_cache_type, cache_types, BlockCacheType::kCacheTypeHCC)},
       {"rocksdb.subkey_block_cache_size", true, new IntField(&rocks_db.subkey_block_cache_size, 2048, 0, INT_MAX)},
       {"rocksdb.metadata_block_cache_size", true, new IntField(&rocks_db.metadata_block_cache_size, 2048, 0, INT_MAX)},
       {"rocksdb.share_metadata_and_subkey_block_cache", true,
@@ -506,8 +509,8 @@ void Config::initFieldCallback() {
                backup_dir = v;
              }
              if (!previous_backup.empty() && srv != nullptr && !srv->IsLoading()) {
-               // info() should be called after log is initialized and server is loaded.
-               info("change backup dir from {} to {}", previous_backup, v);
+               // INFO() should be called after log is initialized and server is loaded.
+               INFO("change backup dir from {} to {}", previous_backup, v);
              }
              return Status::OK();
            }},
@@ -829,7 +832,7 @@ void Config::SetMaster(const std::string &host, uint32_t port) {
   if (iter != fields_.end()) {
     auto s = iter->second->Set(master_host + " " + std::to_string(master_port));
     if (!s.IsOK()) {
-      error("Failed to set the value of 'slaveof' setting: {}", s.Msg());
+      ERROR("Failed to set the value of 'slaveof' setting: {}", s.Msg());
     }
   }
 }
@@ -841,7 +844,7 @@ void Config::ClearMaster() {
   if (iter != fields_.end()) {
     auto s = iter->second->Set("no one");
     if (!s.IsOK()) {
-      error("Failed to clear the value of 'slaveof' setting: {}", s.Msg());
+      ERROR("Failed to clear the value of 'slaveof' setting: {}", s.Msg());
     }
   }
 }
@@ -889,6 +892,12 @@ Status Config::finish() {
   }
   if ((cluster_enabled) && !load_tokens.empty()) {
     return {Status::NotOK, "enabled cluster mode wasn't allowed while the namespace exists"};
+  }
+  if ((redis_databases > 0) && !load_tokens.empty()) {
+    return {Status::NotOK, "redis-databases > 0 is not allowed while any non-default namespace exists"};
+  }
+  if ((redis_databases > 0) && (cluster_enabled)) {
+    return {Status::NotOK, "cluster mode and redis-databases cannot be enabled at the same time"};
   }
   if (unixsocket.empty() && binds.size() == 0) {
     binds.emplace_back(kDefaultBindAddress);

@@ -227,6 +227,7 @@ class Server {
   size_t GetPubSubPatternSize() const { return pubsub_patterns_.size(); }
   void SSubscribeChannel(const std::string &channel, redis::Connection *conn, uint16_t slot);
   void SUnsubscribeChannel(const std::string &channel, redis::Connection *conn, uint16_t slot);
+  int SPublish(const std::string &channel, const std::string &msg, uint16_t slot);
   void GetSChannelsByPattern(const std::string &pattern, std::vector<std::string> *channels);
   void ListSChannelSubscribeNum(const std::vector<std::string> &channels,
                                 std::vector<ChannelSubscribeNum> *channel_subscribe_nums);

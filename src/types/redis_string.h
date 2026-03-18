@@ -43,7 +43,7 @@ struct DelExOption {
   DelExOption(Type type, std::string value) : type(type), value(std::move(value)) {}
 };
 
-enum class StringSetType { NONE, NX, XX };
+enum class StringSetType { NONE, NX, XX, IFEQ, IFNE, IFDEQ, IFDNE };
 
 struct StringSetArgs {
   // Expire time in mill seconds.
@@ -51,6 +51,7 @@ struct StringSetArgs {
   StringSetType type;
   bool get;
   bool keep_ttl;
+  std::string cmp_value;  // valid only when type is IFEQ/IFNE/IFDEQ/IFDNE
 };
 
 struct StringMSetArgs {

@@ -878,7 +878,7 @@ rocksdb::Status Bitmap::runBitfieldOperationsWithCache(engine::Context &ctx, Seg
       return segment_status;
     }
 
-    // Covert the bitfield from a buffer to an integer.
+    // Convert the bitfield from a buffer to an integer.
     uint64_t unsigned_old_value = 0;
     auto s = GetBitfieldInteger(bitfield, op.offset, op.encoding, &unsigned_old_value);
     if (!s.ok()) {

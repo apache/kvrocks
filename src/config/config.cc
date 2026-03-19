@@ -93,6 +93,12 @@ const std::vector<ConfigEnum<BlockCacheType>> cache_types{[] {
 const std::vector<ConfigEnum<MigrationType>> migration_types{{"redis-command", MigrationType::kRedisCommand},
                                                              {"raw-key-value", MigrationType::kRawKeyValue}};
 
+const std::vector<ConfigEnum<MasterLeaseMode>> master_lease_modes{
+    {"disabled", MasterLeaseMode::kDisabled},
+    {"log-only", MasterLeaseMode::kLogOnly},
+    {"block-write", MasterLeaseMode::kBlockWrite},
+};
+
 std::string TrimRocksDbPrefix(std::string s) {
   constexpr std::string_view prefix = "rocksdb.";
   if (!util::StartsWithICase(s, prefix)) return s;
@@ -243,6 +249,8 @@ Config::Config() {
       {"json-max-nesting-depth", false, new IntField(&json_max_nesting_depth, 1024, 0, INT_MAX)},
       {"json-storage-format", false,
        new EnumField<JsonStorageFormat>(&json_storage_format, json_storage_formats, JsonStorageFormat::JSON)},
+      {"master-lease-mode", false,
+       new EnumField<MasterLeaseMode>(&master_lease_mode, master_lease_modes, MasterLeaseMode::kDisabled)},
       {"txn-context-enabled", true, new YesNoField(&txn_context_enabled, false)},
       {"skip-block-cache-deallocation-on-close", false, new YesNoField(&skip_block_cache_deallocation_on_close, false)},
       {"histogram-bucket-boundaries", true, new StringField(&histogram_bucket_boundaries_str_, "")},

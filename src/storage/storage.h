@@ -313,6 +313,24 @@ class Storage {
   Status CommitTxn();
   ObserverOrUniquePtr<rocksdb::WriteBatchBase> GetWriteBatchBase();
 
+  // Master lease management. Thread-safe; called from CLUSTERX HEARTBEAT handler.
+  void UpdateLease(uint64_t election_version, uint64_t deadline_ms) {
+    // Both stores use memory_order_relaxed. The two atomics are independent:
+    // writeToDB() reads only lease_deadline_ms_ (not local_election_version_),
+    // so no cross-thread ordering constraint exists between them.
+    // In the rare concurrent-HEARTBEAT case, the last writer wins; the legitimate
+    // controller will overwrite within one probe cycle (bounded by lease_ms).
+    lease_deadline_ms_.store(deadline_ms, std::memory_order_relaxed);
+    local_election_version_.store(election_version, std::memory_order_relaxed);
+  }
+  void ResetLease() {
+    // Clear deadline first to ensure concurrent readers stop renewing immediately.
+    lease_deadline_ms_.store(0, std::memory_order_relaxed);
+    local_election_version_.store(0, std::memory_order_relaxed);
+  }
+  uint64_t GetLeaseDeadlineMs() const { return lease_deadline_ms_.load(std::memory_order_relaxed); }
+  uint64_t GetLocalElectionVersion() const { return local_election_version_.load(std::memory_order_relaxed); }
+
   Storage(const Storage &) = delete;
   Storage &operator=(const Storage &) = delete;
 
@@ -389,6 +407,11 @@ class Storage {
   // is_txn_mode_ is used to determine whether the current Storage is in transactional mode,
   // .i.e, in "EXEC" command(CommandExec).
   std::atomic<bool> is_txn_mode_ = false;
+  // Master lease: tracks the deadline (ms timestamp) until which this node holds the lease.
+  // 0 = never renewed (cold start), writes always allowed in that case.
+  std::atomic<uint64_t> lease_deadline_ms_{0};
+  // Tracks the election term version from the last HEARTBEAT renewal; used to reject stale renewals.
+  std::atomic<uint64_t> local_election_version_{0};
   // txn_write_batch_ is used as the global write batch for the transaction mode,
   // all writes will be grouped in this write batch when entering the transaction mode,
   // then write it at once when committing.

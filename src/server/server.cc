@@ -297,6 +297,11 @@ Status Server::AddMaster(const std::string &host, uint32_t port, bool force_reco
   if (GetConfig()->master_use_repl_port) master_listen_port += 1;
 
   replication_thread_ = std::make_unique<ReplicationThread>(host, master_listen_port, this);
+  // Reset lease before starting the replication thread so that any local writes occurring
+  // between Start() and the next HEARTBEAT are not blocked by a previously-expired lease.
+  // (Replication writes bypass writeToDB() entirely and are unaffected, but internal writes
+  // such as cron tasks could be blocked if the old lease is expired.)
+  storage->ResetLease();
   auto s = replication_thread_->Start([this]() { return PrepareRestoreDB(); },
                                       [this]() {
                                         this->is_loading_ = false;

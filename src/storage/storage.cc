@@ -719,6 +719,23 @@ rocksdb::Status Storage::Write(engine::Context &ctx, const rocksdb::WriteOptions
 
 rocksdb::Status Storage::writeToDB(engine::Context &ctx, const rocksdb::WriteOptions &options,
                                    rocksdb::WriteBatch *updates) {
+  // Master lease check: applied here so it covers both Storage::Write() and CommitTxn().
+  // Only active when master_lease_mode != disabled. Read mode once to avoid TOCTOU.
+  auto lease_mode = config_->master_lease_mode;
+  if (lease_mode != MasterLeaseMode::kDisabled) {
+    uint64_t deadline = lease_deadline_ms_.load(std::memory_order_relaxed);
+    // deadline == 0 means cold start (never renewed): writes always allowed.
+    if (deadline > 0 && util::GetTimeStampMS() > deadline) {
+      if (lease_mode == MasterLeaseMode::kBlockWrite) {
+        return rocksdb::Status::Aborted(
+            "Write rejected: master lease expired (master_lease_mode=block-write)");
+      } else {  // kLogOnly
+        LOG(ERROR) << "Master lease expired but write allowed (master_lease_mode=log-only)";
+        // TODO: increment stats counter lease_expired_writes
+      }
+    }
+  }
+
   // No point trying to commit an empty write batch: in fact this will fail on read-only DBs
   // even if the write batch is empty.
   if (updates->Count() == 0) {

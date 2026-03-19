@@ -263,3 +263,26 @@ TEST(Config, DisableL0Slowdown) {
   ASSERT_TRUE(slowdown_is(50));
   ASSERT_TRUE(stop_is(50));
 }
+
+TEST(Config, MasterLeaseMode) {
+  Config config;
+  // Default is disabled
+  EXPECT_EQ(config.master_lease_mode, MasterLeaseMode::kDisabled);
+
+  // Set via string
+  auto s = config.Set(nullptr, "master-lease-mode", "log-only");
+  ASSERT_TRUE(s.IsOK());
+  EXPECT_EQ(config.master_lease_mode, MasterLeaseMode::kLogOnly);
+
+  s = config.Set(nullptr, "master-lease-mode", "block-write");
+  ASSERT_TRUE(s.IsOK());
+  EXPECT_EQ(config.master_lease_mode, MasterLeaseMode::kBlockWrite);
+
+  s = config.Set(nullptr, "master-lease-mode", "disabled");
+  ASSERT_TRUE(s.IsOK());
+  EXPECT_EQ(config.master_lease_mode, MasterLeaseMode::kDisabled);
+
+  // Invalid value
+  s = config.Set(nullptr, "master-lease-mode", "invalid");
+  EXPECT_FALSE(s.IsOK());
+}

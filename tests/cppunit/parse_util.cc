@@ -87,7 +87,7 @@ TEST(ParseUtil, ParseFloat) {
 
   ASSERT_EQ(*ParseFloat("1.23"), 1.23);
   ASSERT_EQ(*ParseFloat("1.23e2"), 1.23e2);
-  ASSERT_TRUE(std::isinf(*ParseFloat("inf")));
+  ASSERT_TRUE(std::isinf(*ParseFloat("+inf")));
   ASSERT_TRUE(std::isnan(*ParseFloat("nan")));
   ASSERT_FALSE(ParseFloat("1.2 "));
   ASSERT_FALSE(ParseFloat("1.2hello"));

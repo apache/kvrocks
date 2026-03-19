@@ -98,7 +98,9 @@ StatusOr<std::uint64_t> ParseSizeAndUnit(std::string_view v);
 template <typename T = double, std::enable_if_t<std::is_same_v<T, float> || std::is_same_v<T, double>, int> = 0>
 StatusOr<ParseResultAndPos<T>> TryParseFloat(std::string_view v) {
   T result = 0;
-  auto [end, ec] = fast_float::from_chars(v.data(), v.data() + v.size(), result, fast_float::chars_format::general);
+  auto [end, ec] =
+      fast_float::from_chars(v.data(), v.data() + v.size(), result,
+                             fast_float::chars_format::general | fast_float::chars_format::allow_leading_plus);
 
   if (v.data() == end) {
     return {Status::NotOK, "not started as a number"};

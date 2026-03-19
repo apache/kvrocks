@@ -781,6 +781,7 @@ TEST_F(RedisStringTest, SetConditionalWithGET) {
   s = string_->Set(*ctx_, key, "ifne-new", {0, StringSetType::IFNE, true, false, "wrong"}, ret);
   EXPECT_TRUE(s.ok());
   EXPECT_TRUE(ret.has_value());
+  EXPECT_EQ("new", ret.value());  // key was "new" before this SET
 
   // key not found + IFEQ + GET → nullopt
   EXPECT_TRUE(string_->Del(*ctx_, key).ok());

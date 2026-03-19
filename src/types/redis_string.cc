@@ -275,7 +275,7 @@ rocksdb::Status String::Set(engine::Context &ctx, const std::string &user_key, c
       // condition met only when key exists AND value matches
       bool matched = s.ok() && (old_value == args.cmp_value);
       if (!matched) {
-        ret = std::nullopt;
+        if (!args.get) ret = std::nullopt;
         return rocksdb::Status::OK();
       }
       if (!args.get) ret = "";
@@ -283,7 +283,7 @@ rocksdb::Status String::Set(engine::Context &ctx, const std::string &user_key, c
       // condition not met when key exists AND value matches; key-not-found counts as met
       bool not_matched = s.ok() && (old_value == args.cmp_value);
       if (not_matched) {
-        ret = std::nullopt;
+        if (!args.get) ret = std::nullopt;
         return rocksdb::Status::OK();
       }
       if (!args.get) ret = "";
@@ -291,7 +291,7 @@ rocksdb::Status String::Set(engine::Context &ctx, const std::string &user_key, c
       // condition met only when key exists AND digest matches
       bool matched = s.ok() && (util::StringDigest(old_value) == args.cmp_value);
       if (!matched) {
-        ret = std::nullopt;
+        if (!args.get) ret = std::nullopt;
         return rocksdb::Status::OK();
       }
       if (!args.get) ret = "";
@@ -299,7 +299,7 @@ rocksdb::Status String::Set(engine::Context &ctx, const std::string &user_key, c
       // condition not met when key exists AND digest matches; key-not-found counts as met
       bool not_matched = s.ok() && (util::StringDigest(old_value) == args.cmp_value);
       if (not_matched) {
-        ret = std::nullopt;
+        if (!args.get) ret = std::nullopt;
         return rocksdb::Status::OK();
       }
       if (!args.get) ret = "";

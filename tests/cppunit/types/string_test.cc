@@ -769,11 +769,12 @@ TEST_F(RedisStringTest, SetConditionalWithGET) {
   EXPECT_TRUE(ret.has_value());
   EXPECT_EQ(value, ret.value());
 
-  // IFEQ + GET, condition not met → returns nullopt
+  // IFEQ + GET, condition not met → returns old value (Redis behavior: GET always returns prev value)
   ret = std::nullopt;
   s = string_->Set(*ctx_, key, "newer", {0, StringSetType::IFEQ, true, false, "wrong"}, ret);
   EXPECT_TRUE(s.ok());
-  EXPECT_FALSE(ret.has_value());
+  EXPECT_TRUE(ret.has_value());
+  EXPECT_EQ("new", ret.value());  // old value returned even though condition not met
 
   // IFNE + GET, condition met (value mismatches) → returns old value
   ret = std::nullopt;

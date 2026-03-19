@@ -1697,7 +1697,7 @@ func stressTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding 
 		delta := 0
 		for test := 0; test < 2; test++ {
 			auxArray := make(map[string]float64)
-			auxList := make([]redis.Z, 0)
+			auxList := make([]redis.Z, 0, 4)
 			rdb.Del(ctx, "myzset")
 			var score float64
 			for i := 0; i < elements; i++ {
@@ -1736,7 +1736,7 @@ func stressTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding 
 					}
 				}
 			})
-			var aux []string
+			aux := make([]string, 0, len(auxList))
 			for _, z := range auxList {
 				aux = append(aux, z.Member.(string))
 			}

@@ -36,6 +36,7 @@
 #include <memory>
 #include <mutex>
 #include <shared_mutex>
+#include <unordered_set>
 #include <utility>
 
 #include "commands/command_parser.h"
@@ -994,8 +995,90 @@ void Server::cron() {
     }
 
     CleanupExitedSlaves();
+
+    // CLIENT PAUSE timeout check
+    if (conn_pause_end_time_ != 0 && util::GetTimeStampMS() >= conn_pause_end_time_) {
+      UnpauseConns();
+    }
+
     recordInstantaneousMetrics();
   }
+}
+
+void Server::PauseConns(uint64_t end_time_ms, PauseMode mode) {
+  std::lock_guard<std::mutex> lock(conn_pause_mu_);
+  conn_pause_end_time_ = end_time_ms;
+  conn_pause_mode_ = mode;
+}
+
+void Server::UnpauseConns() {
+  std::vector<PausedConnEntry> paused_conns;
+  {
+    std::lock_guard<std::mutex> lock(conn_pause_mu_);
+    conn_pause_end_time_ = 0;
+    conn_pause_mode_ = PauseMode::kOff;
+    paused_conns.swap(paused_conns_);
+  }
+  // Resume via the worker so fd+id validation under conns_mu_ serializes with FreeConnection.
+  for (auto &entry : paused_conns) {
+    entry.worker->UnpauseConnection(entry.fd, entry.id);
+  }
+}
+
+namespace {
+const std::unordered_set<std::string> kWriteModeSpecialCmds = {
+    "publish",
+    "pfcount",
+    "wait",
+};
+}  // namespace
+
+bool Server::PauseConnIfNeeded(redis::Connection *conn, const std::string &cmd_name, uint64_t cmd_flags) {
+  if (conn_pause_end_time_.load() == 0) {
+    return false;
+  }
+  if (conn->GetClientType() & kTypeSlave) {
+    return false;
+  }
+  // CLIENT subcommands (PAUSE/UNPAUSE) are exempt to avoid deadlock.
+  if (util::EqualICase(cmd_name, "client")) {
+    return false;
+  }
+
+  // Re-read mode under the lock to avoid a TOCTOU race with PauseConns.
+  std::lock_guard<std::mutex> lock(conn_pause_mu_);
+  if (conn_pause_end_time_.load() == 0) {
+    return false;
+  }
+
+  auto mode = conn_pause_mode_.load();
+  bool should_pause = false;
+  if (mode == PauseMode::kAll) {
+    should_pause = true;
+  } else if (mode == PauseMode::kWrite) {
+    if (cmd_flags & redis::kCmdWrite) {
+      should_pause = true;
+    } else {
+      should_pause = kWriteModeSpecialCmds.count(cmd_name) > 0;
+    }
+  }
+  if (!should_pause) {
+    return false;
+  }
+
+  if (!conn->IsPaused()) {
+    conn->Pause();
+    paused_conns_.push_back({conn->Owner(), conn->GetFD(), conn->GetID()});
+  }
+  return true;
+}
+
+void Server::RemovePausedConn(redis::Connection *conn) {
+  std::lock_guard<std::mutex> lock(conn_pause_mu_);
+  paused_conns_.erase(
+      std::remove_if(paused_conns_.begin(), paused_conns_.end(),
+                     [conn](const PausedConnEntry &e) { return e.fd == conn->GetFD() && e.id == conn->GetID(); }),
+      paused_conns_.end());
 }
 
 Server::InfoEntries Server::GetRocksDBInfo() {
@@ -1402,10 +1485,18 @@ Server::InfoEntries Server::GetCpuInfo() {  // NOLINT(readability-convert-member
 
   rusage self_ru;
   getrusage(RUSAGE_SELF, &self_ru);
-  entries.emplace_back("used_cpu_sys", static_cast<float>(self_ru.ru_stime.tv_sec) +
-                                           static_cast<float>(self_ru.ru_stime.tv_usec / 1000000));
+  entries.emplace_back(
+      "used_cpu_sys", static_cast<float>(self_ru.ru_stime.tv_sec) + static_cast<float>(self_ru.ru_stime.tv_usec) / 1e6);
   entries.emplace_back("used_cpu_user", static_cast<float>(self_ru.ru_utime.tv_sec) +
-                                            static_cast<float>(self_ru.ru_utime.tv_usec / 1000000));
+                                            static_cast<float>(self_ru.ru_utime.tv_usec) / 1e6);
+
+  std::vector<double> thread_cpu_times(worker_threads_.size());
+  for (std::size_t i{0}; i < worker_threads_.size(); ++i) {
+    thread_cpu_times[i] = util::ThreadGetCPUTime(worker_threads_[i]->GetNativeHandle());
+  }
+  entries.emplace_back(
+      "worker_cpu_time",
+      fmt::format("[{}]", util::StringJoin(thread_cpu_times, [](auto v) { return std::to_string(v); }, ",")));
 
   return entries;
 }

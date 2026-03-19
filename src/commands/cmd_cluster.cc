@@ -237,7 +237,14 @@ class CommandClusterX : public Commander {
       return Status::OK();
     }
 
-    return {Status::RedisParseErr, "CLUSTERX command, CLUSTERX VERSION|MYID|SETNODEID|SETNODES|SETSLOT|MIGRATE"};
+    // CLUSTERX FLUSHSLOTS $SLOT_RANGES
+    if (subcommand_ == "flushslots") {
+      if (args.size() != 3) return {Status::RedisParseErr, errWrongNumOfArguments};
+      return CommandTable::ParseSlotRanges(args.back(), slot_ranges_);
+    }
+
+    return {Status::RedisParseErr,
+            "CLUSTERX command, CLUSTERX VERSION|MYID|SETNODEID|SETNODES|SETSLOT|MIGRATE|FLUSHSLOTS"};
   }
 
   Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
@@ -289,6 +296,20 @@ class CommandClusterX : public Commander {
       } else {
         return s;
       }
+    } else if (subcommand_ == "flushslots") {
+      if (srv->slot_migrator->IsMigrationInProgress()) {
+        return {Status::RedisExecErr, "Cannot flush slot when migration is in progress"};
+      }
+
+      std::string ns = conn->GetNamespace();
+      Database redis(srv->storage, ns);
+      for (const auto &slot_range : slot_ranges_) {
+        if (auto s = redis.ClearKeysOfSlotRange(ctx, ns, slot_range); !s.ok()) {
+          return {Status::RedisExecErr, s.ToString()};
+        }
+      }
+
+      *output = redis::RESP_OK;
     } else {
       return {Status::RedisExecErr, "Invalid cluster command options"};
     }

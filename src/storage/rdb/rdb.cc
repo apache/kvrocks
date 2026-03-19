@@ -20,6 +20,8 @@
 
 #include "rdb.h"
 
+#include <limits>
+
 #include "common/encoding.h"
 #include "common/rdb_stream.h"
 #include "common/time_util.h"
@@ -35,6 +37,7 @@
 #include "types/redis_hash.h"
 #include "types/redis_list.h"
 #include "types/redis_set.h"
+#include "types/redis_sortedint.h"
 #include "types/redis_string.h"
 #include "types/redis_zset.h"
 #include "vendor/crc64.h"
@@ -730,6 +733,8 @@ Status RDB::SaveObjectType(const RedisType type) {
     robj_type = RDBTypeSet;
   } else if (type == kRedisZSet) {
     robj_type = RDBTypeZSet2;
+  } else if (type == kRedisSortedint) {
+    robj_type = RDBTypeSet;
   } else {
     WARN("Invalid or Not supported object type: {}", (int)type);
     return {Status::NotOK, "Invalid or Not supported object type"};
@@ -793,6 +798,23 @@ Status RDB::SaveObject(const std::string &key, const RedisType type) {
       return {Status::RedisExecErr, s.ToString()};
     }
     return SaveStringObject(value);
+  } else if (type == kRedisSortedint) {
+    redis::Sortedint sortedint_db(storage_, ns_);
+    std::vector<uint64_t> ids;
+    SortedintRangeSpec spec;
+    spec.min = 0;
+    spec.max = std::numeric_limits<uint64_t>::max();
+    spec.minex = false;
+    spec.maxex = false;
+    spec.offset = 0;
+    spec.count = std::numeric_limits<int>::max();
+    spec.reversed = false;
+    int size = 0;
+    auto si_status = sortedint_db.RangeByValue(ctx, key, spec, &ids, &size);
+    if (!si_status.ok()) {
+      return {Status::RedisExecErr, si_status.ToString()};
+    }
+    return SaveSortedintObject(ids);
   } else {
     WARN("Invalid or Not supported object type: {}", (int)type);
     return {Status::NotOK, "Invalid or Not supported object type"};
@@ -927,6 +949,20 @@ Status RDB::SaveHashObject(const std::vector<FieldValue> &field_values) {
   } else {
     WARN("the size of field_values is zero");
     return {Status::NotOK, "the size of Hash is 0"};
+  }
+  return Status::OK();
+}
+Status RDB::SaveSortedintObject(const std::vector<uint64_t> &ids) {
+  if (ids.size() > 0) {
+    auto status = RdbSaveLen(ids.size());
+    if (!status.IsOK()) return status;
+
+    for (const auto &id : ids) {
+      status = SaveStringObject(std::to_string(id));
+      if (!status.IsOK()) return status;
+    }
+  } else {
+    return {Status::NotOK, "the size of sortedint is zero"};
   }
   return Status::OK();
 }

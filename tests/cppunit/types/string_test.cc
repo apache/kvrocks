@@ -619,7 +619,7 @@ TEST_F(RedisStringTest, SetIFEQ) {
   std::string value = "hello";
   std::optional<std::string> ret;
 
-  // key not found → condition not met, no write
+  // key not found: condition not met, no write
   auto s = string_->Set(*ctx_, key, "new", {0, StringSetType::IFEQ, false, false, value}, ret);
   EXPECT_TRUE(s.ok());
   EXPECT_FALSE(ret.has_value());
@@ -629,7 +629,7 @@ TEST_F(RedisStringTest, SetIFEQ) {
   // set up the key
   string_->Set(*ctx_, key, value);
 
-  // value matches → write succeeds
+  // value matches: write succeeds
   ret = std::nullopt;
   s = string_->Set(*ctx_, key, "new", {0, StringSetType::IFEQ, false, false, value}, ret);
   EXPECT_TRUE(s.ok());
@@ -637,7 +637,7 @@ TEST_F(RedisStringTest, SetIFEQ) {
   string_->Get(*ctx_, key, &got);
   EXPECT_EQ("new", got);
 
-  // value mismatches → no write
+  // value mismatches: no write
   ret = std::nullopt;
   s = string_->Set(*ctx_, key, "newer", {0, StringSetType::IFEQ, false, false, "wrong"}, ret);
   EXPECT_TRUE(s.ok());
@@ -653,7 +653,7 @@ TEST_F(RedisStringTest, SetIFNE) {
   std::string value = "hello";
   std::optional<std::string> ret;
 
-  // key not found → condition met (creates key)
+  // key not found: condition met (creates key)
   auto s = string_->Set(*ctx_, key, "created", {0, StringSetType::IFNE, false, false, "anything"}, ret);
   EXPECT_TRUE(s.ok());
   EXPECT_TRUE(ret.has_value());
@@ -661,7 +661,7 @@ TEST_F(RedisStringTest, SetIFNE) {
   string_->Get(*ctx_, key, &got);
   EXPECT_EQ("created", got);
 
-  // value matches → condition not met, no write
+  // value matches: condition not met, no write
   ret = std::nullopt;
   s = string_->Set(*ctx_, key, "new", {0, StringSetType::IFNE, false, false, "created"}, ret);
   EXPECT_TRUE(s.ok());
@@ -669,7 +669,7 @@ TEST_F(RedisStringTest, SetIFNE) {
   string_->Get(*ctx_, key, &got);
   EXPECT_EQ("created", got);
 
-  // value mismatches → write succeeds
+  // value mismatches: write succeeds
   ret = std::nullopt;
   s = string_->Set(*ctx_, key, "updated", {0, StringSetType::IFNE, false, false, "wrong"}, ret);
   EXPECT_TRUE(s.ok());
@@ -685,7 +685,7 @@ TEST_F(RedisStringTest, SetIFDEQ) {
   std::string value = "hello";
   std::optional<std::string> ret;
 
-  // key not found → condition not met, no write
+  // key not found: condition not met, no write
   auto s = string_->Set(*ctx_, key, "new", {0, StringSetType::IFDEQ, false, false, util::StringDigest(value)}, ret);
   EXPECT_TRUE(s.ok());
   EXPECT_FALSE(ret.has_value());
@@ -695,7 +695,7 @@ TEST_F(RedisStringTest, SetIFDEQ) {
   // set up the key
   string_->Set(*ctx_, key, value);
 
-  // digest matches → write succeeds
+  // digest matches: write succeeds
   ret = std::nullopt;
   s = string_->Set(*ctx_, key, "new", {0, StringSetType::IFDEQ, false, false, util::StringDigest(value)}, ret);
   EXPECT_TRUE(s.ok());
@@ -703,7 +703,7 @@ TEST_F(RedisStringTest, SetIFDEQ) {
   string_->Get(*ctx_, key, &got);
   EXPECT_EQ("new", got);
 
-  // digest mismatches → no write
+  // digest mismatches: no write
   ret = std::nullopt;
   s = string_->Set(*ctx_, key, "newer", {0, StringSetType::IFDEQ, false, false, "xxxxxxxxxxxxxxxx"}, ret);
   EXPECT_TRUE(s.ok());
@@ -728,7 +728,7 @@ TEST_F(RedisStringTest, SetIFDNE) {
   std::string value = "hello";
   std::optional<std::string> ret;
 
-  // key not found → condition met (creates key)
+  // key not found: condition met (creates key)
   auto s = string_->Set(*ctx_, key, "created", {0, StringSetType::IFDNE, false, false, "xxxxxxxxxxxxxxxx"}, ret);
   EXPECT_TRUE(s.ok());
   EXPECT_TRUE(ret.has_value());
@@ -736,7 +736,7 @@ TEST_F(RedisStringTest, SetIFDNE) {
   string_->Get(*ctx_, key, &got);
   EXPECT_EQ("created", got);
 
-  // digest matches → condition not met, no write
+  // digest matches: condition not met, no write
   ret = std::nullopt;
   s = string_->Set(*ctx_, key, "new", {0, StringSetType::IFDNE, false, false, util::StringDigest("created")}, ret);
   EXPECT_TRUE(s.ok());
@@ -744,7 +744,7 @@ TEST_F(RedisStringTest, SetIFDNE) {
   string_->Get(*ctx_, key, &got);
   EXPECT_EQ("created", got);
 
-  // digest mismatches → write succeeds
+  // digest mismatches: write succeeds
   ret = std::nullopt;
   s = string_->Set(*ctx_, key, "updated", {0, StringSetType::IFDNE, false, false, "xxxxxxxxxxxxxxxx"}, ret);
   EXPECT_TRUE(s.ok());
@@ -762,28 +762,28 @@ TEST_F(RedisStringTest, SetConditionalWithGET) {
 
   string_->Set(*ctx_, key, value);
 
-  // IFEQ + GET, condition met → returns old value
+  // IFEQ + GET, condition met: returns old value
   ret = std::nullopt;
   auto s = string_->Set(*ctx_, key, "new", {0, StringSetType::IFEQ, true, false, value}, ret);
   EXPECT_TRUE(s.ok());
   EXPECT_TRUE(ret.has_value());
   EXPECT_EQ(value, ret.value());
 
-  // IFEQ + GET, condition not met → returns old value (Redis behavior: GET always returns prev value)
+  // IFEQ + GET, condition not met: returns old value (GET always returns prev value)
   ret = std::nullopt;
   s = string_->Set(*ctx_, key, "newer", {0, StringSetType::IFEQ, true, false, "wrong"}, ret);
   EXPECT_TRUE(s.ok());
   EXPECT_TRUE(ret.has_value());
   EXPECT_EQ("new", ret.value());  // old value returned even though condition not met
 
-  // IFNE + GET, condition met (value mismatches) → returns old value
+  // IFNE + GET, condition met (value mismatches): returns old value
   ret = std::nullopt;
   s = string_->Set(*ctx_, key, "ifne-new", {0, StringSetType::IFNE, true, false, "wrong"}, ret);
   EXPECT_TRUE(s.ok());
   EXPECT_TRUE(ret.has_value());
   EXPECT_EQ("new", ret.value());  // key was "new" before this SET
 
-  // key not found + IFEQ + GET → nullopt
+  // key not found + IFEQ + GET: returns nullopt
   EXPECT_TRUE(string_->Del(*ctx_, key).ok());
   ret = std::nullopt;
   s = string_->Set(*ctx_, key, "val", {0, StringSetType::IFEQ, true, false, "anything"}, ret);
@@ -798,7 +798,7 @@ TEST_F(RedisStringTest, SetConditionalWithTTL) {
 
   string_->Set(*ctx_, key, value);
 
-  // condition met + EX → TTL is set
+  // condition met + EX: TTL is set
   uint64_t future_ms = util::GetTimeStampMS() + 5000;
   ret = std::nullopt;
   auto s = string_->Set(*ctx_, key, "new", {future_ms, StringSetType::IFEQ, false, false, value}, ret);
@@ -809,7 +809,7 @@ TEST_F(RedisStringTest, SetConditionalWithTTL) {
   EXPECT_GT(ttl, 3000);
   EXPECT_LE(ttl, 6000);
 
-  // condition met + KEEPTTL → original TTL preserved
+  // condition met + KEEPTTL: original TTL preserved
   ret = std::nullopt;
   s = string_->Set(*ctx_, key, "newer", {0, StringSetType::IFEQ, false, true, "new"}, ret);
   EXPECT_TRUE(s.ok());
@@ -818,7 +818,7 @@ TEST_F(RedisStringTest, SetConditionalWithTTL) {
   EXPECT_TRUE(string_->TTL(*ctx_, key, &ttl2).ok());
   EXPECT_GT(ttl2, 0);
 
-  // condition not met → TTL unchanged
+  // condition not met: TTL unchanged
   int64_t ttl_before = 0;
   EXPECT_TRUE(string_->TTL(*ctx_, key, &ttl_before).ok());
   ret = std::nullopt;

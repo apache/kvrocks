@@ -1376,11 +1376,11 @@ func TestSetConditional(t *testing.T) {
 		require.Equal(t, "new", rdb.Get(ctx, "ifeq-get1").Val())
 	})
 
-	t.Run("IFEQ with GET: condition not met returns nil", func(t *testing.T) {
+	t.Run("IFEQ with GET: condition not met returns old value", func(t *testing.T) {
 		require.NoError(t, rdb.Set(ctx, "ifeq-get2", "hello", 0).Err())
 		res, err := rdb.Do(ctx, "SET", "ifeq-get2", "new", "IFEQ", "wrong", "GET").Result()
 		require.NoError(t, err)
-		require.Nil(t, res)
+		require.Equal(t, "hello", res)
 		require.Equal(t, "hello", rdb.Get(ctx, "ifeq-get2").Val())
 	})
 

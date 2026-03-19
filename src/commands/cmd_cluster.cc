@@ -251,10 +251,7 @@ class CommandClusterX : public Commander {
 
       auto parse_lease_ms = ParseInt<uint64_t>(args[3], 10);
       if (!parse_lease_ms) return {Status::RedisParseErr, "lease_ms is not an integer or out of range"};
-      // lease_ms must be > 0 and <= 1 hour to prevent overflow in deadline calculation.
-      constexpr uint64_t kMaxLeaseMs = 3600000;
-      if (*parse_lease_ms == 0 || *parse_lease_ms > kMaxLeaseMs)
-        return {Status::RedisParseErr, "invalid lease_ms: must be in range [1, 3600000]"};
+      if (*parse_lease_ms == 0) return {Status::RedisParseErr, "invalid lease_ms: must be greater than 0"};
       lease_ms_ = *parse_lease_ms;
 
       auto parse_election_version = ParseInt<uint64_t>(args[4], 10);

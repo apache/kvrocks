@@ -28,10 +28,11 @@
 
 #include "common/range_spec.h"
 #include "encoding.h"
-#include "server/server.h"
 #include "storage/redis_db.h"
 #include "storage/redis_metadata.h"
 #include "time_util.h"
+
+class Server;
 
 enum class FieldExpireResult : int64_t {
   kFieldNotFound = -2,

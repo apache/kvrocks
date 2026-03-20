@@ -31,6 +31,7 @@
 
 #include "common/task_runner.h"
 #include "db_util.h"
+#include "server/server.h"
 #include "logging.h"
 #include "parse_util.h"
 #include "sample_helper.h"
@@ -721,11 +722,11 @@ void Hash::asyncRepairHash(const std::string &ns_key, const Slice &field, const 
                             &metadata_bytes);
       if (!s.ok()) {
         if (s.IsNotFound()) return;
-        error("Failed to get metadata for async repair: {}", s.ToString());
+        ERROR("Failed to get metadata for async repair: {}", s.ToString());
         return;
       }
       if (!current_metadata.Decode(metadata_bytes).ok()) {
-        error("Failed to decode metadata for async repair");
+        ERROR("Failed to decode metadata for async repair");
         return;
       }
       if (current_metadata.size == 0) return;
@@ -743,12 +744,15 @@ void Hash::asyncRepairHash(const std::string &ns_key, const Slice &field, const 
         return;
       }
     }
-    error("Failed to async repair hash field after multiple retries");
+    ERROR("Failed to async repair hash field after multiple retries");
   };
 
   // Use the server's task runner and TryPublish
   if (server_ && server_->GetTaskRunner()) {
-    server_->GetTaskRunner()->TryPublish(std::move(repair_task));
+    auto s = server_->GetTaskRunner()->TryPublish(std::move(repair_task));
+    if (!s.IsOK()) {
+      ERROR("Failed to publish async repair task for hash field: {}", s.Msg());
+    }
   }
 }
 

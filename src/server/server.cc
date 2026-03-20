@@ -2301,5 +2301,3 @@ AuthResult Server::AuthenticateUser(const std::string &user_password, std::strin
   *ns = kDefaultNamespace;
   return AuthResult::IS_ADMIN;
 }
-
-TaskRunner *Server::GetTaskRunner() { return &task_runner_; }

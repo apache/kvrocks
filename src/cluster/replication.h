@@ -91,6 +91,8 @@ class FeedSlaveThread {
   // Configurable delay limits
   size_t max_delay_bytes_;
   size_t max_delay_updates_;
+  int64_t max_replication_lag_;
+  int send_timeout_ms_;
 
   void loop();
   void checkLivenessIfNeed();
@@ -166,6 +168,7 @@ class ReplicationThread : private EventCallbackBase<ReplicationThread> {
   const bool replication_group_sync_ = false;
   std::atomic<int64_t> last_io_time_secs_ = 0;
   int64_t last_ack_time_secs_ = 0;
+  std::atomic<int> reconnect_attempts_ = 0;  // For exponential backoff on reconnection
   bool next_try_old_psync_ = false;
   bool next_try_without_announce_ip_address_ = false;
 

@@ -19,15 +19,13 @@ include_guard()
 
 include(cmake/utils.cmake)
 
-FetchContent_DeclareGitHubWithMirror(zlib
-  zlib-ng/zlib-ng 2.3.3
-  MD5=a2c8df556b61266f100d331268123115
+FetchContent_DeclareGitHubWithMirror(fast_float
+  fastfloat/fast_float v8.2.4
+  MD5=0744790f2d40c9a2e5ef021476e59796
 )
 
-FetchContent_MakeAvailableWithArgs(zlib
-  WITH_GTEST=OFF
-  ZLIBNG_ENABLE_TESTS=OFF
-  BUILD_SHARED_LIBS=OFF
-  BUILD_TESTING=OFF
-  ZLIB_COMPAT=ON
+FetchContent_MakeAvailableWithArgs(fast_float
+  FASTFLOAT_TEST=OFF
+  FASTFLOAT_BENCHMARKS=OFF
+  FASTFLOAT_INSTALL=OFF
 )

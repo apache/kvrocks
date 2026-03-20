@@ -175,24 +175,24 @@ func testJSON(t *testing.T, configs util.KvrocksServerConfigs) {
 	})
 
 	t.Run("JSON.STRAPPEND basics", func(t *testing.T) {
-		var result1 = make([]interface{}, 0)
+		var result1 = make([]interface{}, 0, 1)
 		result1 = append(result1, int64(5))
 		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"a":"foo", "nested": {"a": "hello"}, "nested2": {"a": 31}}`).Err())
 		require.Equal(t, rdb.Do(ctx, "JSON.STRAPPEND", "a", "$.a", "\"be\"").Val(), result1)
 
-		var result2 = make([]interface{}, 0)
+		var result2 = make([]interface{}, 0, 3)
 		result2 = append(result2, int64(5), int64(7), interface{}(nil))
 		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"a":"foo", "nested": {"a": "hello"}, "nested2": {"a": 31}}`).Err())
 		require.Equal(t, rdb.Do(ctx, "JSON.STRAPPEND", "a", "$..a", "\"be\"").Val(), result2)
 	})
 
 	t.Run("JSON.STRLEN basics", func(t *testing.T) {
-		var result1 = make([]interface{}, 0)
+		var result1 = make([]interface{}, 0, 1)
 		result1 = append(result1, int64(3))
 		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"a":"foo", "nested": {"a": "hello"}, "nested2": {"a": 31}}`).Err())
 		require.Equal(t, rdb.Do(ctx, "JSON.STRLEN", "a", "$.a").Val(), result1)
 
-		var result2 = make([]interface{}, 0)
+		var result2 = make([]interface{}, 0, 3)
 		result2 = append(result2, int64(3), int64(5), interface{}(nil))
 		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"a":"foo", "nested": {"a": "hello"}, "nested2": {"a": 31}}`).Err())
 		require.Equal(t, rdb.Do(ctx, "JSON.STRLEN", "a", "$..a").Val(), result2)
@@ -685,15 +685,15 @@ func testJSON(t *testing.T, configs util.KvrocksServerConfigs) {
 	t.Run("JSON.DEBUG MEMORY basics", func(t *testing.T) {
 		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"b":true,"x":1, "y":1.2, "z": {"x":[1,2,3], "y": null}, "v":{"x":"y"},"f":{"x":[]}}`).Err())
 		//object
-		var result1 = make([]interface{}, 0)
+		var result1 = make([]interface{}, 0, 1)
 		result1 = append(result1, int64(43))
 		require.Equal(t, result1, rdb.Do(ctx, "JSON.DEBUG", "MEMORY", "a", "$").Val())
 		//integer string array empty_array
-		var result2 = make([]interface{}, 0)
+		var result2 = make([]interface{}, 0, 4)
 		result2 = append(result2, int64(1), int64(1), int64(2), int64(4))
 		require.Equal(t, result2, rdb.Do(ctx, "JSON.DEBUG", "MEMORY", "a", "$..x").Val())
 		//null object
-		var result3 = make([]interface{}, 0)
+		var result3 = make([]interface{}, 0, 2)
 		result3 = append(result3, int64(9), int64(1))
 		require.Equal(t, result3, rdb.Do(ctx, "JSON.DEBUG", "MEMORY", "a", "$..y").Val())
 		//no no_exists
@@ -708,10 +708,10 @@ func testJSON(t *testing.T, configs util.KvrocksServerConfigs) {
 	t.Run("JSON.RESP basics", func(t *testing.T) {
 		require.NoError(t, rdb.Do(ctx, "JSON.SET", "item:2", "$", `{"name":"Wireless earbuds","description":"Wireless Bluetooth in-ear headphones","connection":{"wireless":true,"type":"null"},"price":64.99,"stock":17,"colors":[null,"white"], "max_level":[80, 100, 120]}`).Err())
 		//array object null both  have
-		var result = make([]interface{}, 0)
-		var resultarray1 = make([]interface{}, 0)
-		var resultobject1 = make([]interface{}, 0)
-		var resultarray2 = make([]interface{}, 0)
+		var result = make([]interface{}, 0, 16)
+		var resultarray1 = make([]interface{}, 0, 4)
+		var resultobject1 = make([]interface{}, 0, 8)
+		var resultarray2 = make([]interface{}, 0, 4)
 		resultobject1 = append(resultobject1, "{", "type", "null", "wireless", "true")
 		resultarray1 = append(resultarray1, "[", nil, "white")
 		resultarray2 = append(resultarray2, "[", int64(80), int64(100), int64(120))

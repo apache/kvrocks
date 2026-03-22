@@ -21,6 +21,8 @@
 #include <gtest/gtest.h>
 #include <parse_util.h>
 
+#include <cmath>
+
 TEST(ParseUtil, TryParseInt) {
   long long v = 0;
   const char *str = "12345hellooo", *end = nullptr;
@@ -70,21 +72,24 @@ TEST(ParseUtil, ParseSizeAndUnit) {
 
 TEST(ParseUtil, ParseFloat) {
   std::string v = "1.23";
-  ASSERT_EQ(*TryParseFloat(v.c_str()), ParseResultAndPos<double>(1.23, v.c_str() + v.size()));
+  ASSERT_EQ(*TryParseFloat(v), ParseResultAndPos<double>(1.23, v.c_str() + v.size()));
 
   v = "25345.346e65hello";
-  ASSERT_EQ(*TryParseFloat(v.c_str()), ParseResultAndPos<double>(25345.346e65, v.c_str() + v.size() - 5));
+  ASSERT_EQ(*TryParseFloat(v), ParseResultAndPos<double>(25345.346e65, v.c_str() + v.size() - 5));
 
   ASSERT_FALSE(TryParseFloat("eeeeeeee"));
   ASSERT_FALSE(TryParseFloat("    "));
   ASSERT_FALSE(TryParseFloat(""));
   ASSERT_FALSE(TryParseFloat("    abcd"));
 
-  v = "   1e8   ";
-  ASSERT_EQ(*TryParseFloat(v.c_str()), ParseResultAndPos<double>(1e8, v.c_str() + v.size() - 3));
+  v = "1e8   ";
+  ASSERT_EQ(*TryParseFloat(v), ParseResultAndPos<double>(1e8, v.c_str() + v.size() - 3));
 
   ASSERT_EQ(*ParseFloat("1.23"), 1.23);
   ASSERT_EQ(*ParseFloat("1.23e2"), 1.23e2);
+  ASSERT_TRUE(std::isinf(*ParseFloat("+inf")));
+  ASSERT_TRUE(std::isnan(*ParseFloat("nan")));
   ASSERT_FALSE(ParseFloat("1.2 "));
   ASSERT_FALSE(ParseFloat("1.2hello"));
+  ASSERT_FALSE(ParseFloat("1e100000"));
 }

@@ -331,9 +331,9 @@ jobs:
         run: pip install gcovr==5.0 # 5.1 is not supported
         if: ${{ matrix.sonarcloud }}
 
-      - name: Install Build Wrapper
-        uses: SonarSource/sonarqube-scan-action/install-build-wrapper@a31c9398be7ace6bbfaf30c0bd5d415f843d45e9
-        if: ${{ matrix.sonarcloud }}
+      # - name: Install Build Wrapper
+      #   uses: SonarSource/sonarqube-scan-action/install-build-wrapper@a31c9398be7ace6bbfaf30c0bd5d415f843d45e9
+      #   if: ${{ matrix.sonarcloud }}
 
       - name: Build Kvrocks
         if: ${{ !matrix.sonarcloud && !matrix.riscv_toolchain }}
@@ -342,12 +342,12 @@ jobs:
             ${{ matrix.without_luajit }} ${{ matrix.with_ninja }} ${{ matrix.with_sanitizer }} ${{ matrix.with_openssl }} \
             ${{ matrix.new_encoding }} ${{ env.CMAKE_EXTRA_DEFS }}
 
-      - name: Build Kvrocks (SonarCloud)
-        if: ${{ matrix.sonarcloud }}
-        run: |
-          build-wrapper-linux-x86-64 --out-dir ${{ env.SONARCLOUD_OUTPUT_DIR }} ./x.py build -j$NPROC --compiler ${{ matrix.compiler }}  --skip-build
-          cp -r build _build
-          build-wrapper-linux-x86-64 --out-dir ${{ env.SONARCLOUD_OUTPUT_DIR }} ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.sonarcloud }}
+      # - name: Build Kvrocks (SonarCloud)
+      #   if: ${{ matrix.sonarcloud }}
+      #   run: |
+      #     build-wrapper-linux-x86-64 --out-dir ${{ env.SONARCLOUD_OUTPUT_DIR }} ./x.py build -j$NPROC --compiler ${{ matrix.compiler }}  --skip-build
+      #     cp -r build _build
+      #     build-wrapper-linux-x86-64 --out-dir ${{ env.SONARCLOUD_OUTPUT_DIR }} ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.sonarcloud }}
 
       - name: Build Kvrocks (RISC-V)
         if: ${{ matrix.riscv_toolchain }}

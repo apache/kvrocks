@@ -18,11 +18,9 @@
 name: SonarCloud Analysis
 
 on:
-  # FIXME: temporarily trigger SonarCloud analysis on CI workflow completion, refer to #3399
-  # workflow_run:
-  #   workflows: [CI]
-  #   types: [completed]
-  workflow_dispatch:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
 
 jobs:
   sonarcloud:

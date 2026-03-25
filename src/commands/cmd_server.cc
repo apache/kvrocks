@@ -40,6 +40,17 @@
 
 namespace redis {
 
+namespace {
+
+bool IsNamespaceCommandDisabled(Server *srv) { return srv->GetConfig()->redis_databases > 0; }
+
+bool IsNamespaceReadOnlyOnSlave(Server *srv) {
+  Config *config = srv->GetConfig();
+  return config->repl_namespace_enabled && config->IsSlave();
+}
+
+}  // namespace
+
 class CommandAuth : public Commander {
  public:
   Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
@@ -66,62 +77,112 @@ class CommandAuth : public Commander {
 
 class CommandNamespace : public Commander {
  public:
-  Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
-    Config *config = srv->GetConfig();
-    std::string sub_command = util::ToLower(args_[1]);
-    if (config->repl_namespace_enabled && config->IsSlave() && sub_command != "get") {
-      return {Status::RedisExecErr, "namespace is read-only for slave"};
-    }
-    if (config->redis_databases > 0) {
+  Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, [[maybe_unused]] Connection *conn,
+                 [[maybe_unused]] std::string *output) override {
+    if (IsNamespaceCommandDisabled(srv)) {
       return {Status::RedisExecErr, "namespace command is not allowed when redis-databases > 0"};
     }
-    if (args_.size() == 3 && sub_command == "get") {
-      if (args_[2] == "*") {
-        std::vector<std::string> namespaces;
-        auto tokens = srv->GetNamespace()->List();
-        for (auto &token : tokens) {
-          namespaces.emplace_back(token.second);  // namespace
-          namespaces.emplace_back(token.first);   // token
-        }
-        namespaces.emplace_back(kDefaultNamespace);
-        namespaces.emplace_back(config->requirepass);
-        *output = ArrayOfBulkStrings(namespaces);
-      } else {
-        auto token = srv->GetNamespace()->Get(args_[2]);
-        if (token.Is<Status::NotFound>()) {
-          *output = conn->NilString();
-        } else {
-          *output = redis::BulkString(token.GetValue());
-        }
+
+    return {Status::RedisExecErr, "NAMESPACE subcommand must be one of GET, SET, DEL, ADD and CURRENT"};
+  }
+};
+
+class CommandNamespaceGet : public Commander {
+ public:
+  Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    Config *config = srv->GetConfig();
+    if (IsNamespaceCommandDisabled(srv)) {
+      return {Status::RedisExecErr, "namespace command is not allowed when redis-databases > 0"};
+    }
+
+    if (args_[2] == "*") {
+      std::vector<std::string> namespaces;
+      auto tokens = srv->GetNamespace()->List();
+      for (auto &token : tokens) {
+        namespaces.emplace_back(token.second);
+        namespaces.emplace_back(token.first);
       }
-    } else if (args_.size() == 4 && sub_command == "set") {
-      Status s = srv->GetNamespace()->Set(args_[2], args_[3]);
-      *output = s.IsOK() ? redis::RESP_OK : redis::Error(s);
-      WARN("Updated namespace: {} with token: {}, addr: {}, result: {}", args_[2], args_[3], conn->GetAddr(), s.Msg());
-    } else if (args_.size() == 4 && sub_command == "add") {
-      Status s = srv->GetNamespace()->Add(args_[2], args_[3]);
-      *output = s.IsOK() ? redis::RESP_OK : redis::Error(s);
-      WARN("New namespace: {} with token: {}, addr: {}, result: {}", args_[2], args_[3], conn->GetAddr(), s.Msg());
-    } else if (args_.size() == 3 && sub_command == "del") {
-      Status s = srv->GetNamespace()->Del(args_[2]);
-      *output = s.IsOK() ? redis::RESP_OK : redis::Error(s);
-      WARN("Deleted namespace: {}, addr: {}, result: {}", args_[2], conn->GetAddr(), s.Msg());
-    } else if (args_.size() == 2 && sub_command == "current") {
-      *output = redis::BulkString(conn->GetNamespace());
+      namespaces.emplace_back(kDefaultNamespace);
+      namespaces.emplace_back(config->requirepass);
+      *output = ArrayOfBulkStrings(namespaces);
+      return Status::OK();
+    }
+
+    auto token = srv->GetNamespace()->Get(args_[2]);
+    if (token.Is<Status::NotFound>()) {
+      *output = conn->NilString();
     } else {
-      return {Status::RedisExecErr, "NAMESPACE subcommand must be one of GET, SET, DEL, ADD and CURRENT"};
+      *output = redis::BulkString(token.GetValue());
     }
     return Status::OK();
   }
 };
 
-static uint64_t GenerateNamespaceFlag(uint64_t flags, const std::vector<std::string> &args) {
-  if (args.size() >= 2 && util::EqualICase(args[1], "current")) {
-    return flags & ~kCmdAdmin;
-  }
+class CommandNamespaceSet : public Commander {
+ public:
+  Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    if (IsNamespaceReadOnlyOnSlave(srv)) {
+      return {Status::RedisExecErr, "namespace is read-only for slave"};
+    }
+    if (IsNamespaceCommandDisabled(srv)) {
+      return {Status::RedisExecErr, "namespace command is not allowed when redis-databases > 0"};
+    }
 
-  return flags;
-}
+    auto s = srv->GetNamespace()->Set(args_[2], args_[3]);
+    *output = s.IsOK() ? redis::RESP_OK : redis::Error(s);
+    WARN("Updated namespace: {} with token: {}, addr: {}, result: {}", args_[2], args_[3], conn->GetAddr(), s.Msg());
+    return Status::OK();
+  }
+};
+
+class CommandNamespaceAdd : public Commander {
+ public:
+  Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    if (IsNamespaceReadOnlyOnSlave(srv)) {
+      return {Status::RedisExecErr, "namespace is read-only for slave"};
+    }
+    if (IsNamespaceCommandDisabled(srv)) {
+      return {Status::RedisExecErr, "namespace command is not allowed when redis-databases > 0"};
+    }
+
+    auto s = srv->GetNamespace()->Add(args_[2], args_[3]);
+    *output = s.IsOK() ? redis::RESP_OK : redis::Error(s);
+    WARN("New namespace: {} with token: {}, addr: {}, result: {}", args_[2], args_[3], conn->GetAddr(), s.Msg());
+    return Status::OK();
+  }
+};
+
+class CommandNamespaceDel : public Commander {
+ public:
+  Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    if (IsNamespaceReadOnlyOnSlave(srv)) {
+      return {Status::RedisExecErr, "namespace is read-only for slave"};
+    }
+    if (IsNamespaceCommandDisabled(srv)) {
+      return {Status::RedisExecErr, "namespace command is not allowed when redis-databases > 0"};
+    }
+
+    auto s = srv->GetNamespace()->Del(args_[2]);
+    *output = s.IsOK() ? redis::RESP_OK : redis::Error(s);
+    WARN("Deleted namespace: {}, addr: {}, result: {}", args_[2], conn->GetAddr(), s.Msg());
+    return Status::OK();
+  }
+};
+
+class CommandNamespaceCurrent : public Commander {
+ public:
+  Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    if (IsNamespaceReadOnlyOnSlave(srv)) {
+      return {Status::RedisExecErr, "namespace is read-only for slave"};
+    }
+    if (IsNamespaceCommandDisabled(srv)) {
+      return {Status::RedisExecErr, "namespace command is not allowed when redis-databases > 0"};
+    }
+
+    *output = redis::BulkString(conn->GetNamespace());
+    return Status::OK();
+  }
+};
 
 class CommandKeys : public Commander {
  public:
@@ -1634,7 +1695,7 @@ REDIS_REGISTER_COMMANDS(
     MakeCmdAttr<CommandInfo>("info", -1, "read-only ok-loading", NO_KEY),
     MakeCmdAttr<CommandRole>("role", 1, "read-only ok-loading", NO_KEY),
     MakeCmdAttr<CommandConfig>("config", -2, "read-only admin skip-monitor", NO_KEY, GenerateConfigFlag),
-    MakeCmdAttr<CommandNamespace>("namespace", -2, "read-only admin skip-monitor", NO_KEY, GenerateNamespaceFlag),
+    MakeCmdAttr<CommandNamespace>("namespace", -2, "read-only admin skip-monitor", NO_KEY),
     MakeCmdAttr<CommandKeys>("keys", 2, "read-only slow", NO_KEY),
     MakeCmdAttr<CommandFlushDB>("flushdb", 1, "write no-dbsize-check exclusive", NO_KEY),
     MakeCmdAttr<CommandFlushAll>("flushall", 1, "write no-dbsize-check exclusive admin", NO_KEY),
@@ -1670,5 +1731,11 @@ REDIS_REGISTER_COMMANDS(
     MakeCmdAttr<CommandPollUpdates>("pollupdates", -2, "read-only admin", NO_KEY),
     MakeCmdAttr<CommandSST>("sst", -3, "write exclusive admin", 1, 1, 1),
     MakeCmdAttr<CommandFlushMemTable>("flushmemtable", -1, "exclusive write", NO_KEY),
-    MakeCmdAttr<CommandFlushBlockCache>("flushblockcache", 1, "exclusive write", NO_KEY), )
+    MakeCmdAttr<CommandFlushBlockCache>("flushblockcache", 1, "exclusive write", NO_KEY),
+    MakeSubCmdAttr<CommandNamespaceGet>("namespace", "get", 3, "read-only admin skip-monitor", NO_KEY),
+    MakeSubCmdAttr<CommandNamespaceSet>("namespace", "set", 4, "read-only admin skip-monitor", NO_KEY),
+    MakeSubCmdAttr<CommandNamespaceAdd>("namespace", "add", 4, "read-only admin skip-monitor", NO_KEY),
+    MakeSubCmdAttr<CommandNamespaceDel>("namespace", "del", 3, "read-only admin skip-monitor", NO_KEY),
+    MakeSubCmdAttr<CommandNamespaceCurrent>("namespace", "current", 2, "read-only skip-monitor", NO_KEY))
+
 }  // namespace redis

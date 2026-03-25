@@ -433,3 +433,21 @@ func TestCommand(t *testing.T) {
 		}
 	})
 }
+
+func TestCommandNamespaceSubcommands(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{})
+	defer srv.Close()
+
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	t.Run("NAMESPACE keeps legacy invalid subcommand error", func(t *testing.T) {
+		err := rdb.Do(ctx, "NAMESPACE", "MISSING").Err()
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "NAMESPACE subcommand must be one of")
+		for _, subcommand := range []string{"ADD", "CURRENT", "DEL", "GET", "SET"} {
+			require.Contains(t, err.Error(), subcommand)
+		}
+	})
+}

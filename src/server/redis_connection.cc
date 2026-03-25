@@ -438,7 +438,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
       if (is_multi_exec) multi_error_ = true;
     });
 
-    auto cmd_s = Server::LookupAndCreateCommand(cmd_tokens.front());
+    auto cmd_s = Server::LookupAndCreateCommand(cmd_tokens);
     if (!cmd_s.IsOK()) {
       auto cmd_name = cmd_tokens.front();
       if (util::EqualICase(cmd_name, "host:") || util::EqualICase(cmd_name, "post")) {
@@ -458,7 +458,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     auto current_cmd = std::move(*cmd_s);
 
     const auto &attributes = current_cmd->GetAttributes();
-    auto cmd_name = attributes->name;
+    const auto &cmd_name = current_cmd->GetRootName();
 
     int tokens = static_cast<int>(cmd_tokens.size());
     if (!attributes->CheckArity(tokens)) {

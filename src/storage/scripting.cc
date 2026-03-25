@@ -784,7 +784,7 @@ int RedisGenericCommand(lua_State *lua, int raise_error) {
     }
   }
 
-  auto cmd_s = Server::LookupAndCreateCommand(args[0]);
+  auto cmd_s = Server::LookupAndCreateCommand(args);
   if (!cmd_s) {
     PushError(lua, "Unknown Redis command called from Lua script");
     return raise_error ? RaiseError(lua) : 1;
@@ -792,6 +792,7 @@ int RedisGenericCommand(lua_State *lua, int raise_error) {
   auto cmd = *std::move(cmd_s);
 
   auto attributes = cmd->GetAttributes();
+  const auto &cmd_name = cmd->GetRootName();
   if (!attributes->CheckArity(argc)) {
     PushError(lua, "Wrong number of args while calling Redis command from Lua script");
     return raise_error ? RaiseError(lua) : 1;
@@ -813,7 +814,6 @@ int RedisGenericCommand(lua_State *lua, int raise_error) {
     return raise_error ? RaiseError(lua) : 1;
   }
 
-  std::string cmd_name = attributes->name;
   cmd->SetArgs(args);
   auto s = cmd->Parse();
   if (!s) {

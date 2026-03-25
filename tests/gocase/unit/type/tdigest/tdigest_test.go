@@ -40,6 +40,11 @@ const (
 	errMsgKeyNotExist                     = "key does not exist"
 	errNumkeysMustBePositive              = "numkeys need to be a positive integer"
 	errCompressionParameterMustBePositive = "compression parameter needs to be a positive integer"
+	errMsgParseLowCutQuantile             = "error parsing low_cut_percentile"
+	errMsgParseHighCutQuantile            = "error parsing high_cut_percentile"
+	errMsgLowCutQuantileRange             = "low_cut_percentile and high_cut_percentile should be in [0,1]"
+	errMsgHighCutQuantileRange            = "low_cut_percentile and high_cut_percentile should be in [0,1]"
+	errMsgLowCutQuantileLess              = "low_cut_percentile should be lower than high_cut_percentile"
 )
 
 type tdigestInfo struct {
@@ -716,6 +721,118 @@ func tdigestTests(t *testing.T, configs util.KvrocksServerConfigs) {
 			require.True(t, ok, "expected int64 but got %T at index %d", v, i)
 			require.EqualValues(t, expected[i], rank, "REVRANK mismatch at index %d", i)
 		}
+	})
+
+	t.Run("TDIGEST.TRIMMED_MEAN with non-existent key", func(t *testing.T) {
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN", "nonexistent", "0.1", "0.9").Err(), errMsgKeyNotExist)
+	})
+
+	t.Run("TDIGEST.TRIMMED_MEAN with empty tdigest", func(t *testing.T) {
+		emptyKey := "tdigest_empty"
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", emptyKey, "compression", "100").Err())
+
+		result := rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN", emptyKey, "0.1", "0.9")
+		require.NoError(t, result.Err())
+		require.Equal(t, "nan", result.Val())
+	})
+
+	t.Run("TDIGEST.TRIMMED_MEAN with basic data set", func(t *testing.T) {
+		key := "tdigest_basic"
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", key, "compression", "100").Err())
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", key, "1", "2", "3", "4", "5", "6", "7", "8", "9", "10").Err())
+
+		result := rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN", key, "0.1", "0.9")
+		require.NoError(t, result.Err())
+		mean, err := strconv.ParseFloat(result.Val().(string), 64)
+		require.NoError(t, err)
+		require.InDelta(t, 5.5, mean, 0.01)
+	})
+
+	t.Run("TDIGEST.TRIMMED_MEAN with no trimming", func(t *testing.T) {
+		key := "tdigest_no_trim"
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", key, "compression", "100").Err())
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", key, "1", "2", "3", "4", "5", "6", "7", "8", "9", "10").Err())
+
+		result := rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN", key, "0", "1")
+		require.NoError(t, result.Err())
+		mean, err := strconv.ParseFloat(result.Val().(string), 64)
+		require.NoError(t, err)
+		require.InDelta(t, 5.5, mean, 0.01)
+	})
+
+	t.Run("TDIGEST.TRIMMED_MEAN with skewed data", func(t *testing.T) {
+		key := "tdigest_skewed"
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", key, "compression", "100").Err())
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", key, "1", "1", "1", "1", "1", "10", "100").Err())
+
+		result := rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN", key, "0.2", "0.8")
+		require.NoError(t, result.Err())
+		mean, err := strconv.ParseFloat(result.Val().(string), 64)
+		require.NoError(t, err)
+		require.InDelta(t, 2.8, mean, 0.01)
+	})
+
+	t.Run("TDIGEST.TRIMMED_MEAN wrong number of arguments", func(t *testing.T) {
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN").Err(), errMsgWrongNumberArg)
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN", "key").Err(), errMsgWrongNumberArg)
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN", "key", "0.1").Err(), errMsgWrongNumberArg)
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN", "key", "0.1", "0.9", "extra").Err(), errMsgWrongNumberArg)
+	})
+
+	t.Run("TDIGEST.TRIMMED_MEAN invalid quantile ranges", func(t *testing.T) {
+		key := "tdigest_invalid"
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", key, "compression", "100").Err())
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", key, "1", "2", "3", "4", "5").Err())
+
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN", key, "-0.1", "0.9").Err(), errMsgLowCutQuantileRange)
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN", key, "0.1", "1.1").Err(), errMsgHighCutQuantileRange)
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN", key, "0.9", "0.1").Err(), errMsgLowCutQuantileLess)
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN", key, "0.5", "0.5").Err(), errMsgLowCutQuantileLess)
+	})
+
+	t.Run("TDIGEST.TRIMMED_MEAN invalid quantile parsing", func(t *testing.T) {
+		key := "tdigest_invalid_parse"
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", key, "compression", "100").Err())
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", key, "1", "2", "3", "4", "5").Err())
+
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN", key, "abc", "0.9").Err(), errMsgParseLowCutQuantile)
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN", key, "nan", "0.9").Err(), errMsgParseLowCutQuantile)
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN", key, "0.1", "abc").Err(), errMsgParseHighCutQuantile)
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN", key, "0.1", "nan").Err(), errMsgParseHighCutQuantile)
+	})
+
+	t.Run("TDIGEST.TRIMMED_MEAN with single value", func(t *testing.T) {
+		key := "tdigest_single"
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", key, "compression", "100").Err())
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", key, "42", "42").Err())
+
+		result := rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN", key, "0.1", "0.9")
+		require.NoError(t, result.Err())
+		mean, err := strconv.ParseFloat(result.Val().(string), 64)
+		require.NoError(t, err)
+		require.InDelta(t, 42.0, mean, 0.01)
+	})
+
+	t.Run("TDIGEST.TRIMMED_MEAN with extreme trimming", func(t *testing.T) {
+		key := "tdigest_extreme"
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", key, "compression", "100").Err())
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", key, "1", "2", "3", "4", "5", "6", "7", "8", "9", "10").Err())
+
+		result := rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN", key, "0.4", "0.6")
+		require.NoError(t, result.Err())
+		mean, err := strconv.ParseFloat(result.Val().(string), 64)
+		require.NoError(t, err)
+		require.InDelta(t, 5.5, mean, 0.01)
+	})
+
+	t.Run("TDIGEST.TRIMMED_MEAN with nearly equal quantiles", func(t *testing.T) {
+		key := "tdigest_nearly_equal"
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", key, "compression", "1000").Err())
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", key, "1", "2", "3", "4", "5", "6", "7", "8", "9", "10").Err())
+
+		result := rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN", key, "0.5", "0.5000000001")
+		require.NoError(t, result.Err())
+		require.Equal(t, "6", result.Val())
 	})
 }
 

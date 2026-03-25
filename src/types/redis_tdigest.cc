@@ -759,6 +759,42 @@ rocksdb::Status TDigest::applyNewCentroids(ObserverOrUniquePtr<rocksdb::WriteBat
   return rocksdb::Status::OK();
 }
 
+rocksdb::Status TDigest::TrimmedMean(engine::Context& ctx, const Slice& digest_name, double low_cut_quantile,
+                                     double high_cut_quantile, TDigestTrimmedMeanResult* result) {
+  auto ns_key = AppendNamespacePrefix(digest_name);
+  TDigestMetadata metadata;
+
+  {
+    LockGuard guard(storage_->GetLockManager(), ns_key);
+    if (auto status = getMetaDataByNsKey(ctx, ns_key, &metadata); !status.ok()) {
+      return status;
+    }
+
+    if (metadata.total_observations == 0) {
+      result->mean.reset();
+      return rocksdb::Status::OK();
+    }
+
+    if (auto status = mergeNodes(ctx, ns_key, &metadata); !status.ok()) {
+      return status;
+    }
+  }
+
+  // Dump centroids and create DummyCentroids wrapper for TDigest algorithm
+  std::vector<Centroid> centroids;
+  if (auto status = dumpCentroids(ctx, ns_key, metadata, &centroids); !status.ok()) {
+    return status;
+  }
+  auto dump_centroids = DummyCentroids<false>(metadata, centroids);
+  auto trimmed_mean_result = TDigestTrimmedMean(dump_centroids, low_cut_quantile, high_cut_quantile);
+  if (!trimmed_mean_result) {
+    return rocksdb::Status::InvalidArgument(trimmed_mean_result.Msg());
+  }
+
+  result->mean = *trimmed_mean_result;
+  return rocksdb::Status::OK();
+}
+
 std::string TDigest::internalSegmentGuardPrefixKey(const TDigestMetadata& metadata, const std::string& ns_key,
                                                    SegmentType seg) const {
   std::string prefix_key;

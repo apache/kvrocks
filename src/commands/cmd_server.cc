@@ -890,13 +890,13 @@ class CommandCommand : public Commander {
       } else if (sub_command == "info") {
         CommandTable::GetCommandsInfo(output, std::vector<std::string>(args_.begin() + 2, args_.end()));
       } else if (sub_command == "getkeys") {
-        auto cmd_iter = CommandTable::GetOriginal()->find(util::ToLower(args_[2]));
-        if (cmd_iter == CommandTable::GetOriginal()->end()) {
+        std::vector<std::string> cmd_tokens(args_.begin() + 2, args_.end());
+        auto resolved = CommandTable::Resolve(cmd_tokens);
+        if (!resolved) {
           return {Status::RedisUnknownCmd, "Invalid command specified"};
         }
 
-        auto key_indexes = GET_OR_RET(CommandTable::GetKeysFromCommand(
-            cmd_iter->second, std::vector<std::string>(args_.begin() + 2, args_.end())));
+        auto key_indexes = GET_OR_RET(CommandTable::GetKeysFromCommand(resolved->attributes, cmd_tokens));
 
         if (key_indexes.size() == 0) {
           return {Status::RedisExecErr, "Invalid arguments specified for command"};
@@ -905,7 +905,7 @@ class CommandCommand : public Commander {
         std::vector<std::string> keys;
         keys.reserve(key_indexes.size());
         for (const auto &key_index : key_indexes) {
-          keys.emplace_back(args_[key_index + 2]);
+          keys.emplace_back(cmd_tokens[key_index]);
         }
         *output = conn->MultiBulkString(keys);
       } else {

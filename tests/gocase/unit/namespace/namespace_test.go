@@ -180,6 +180,40 @@ func TestNamespace(t *testing.T) {
 	})
 }
 
+// unknown namespace subcommands
+func TestCommandNamespaceSubcommands(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{})
+	defer srv.Close()
+
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	assertInvalidNamespaceSubcommand := func(t *testing.T, args ...string) {
+		t.Helper()
+
+		commandArgs := make([]interface{}, len(args))
+		for i, arg := range args {
+			commandArgs[i] = arg
+		}
+
+		err := rdb.Do(ctx, commandArgs...).Err()
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "NAMESPACE subcommand must be one of")
+		for _, subcommand := range []string{"ADD", "CURRENT", "DEL", "GET", "SET"} {
+			require.Contains(t, err.Error(), subcommand)
+		}
+	}
+
+	// legacy invalid subcommand error
+	t.Run("NAMESPACE keeps legacy invalid subcommand error", func(t *testing.T) {
+		assertInvalidNamespaceSubcommand(t, "NAMESPACE", "MISSING")
+		assertInvalidNamespaceSubcommand(t, "NAMESPACE", "MISSING", "arg1")
+
+	})
+
+}
+
 func TestNamespaceReplicate(t *testing.T) {
 	password := "pwd"
 	masterSrv := util.StartServer(t, map[string]string{

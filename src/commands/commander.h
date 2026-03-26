@@ -487,6 +487,12 @@ auto MakeSubCmdAttr(const std::string &parent, const std::string &sub, int arity
 
 template <typename T>
 auto MakeSubCmdAttr(const std::string &parent, const std::string &sub, int arity, const std::string &description,
+                    int first_key, int last_key, int key_step = 1, const AdditionalFlagGen &flag_gen = {}) {
+  return MakeSubCmdAttr<T>(parent, sub, arity, description, {first_key, last_key, key_step}, flag_gen);
+}
+
+template <typename T>
+auto MakeSubCmdAttr(const std::string &parent, const std::string &sub, int arity, const std::string &description,
                     const CommandKeyRangeGen &gen, const AdditionalFlagGen &flag_gen = {}) {
   return MakeCmdAttr<T>(fmt::format("{}|{}", util::ToLower(parent), util::ToLower(sub)), arity, description, gen,
                         flag_gen);

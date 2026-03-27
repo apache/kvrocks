@@ -194,10 +194,10 @@ StatusOr<std::vector<int>> CommandTable::GetKeysFromCommand(const CommandAttribu
   std::vector<int> key_indexes;
 
   attributes->ForEachKeyRange(
-      [&](const std::vector<std::string> &, CommandKeyRange key_range) {
-        key_range.ForEachKeyIndex([&](int i) { key_indexes.push_back(i); }, cmd_tokens.size());
+      [&key_indexes, &cmd_tokens](const std::vector<std::string> &, CommandKeyRange key_range) {
+        key_range.ForEachKeyIndex([&key_indexes](int i) { key_indexes.push_back(i); }, cmd_tokens.size());
       },
-      cmd_tokens, [&](const auto &) { has_key_args = false; });
+      cmd_tokens, [&has_key_args](const auto &) { has_key_args = false; });
 
   if (!has_key_args) {
     return {Status::NotOK, "The command has no key arguments"};

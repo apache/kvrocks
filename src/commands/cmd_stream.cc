@@ -115,10 +115,10 @@ class CommandXAdd : public Commander {
         }
 
         size_t max_len_idx = 0;
-        bool eq_sign_found = false;
-        if (args[i + 1] == "=") {
+        bool modifier_found = false;
+        if (args[i + 1] == "=" || args[i + 1] == "~") {
           max_len_idx = i + 2;
-          eq_sign_found = true;
+          modifier_found = true;
         } else {
           max_len_idx = i + 1;
         }
@@ -135,7 +135,7 @@ class CommandXAdd : public Commander {
         max_len_ = *parse_result;
         with_max_len_ = true;
 
-        i += eq_sign_found ? 3 : 2;
+        i += modifier_found ? 3 : 2;
         continue;
       }
 
@@ -145,10 +145,10 @@ class CommandXAdd : public Commander {
         }
 
         size_t min_id_idx = 0;
-        bool eq_sign_found = false;
-        if (args[i + 1] == "=") {
+        bool modifier_found = false;
+        if (args[i + 1] == "=" || args[i + 1] == "~") {
           min_id_idx = i + 2;
-          eq_sign_found = true;
+          modifier_found = true;
         } else {
           min_id_idx = i + 1;
         }
@@ -161,7 +161,7 @@ class CommandXAdd : public Commander {
         if (!s.IsOK()) return s;
 
         with_min_id_ = true;
-        i += eq_sign_found ? 3 : 2;
+        i += modifier_found ? 3 : 2;
         continue;
       }
 
@@ -1734,18 +1734,18 @@ class CommandXReadGroup : public Commander,
 class CommandXTrim : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    bool eq_sign_found = false;
+    bool modifier_found = false;
 
     auto trim_strategy = util::ToLower(args[2]);
     if (trim_strategy == "maxlen") {
       strategy_ = StreamTrimStrategy::MaxLen;
 
       size_t max_len_idx = 0;
-      if (args[3] != "=") {
+      if (args[3] != "=" && args[3] != "~") {
         max_len_idx = 3;
       } else {
         max_len_idx = 4;
-        eq_sign_found = true;
+        modifier_found = true;
       }
 
       if (max_len_idx >= args.size()) {
@@ -1762,11 +1762,11 @@ class CommandXTrim : public Commander {
       strategy_ = StreamTrimStrategy::MinID;
 
       size_t min_id_idx = 0;
-      if (args[3] != "=") {
+      if (args[3] != "=" && args[3] != "~") {
         min_id_idx = 3;
       } else {
         min_id_idx = 4;
-        eq_sign_found = true;
+        modifier_found = true;
       }
 
       if (min_id_idx >= args.size()) {
@@ -1782,7 +1782,7 @@ class CommandXTrim : public Commander {
     }
 
     bool limit_option_found = false;
-    if (eq_sign_found) {
+    if (modifier_found) {
       if (args.size() > 6 && util::ToLower(args[5]) == "limit") {
         limit_option_found = true;
       }

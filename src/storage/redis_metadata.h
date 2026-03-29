@@ -54,12 +54,13 @@ enum RedisType : uint8_t {
   kRedisHyperLogLog = 11,
   kRedisTDigest = 12,
   kRedisTimeSeries = 13,
+  kRedisCMS = 14,
   kRedisTypeMax
 };
 
 inline constexpr const std::array<std::string_view, kRedisTypeMax> RedisTypeNames = {
     "none",      "string", "hash",      "list",      "set",         "zset",      "bitmap",
-    "sortedint", "stream", "MBbloom--", "ReJSON-RL", "hyperloglog", "TDIS-TYPE", "timeseries"};
+    "sortedint", "stream", "MBbloom--", "ReJSON-RL", "hyperloglog", "TDIS-TYPE", "timeseries", "cms"};
 
 struct RedisTypes {
   RedisTypes(std::initializer_list<RedisType> list) {
@@ -405,6 +406,35 @@ class TimeSeriesMetadata : public Metadata {
         duplicate_policy(duplicate_policy) {}
 
   void SetSourceKey(Slice key);
+
+  void Encode(std::string *dst) const override;
+  rocksdb::Status Decode(Slice *input) override;
+};
+
+class CMSMetadata : public Metadata {
+ public:
+  enum class StorageMode : uint8_t {
+    PER_BUCKET = 0,    // 按桶存储（默认）
+    SINGLE_KEY = 1,    // 单 Key 存储
+  };
+
+  /// Width of the count matrix (number of buckets per layer)
+  uint32_t width;
+
+  /// Depth of the count matrix (number of layers)
+  uint32_t depth;
+
+  /// Total count of all INCRBY operations
+  uint64_t total_count;
+
+  /// Storage mode
+  StorageMode storage_mode;
+
+  explicit CMSMetadata(bool generate_version = true)
+      : Metadata(kRedisCMS, generate_version), width(0), depth(0), total_count(0), storage_mode(StorageMode::PER_BUCKET) {}
+
+  CMSMetadata(uint32_t width, uint32_t depth, bool generate_version = true)
+      : Metadata(kRedisCMS, generate_version), width(width), depth(depth), total_count(0), storage_mode(StorageMode::PER_BUCKET) {}
 
   void Encode(std::string *dst) const override;
   rocksdb::Status Decode(Slice *input) override;

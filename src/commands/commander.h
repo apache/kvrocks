@@ -95,6 +95,7 @@ enum class CommandCategory : uint8_t {
   Unknown = 0,
   Bit,
   BloomFilter,
+  CMS,
   Cluster,
   Function,
   Geo,

@@ -190,17 +190,17 @@ StatusOr<std::vector<int>> CommandTable::GetKeysFromCommand(const CommandAttribu
     return {Status::NotOK, "Invalid syntax found in this command arguments: " + s.Msg()};
   }
 
-  bool has_key_args = true;
+  Status status;
   std::vector<int> key_indexes;
 
   attributes->ForEachKeyRange(
-      [&key_indexes, &cmd_tokens](const std::vector<std::string> &, CommandKeyRange key_range) {
-        key_range.ForEachKeyIndex([&key_indexes](int i) { key_indexes.push_back(i); }, cmd_tokens.size());
+      [&](const std::vector<std::string> &, CommandKeyRange key_range) {
+        key_range.ForEachKeyIndex([&](int i) { key_indexes.push_back(i); }, cmd_tokens.size());
       },
-      cmd_tokens, [&has_key_args](const auto &) { has_key_args = false; });
+      cmd_tokens, [&](const auto &) { status = {Status::NotOK, "The command has no key arguments"}; });
 
-  if (!has_key_args) {
-    return {Status::NotOK, "The command has no key arguments"};
+  if (!status) {
+    return status;
   }
 
   return key_indexes;

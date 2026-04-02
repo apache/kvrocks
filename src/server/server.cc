@@ -1731,9 +1731,9 @@ Status Server::AsyncScanDBSize(const std::string &ns) {
 }
 
 void Server::GetLatestKeyNumStats(const std::string &ns, KeyNumStats *stats) {
+  std::lock_guard<std::mutex> lg(db_job_mu_);
   auto iter = db_scan_infos_.find(ns);
   if (iter != db_scan_infos_.end()) {
-    std::lock_guard<std::mutex> lg(db_job_mu_);
     *stats = iter->second.key_num_stats;
   }
 }

@@ -20,6 +20,7 @@
 
 #include <rocksdb/iostats_context.h>
 #include <rocksdb/perf_context.h>
+#include <string.h>
 
 #include <mutex>
 #include <nonstd/span.hpp>
@@ -77,7 +78,7 @@ std::string Connection::ToString() {
     // Parse db number from namespace (format: kDatabaseNamespacePrefix + number, e.g., "db1", "db2", etc.)
     int db_num = 0;
     if (util::StartsWith(ns_, kDatabaseNamespacePrefix)) {
-      const size_t prefix_len = strlen(kDatabaseNamespacePrefix);
+      const size_t prefix_len = strlen_s(kDatabaseNamespacePrefix, 32);
       db_num = ParseInt<int>(ns_.substr(prefix_len), 10).ValueOr(0);
     }
     db_or_ns_field = "db";

@@ -55,6 +55,7 @@ constexpr const size_t GiB = 1024L * MiB;
 constexpr const uint32_t kDefaultPort = 6666;
 
 constexpr const char *kDefaultNamespace = "__namespace";
+// len(kDatabaseNamespacePrefix) < 32
 constexpr const char *kDatabaseNamespacePrefix = "db";
 constexpr int KVROCKS_MAX_LSM_LEVEL = 7;
 

@@ -1751,11 +1751,10 @@ StatusOr<std::vector<rocksdb::BatchResult>> Server::PollUpdates(uint64_t next_se
                                                                 bool is_strict) const {
   std::vector<rocksdb::BatchResult> batches;
   auto latest_sequence = storage->LatestSeqNumber();
-  if (next_sequence > latest_sequence) {
-    if (next_sequence == latest_sequence + 1) {
-      // return empty result if there is no new updates
-      return batches;
-    }
+  if (next_sequence == latest_sequence + 1) {
+    // return empty result if there is no new updates
+    return batches;
+  } else if (next_sequence > latest_sequence + 1) {
     return {Status::NotOK, "next sequence is out of range"};
   }
 

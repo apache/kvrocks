@@ -263,7 +263,7 @@ jobs:
         # Cmake 4.0 has the compatibility issue, just pin it to 3.31.
         # See https://github.com/actions/runner-images/issues/11926.
         run: |
-          pipx install --force cmake==3.31
+          pipx install --force 'cmake>=3.31,<4'
 
       - name: Setup Linux
         if: ${{ startsWith(matrix.os, 'ubuntu') || matrix.arm_linux }}

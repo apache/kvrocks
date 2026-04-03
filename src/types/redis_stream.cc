@@ -756,28 +756,41 @@ rocksdb::Status Stream::DestroyGroup(engine::Context &ctx, const Slice &stream_n
   s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) return s;
 
-  std::string sub_key_prefix;
-  PutFixed64(&sub_key_prefix, group_name.size());
-  sub_key_prefix += group_name;
-  std::string next_version_prefix_key =
-      InternalKey(ns_key, sub_key_prefix, metadata.version + 1, storage_->IsSlotIdEncoded()).Encode();
-  std::string prefix_key = InternalKey(ns_key, sub_key_prefix, metadata.version, storage_->IsSlotIdEncoded()).Encode();
+  for (auto type : {StreamSubkeyType::StreamConsumerGroupMetadata, StreamSubkeyType::StreamConsumerMetadata,
+                    StreamSubkeyType::StreamPelEntry}) {
+    std::string sub_key_prefix;
+    PutFixed64(&sub_key_prefix, UINT64_MAX);
+    PutFixed8(&sub_key_prefix, static_cast<uint8_t>(type));
+    PutFixed64(&sub_key_prefix, group_name.size());
+    sub_key_prefix += group_name;
 
-  rocksdb::ReadOptions read_options = ctx.DefaultScanOptions();
-  rocksdb::Slice upper_bound(next_version_prefix_key);
-  read_options.iterate_upper_bound = &upper_bound;
-  rocksdb::Slice lower_bound(prefix_key);
-  read_options.iterate_lower_bound = &lower_bound;
+    std::string next_version_prefix_key =
+        InternalKey(ns_key, sub_key_prefix, metadata.version + 1, storage_->IsSlotIdEncoded()).Encode();
+    std::string prefix_key =
+        InternalKey(ns_key, sub_key_prefix, metadata.version, storage_->IsSlotIdEncoded()).Encode();
 
-  auto iter = util::UniqueIterator(ctx, read_options, stream_cf_handle_);
-  for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
-    s = batch->Delete(stream_cf_handle_, iter->key());
-    if (!s.ok()) return s;
-    *delete_cnt += 1;
-  }
+    rocksdb::ReadOptions read_options = ctx.DefaultScanOptions();
+    rocksdb::Slice upper_bound(next_version_prefix_key);
+    read_options.iterate_upper_bound = &upper_bound;
+    rocksdb::Slice lower_bound(prefix_key);
+    read_options.iterate_lower_bound = &lower_bound;
 
-  if (auto s = iter->status(); !s.ok()) {
-    return s;
+    auto iter = util::UniqueIterator(ctx, read_options, stream_cf_handle_);
+    for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+      if (identifySubkeyType(iter->key()) != type) {
+        continue;
+      }
+      if (groupNameFromInternalKey(iter->key()) != group_name) {
+        continue;
+      }
+      s = batch->Delete(stream_cf_handle_, iter->key());
+      if (!s.ok()) return s;
+      *delete_cnt += 1;
+    }
+
+    if (auto s = iter->status(); !s.ok()) {
+      return s;
+    }
   }
 
   if (*delete_cnt != 0) {

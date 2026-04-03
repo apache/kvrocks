@@ -212,7 +212,7 @@ func TestNamespaceReplicate(t *testing.T) {
 		"n4": "t4",
 	}
 
-	t.Run("Disable Replicate namespces", func(t *testing.T) {
+	t.Run("Disable Replicate namespaces", func(t *testing.T) {
 		require.NoError(t, masterRdb.ConfigSet(ctx, "repl-namespace-enabled", "no").Err())
 		require.NoError(t, slaveRdb.ConfigSet(ctx, "repl-namespace-enabled", "no").Err())
 

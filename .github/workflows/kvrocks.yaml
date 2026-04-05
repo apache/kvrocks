@@ -678,7 +678,8 @@ jobs:
         if: ${{ needs.precondition.outputs.docs_only != 'true' }}
         run: |
           if [[ ! ( \
-                   "${{ needs.build-and-test.result }}" == "success" \
+                   "${{ needs.check-and-lint.result }}" == "success" \
+                && "${{ needs.build-and-test.result }}" == "success" \
                 && "${{ needs.build-and-test-in-container.result }}" == "success" \
                 && "${{ needs.check-docker.result }}" == "success" \
                ) ]]; then

@@ -738,8 +738,8 @@ rocksdb::Status Stream::CreateGroup(engine::Context &ctx, const Slice &stream_na
 }
 
 rocksdb::Status Stream::DestroyGroup(engine::Context &ctx, const Slice &stream_name, const std::string &group_name,
-                                     uint64_t *delete_cnt) {
-  *delete_cnt = 0;
+                                     bool *destroyed) {
+  *destroyed = false;
   std::string ns_key = AppendNamespacePrefix(stream_name);
 
   StreamMetadata metadata;
@@ -782,7 +782,7 @@ rocksdb::Status Stream::DestroyGroup(engine::Context &ctx, const Slice &stream_n
     if (!s.ok()) return s;
   }
 
-  *delete_cnt = 1;
+  *destroyed = true;
   metadata.group_number -= 1;
   std::string metadata_bytes;
   metadata.Encode(&metadata_bytes);

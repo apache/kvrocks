@@ -2518,12 +2518,12 @@ TEST_F(RedisStreamTest, StreamConsumerGroupCreateAndDestroy) {
   std::string group_name = "TestGroup";
   auto s = stream_->CreateGroup(*ctx_, stream_name, create_options, group_name);
   EXPECT_TRUE(s.ok());
-  uint64_t delete_cnt = 0;
-  s = stream_->DestroyGroup(*ctx_, stream_name, group_name, &delete_cnt);
-  EXPECT_TRUE(delete_cnt != 0);
-  delete_cnt = 0;
-  s = stream_->DestroyGroup(*ctx_, stream_name, group_name, &delete_cnt);
-  EXPECT_TRUE(delete_cnt == 0);
+  bool destroyed = false;
+  s = stream_->DestroyGroup(*ctx_, stream_name, group_name, &destroyed);
+  EXPECT_TRUE(destroyed);
+  destroyed = false;
+  s = stream_->DestroyGroup(*ctx_, stream_name, group_name, &destroyed);
+  EXPECT_FALSE(destroyed);
 }
 
 TEST_F(RedisStreamTest, DestroyGroupCleansUpConsumersAndPelEntries) {
@@ -2557,15 +2557,15 @@ TEST_F(RedisStreamTest, DestroyGroupCleansUpConsumersAndPelEntries) {
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(entries.size(), 2);
 
-  uint64_t delete_cnt = 0;
-  s = stream_->DestroyGroup(*ctx_, stream_name, group_name, &delete_cnt);
+  bool destroyed = false;
+  s = stream_->DestroyGroup(*ctx_, stream_name, group_name, &destroyed);
   EXPECT_TRUE(s.ok());
-  EXPECT_GT(delete_cnt, 0);
+  EXPECT_TRUE(destroyed);
 
   // Verify re-destroying the same group deletes nothing
-  delete_cnt = 0;
-  s = stream_->DestroyGroup(*ctx_, stream_name, group_name, &delete_cnt);
-  EXPECT_EQ(delete_cnt, 0);
+  destroyed = false;
+  s = stream_->DestroyGroup(*ctx_, stream_name, group_name, &destroyed);
+  EXPECT_FALSE(destroyed);
 
   // Verify stream entries are still intact after group destruction
   std::vector<redis::StreamEntry> remaining;
@@ -2623,10 +2623,10 @@ TEST_F(RedisStreamTest, DestroyGroupDoesNotAffectOtherGroups) {
   EXPECT_TRUE(s.ok());
 
   // Destroy group1
-  uint64_t delete_cnt = 0;
-  s = stream_->DestroyGroup(*ctx_, stream_name, group1, &delete_cnt);
+  bool destroyed = false;
+  s = stream_->DestroyGroup(*ctx_, stream_name, group1, &destroyed);
   EXPECT_TRUE(s.ok());
-  EXPECT_GT(delete_cnt, 0);
+  EXPECT_TRUE(destroyed);
 
   // Verify group2 still exists with its consumer
   std::vector<std::pair<std::string, redis::StreamConsumerGroupMetadata>> group_metadata;

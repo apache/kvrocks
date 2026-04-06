@@ -191,6 +191,7 @@ Config::Config() {
       {"log-level", false, new EnumField<spdlog::level::level_enum>(&log_level, log_levels, spdlog::level::info)},
       {"pidfile", true, new StringField(&pidfile, kDefaultPidfile)},
       {"max-io-mb", false, new IntField(&max_io_mb, 0, 0, INT_MAX)},
+      {"net-rate-limit-mb", true, new IntField(&net_rate_limit_mb, 0, 0, INT_MAX)},
       {"enable-blob-cache", true, new YesNoField(&enable_blob_cache, false)},
       {"max-bitmap-to-string-mb", false, new IntField(&max_bitmap_to_string_mb, 16, 0, INT_MAX)},
       {"max-db-size", false, new IntField(&max_db_size, 0, 0, INT_MAX)},

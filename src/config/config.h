@@ -131,6 +131,7 @@ struct Config {
   int max_db_size = 0;
   int max_replication_mb = 0;
   int max_io_mb = 0;
+  int net_rate_limit_mb = 0;
   bool enable_blob_cache = false;
   int max_bitmap_to_string_mb = 16;
   bool master_use_repl_port = false;

@@ -80,6 +80,22 @@ Worker::Worker(Server *srv, Config *config) : srv(srv), base_(event_base_new()) 
     }
   }
   lua_ = lua::CreateState();
+
+  // Initialize rate limit group if configured
+  if (config->net_rate_limit_mb > 0) {
+    size_t rate = static_cast<size_t>(config->net_rate_limit_mb) * MiB;
+    rate_limit_group_cfg_ = ev_token_bucket_cfg_new(rate, rate, rate, rate, nullptr);
+    if (rate_limit_group_cfg_) {
+      rate_limit_group_ = bufferevent_rate_limit_group_new(base_, rate_limit_group_cfg_);
+      if (!rate_limit_group_) {
+        ERROR("[worker] Failed to create rate limit group");
+        ev_token_bucket_cfg_free(rate_limit_group_cfg_);
+        rate_limit_group_cfg_ = nullptr;
+      }
+    } else {
+      ERROR("[worker] Failed to create rate limit config");
+    }
+  }
 }
 
 Worker::~Worker() {

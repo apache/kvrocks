@@ -454,3 +454,26 @@ func TestConfigDailyOffpeakTimeUTC(t *testing.T) {
 		require.EqualValues(t, "", result[parameter])
 	})
 }
+
+func TestNetRateLimitConfig(t *testing.T) {
+	t.Parallel()
+	srv := util.StartServer(t, map[string]string{
+		"net-rate-limit-mb": "10",
+	})
+	defer srv.Close()
+
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	// Verify the config can be read
+	val := rdb.ConfigGet(ctx, "net-rate-limit-mb").Val()
+	require.EqualValues(t, "10", val["net-rate-limit-mb"])
+
+	// Verify it's an immutable config (CONFIG SET should fail)
+	require.ErrorContains(t, rdb.ConfigSet(ctx, "net-rate-limit-mb", "20").Err(), "Unsupported CONFIG parameter")
+
+	// Verify the server works normally
+	require.NoError(t, rdb.Set(ctx, "foo", "bar", 0).Err())
+	require.Equal(t, "bar", rdb.Get(ctx, "foo").Val())
+}

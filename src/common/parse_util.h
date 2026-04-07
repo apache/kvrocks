@@ -21,9 +21,11 @@
 #pragma once
 
 #include <charconv>
+#include <string_view>
 #include <tuple>
 #include <type_traits>
 
+#include "fast_float/fast_float.h"
 #include "status.h"
 
 template <typename T>
@@ -91,53 +93,32 @@ StatusOr<T> ParseInt(std::string_view v, NumericRange<T> range, int base = 10) {
 // available units: K, M, G, T, P
 StatusOr<std::uint64_t> ParseSizeAndUnit(std::string_view v);
 
-// we cannot use std::from_chars for floating-point numbers,
-// since it is available since gcc/libstdc++ 11 and libc++ 20.
-template <typename>
-struct ParseFloatFunc;
-
-template <>
-struct ParseFloatFunc<float> {
-  constexpr static const auto value = strtof;
-};
-
-template <>
-struct ParseFloatFunc<double> {
-  constexpr static const auto value = strtod;
-};
-
-template <>
-struct ParseFloatFunc<long double> {
-  constexpr static const auto value = strtold;
-};
-
 // TryParseFloat parses a string to a floating-point number,
 // it returns the first unmatched character position instead of an error status
-template <typename T = double>  // float or double
-StatusOr<ParseResultAndPos<T>> TryParseFloat(const char *str) {
-  char *end = nullptr;
+template <typename T = double, std::enable_if_t<std::is_same_v<T, float> || std::is_same_v<T, double>, int> = 0>
+StatusOr<ParseResultAndPos<T>> TryParseFloat(std::string_view v) {
+  T result = 0;
+  auto [end, ec] =
+      fast_float::from_chars(v.data(), v.data() + v.size(), result,
+                             fast_float::chars_format::general | fast_float::chars_format::allow_leading_plus);
 
-  errno = 0;
-  T result = ParseFloatFunc<T>::value(str, &end);
-
-  if (str == end) {
+  if (v.data() == end) {
     return {Status::NotOK, "not started as a number"};
   }
 
-  if (errno) {
-    return Status::FromErrno();
+  if (ec != std::errc()) {
+    return {Status::NotOK, std::make_error_code(ec).message()};
   }
 
   return {result, end};
 }
 
 // ParseFloat parses a string to a floating-point number
-template <typename T = double>  // float or double
-StatusOr<T> ParseFloat(const std::string &str) {
-  const char *begin = str.c_str();
-  auto [result, pos] = GET_OR_RET(TryParseFloat<T>(begin));
+template <typename T = double>
+StatusOr<T> ParseFloat(std::string_view str) {
+  auto [result, pos] = GET_OR_RET(TryParseFloat<T>(str));
 
-  if (pos != begin + str.size()) {
+  if (pos != str.data() + str.size()) {
     return {Status::NotOK, "encounter non-number characters"};
   }
 

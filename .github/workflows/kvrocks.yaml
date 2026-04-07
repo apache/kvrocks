@@ -58,7 +58,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Check typos
-        uses: crate-ci/typos@v1.43.1
+        uses: crate-ci/typos@v1.45.0
         with:
           config: .github/config/typos.toml
       - uses: apache/skywalking-eyes/header@v0.7.0
@@ -263,7 +263,7 @@ jobs:
         # Cmake 4.0 has the compatibility issue, just pin it to 3.31.
         # See https://github.com/actions/runner-images/issues/11926.
         run: |
-          pipx install --force cmake==3.31
+          pipx install --force 'cmake>=3.31,<4'
 
       - name: Setup Linux
         if: ${{ startsWith(matrix.os, 'ubuntu') || matrix.arm_linux }}
@@ -331,7 +331,7 @@ jobs:
         if: ${{ matrix.sonarcloud }}
 
       - name: Install Build Wrapper
-        uses: SonarSource/sonarqube-scan-action/install-build-wrapper@v6.0.0
+        uses: SonarSource/sonarqube-scan-action/install-build-wrapper@a31c9398be7ace6bbfaf30c0bd5d415f843d45e9
         if: ${{ matrix.sonarcloud }}
 
       - name: Build Kvrocks
@@ -468,7 +468,7 @@ jobs:
       - uses: actions/checkout@v6
       - name: Get core numbers
         run: echo "NPROC=$(nproc)" >> $GITHUB_ENV
-      - uses: docker/build-push-action@v7
+      - uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294
         with:
           context: .
           build-args: MORE_BUILD_ARGS=-j${{ env.NPROC }}
@@ -678,7 +678,8 @@ jobs:
         if: ${{ needs.precondition.outputs.docs_only != 'true' }}
         run: |
           if [[ ! ( \
-                   "${{ needs.build-and-test.result }}" == "success" \
+                   "${{ needs.check-and-lint.result }}" == "success" \
+                && "${{ needs.build-and-test.result }}" == "success" \
                 && "${{ needs.build-and-test-in-container.result }}" == "success" \
                 && "${{ needs.check-docker.result }}" == "success" \
                ) ]]; then

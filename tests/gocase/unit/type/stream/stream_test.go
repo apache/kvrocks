@@ -182,6 +182,29 @@ var streamTests = func(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.EqualValues(t, 5, rdb.XLen(ctx, "mystream").Val())
 	})
 
+	t.Run("XADD with MAXLEN option and the '~' argument", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "mystream").Err())
+		for i := 0; i < 1000; i++ {
+			if rand.Float64() < 0.9 {
+				require.NoError(t, rdb.Do(ctx, "XADD", "mystream", "MAXLEN", "~", "5", "*", "xitem", "i").Err())
+			} else {
+				require.NoError(t, rdb.Do(ctx, "XADD", "mystream", "MAXLEN", "~", "5", "*", "yitem", "i").Err())
+			}
+		}
+		require.EqualValues(t, 5, rdb.XLen(ctx, "mystream").Val())
+	})
+
+	t.Run("XADD with MINID option and the '~' argument", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "mystream").Err())
+		for i := 1; i <= 10; i++ {
+			require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "mystream", ID: strconv.Itoa(i) + "-0", Values: []string{"f", "v"}}).Err())
+		}
+		require.NoError(t, rdb.Do(ctx, "XADD", "mystream", "MINID", "~", "8-0", "11-0", "f", "v").Err())
+		items := rdb.XRange(ctx, "mystream", "-", "+").Val()
+		require.Len(t, items, 4)
+		require.EqualValues(t, "8-0", items[0].ID)
+	})
+
 	t.Run("XADD with NOMKSTREAM option", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "mystream").Err())
 		require.Empty(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "mystream", NoMkStream: true, Values: []string{"item", "1", "value", "a"}}).Val())
@@ -603,6 +626,30 @@ var streamTests = func(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.EqualValues(t, 666, rdb.XLen(ctx, "mystream").Val())
 		require.NoError(t, rdb.XTrimMaxLen(ctx, "mystream", 555).Err())
 		require.EqualValues(t, 555, rdb.XLen(ctx, "mystream").Val())
+	})
+
+	t.Run("XTRIM with MAXLEN option and the '~' argument", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "mystream").Err())
+		for i := 0; i < 1000; i++ {
+			require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "mystream", Values: map[string]interface{}{"xitem": i}}).Err())
+		}
+		require.NoError(t, rdb.Do(ctx, "XTRIM", "mystream", "MAXLEN", "~", "666").Err())
+		require.EqualValues(t, 666, rdb.XLen(ctx, "mystream").Val())
+	})
+
+	t.Run("XTRIM with MINID option and the '~' argument", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "mystream").Err())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "mystream", ID: "1-0", Values: []string{"f", "v"}}).Err())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "mystream", ID: "2-0", Values: []string{"f", "v"}}).Err())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "mystream", ID: "3-0", Values: []string{"f", "v"}}).Err())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "mystream", ID: "4-0", Values: []string{"f", "v"}}).Err())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "mystream", ID: "5-0", Values: []string{"f", "v"}}).Err())
+		require.NoError(t, rdb.Do(ctx, "XTRIM", "mystream", "MINID", "~", "3-0").Err())
+		items := rdb.XRange(ctx, "mystream", "-", "+").Val()
+		require.Len(t, items, 3)
+		require.EqualValues(t, "3-0", items[0].ID)
+		require.EqualValues(t, "4-0", items[1].ID)
+		require.EqualValues(t, "5-0", items[2].ID)
 	})
 
 	t.Run("XADD with LIMIT consecutive calls", func(t *testing.T) {

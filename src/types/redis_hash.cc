@@ -31,10 +31,10 @@
 
 #include "common/task_runner.h"
 #include "db_util.h"
-#include "server/server.h"
 #include "logging.h"
 #include "parse_util.h"
 #include "sample_helper.h"
+#include "server/server.h"
 
 namespace redis {
 

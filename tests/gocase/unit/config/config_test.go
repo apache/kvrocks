@@ -125,7 +125,7 @@ func TestConfigSetCompression(t *testing.T) {
 	configKey := "rocksdb.compression"
 	vals, err := rdb.ConfigGet(ctx, configKey).Result()
 	require.NoError(t, err)
-	require.EqualValues(t, "snappy", vals[configKey])
+	require.EqualValues(t, "no", vals[configKey])
 
 	supportedCompressions := []string{"no", "snappy", "zlib", "lz4", "zstd"}
 	for _, compression := range supportedCompressions {

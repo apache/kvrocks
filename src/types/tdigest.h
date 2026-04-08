@@ -309,3 +309,46 @@ inline Status TDigestRank(TD&& td, const std::vector<double>& inputs, std::vecto
   }
   return Status::OK();
 }
+
+template <typename TD>
+inline StatusOr<double> TDigestTrimmedMean(TD&& td, double low_cut_quantile, double high_cut_quantile) {
+  if (td.Size() == 0) {
+    return std::numeric_limits<double>::quiet_NaN();
+  }
+
+  const double total_weight = td.TotalWeight();
+  const double leftmost_weight = std::floor(total_weight * low_cut_quantile);
+  const double rightmost_weight = std::ceil(total_weight * high_cut_quantile);
+
+  double count_done = 0.0;
+  double trimmed_sum = 0.0;
+  double trimmed_count = 0.0;
+
+  auto iter = td.Begin();
+  while (iter->Valid()) {
+    auto centroid = GET_OR_RET(iter->GetCentroid());
+    const double n_weight = centroid.weight;
+    double count_add = n_weight;
+
+    // Keep only the portion of this centroid that overlaps with the trimmed rank range.
+    count_add -= std::min(std::max(0.0, leftmost_weight - count_done), count_add);
+    count_add = std::min(std::max(0.0, rightmost_weight - count_done), count_add);
+
+    count_done += n_weight;
+
+    trimmed_sum += centroid.mean * count_add;
+    trimmed_count += count_add;
+
+    if (count_done >= rightmost_weight) {
+      break;
+    }
+
+    iter->Next();
+  }
+
+  if (trimmed_count == 0.0) {
+    return std::numeric_limits<double>::quiet_NaN();
+  }
+
+  return trimmed_sum / trimmed_count;
+}

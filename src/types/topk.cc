@@ -25,6 +25,7 @@
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <random>
 
 //-----------------------------------------------------------------------------
 // MurmurHash2 was written by Austin Appleby, and is placed in the public
@@ -207,7 +208,10 @@ void BlockSplitTopK::Add(const std::string &item, uint32_t increment, std::vecto
               pow(lookup_table[TOPK_DECAY_LOOKUP_TABLE - 1], (buckets[i][loc].count / (TOPK_DECAY_LOOKUP_TABLE - 1))) *
               lookup_table[buckets[i][loc].count % (TOPK_DECAY_LOOKUP_TABLE - 1)];
         }
-        double chance = rand() / (double)RAND_MAX;
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        std::uniform_real_distribution<> dis(0.0, 1.0);
+        double chance = dis(gen);
         if (chance < decay) {
           --buckets[i][loc].count;
           if (buckets[i][loc].count == 0) {

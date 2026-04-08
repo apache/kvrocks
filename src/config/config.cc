@@ -252,7 +252,7 @@ Config::Config() {
       /* rocksdb options */
       {"rocksdb.compression", false,
        new EnumField<rocksdb::CompressionType>(&rocks_db.compression, compression_types,
-                                               rocksdb::CompressionType::kSnappyCompression)},
+                                               rocksdb::CompressionType::kNoCompression)},
       {"rocksdb.compression_level", true, new IntField(&rocks_db.compression_level, 32767, INT_MIN, INT_MAX)},
       {"rocksdb.max_dict_bytes", true, new UInt32Field(&rocks_db.max_dict_bytes, 0, 0, UINT32_MAX)},
       {"rocksdb.zstd_max_train_bytes", true, new UInt32Field(&rocks_db.zstd_max_train_bytes, 0, 0, UINT32_MAX)},

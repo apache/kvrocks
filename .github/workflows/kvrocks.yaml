@@ -40,7 +40,7 @@ jobs:
       docs_only: ${{ steps.result.outputs.docs_only }}
     steps:
       - uses: actions/checkout@v6
-      - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36
+      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d
         id: changes
         with:
           filters: .github/config/changes.yml
@@ -61,7 +61,7 @@ jobs:
         uses: crate-ci/typos@v1.45.0
         with:
           config: .github/config/typos.toml
-      - uses: apache/skywalking-eyes/header@v0.7.0
+      - uses: apache/skywalking-eyes/header@v0.8.0
         with:
           config: .github/config/licenserc.yml
 

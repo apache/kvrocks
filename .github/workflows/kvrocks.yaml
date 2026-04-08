@@ -297,22 +297,22 @@ jobs:
         with:
           path: |
             ~/local/bin/redis-cli
-          key: ${{ runner.os }}-${{ runner.arch }}-redis-cli
+          key: ${{ runner.os }}-${{ runner.arch }}-redis-cli-no-jemalloc
       - name: Cache redis server
         id: cache-redis-server
         uses: actions/cache@v5
         with:
           path: |
             ~/local/bin/redis-server
-          key: ${{ runner.os }}-${{ runner.arch }}-redis-server
+          key: ${{ runner.os }}-${{ runner.arch }}-redis-server-no-jemalloc
       - name: Install redis
         if: ${{ steps.cache-redis.outputs.cache-hit != 'true' || steps.cache-redis-server.outputs.cache-hit != 'true' }}
         run: |
           curl -O https://download.redis.io/releases/redis-6.2.14.tar.gz
           tar -xzvf redis-6.2.14.tar.gz
           mkdir -p $HOME/local/bin
-          pushd redis-6.2.14 && BUILD_TLS=yes make -j$NPROC redis-cli && mv src/redis-cli $HOME/local/bin/ && popd
-          pushd redis-6.2.14 && BUILD_TLS=yes make -j$NPROC redis-server && mv src/redis-server $HOME/local/bin/ && popd
+          pushd redis-6.2.14 && USE_JEMALLOC=no BUILD_TLS=yes make -j$NPROC redis-cli && mv src/redis-cli $HOME/local/bin/ && popd
+          pushd redis-6.2.14 && USE_JEMALLOC=no BUILD_TLS=yes make -j$NPROC redis-server && mv src/redis-server $HOME/local/bin/ && popd
 
       - uses: actions/checkout@v6
         with:

@@ -706,6 +706,8 @@ rocksdb::Status ZSet::Inter(engine::Context &ctx, const std::vector<KeyWeight> &
 
 rocksdb::Status ZSet::InterCard(engine::Context &ctx, const std::vector<std::string> &user_keys, uint64_t limit,
                                 uint64_t *inter_cnt) {
+  *inter_cnt = 0;
+
   std::vector<MemberScores> mscores_list;
   mscores_list.reserve(user_keys.size());
   RangeScoreSpec spec;

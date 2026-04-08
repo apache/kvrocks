@@ -108,6 +108,39 @@ TEST_F(RedisStringTest, IncrByFloat) {
   s = string_->Del(*ctx_, key_);
 }
 
+TEST_F(RedisStringTest, IncrByFloatStoredFormat) {
+  double f = 0.0;
+  std::string value;
+
+  // Stored value should use compact format without trailing zeros
+  auto s = string_->IncrByFloat(*ctx_, key_, 10.5, &f);
+  EXPECT_TRUE(s.ok());
+  EXPECT_DOUBLE_EQ(10.5, f);
+  s = string_->Get(*ctx_, key_, &value);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ("10.5", value);
+
+  s = string_->Del(*ctx_, key_);
+  EXPECT_TRUE(s.ok());
+
+  // Integer-valued floats should not have decimal point
+  s = string_->IncrByFloat(*ctx_, key_, 3.0, &f);
+  EXPECT_TRUE(s.ok());
+  s = string_->Get(*ctx_, key_, &value);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ("3", value);
+
+  // Subsequent IncrByFloat should parse the stored compact format correctly
+  s = string_->IncrByFloat(*ctx_, key_, 1.5, &f);
+  EXPECT_TRUE(s.ok());
+  EXPECT_DOUBLE_EQ(4.5, f);
+  s = string_->Get(*ctx_, key_, &value);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ("4.5", value);
+
+  s = string_->Del(*ctx_, key_);
+}
+
 TEST_F(RedisStringTest, IncrBy) {
   int64_t ret = 0;
   string_->IncrBy(*ctx_, key_, 1, &ret);

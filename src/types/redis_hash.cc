@@ -28,6 +28,7 @@
 #include <random>
 #include <utility>
 
+#include "common/string_util.h"
 #include "db_util.h"
 #include "parse_util.h"
 #include "sample_helper.h"
@@ -144,7 +145,7 @@ rocksdb::Status Hash::IncrByFloat(engine::Context &ctx, const Slice &user_key, c
   WriteBatchLogData log_data(kRedisHash);
   s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) return s;
-  s = batch->Put(sub_key, std::to_string(*new_value));
+  s = batch->Put(sub_key, util::Float2String(*new_value));
   if (!s.ok()) return s;
   if (!exists) {
     metadata.size += 1;

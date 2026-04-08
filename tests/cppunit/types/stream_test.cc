@@ -2518,10 +2518,176 @@ TEST_F(RedisStreamTest, StreamConsumerGroupCreateAndDestroy) {
   std::string group_name = "TestGroup";
   auto s = stream_->CreateGroup(*ctx_, stream_name, create_options, group_name);
   EXPECT_TRUE(s.ok());
-  uint64_t delete_cnt = 0;
-  s = stream_->DestroyGroup(*ctx_, stream_name, group_name, &delete_cnt);
-  EXPECT_TRUE(delete_cnt != 0);
-  delete_cnt = 0;
-  s = stream_->DestroyGroup(*ctx_, stream_name, group_name, &delete_cnt);
-  EXPECT_TRUE(delete_cnt == 0);
+  std::vector<std::pair<std::string, redis::StreamConsumerGroupMetadata>> group_metadata;
+  s = stream_->GetGroupInfo(*ctx_, stream_name, group_metadata);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(group_metadata.size(), 1);
+  EXPECT_EQ(group_metadata[0].first, group_name);
+
+  bool destroyed = false;
+  s = stream_->DestroyGroup(*ctx_, stream_name, group_name, &destroyed);
+  EXPECT_TRUE(s.ok());
+  EXPECT_TRUE(destroyed);
+  group_metadata.clear();
+  s = stream_->GetGroupInfo(*ctx_, stream_name, group_metadata);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(group_metadata.size(), 0);
+
+  destroyed = false;
+  s = stream_->DestroyGroup(*ctx_, stream_name, group_name, &destroyed);
+  EXPECT_FALSE(destroyed);
+  group_metadata.clear();
+  s = stream_->GetGroupInfo(*ctx_, stream_name, group_metadata);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(group_metadata.size(), 0);
+}
+
+TEST_F(RedisStreamTest, DestroyGroupCleansUpConsumersAndPelEntries) {
+  std::string stream_name = "test_destroy_stream";
+  std::string group_name = "test_group";
+  std::string consumer_name = "consumer1";
+
+  redis::StreamAddOptions add_options;
+  add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("1-0");
+  redis::StreamEntryID id1;
+  auto s = stream_->Add(*ctx_, stream_name, add_options, {"key1", "val1"}, &id1);
+  EXPECT_TRUE(s.ok());
+
+  add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("2-0");
+  redis::StreamEntryID id2;
+  s = stream_->Add(*ctx_, stream_name, add_options, {"key2", "val2"}, &id2);
+  EXPECT_TRUE(s.ok());
+
+  redis::StreamXGroupCreateOptions create_options = {false, 0, "0-0"};
+  s = stream_->CreateGroup(*ctx_, stream_name, create_options, group_name);
+  EXPECT_TRUE(s.ok());
+  std::vector<std::pair<std::string, redis::StreamConsumerGroupMetadata>> group_metadata;
+  s = stream_->GetGroupInfo(*ctx_, stream_name, group_metadata);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(group_metadata.size(), 1);
+  EXPECT_EQ(group_metadata[0].first, group_name);
+
+  redis::StreamRangeOptions range_options;
+  range_options.start = redis::StreamEntryID::Minimum();
+  range_options.end = redis::StreamEntryID::Maximum();
+  range_options.count = 10;
+  range_options.with_count = true;
+  range_options.exclude_start = true;
+  std::vector<redis::StreamEntry> entries;
+  s = stream_->RangeWithPending(*ctx_, stream_name, range_options, &entries, group_name, consumer_name, false, true);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(entries.size(), 2);
+
+  bool destroyed = false;
+  s = stream_->DestroyGroup(*ctx_, stream_name, group_name, &destroyed);
+  EXPECT_TRUE(s.ok());
+  EXPECT_TRUE(destroyed);
+  group_metadata.clear();
+  s = stream_->GetGroupInfo(*ctx_, stream_name, group_metadata);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(group_metadata.size(), 0);
+
+  // Verify re-destroying the same group deletes nothing
+  destroyed = false;
+  s = stream_->DestroyGroup(*ctx_, stream_name, group_name, &destroyed);
+  EXPECT_FALSE(destroyed);
+  group_metadata.clear();
+  s = stream_->GetGroupInfo(*ctx_, stream_name, group_metadata);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(group_metadata.size(), 0);
+
+  // Verify stream entries are still intact after group destruction
+  std::vector<redis::StreamEntry> remaining;
+  redis::StreamRangeOptions range_options2;
+  range_options2.start = redis::StreamEntryID::Minimum();
+  range_options2.end = redis::StreamEntryID::Maximum();
+  s = stream_->Range(*ctx_, stream_name, range_options2, &remaining);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(remaining.size(), 2);
+
+  // Verify we can create the same group again after destroy
+  s = stream_->CreateGroup(*ctx_, stream_name, create_options, group_name);
+  EXPECT_TRUE(s.ok());
+  group_metadata.clear();
+  s = stream_->GetGroupInfo(*ctx_, stream_name, group_metadata);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(group_metadata.size(), 1);
+  EXPECT_EQ(group_metadata[0].first, group_name);
+
+  // Verify the re-created group has no consumers or pending entries
+  std::vector<std::pair<std::string, redis::StreamConsumerMetadata>> consumer_metadata;
+  s = stream_->GetConsumerInfo(*ctx_, stream_name, group_name, consumer_metadata);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(consumer_metadata.size(), 0);
+
+  // Clean up
+  s = stream_->Del(*ctx_, stream_name);
+  EXPECT_TRUE(s.ok());
+}
+
+TEST_F(RedisStreamTest, DestroyGroupDoesNotAffectOtherGroups) {
+  std::string stream_name = "test_destroy_multi_group";
+  std::string group1 = "group_alpha";
+  std::string group2 = "group_beta";
+
+  redis::StreamAddOptions add_options;
+  add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("1-0");
+  redis::StreamEntryID id1;
+  auto s = stream_->Add(*ctx_, stream_name, add_options, {"k", "v"}, &id1);
+  EXPECT_TRUE(s.ok());
+
+  redis::StreamXGroupCreateOptions create_options = {false, 0, "0-0"};
+  s = stream_->CreateGroup(*ctx_, stream_name, create_options, group1);
+  EXPECT_TRUE(s.ok());
+  s = stream_->CreateGroup(*ctx_, stream_name, create_options, group2);
+  EXPECT_TRUE(s.ok());
+  std::vector<std::pair<std::string, redis::StreamConsumerGroupMetadata>> group_metadata;
+  s = stream_->GetGroupInfo(*ctx_, stream_name, group_metadata);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(group_metadata.size(), 2);
+  int found1 = 0, found2 = 0;
+  for (const auto &item : group_metadata) {
+    if (item.first == group1) found1++;
+    if (item.first == group2) found2++;
+  }
+  EXPECT_EQ(found1, 1);
+  EXPECT_EQ(found2, 1);
+
+  // Consume entries in both groups to create PEL entries
+  redis::StreamRangeOptions range_options;
+  range_options.start = redis::StreamEntryID::Minimum();
+  range_options.end = redis::StreamEntryID::Maximum();
+  range_options.count = 10;
+  range_options.with_count = true;
+  range_options.exclude_start = true;
+  std::vector<redis::StreamEntry> entries;
+  std::string c1 = "c1";
+  std::string c2 = "c2";
+  s = stream_->RangeWithPending(*ctx_, stream_name, range_options, &entries, group1, c1, false, true);
+  EXPECT_TRUE(s.ok());
+  s = stream_->RangeWithPending(*ctx_, stream_name, range_options, &entries, group2, c2, false, true);
+  EXPECT_TRUE(s.ok());
+
+  // Destroy group1
+  bool destroyed = false;
+  s = stream_->DestroyGroup(*ctx_, stream_name, group1, &destroyed);
+  EXPECT_TRUE(s.ok());
+  EXPECT_TRUE(destroyed);
+
+  // Verify group2 still exists with its consumer
+  group_metadata.clear();
+  s = stream_->GetGroupInfo(*ctx_, stream_name, group_metadata);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(group_metadata.size(), 1);
+  EXPECT_EQ(group_metadata[0].first, group2);
+
+  std::vector<std::pair<std::string, redis::StreamConsumerMetadata>> consumer_metadata;
+  s = stream_->GetConsumerInfo(*ctx_, stream_name, group2, consumer_metadata);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(consumer_metadata.size(), 1);
+  EXPECT_EQ(consumer_metadata[0].first, "c2");
+
+  // Clean up
+  s = stream_->Del(*ctx_, stream_name);
+  EXPECT_TRUE(s.ok());
 }

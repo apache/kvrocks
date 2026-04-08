@@ -229,6 +229,30 @@ TEST_F(RedisHashTest, HIncrByFloat) {
   auto s = hash_->Del(*ctx_, key_);
 }
 
+TEST_F(RedisHashTest, HIncrByFloatStoredFormat) {
+  double value = 0.0;
+  Slice field("hash-incrbyfloat-format-field");
+
+  // Stored value should use compact format without trailing zeros
+  auto s = hash_->IncrByFloat(*ctx_, key_, field, 10.5, &value);
+  EXPECT_TRUE(s.ok());
+  EXPECT_DOUBLE_EQ(10.5, value);
+  std::string bytes;
+  s = hash_->Get(*ctx_, key_, field, &bytes);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ("10.5", bytes);
+
+  // Subsequent IncrByFloat should parse the stored compact format correctly
+  s = hash_->IncrByFloat(*ctx_, key_, field, 1.5, &value);
+  EXPECT_TRUE(s.ok());
+  EXPECT_DOUBLE_EQ(12.0, value);
+  s = hash_->Get(*ctx_, key_, field, &bytes);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ("12", bytes);
+
+  s = hash_->Del(*ctx_, key_);
+}
+
 TEST_F(RedisHashTest, HRangeByLex) {
   uint64_t ret = 0;
   std::vector<FieldValue> fvs;

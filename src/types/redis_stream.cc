@@ -783,7 +783,9 @@ rocksdb::Status Stream::DestroyGroup(engine::Context &ctx, const Slice &stream_n
   }
 
   *destroyed = true;
-  metadata.group_number -= 1;
+  if (metadata.group_number > 0) {
+    metadata.group_number -= 1;
+  }
   std::string metadata_bytes;
   metadata.Encode(&metadata_bytes);
   s = batch->Put(metadata_cf_handle_, ns_key, metadata_bytes);

@@ -297,14 +297,14 @@ jobs:
         with:
           path: |
             ~/local/bin/redis-cli
-          key: ${{ runner.os }}-${{ runner.arch }}-redis-cli
+          key: ${{ matrix.os }}-redis-cli
       - name: Cache redis server
         id: cache-redis-server
         uses: actions/cache@v5
         with:
           path: |
             ~/local/bin/redis-server
-          key: ${{ runner.os }}-${{ runner.arch }}-redis-server
+          key: ${{ matrix.os }}-redis-server
       - name: Install redis
         if: ${{ steps.cache-redis.outputs.cache-hit != 'true' || steps.cache-redis-server.outputs.cache-hit != 'true' }}
         run: |

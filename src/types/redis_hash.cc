@@ -29,6 +29,7 @@
 #include <thread>
 #include <utility>
 
+#include "common/string_util.h"
 #include "common/task_runner.h"
 #include "db_util.h"
 #include "logging.h"
@@ -194,7 +195,7 @@ rocksdb::Status Hash::IncrByFloat(engine::Context &ctx, const Slice &user_key, c
   if (!s.ok()) return s;
 
   // Encode new value preserving expiration
-  std::string new_value_str = std::to_string(*new_value);
+  std::string new_value_str = util::Float2String(*new_value);
   HashFieldValue new_field_value(new_value_str, field_expire);
   std::string encoded_value;
   new_field_value.Encode(&encoded_value);

@@ -543,11 +543,11 @@ StatusOr<std::string> Cluster::GetReplicas(const std::string &node_id) {
     node_str.append(
         fmt::format("{} {}:{}@{} ", replica_id, replica->host, replica->port, replica->port + kClusterPortIncr));
 
-    // Flags
-    node_str.append(fmt::format("slave {} ", node_id));
+    // Flags: include fail flag if replica is failed, order follows Redis spec
+    node_str.append(replica->failed ? fmt::format("slave,fail {} ", node_id) : fmt::format("slave {} ", node_id));
 
     // Ping sent, pong received, config epoch, link status
-    node_str.append(fmt::format("{} {} {} connected", now - 1, now, version_));
+    node_str.append(fmt::format("{} {} {} {}", now - 1, now, version_, replica->failed ? "disconnected" : "connected"));
 
     replicas_desc.append(node_str + "\n");
   }
@@ -571,16 +571,17 @@ std::string Cluster::genNodesDescription() {
     node_str.append(node->id + " ");
     node_str.append(fmt::format("{}:{}@{} ", node->host, node->port, node->port + kClusterPortIncr));
 
-    // Flags
+    // Flags: order follows Redis spec (myself -> role -> fail)
     if (node->id == myid_) node_str.append("myself,");
     if (node->role == kClusterMaster) {
-      node_str.append("master - ");
+      node_str.append(node->failed ? "master,fail - " : "master - ");
     } else {
-      node_str.append("slave " + node->master_id + " ");
+      node_str.append((node->failed ? "slave,fail " : "slave ") + node->master_id + " ");
     }
 
     // Ping sent, pong received, config epoch, link status
-    node_str.append(fmt::format("{} {} {} connected", now - 1, now, version_));
+    auto link_state = (node->id == myid_ || !node->failed) ? "connected" : "disconnected";
+    node_str.append(fmt::format("{} {} {} {}", now - 1, now, version_, link_state));
 
     if (node->role == kClusterMaster) {
       auto iter = slots_infos.find(node->id);
@@ -766,13 +767,22 @@ Status Cluster::parseClusterNodes(const std::string &nodes_str, ClusterNodes *no
 
     int port = *parse_result;
 
-    // 4) role
+    // 4) role: flags field is comma-separated, order follows Redis spec (e.g. "slave,fail",
+    //    "myself,master", "myself,slave,fail"). Iterate all flags to find role and fail state.
     int role = 0;
-    if (util::EqualICase(fields[3], "master")) {
-      role = kClusterMaster;
-    } else if (util::EqualICase(fields[3], "slave") || util::EqualICase(fields[3], "replica")) {
-      role = kClusterSlave;
-    } else {
+    bool node_failed = false;
+    auto role_flags = util::Split(fields[3], ",");
+    for (const auto &flag : role_flags) {
+      if (util::EqualICase(flag, "master")) {
+        role = kClusterMaster;
+      } else if (util::EqualICase(flag, "slave") || util::EqualICase(flag, "replica")) {
+        role = kClusterSlave;
+      } else if (util::EqualICase(flag, "fail")) {
+        node_failed = true;
+      }
+      // ignore: myself, pfail, handshake, noaddr, nofailover, noflags
+    }
+    if (role == 0) {
       return {Status::ClusterInvalidInfo, "Invalid cluster node role"};
     }
 
@@ -789,7 +799,9 @@ Status Cluster::parseClusterNodes(const std::string &nodes_str, ClusterNodes *no
         return {Status::ClusterInvalidInfo, errInvalidClusterNodeInfo};
       } else {
         // Create slave node
-        (*nodes)[id] = std::make_shared<ClusterNode>(id, host, port, role, master_id, slots);
+        auto node = std::make_shared<ClusterNode>(id, host, port, role, master_id, slots);
+        node->failed = node_failed;
+        nodes->emplace(id, std::move(node));
         continue;
       }
     }
@@ -843,7 +855,9 @@ Status Cluster::parseClusterNodes(const std::string &nodes_str, ClusterNodes *no
     }
 
     // Create master node
-    (*nodes)[id] = std::make_shared<ClusterNode>(id, host, port, role, master_id, slots);
+    auto master_node = std::make_shared<ClusterNode>(id, host, port, role, master_id, slots);
+    master_node->failed = node_failed;
+    nodes->emplace(id, std::move(master_node));
   }
 
   return Status::OK();

@@ -19,11 +19,13 @@ include_guard()
 
 include(cmake/utils.cmake)
 
-FetchContent_DeclareGitHubWithMirror(jsoncons
-  danielaparker/jsoncons v1.6.0
-  MD5=1338c49e9074ed3417fed63b4cc22ec3
+FetchContent_DeclareGitHubWithMirror(fast_float
+  fastfloat/fast_float v8.2.4
+  MD5=0744790f2d40c9a2e5ef021476e59796
 )
 
-FetchContent_MakeAvailableWithArgs(jsoncons
-  JSONCONS_BUILD_TESTS=OFF
+FetchContent_MakeAvailableWithArgs(fast_float
+  FASTFLOAT_TEST=OFF
+  FASTFLOAT_BENCHMARKS=OFF
+  FASTFLOAT_INSTALL=OFF
 )

@@ -213,4 +213,31 @@ func TestHyperLogLog(t *testing.T) {
 		require.NoError(t, err)
 		require.EqualValues(t, 10, card)
 	})
+
+	t.Run("PFMERGE into existing dest preserves dest data", func(t *testing.T) {
+		require.NoError(t, rdb.Do(ctx, "DEL", "dest", "src1", "src2").Err())
+
+		_, err := rdb.PFAdd(ctx, "dest", "a", "b", "c").Result()
+		require.NoError(t, err)
+		_, err = rdb.PFAdd(ctx, "src1", "d", "e").Result()
+		require.NoError(t, err)
+		_, err = rdb.PFAdd(ctx, "src2", "f").Result()
+		require.NoError(t, err)
+
+		// Merge src1 and src2 into existing dest
+		_, err = rdb.PFMerge(ctx, "dest", "src1", "src2").Result()
+		require.NoError(t, err)
+
+		// dest should have all 6 elements
+		card, err := rdb.PFCount(ctx, "dest").Result()
+		require.NoError(t, err)
+		require.EqualValues(t, 6, card)
+
+		// Merge again into dest to verify idempotency
+		_, err = rdb.PFMerge(ctx, "dest", "src1").Result()
+		require.NoError(t, err)
+		card, err = rdb.PFCount(ctx, "dest").Result()
+		require.NoError(t, err)
+		require.EqualValues(t, 6, card)
+	})
 }

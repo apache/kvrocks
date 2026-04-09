@@ -298,6 +298,12 @@ else()
     target_compile_definitions(kvrocks_objs PUBLIC METADATA_ENCODING_VERSION=0)
 endif()
 
+# disable LTO on ARM due to toolchain stability issues
+string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" CMAKE_SYSTEM_PROCESSOR_LOWER)
+if(CMAKE_SYSTEM_PROCESSOR_LOWER MATCHES "^(aarch64|arm64|arm)")
+    set(ENABLE_LTO OFF)
+endif()
+
 # disable LTO on GCC <= 9 due to an ICE
 if((CMAKE_CXX_COMPILER_ID STREQUAL "GNU") AND (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 10))
     set(ENABLE_LTO OFF)

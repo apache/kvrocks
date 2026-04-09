@@ -236,6 +236,8 @@ struct Config {
     rocksdb::CompressionType compression;
     int compression_start_level;
     int compression_level;
+    uint32_t compression_max_dict_bytes;
+    uint32_t compression_zstd_max_train_bytes;
     bool disable_auto_compactions;
     bool enable_blob_files;
     int min_blob_size;

@@ -78,6 +78,7 @@ rocksdb::Status Set::Add(engine::Context &ctx, const Slice &user_key, const std:
     std::string sub_key = InternalKey(ns_key, member, metadata.version, storage_->IsSlotIdEncoded()).Encode();
     s = storage_->Get(ctx, ctx.GetReadOptions(), sub_key, &value);
     if (s.ok()) continue;
+    if (!s.IsNotFound()) return s;
     s = batch->Put(sub_key, Slice());
     if (!s.ok()) return s;
     *added_cnt += 1;
@@ -114,7 +115,8 @@ rocksdb::Status Set::Remove(engine::Context &ctx, const Slice &user_key, const s
     }
     std::string sub_key = InternalKey(ns_key, member, metadata.version, storage_->IsSlotIdEncoded()).Encode();
     s = storage_->Get(ctx, ctx.GetReadOptions(), sub_key, &value);
-    if (!s.ok()) continue;
+    if (s.IsNotFound()) continue;
+    if (!s.ok()) return s;
     s = batch->Delete(sub_key);
     if (!s.ok()) return s;
     *removed_cnt += 1;

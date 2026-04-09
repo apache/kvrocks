@@ -248,6 +248,57 @@ TEST_F(RedisSetTest, InterCard) {
   s = set_->Del(*ctx_, k4);
 }
 
+TEST_F(RedisSetTest, AddExistingMembers) {
+  uint64_t ret = 0;
+  rocksdb::Status s = set_->Add(*ctx_, key_, fields_, &ret);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(fields_.size(), ret);
+
+  s = set_->Add(*ctx_, key_, fields_, &ret);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(0, ret);
+
+  uint64_t card = 0;
+  s = set_->Card(*ctx_, key_, &card);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(fields_.size(), card);
+
+  std::vector<Slice> mixed_members = {"set-key-1", "set-key-new-1", "set-key-new-2"};
+  s = set_->Add(*ctx_, key_, mixed_members, &ret);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(2, ret);
+
+  s = set_->Card(*ctx_, key_, &card);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(fields_.size() + 2, card);
+}
+
+TEST_F(RedisSetTest, RemoveNonExistingMembers) {
+  uint64_t ret = 0;
+  rocksdb::Status s = set_->Add(*ctx_, key_, fields_, &ret);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(fields_.size(), ret);
+
+  std::vector<Slice> non_existing = {"non-exist-1", "non-exist-2"};
+  s = set_->Remove(*ctx_, key_, non_existing, &ret);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(0, ret);
+
+  uint64_t card = 0;
+  s = set_->Card(*ctx_, key_, &card);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(fields_.size(), card);
+
+  std::vector<Slice> mixed = {"set-key-1", "non-exist-1"};
+  s = set_->Remove(*ctx_, key_, mixed, &ret);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(1, ret);
+
+  s = set_->Card(*ctx_, key_, &card);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(fields_.size() - 1, card);
+}
+
 TEST_F(RedisSetTest, Overwrite) {
   uint64_t ret = 0;
   rocksdb::Status s = set_->Add(*ctx_, key_, fields_, &ret);

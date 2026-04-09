@@ -40,7 +40,7 @@ jobs:
       docs_only: ${{ steps.result.outputs.docs_only }}
     steps:
       - uses: actions/checkout@v6
-      - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36
+      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d
         id: changes
         with:
           filters: .github/config/changes.yml
@@ -58,10 +58,10 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Check typos
-        uses: crate-ci/typos@v1.43.1
+        uses: crate-ci/typos@v1.45.0
         with:
           config: .github/config/typos.toml
-      - uses: apache/skywalking-eyes/header@v0.7.0
+      - uses: apache/skywalking-eyes/header@v0.8.0
         with:
           config: .github/config/licenserc.yml
 
@@ -297,14 +297,14 @@ jobs:
         with:
           path: |
             ~/local/bin/redis-cli
-          key: ${{ runner.os }}-${{ runner.arch }}-redis-cli
+          key: ${{ matrix.os }}-redis-cli
       - name: Cache redis server
         id: cache-redis-server
         uses: actions/cache@v5
         with:
           path: |
             ~/local/bin/redis-server
-          key: ${{ runner.os }}-${{ runner.arch }}-redis-server
+          key: ${{ matrix.os }}-redis-server
       - name: Install redis
         if: ${{ steps.cache-redis.outputs.cache-hit != 'true' || steps.cache-redis-server.outputs.cache-hit != 'true' }}
         run: |
@@ -678,7 +678,8 @@ jobs:
         if: ${{ needs.precondition.outputs.docs_only != 'true' }}
         run: |
           if [[ ! ( \
-                   "${{ needs.build-and-test.result }}" == "success" \
+                   "${{ needs.check-and-lint.result }}" == "success" \
+                && "${{ needs.build-and-test.result }}" == "success" \
                 && "${{ needs.build-and-test-in-container.result }}" == "success" \
                 && "${{ needs.check-docker.result }}" == "success" \
                ) ]]; then

@@ -52,6 +52,40 @@ func getVals(hash map[string]string) []string {
 	return r
 }
 
+func cloneConfigs(configs util.KvrocksServerConfigs) util.KvrocksServerConfigs {
+	cloned := make(util.KvrocksServerConfigs, len(configs))
+	for k, v := range configs {
+		cloned[k] = v
+	}
+	return cloned
+}
+
+func formatConfigs(configs util.KvrocksServerConfigs) string {
+	keys := make([]string, 0, len(configs))
+	for key := range configs {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	parts := make([]string, 0, len(keys))
+	for _, key := range keys {
+		parts = append(parts, fmt.Sprintf("%s=%s", key, configs[key]))
+	}
+	return strings.Join(parts, ",")
+}
+
+func runWithHashEncodingModes(t *testing.T, baseConfigs util.KvrocksServerConfigs,
+	fn func(t *testing.T, configs util.KvrocksServerConfigs)) {
+	t.Helper()
+
+	for _, encodingMode := range []string{"legacy", "field-expiration"} {
+		configs := cloneConfigs(baseConfigs)
+		configs["hash-encoding-mode"] = encodingMode
+		t.Logf("running hash test config: %s", formatConfigs(configs))
+		fn(t, configs)
+	}
+}
+
 func TestHash(t *testing.T) {
 	configOptions := []util.ConfigOptions{
 		{
@@ -70,31 +104,8 @@ func TestHash(t *testing.T) {
 	require.NoError(t, err)
 
 	for _, configs := range configsMatrix {
-		testHash(t, configs)
+		runWithHashEncodingModes(t, configs, testHash)
 	}
-}
-
-func TestHashFieldExpirationEncodingMode(t *testing.T) {
-	srv := util.StartServer(t, util.KvrocksServerConfigs{
-		"hash-encoding-mode": "field-expiration",
-	})
-	defer srv.Close()
-
-	ctx := context.Background()
-	rdb := srv.NewClient()
-	defer func() { require.NoError(t, rdb.Close()) }()
-
-	require.Equal(t, int64(2), rdb.HSet(ctx, "mode1-hash", "field1", "value1", "field2", "value2").Val())
-	require.Equal(t, "value1", rdb.HGet(ctx, "mode1-hash", "field1").Val())
-	require.Equal(t, map[string]string{
-		"field1": "value1",
-		"field2": "value2",
-	}, rdb.HGetAll(ctx, "mode1-hash").Val())
-
-	pairs, cursor, err := rdb.HScan(ctx, "mode1-hash", 0, "*", 10).Result()
-	require.NoError(t, err)
-	require.Equal(t, uint64(0), cursor)
-	require.Equal(t, []string{"field1", "value1", "field2", "value2"}, pairs)
 }
 
 var testHash = func(t *testing.T, configs util.KvrocksServerConfigs) {
@@ -1016,107 +1027,113 @@ var testHash = func(t *testing.T, configs util.KvrocksServerConfigs) {
 }
 
 func TestHGetAllWithRESP3(t *testing.T) {
-	srv := util.StartServer(t, map[string]string{
+	runWithHashEncodingModes(t, util.KvrocksServerConfigs{
 		"resp3-enabled": "yes",
+	}, func(t *testing.T, configs util.KvrocksServerConfigs) {
+		srv := util.StartServer(t, configs)
+		defer srv.Close()
+
+		rdb := srv.NewClient()
+		defer func() { require.NoError(t, rdb.Close()) }()
+
+		ctx := context.Background()
+
+		testKey := "test-hash-1"
+		require.NoError(t, rdb.Del(ctx, testKey).Err())
+		require.NoError(t, rdb.HSet(ctx, testKey, "key1", "value1", "key2", "value2", "key3", "value3").Err())
+		result, err := rdb.HGetAll(ctx, testKey).Result()
+		require.NoError(t, err)
+		require.Len(t, result, 3)
+		require.EqualValues(t, map[string]string{
+			"key1": "value1",
+			"key2": "value2",
+			"key3": "value3",
+		}, result)
 	})
-	defer srv.Close()
-
-	rdb := srv.NewClient()
-	defer func() { require.NoError(t, rdb.Close()) }()
-
-	ctx := context.Background()
-
-	testKey := "test-hash-1"
-	require.NoError(t, rdb.Del(ctx, testKey).Err())
-	require.NoError(t, rdb.HSet(ctx, testKey, "key1", "value1", "key2", "value2", "key3", "value3").Err())
-	result, err := rdb.HGetAll(ctx, testKey).Result()
-	require.NoError(t, err)
-	require.Len(t, result, 3)
-	require.EqualValues(t, map[string]string{
-		"key1": "value1",
-		"key2": "value2",
-		"key3": "value3",
-	}, result)
 }
 
 func TestHashWithAsyncIOEnabled(t *testing.T) {
-	srv := util.StartServer(t, map[string]string{
+	runWithHashEncodingModes(t, util.KvrocksServerConfigs{
 		"rocksdb.read_options.async_io": "yes",
-	})
-	defer srv.Close()
+	}, func(t *testing.T, configs util.KvrocksServerConfigs) {
+		srv := util.StartServer(t, configs)
+		defer srv.Close()
 
-	rdb := srv.NewClient()
-	defer func() { require.NoError(t, rdb.Close()) }()
+		rdb := srv.NewClient()
+		defer func() { require.NoError(t, rdb.Close()) }()
 
-	ctx := context.Background()
+		ctx := context.Background()
 
-	t.Run("Test bug with large value after compaction", func(t *testing.T) {
-		testKey := "test-hash-1"
-		require.NoError(t, rdb.Del(ctx, testKey).Err())
+		t.Run("Test bug with large value after compaction", func(t *testing.T) {
+			testKey := "test-hash-1"
+			require.NoError(t, rdb.Del(ctx, testKey).Err())
 
-		src := rand.NewSource(time.Now().UnixNano())
-		dd := make([]byte, 5000)
-		for i := 1; i <= 50; i++ {
-			for j := range dd {
-				dd[j] = byte(src.Int63())
+			src := rand.NewSource(time.Now().UnixNano())
+			dd := make([]byte, 5000)
+			for i := 1; i <= 50; i++ {
+				for j := range dd {
+					dd[j] = byte(src.Int63())
+				}
+				key := util.RandString(10, 20, util.Alpha)
+				require.NoError(t, rdb.HSet(ctx, testKey, key, string(dd)).Err())
 			}
-			key := util.RandString(10, 20, util.Alpha)
-			require.NoError(t, rdb.HSet(ctx, testKey, key, string(dd)).Err())
-		}
 
-		require.EqualValues(t, 50, rdb.HLen(ctx, testKey).Val())
-		require.Len(t, rdb.HGetAll(ctx, testKey).Val(), 50)
-		require.Len(t, rdb.HKeys(ctx, testKey).Val(), 50)
-		require.Len(t, rdb.HVals(ctx, testKey).Val(), 50)
+			require.EqualValues(t, 50, rdb.HLen(ctx, testKey).Val())
+			require.Len(t, rdb.HGetAll(ctx, testKey).Val(), 50)
+			require.Len(t, rdb.HKeys(ctx, testKey).Val(), 50)
+			require.Len(t, rdb.HVals(ctx, testKey).Val(), 50)
 
-		require.NoError(t, rdb.Do(ctx, "COMPACT").Err())
+			require.NoError(t, rdb.Do(ctx, "COMPACT").Err())
 
-		time.Sleep(5 * time.Second)
+			time.Sleep(5 * time.Second)
 
-		require.EqualValues(t, 50, rdb.HLen(ctx, testKey).Val())
-		require.Len(t, rdb.HGetAll(ctx, testKey).Val(), 50)
-		require.Len(t, rdb.HKeys(ctx, testKey).Val(), 50)
-		require.Len(t, rdb.HVals(ctx, testKey).Val(), 50)
+			require.EqualValues(t, 50, rdb.HLen(ctx, testKey).Val())
+			require.Len(t, rdb.HGetAll(ctx, testKey).Val(), 50)
+			require.Len(t, rdb.HKeys(ctx, testKey).Val(), 50)
+			require.Len(t, rdb.HVals(ctx, testKey).Val(), 50)
+		})
 	})
 }
 
 func TestHashWithAsyncIODisabled(t *testing.T) {
-	srv := util.StartServer(t, map[string]string{
+	runWithHashEncodingModes(t, util.KvrocksServerConfigs{
 		"rocksdb.read_options.async_io": "no",
-	})
-	defer srv.Close()
+	}, func(t *testing.T, configs util.KvrocksServerConfigs) {
+		srv := util.StartServer(t, configs)
+		defer srv.Close()
 
-	rdb := srv.NewClient()
-	defer func() { require.NoError(t, rdb.Close()) }()
+		rdb := srv.NewClient()
+		defer func() { require.NoError(t, rdb.Close()) }()
 
-	ctx := context.Background()
+		ctx := context.Background()
 
-	t.Run("Test bug with large value after compaction", func(t *testing.T) {
-		testKey := "test-hash-1"
-		require.NoError(t, rdb.Del(ctx, testKey).Err())
+		t.Run("Test bug with large value after compaction", func(t *testing.T) {
+			testKey := "test-hash-1"
+			require.NoError(t, rdb.Del(ctx, testKey).Err())
 
-		src := rand.NewSource(time.Now().UnixNano())
-		dd := make([]byte, 5000)
-		for i := 1; i <= 50; i++ {
-			for j := range dd {
-				dd[j] = byte(src.Int63())
+			src := rand.NewSource(time.Now().UnixNano())
+			dd := make([]byte, 5000)
+			for i := 1; i <= 50; i++ {
+				for j := range dd {
+					dd[j] = byte(src.Int63())
+				}
+				key := util.RandString(10, 20, util.Alpha)
+				require.NoError(t, rdb.HSet(ctx, testKey, key, string(dd)).Err())
 			}
-			key := util.RandString(10, 20, util.Alpha)
-			require.NoError(t, rdb.HSet(ctx, testKey, key, string(dd)).Err())
-		}
 
-		require.EqualValues(t, 50, rdb.HLen(ctx, testKey).Val())
-		require.Len(t, rdb.HGetAll(ctx, testKey).Val(), 50)
-		require.Len(t, rdb.HKeys(ctx, testKey).Val(), 50)
-		require.Len(t, rdb.HVals(ctx, testKey).Val(), 50)
+			require.EqualValues(t, 50, rdb.HLen(ctx, testKey).Val())
+			require.Len(t, rdb.HGetAll(ctx, testKey).Val(), 50)
+			require.Len(t, rdb.HKeys(ctx, testKey).Val(), 50)
+			require.Len(t, rdb.HVals(ctx, testKey).Val(), 50)
 
-		require.NoError(t, rdb.Do(ctx, "COMPACT").Err())
+			require.NoError(t, rdb.Do(ctx, "COMPACT").Err())
 
-		time.Sleep(5 * time.Second)
+			time.Sleep(5 * time.Second)
 
-		require.EqualValues(t, 50, rdb.HLen(ctx, testKey).Val())
-		require.Len(t, rdb.HGetAll(ctx, testKey).Val(), 50)
-		require.Len(t, rdb.HKeys(ctx, testKey).Val(), 50)
-		require.Len(t, rdb.HVals(ctx, testKey).Val(), 50)
+			require.EqualValues(t, 50, rdb.HLen(ctx, testKey).Val())
+			require.Len(t, rdb.HGetAll(ctx, testKey).Val(), 50)
+			require.Len(t, rdb.HKeys(ctx, testKey).Val(), 50)
+			require.Len(t, rdb.HVals(ctx, testKey).Val(), 50)
+		})
 	})
 }

@@ -2544,6 +2544,82 @@ func TestStreamOffset(t *testing.T) {
 
 		require.NoError(t, rdb.Del(ctx, streamKey).Err())
 	})
+
+	t.Run("XPENDING with incomplete end ID should include the whole millisecond", func(t *testing.T) {
+		streamKey := "xpending-incomplete-end-test"
+		group := "grp"
+		consumer := "con"
+		ids := []string{"1-0", "1-1", "1-2"}
+
+		require.NoError(t, rdb.Del(ctx, streamKey).Err())
+		for i, id := range ids {
+			require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: streamKey, ID: id, Values: []string{"f", strconv.Itoa(i)}}).Err())
+		}
+
+		require.NoError(t, rdb.XGroupCreateMkStream(ctx, streamKey, group, "0").Err())
+		_, err := rdb.XReadGroup(ctx, &redis.XReadGroupArgs{Group: group, Consumer: consumer, Streams: []string{streamKey, ">"}, Count: 10}).Result()
+		require.NoError(t, err)
+
+		result, err := rdb.Do(ctx, "XPENDING", streamKey, group, "1", "1", "10").Result()
+		require.NoError(t, err)
+		entries, ok := result.([]interface{})
+		require.True(t, ok)
+		require.Len(t, entries, 3, "XPENDING 1 1 should include every pending entry in millisecond 1, matching Redis")
+
+		for i, entry := range entries {
+			fields, ok := entry.([]interface{})
+			require.True(t, ok)
+			require.Len(t, fields, 4)
+			gotID, ok := fields[0].(string)
+			require.True(t, ok)
+			require.Equal(t, ids[i], gotID)
+			gotConsumer, ok := fields[1].(string)
+			require.True(t, ok)
+			require.Equal(t, consumer, gotConsumer)
+			require.GreaterOrEqual(t, fields[2], int64(0))
+			require.EqualValues(t, 1, fields[3])
+		}
+
+		require.NoError(t, rdb.Del(ctx, streamKey).Err())
+	})
+
+	t.Run("XPENDING with exclusive start should match Redis", func(t *testing.T) {
+		streamKey := "xpending-exclusive-start-test"
+		group := "grp"
+		consumer := "con"
+		ids := []string{"1-0", "1-1", "1-2"}
+
+		require.NoError(t, rdb.Del(ctx, streamKey).Err())
+		for i, id := range ids {
+			require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: streamKey, ID: id, Values: []string{"f", strconv.Itoa(i)}}).Err())
+		}
+
+		require.NoError(t, rdb.XGroupCreateMkStream(ctx, streamKey, group, "0").Err())
+		_, err := rdb.XReadGroup(ctx, &redis.XReadGroupArgs{Group: group, Consumer: consumer, Streams: []string{streamKey, ">"}, Count: 10}).Result()
+		require.NoError(t, err)
+
+		result, err := rdb.Do(ctx, "XPENDING", streamKey, group, "(1-0", "+", "10").Result()
+		require.NoError(t, err)
+		entries, ok := result.([]interface{})
+		require.True(t, ok)
+		require.Len(t, entries, 2, "XPENDING (1-0 + 10 should exclude the first pending entry, matching Redis")
+
+		for i, entry := range entries {
+			fields, ok := entry.([]interface{})
+			require.True(t, ok)
+			require.Len(t, fields, 4)
+			gotID, ok := fields[0].(string)
+			require.True(t, ok)
+			require.Equal(t, ids[i+1], gotID)
+			gotConsumer, ok := fields[1].(string)
+			require.True(t, ok)
+			require.Equal(t, consumer, gotConsumer)
+			require.GreaterOrEqual(t, fields[2], int64(0))
+			require.EqualValues(t, 1, fields[3])
+		}
+
+		require.NoError(t, rdb.Del(ctx, streamKey).Err())
+	})
 }
 
 func parseStreamEntryID(id string) (ts int64, seqNum int64) {

@@ -1757,14 +1757,27 @@ rocksdb::Status Stream::GetPendingEntries(engine::Context &ctx, StreamPendingOpt
     return s.IsNotFound() ? rocksdb::Status::OK() : s;
   }
 
-  std::string prefix_key = internalPelKeyFromGroupAndEntryId(ns_key, metadata, group_name, options.start_id);
-  // XPENDING extended form follows XRANGE-style ranges (closed interval by default).
-  // RocksDB iterate_upper_bound is exclusive; use a key strictly after end_id for the scan bound.
+  StreamEntryID scan_start_id = options.start_id;
+  if (options.exclude_start) {
+    Status inc_st = IncrementStreamEntryID(&scan_start_id);
+    if (!inc_st.IsOK()) {
+      pending_infos.pending_number = 0;
+      pending_infos.first_entry_id = StreamEntryID::Maximum();
+      pending_infos.last_entry_id = StreamEntryID::Minimum();
+      return rocksdb::Status::OK();
+    }
+  }
+  std::string prefix_key = internalPelKeyFromGroupAndEntryId(ns_key, metadata, group_name, scan_start_id);
+  // XPENDING extended form follows XRANGE-style ranges (closed interval by default; '(' excludes an endpoint).
+  // RocksDB iterate_upper_bound is exclusive.
   std::string end_key_exclusive;
   if (options.end_id == StreamEntryID::Maximum()) {
     // "+" means no upper ID limit; place the bound after all keys in this stream metadata version
     // (same pattern as Stream::trim). A PEL-specific key cannot be "past" maximum ID.
     end_key_exclusive = InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode();
+  } else if (options.exclude_end) {
+    // Exclusive end: iterator keys must be strictly before end_id.
+    end_key_exclusive = internalPelKeyFromGroupAndEntryId(ns_key, metadata, group_name, options.end_id);
   } else {
     StreamEntryID end_next = options.end_id;
     Status inc_st = IncrementStreamEntryID(&end_next);

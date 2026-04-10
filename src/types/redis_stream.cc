@@ -1758,10 +1758,26 @@ rocksdb::Status Stream::GetPendingEntries(engine::Context &ctx, StreamPendingOpt
   }
 
   std::string prefix_key = internalPelKeyFromGroupAndEntryId(ns_key, metadata, group_name, options.start_id);
-  std::string end_key = internalPelKeyFromGroupAndEntryId(ns_key, metadata, group_name, options.end_id);
+  // XPENDING extended form follows XRANGE-style ranges (closed interval by default).
+  // RocksDB iterate_upper_bound is exclusive; use a key strictly after end_id for the scan bound.
+  std::string end_key_exclusive;
+  if (options.end_id == StreamEntryID::Maximum()) {
+    // "+" means no upper ID limit; place the bound after all keys in this stream metadata version
+    // (same pattern as Stream::trim). A PEL-specific key cannot be "past" maximum ID.
+    end_key_exclusive = InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode();
+  } else {
+    StreamEntryID end_next = options.end_id;
+    Status inc_st = IncrementStreamEntryID(&end_next);
+    if (!inc_st.IsOK()) {
+      end_key_exclusive = InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode();
+    } else {
+      // Next ID after end_id in PEL key space — exclusive iterator upper bound (XRANGE closed end).
+      end_key_exclusive = internalPelKeyFromGroupAndEntryId(ns_key, metadata, group_name, end_next);
+    }
+  }
 
   rocksdb::ReadOptions read_options = ctx.DefaultScanOptions();
-  rocksdb::Slice upper_bound(end_key);
+  rocksdb::Slice upper_bound(end_key_exclusive);
   read_options.iterate_upper_bound = &upper_bound;
   rocksdb::Slice lower_bound(prefix_key);
   read_options.iterate_lower_bound = &lower_bound;

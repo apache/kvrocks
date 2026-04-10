@@ -864,7 +864,7 @@ class CommandXPending : public Commander {
       }
 
       if (end_id != "+") {
-        auto s = ParseStreamEntryID(start_id, &options_.end_id);
+        auto s = ParseStreamEntryID(end_id, &options_.end_id);
         if (!s.IsOK()) {
           return s;
         }

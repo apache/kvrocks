@@ -2480,6 +2480,48 @@ func TestStreamOffset(t *testing.T) {
 		require.ErrorContains(t, rdb.Do(ctx, "XREVRANGE", "mystream").Err(), "wrong number of arguments")
 		require.ErrorContains(t, rdb.Do(ctx, "XREVRANGE", "mystream", "+").Err(), "wrong number of arguments")
 	})
+
+	t.Run("XPENDING with specific end ID should filter correctly", func(t *testing.T) {
+		streamKey := "xpending-endid-test"
+		group := "grp"
+		consumer := "con"
+		require.NoError(t, rdb.Del(ctx, streamKey).Err())
+
+		id1, err := rdb.XAdd(ctx, &redis.XAddArgs{Stream: streamKey, Values: []string{"f", "1"}}).Result()
+		require.NoError(t, err)
+		id2, err := rdb.XAdd(ctx, &redis.XAddArgs{Stream: streamKey, Values: []string{"f", "2"}}).Result()
+		require.NoError(t, err)
+		id3, err := rdb.XAdd(ctx, &redis.XAddArgs{Stream: streamKey, Values: []string{"f", "3"}}).Result()
+		require.NoError(t, err)
+
+		require.NoError(t, rdb.XGroupCreateMkStream(ctx, streamKey, group, "0").Err())
+		// Read all entries so they become pending
+		_, err = rdb.XReadGroup(ctx, &redis.XReadGroupArgs{Group: group, Consumer: consumer, Streams: []string{streamKey, ">"}, Count: 10}).Result()
+		require.NoError(t, err)
+
+		// XPENDING extended form: same ID range rules as XRANGE (see Redis docs). Use XPENDING with end_id = id1.
+		result, err := rdb.Do(ctx, "XPENDING", streamKey, group, id1, id1, "10").Result()
+		require.NoError(t, err)
+		entries, ok := result.([]interface{})
+		require.True(t, ok)
+		require.Len(t, entries, 1, "XPENDING with end_id=id1 should return only 1 entry")
+
+		// Use XPENDING with range [id1, id2] (should return 2 entries).
+		result, err = rdb.Do(ctx, "XPENDING", streamKey, group, id1, id2, "10").Result()
+		require.NoError(t, err)
+		entries, ok = result.([]interface{})
+		require.True(t, ok)
+		require.Len(t, entries, 2, "XPENDING with range [id1,id2] should return 2 entries")
+
+		// Use XPENDING with range [id1, id3] (should return all 3 entries).
+		result, err = rdb.Do(ctx, "XPENDING", streamKey, group, id1, id3, "10").Result()
+		require.NoError(t, err)
+		entries, ok = result.([]interface{})
+		require.True(t, ok)
+		require.Len(t, entries, 3, "XPENDING with range [id1,id3] should return 3 entries")
+
+		require.NoError(t, rdb.Del(ctx, streamKey).Err())
+	})
 }
 
 func parseStreamEntryID(id string) (ts int64, seqNum int64) {

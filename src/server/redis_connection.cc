@@ -52,6 +52,10 @@ Connection::Connection(bufferevent *bev, Worker *owner)
   int64_t now = util::GetTimeStamp();
   create_time_ = now;
   last_interaction_ = now;
+  if (srv_->GetConfig()->requirepass.empty()) {
+    BecomeAdmin();
+    SetNamespace(kDefaultNamespace);
+  }
 }
 
 Connection::~Connection() {

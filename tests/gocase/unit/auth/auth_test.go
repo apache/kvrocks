@@ -39,6 +39,22 @@ func TestNoAuth(t *testing.T) {
 		r := rdb.Do(ctx, "AUTH", "foo")
 		require.ErrorContains(t, r.Err(), "no password")
 	})
+
+	t.Run("Connections accepted before requirepass is set remain usable", func(t *testing.T) {
+		idleConn := srv.NewTCPClient()
+		defer func() { require.NoError(t, idleConn.Close()) }()
+
+		require.NoError(t, rdb.ConfigSet(ctx, "requirepass", "foobar").Err())
+
+		require.NoError(t, idleConn.WriteArgs("PING"))
+		idleConn.MustRead(t, "+PONG")
+
+		newConn := srv.NewTCPClient()
+		defer func() { require.NoError(t, newConn.Close()) }()
+
+		require.NoError(t, newConn.WriteArgs("PING"))
+		newConn.MustRead(t, "-NOAUTH Authentication required.")
+	})
 }
 
 func TestAuth(t *testing.T) {

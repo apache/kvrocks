@@ -2499,12 +2499,29 @@ func TestStreamOffset(t *testing.T) {
 		_, err = rdb.XReadGroup(ctx, &redis.XReadGroupArgs{Group: group, Consumer: consumer, Streams: []string{streamKey, ">"}, Count: 10}).Result()
 		require.NoError(t, err)
 
+		// XPENDING extended form: each row is [id, consumer, idle_ms, delivery_count].
+		assertXPendingExtRow := func(t *testing.T, row interface{}, wantID string) {
+			t.Helper()
+			fields, ok := row.([]interface{})
+			require.True(t, ok)
+			require.Len(t, fields, 4)
+			gotID, ok := fields[0].(string)
+			require.True(t, ok)
+			require.Equal(t, wantID, gotID)
+			gotConsumer, ok := fields[1].(string)
+			require.True(t, ok)
+			require.Equal(t, consumer, gotConsumer)
+			require.GreaterOrEqual(t, fields[2], int64(0))
+			require.EqualValues(t, 1, fields[3])
+		}
+
 		// XPENDING extended form: same ID range rules as XRANGE (see Redis docs). Use XPENDING with end_id = id1.
 		result, err := rdb.Do(ctx, "XPENDING", streamKey, group, id1, id1, "10").Result()
 		require.NoError(t, err)
 		entries, ok := result.([]interface{})
 		require.True(t, ok)
 		require.Len(t, entries, 1, "XPENDING with end_id=id1 should return only 1 entry")
+		assertXPendingExtRow(t, entries[0], id1)
 
 		// Use XPENDING with range [id1, id2] (should return 2 entries).
 		result, err = rdb.Do(ctx, "XPENDING", streamKey, group, id1, id2, "10").Result()
@@ -2512,6 +2529,8 @@ func TestStreamOffset(t *testing.T) {
 		entries, ok = result.([]interface{})
 		require.True(t, ok)
 		require.Len(t, entries, 2, "XPENDING with range [id1,id2] should return 2 entries")
+		assertXPendingExtRow(t, entries[0], id1)
+		assertXPendingExtRow(t, entries[1], id2)
 
 		// Use XPENDING with range [id1, id3] (should return all 3 entries).
 		result, err = rdb.Do(ctx, "XPENDING", streamKey, group, id1, id3, "10").Result()
@@ -2519,6 +2538,9 @@ func TestStreamOffset(t *testing.T) {
 		entries, ok = result.([]interface{})
 		require.True(t, ok)
 		require.Len(t, entries, 3, "XPENDING with range [id1,id3] should return 3 entries")
+		assertXPendingExtRow(t, entries[0], id1)
+		assertXPendingExtRow(t, entries[1], id2)
+		assertXPendingExtRow(t, entries[2], id3)
 
 		require.NoError(t, rdb.Del(ctx, streamKey).Err())
 	})

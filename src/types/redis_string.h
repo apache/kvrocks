@@ -104,7 +104,7 @@ class String : public Database {
                          std::optional<std::string> &old_value);
   rocksdb::Status GetDel(engine::Context &ctx, const std::string &user_key, std::string *value);
   rocksdb::Status Set(engine::Context &ctx, const std::string &user_key, const std::string &value);
-  rocksdb::Status Set(engine::Context &ctx, const std::string &user_key, const std::string &value, StringSetArgs args,
+  rocksdb::Status Set(engine::Context &ctx, const std::string &user_key, const std::string &value, const StringSetArgs &args,
                       std::optional<std::string> &ret);
   rocksdb::Status SetEX(engine::Context &ctx, const std::string &user_key, const std::string &value,
                         uint64_t expire_ms);

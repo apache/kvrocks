@@ -239,7 +239,7 @@ rocksdb::Status String::Set(engine::Context &ctx, const std::string &user_key, c
 }
 
 rocksdb::Status String::Set(engine::Context &ctx, const std::string &user_key, const std::string &value,
-                            StringSetArgs args, std::optional<std::string> &ret) {
+                            const StringSetArgs &args, std::optional<std::string> &ret) {
   uint64_t expire = 0;
   std::string ns_key = AppendNamespacePrefix(user_key);
 

@@ -116,10 +116,10 @@ TEST(HashMetadata, EncodeAndDecodeSubkeyValueWithFieldExpirationMode) {
   std::string encoded = metadata.EncodeSubkeyValue("value", expire);
   EXPECT_EQ(encoded.size(), HashMetadata::kFieldExpirationPrefixSize + std::string("value").size());
 
-  std::string decoded_value;
+  Slice decoded_value(encoded);
   uint64_t decoded_expire = 0;
-  ASSERT_TRUE(metadata.DecodeSubkeyValue(encoded, &decoded_value, &decoded_expire).ok());
-  EXPECT_EQ(decoded_value, "value");
+  ASSERT_TRUE(metadata.DecodeSubkeyValue(&decoded_value, &decoded_expire).ok());
+  EXPECT_EQ(decoded_value.ToStringView(), "value");
   EXPECT_EQ(decoded_expire, expire);
 }
 

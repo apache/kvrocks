@@ -394,25 +394,23 @@ std::string HashMetadata::EncodeSubkeyValue(Slice value, uint64_t expire) const 
   return encoded;
 }
 
-rocksdb::Status HashMetadata::DecodeSubkeyValue(Slice input, std::string *value, uint64_t *expire) const {
+rocksdb::Status HashMetadata::DecodeSubkeyValue(Slice *value, uint64_t *expire) const {
   if (IsLegacySubkeyEncoding()) {
     if (expire != nullptr) {
       *expire = 0;
     }
-    *value = input.ToString();
     return rocksdb::Status::OK();
   }
 
-  if (input.size() < kFieldExpirationPrefixSize) {
+  if (value->size() < kFieldExpirationPrefixSize) {
     return rocksdb::Status::InvalidArgument(kErrHashSubkeyValueTooShort);
   }
 
   uint64_t encoded_expire = 0;
-  GetFixed64(&input, &encoded_expire);
+  GetFixed64(value, &encoded_expire);
   if (expire != nullptr) {
     *expire = encoded_expire;
   }
-  *value = input.ToString();
   return rocksdb::Status::OK();
 }
 

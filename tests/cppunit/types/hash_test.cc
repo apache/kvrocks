@@ -250,10 +250,10 @@ TEST_F(RedisHashFieldExpirationEncodingTest, StoreAndScanValuesWithModeOneEncodi
   EXPECT_EQ(metadata.expsz, 0);
   EXPECT_EQ(raw_value.size(), HashMetadata::kFieldExpirationPrefixSize + value.size());
 
-  std::string decoded_value;
+  Slice decoded_value(raw_value);
   uint64_t field_expire = UINT64_MAX;
-  ASSERT_TRUE(metadata.DecodeSubkeyValue(raw_value, &decoded_value, &field_expire).ok());
-  EXPECT_EQ(decoded_value, value.ToString());
+  ASSERT_TRUE(metadata.DecodeSubkeyValue(&decoded_value, &field_expire).ok());
+  EXPECT_EQ(decoded_value.ToStringView(), value.ToStringView());
   EXPECT_EQ(field_expire, 0);
 
   std::string got;

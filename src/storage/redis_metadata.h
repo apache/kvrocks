@@ -235,7 +235,7 @@ class HashMetadata : public Metadata {
   bool IsFieldExpirationEncoding() const { return mode == HashSubkeyEncodingMode::kFieldExpiration; }
 
   [[nodiscard]] std::string EncodeSubkeyValue(Slice value, uint64_t expire = 0) const;
-  [[nodiscard]] rocksdb::Status DecodeSubkeyValue(Slice input, std::string *value, uint64_t *expire = nullptr) const;
+  [[nodiscard]] rocksdb::Status DecodeSubkeyValue(Slice *value, uint64_t *expire = nullptr) const;
 
   void Encode(std::string *dst) const override;
   using Metadata::Decode;

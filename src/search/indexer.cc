@@ -98,7 +98,7 @@ StatusOr<kqir::Value> FieldValueRetriever::ParseFromJson(const jsoncons::json &v
   }
 }
 
-StatusOr<kqir::Value> FieldValueRetriever::ParseFromHash(const std::string &value,
+StatusOr<kqir::Value> FieldValueRetriever::ParseFromHash(std::string_view value,
                                                          const redis::IndexFieldMetadata *type) {
   if (auto numeric [[maybe_unused]] = dynamic_cast<const redis::NumericFieldMetadata *>(type)) {
     auto num = GET_OR_RET(ParseFloat(value));
@@ -137,11 +137,11 @@ StatusOr<kqir::Value> FieldValueRetriever::Retrieve(engine::Context &ctx, std::s
     if (s.IsNotFound()) return {Status::NotFound, s.ToString()};
     if (!s.ok()) return {Status::NotOK, s.ToString()};
 
-    std::string decoded_value;
-    s = metadata.DecodeSubkeyValue(value, &decoded_value);
+    Slice decoded_value(value);
+    s = metadata.DecodeSubkeyValue(&decoded_value);
     if (!s.ok()) return {Status::NotOK, s.ToString()};
 
-    return ParseFromHash(decoded_value, type);
+    return ParseFromHash(decoded_value.ToStringView(), type);
   } else if (std::holds_alternative<JsonData>(db)) {
     auto &value = std::get<JsonData>(db);
 

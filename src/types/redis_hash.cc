@@ -47,9 +47,8 @@ rocksdb::Status Hash::GetRawValue(engine::Context &ctx, const std::string &sub_k
   return storage_->Get(ctx, ctx.GetReadOptions(), sub_key, value);
 }
 
-rocksdb::Status Hash::DecodeValue(const HashMetadata &metadata, Slice raw_value, std::string *value,
-                                  uint64_t *expire) const {
-  return metadata.DecodeSubkeyValue(raw_value, value, expire);
+rocksdb::Status Hash::DecodeValue(const HashMetadata &metadata, Slice *value, uint64_t *expire) const {
+  return metadata.DecodeSubkeyValue(value, expire);
 }
 
 rocksdb::Status Hash::Size(engine::Context &ctx, const Slice &user_key, uint64_t *size) {
@@ -72,7 +71,11 @@ rocksdb::Status Hash::Get(engine::Context &ctx, const Slice &user_key, const Sli
   std::string raw_value;
   s = GetRawValue(ctx, sub_key, &raw_value);
   if (!s.ok()) return s;
-  return DecodeValue(metadata, raw_value, value);
+  Slice payload(raw_value);
+  s = DecodeValue(metadata, &payload);
+  if (!s.ok()) return s;
+  value->assign(payload.data(), payload.size());
+  return rocksdb::Status::OK();
 }
 
 rocksdb::Status Hash::IncrBy(engine::Context &ctx, const Slice &user_key, const Slice &field, int64_t increment,
@@ -89,13 +92,14 @@ rocksdb::Status Hash::IncrBy(engine::Context &ctx, const Slice &user_key, const 
   std::string sub_key = InternalKey(ns_key, field, metadata.version, storage_->IsSlotIdEncoded()).Encode();
   if (s.ok()) {
     std::string raw_value;
-    std::string value_bytes;
+    Slice value_bytes;
     s = GetRawValue(ctx, sub_key, &raw_value);
     if (!s.ok() && !s.IsNotFound()) return s;
     if (s.ok()) {
-      s = DecodeValue(metadata, raw_value, &value_bytes);
+      value_bytes = Slice(raw_value);
+      s = DecodeValue(metadata, &value_bytes);
       if (!s.ok()) return s;
-      auto parse_result = ParseInt<int64_t>(value_bytes, 10);
+      auto parse_result = ParseInt<int64_t>(value_bytes.ToStringView(), 10);
       if (!parse_result) {
         return rocksdb::Status::InvalidArgument(parse_result.Msg());
       }
@@ -143,13 +147,14 @@ rocksdb::Status Hash::IncrByFloat(engine::Context &ctx, const Slice &user_key, c
   std::string sub_key = InternalKey(ns_key, field, metadata.version, storage_->IsSlotIdEncoded()).Encode();
   if (s.ok()) {
     std::string raw_value;
-    std::string value_bytes;
+    Slice value_bytes;
     s = GetRawValue(ctx, sub_key, &raw_value);
     if (!s.ok() && !s.IsNotFound()) return s;
     if (s.ok()) {
-      s = DecodeValue(metadata, raw_value, &value_bytes);
+      value_bytes = Slice(raw_value);
+      s = DecodeValue(metadata, &value_bytes);
       if (!s.ok()) return s;
-      auto value_stat = ParseFloat(value_bytes);
+      auto value_stat = ParseFloat(value_bytes.ToStringView());
       if (!value_stat || isspace(value_bytes[0])) {
         return rocksdb::Status::InvalidArgument("value is not a number");
       }
@@ -213,10 +218,10 @@ rocksdb::Status Hash::MGet(engine::Context &ctx, const Slice &user_key, const st
   for (size_t i = 0; i < keys.size(); i++) {
     if (!statuses_vector[i].ok() && !statuses_vector[i].IsNotFound()) return statuses_vector[i];
     if (statuses_vector[i].ok()) {
-      std::string value;
-      s = DecodeValue(metadata, values_vector[i], &value);
+      Slice value(values_vector[i]);
+      s = DecodeValue(metadata, &value);
       if (!s.ok()) return s;
-      values->emplace_back(std::move(value));
+      values->emplace_back(value.data(), value.size());
     } else {
       values->emplace_back("");
     }
@@ -325,10 +330,10 @@ rocksdb::Status Hash::MSet(engine::Context &ctx, const Slice &user_key, const st
         if (nx) {
           continue;
         }
-        std::string existing_value;
-        s = DecodeValue(metadata, values_vector[field_index], &existing_value);
+        Slice existing_value(values_vector[field_index]);
+        s = DecodeValue(metadata, &existing_value);
         if (!s.ok()) return s;
-        if (existing_value == values[field_index]) {
+        if (existing_value.ToStringView() == values[field_index]) {
           continue;
         }
         exists = true;
@@ -407,10 +412,10 @@ rocksdb::Status Hash::RangeByLex(engine::Context &ctx, const Slice &user_key, co
     }
     if (spec.offset >= 0 && pos++ < spec.offset) continue;
 
-    std::string value;
-    s = DecodeValue(metadata, iter->value(), &value);
+    Slice value(iter->value());
+    s = DecodeValue(metadata, &value);
     if (!s.ok()) return s;
-    field_values->emplace_back(ikey.GetSubKey().ToString(), std::move(value));
+    field_values->emplace_back(ikey.GetSubKey().ToString(), std::string(value.data(), value.size()));
     if (spec.count > 0 && field_values->size() >= static_cast<unsigned>(spec.count)) break;
   }
   return rocksdb::Status::OK();
@@ -439,16 +444,16 @@ rocksdb::Status Hash::GetAll(engine::Context &ctx, const Slice &user_key, std::v
       InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
       field_values->emplace_back(ikey.GetSubKey().ToString(), "");
     } else if (type == HashFetchType::kOnlyValue) {
-      std::string value;
-      s = DecodeValue(metadata, iter->value(), &value);
+      Slice value(iter->value());
+      s = DecodeValue(metadata, &value);
       if (!s.ok()) return s;
-      field_values->emplace_back("", std::move(value));
+      field_values->emplace_back("", std::string(value.data(), value.size()));
     } else {
       InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
-      std::string value;
-      s = DecodeValue(metadata, iter->value(), &value);
+      Slice value(iter->value());
+      s = DecodeValue(metadata, &value);
       if (!s.ok()) return s;
-      field_values->emplace_back(ikey.GetSubKey().ToString(), std::move(value));
+      field_values->emplace_back(ikey.GetSubKey().ToString(), std::string(value.data(), value.size()));
     }
   }
   return rocksdb::Status::OK();
@@ -484,10 +489,10 @@ rocksdb::Status Hash::Scan(engine::Context &ctx, const Slice &user_key, const st
     InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
     fields->emplace_back(ikey.GetSubKey().ToString());
     if (values != nullptr) {
-      std::string value;
-      s = DecodeValue(metadata, iter->value(), &value);
+      Slice value(iter->value());
+      s = DecodeValue(metadata, &value);
       if (!s.ok()) return s;
-      values->emplace_back(std::move(value));
+      values->emplace_back(value.data(), value.size());
     }
     cnt++;
     if (limit > 0 && cnt >= limit) {

@@ -74,6 +74,29 @@ func TestHash(t *testing.T) {
 	}
 }
 
+func TestHashFieldExpirationEncodingMode(t *testing.T) {
+	srv := util.StartServer(t, util.KvrocksServerConfigs{
+		"hash-encoding-mode": "field-expiration",
+	})
+	defer srv.Close()
+
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	require.Equal(t, int64(2), rdb.HSet(ctx, "mode1-hash", "field1", "value1", "field2", "value2").Val())
+	require.Equal(t, "value1", rdb.HGet(ctx, "mode1-hash", "field1").Val())
+	require.Equal(t, map[string]string{
+		"field1": "value1",
+		"field2": "value2",
+	}, rdb.HGetAll(ctx, "mode1-hash").Val())
+
+	pairs, cursor, err := rdb.HScan(ctx, "mode1-hash", 0, "*", 10).Result()
+	require.NoError(t, err)
+	require.Equal(t, uint64(0), cursor)
+	require.Equal(t, []string{"field1", "value1", "field2", "value2"}, pairs)
+}
+
 var testHash = func(t *testing.T, configs util.KvrocksServerConfigs) {
 	srv := util.StartServer(t, configs)
 	defer srv.Close()

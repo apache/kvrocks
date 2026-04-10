@@ -137,7 +137,11 @@ StatusOr<kqir::Value> FieldValueRetriever::Retrieve(engine::Context &ctx, std::s
     if (s.IsNotFound()) return {Status::NotFound, s.ToString()};
     if (!s.ok()) return {Status::NotOK, s.ToString()};
 
-    return ParseFromHash(value, type);
+    std::string decoded_value;
+    s = metadata.DecodeSubkeyValue(value, &decoded_value);
+    if (!s.ok()) return {Status::NotOK, s.ToString()};
+
+    return ParseFromHash(decoded_value, type);
   } else if (std::holds_alternative<JsonData>(db)) {
     auto &value = std::get<JsonData>(db);
 

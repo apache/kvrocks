@@ -462,44 +462,9 @@ rocksdb::Status Hash::GetAll(engine::Context &ctx, const Slice &user_key, std::v
 rocksdb::Status Hash::Scan(engine::Context &ctx, const Slice &user_key, const std::string &cursor, uint64_t limit,
                            const std::string &field_prefix, std::vector<std::string> *fields,
                            std::vector<std::string> *values) {
-  uint64_t cnt = 0;
-  std::string ns_key = AppendNamespacePrefix(user_key);
-  HashMetadata metadata(false);
-  rocksdb::Status s = GetMetadata(ctx, ns_key, &metadata);
-  if (!s.ok()) return s;
-
-  auto iter = util::UniqueIterator(ctx, ctx.DefaultScanOptions());
-  std::string match_prefix_key =
-      InternalKey(ns_key, field_prefix, metadata.version, storage_->IsSlotIdEncoded()).Encode();
-
-  std::string start_key;
-  if (!cursor.empty()) {
-    start_key = InternalKey(ns_key, cursor, metadata.version, storage_->IsSlotIdEncoded()).Encode();
-  } else {
-    start_key = match_prefix_key;
-  }
-
-  for (iter->Seek(start_key); iter->Valid(); iter->Next()) {
-    if (!cursor.empty() && iter->key() == start_key) {
-      continue;
-    }
-    if (!iter->key().starts_with(match_prefix_key)) {
-      break;
-    }
-    InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
-    fields->emplace_back(ikey.GetSubKey().ToString());
-    if (values != nullptr) {
-      Slice value(iter->value());
-      s = DecodeValue(metadata, &value);
-      if (!s.ok()) return s;
-      values->emplace_back(value.data(), value.size());
-    }
-    cnt++;
-    if (limit > 0 && cnt >= limit) {
-      break;
-    }
-  }
-  return iter->status();
+  return ScanSubkeys<HashMetadata>(
+      ctx, kRedisHash, user_key, cursor, limit, field_prefix, fields, values,
+      [](const HashMetadata &metadata, Slice *value) { return metadata.DecodeSubkeyValue(value); });
 }
 
 rocksdb::Status Hash::RandField(engine::Context &ctx, const Slice &user_key, int64_t command_count,

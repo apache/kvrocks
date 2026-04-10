@@ -70,7 +70,7 @@ class Hash : public SubKeyScanner {
                             std::vector<FieldValue> *field_values, HashFetchType type = HashFetchType::kOnlyKey);
 
  private:
-  [[nodiscard]] HashMetadata CreateMetadata(bool generate_version = true) const;
+  [[nodiscard]] HashMetadata CreateMetadataForWrite(bool generate_version = true) const;
   rocksdb::Status GetMetadata(engine::Context &ctx, const Slice &ns_key, HashMetadata *metadata);
   rocksdb::Status GetRawValue(engine::Context &ctx, const std::string &sub_key, std::string *value);
   rocksdb::Status DecodeValue(const HashMetadata &metadata, Slice *value, uint64_t *expire = nullptr) const;

@@ -35,7 +35,7 @@
 
 namespace redis {
 
-HashMetadata Hash::CreateMetadata(bool generate_version) const {
+HashMetadata Hash::CreateMetadataForWrite(bool generate_version) const {
   return HashMetadata(generate_version, storage_->GetConfig()->hash_encoding_mode);
 }
 
@@ -85,7 +85,7 @@ rocksdb::Status Hash::IncrBy(engine::Context &ctx, const Slice &user_key, const 
 
   std::string ns_key = AppendNamespacePrefix(user_key);
 
-  HashMetadata metadata = CreateMetadata();
+  HashMetadata metadata = CreateMetadataForWrite();
   rocksdb::Status s = GetMetadata(ctx, ns_key, &metadata);
   if (!s.ok() && !s.IsNotFound()) return s;
 
@@ -140,7 +140,7 @@ rocksdb::Status Hash::IncrByFloat(engine::Context &ctx, const Slice &user_key, c
 
   std::string ns_key = AppendNamespacePrefix(user_key);
 
-  HashMetadata metadata = CreateMetadata();
+  HashMetadata metadata = CreateMetadataForWrite();
   rocksdb::Status s = GetMetadata(ctx, ns_key, &metadata);
   if (!s.ok() && !s.IsNotFound()) return s;
 
@@ -279,7 +279,7 @@ rocksdb::Status Hash::MSet(engine::Context &ctx, const Slice &user_key, const st
   *added_cnt = 0;
   std::string ns_key = AppendNamespacePrefix(user_key);
 
-  HashMetadata metadata = CreateMetadata();
+  HashMetadata metadata = CreateMetadataForWrite();
   rocksdb::Status s = GetMetadata(ctx, ns_key, &metadata);
   if (!s.ok() && !s.IsNotFound()) return s;
   bool ttl_updated = false;

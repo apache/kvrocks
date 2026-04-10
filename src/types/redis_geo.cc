@@ -421,6 +421,6 @@ bool Geo::appendIfWithinShape(std::vector<GeoPoint> *geo_points, const GeoShape 
 
 bool Geo::sortGeoPointASC(const GeoPoint &gp1, const GeoPoint &gp2) { return gp1.dist < gp2.dist; }
 
-bool Geo::sortGeoPointDESC(const GeoPoint &gp1, const GeoPoint &gp2) { return gp1.dist >= gp2.dist; }
+bool Geo::sortGeoPointDESC(const GeoPoint &gp1, const GeoPoint &gp2) { return gp1.dist > gp2.dist; }
 
 }  // namespace redis

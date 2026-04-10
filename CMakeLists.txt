@@ -30,15 +30,10 @@ option(ASAN_WITH_LSAN "enable leak sanitizer while address sanitizer is enabled"
 option(ENABLE_STATIC_LIBSTDCXX "link kvrocks with static library of libstd++ instead of shared library" ON)
 option(ENABLE_LUAJIT "enable use of luaJIT instead of lua" ON)
 option(ENABLE_OPENSSL "enable openssl to support tls connection" OFF)
-option(ENABLE_LTO "enable link-time optimization" ON)
+option(ENABLE_LTO "enable link-time optimization" OFF)
 set(SYMBOLIZE_BACKEND "" CACHE STRING "symbolization backend library for cpptrace (libbacktrace, libdwarf, or empty)")
 set(PORTABLE 0 CACHE STRING "build a portable binary (disable arch-specific optimizations)")
 option(ENABLE_NEW_ENCODING "enable new encoding (#1033) for storing 64bit size and expire time in milliseconds" ON)
-
-# to save build time in debug mode
-if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-    set(ENABLE_LTO OFF)
-endif()
 
 if (CMAKE_VERSION VERSION_GREATER_EQUAL "3.24.0")
     cmake_policy(SET CMP0135 NEW)
@@ -144,7 +139,6 @@ endif()
 
 if (CMAKE_HOST_APPLE)
     set(DISABLE_JEMALLOC ON)
-    set(ENABLE_LTO OFF)
 endif ()
 
 if(NOT DISABLE_JEMALLOC)
@@ -296,17 +290,6 @@ if(ENABLE_NEW_ENCODING)
     target_compile_definitions(kvrocks_objs PUBLIC METADATA_ENCODING_VERSION=1)
 else()
     target_compile_definitions(kvrocks_objs PUBLIC METADATA_ENCODING_VERSION=0)
-endif()
-
-# disable LTO on ARM due to toolchain stability issues
-string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" CMAKE_SYSTEM_PROCESSOR_LOWER)
-if(CMAKE_SYSTEM_PROCESSOR_LOWER MATCHES "^(aarch64|arm64|arm)")
-    set(ENABLE_LTO OFF)
-endif()
-
-# disable LTO on GCC <= 9 due to an ICE
-if((CMAKE_CXX_COMPILER_ID STREQUAL "GNU") AND (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 10))
-    set(ENABLE_LTO OFF)
 endif()
 
 if(ENABLE_LTO)

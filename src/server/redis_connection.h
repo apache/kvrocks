@@ -154,6 +154,7 @@ class Connection : public EvbufCallbackBase<Connection> {
   bool IsAdmin() const { return is_admin_; }
   void BecomeAdmin() { is_admin_ = true; }
   void BecomeUser() { is_admin_ = false; }
+  void InitDefaultNamespace() { SetNamespace(kDefaultNamespace); }
   std::string GetNamespace() const { return ns_; }
   void SetNamespace(std::string ns) { ns_ = std::move(ns); }
 

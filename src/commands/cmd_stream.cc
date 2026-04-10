@@ -1887,7 +1887,7 @@ REDIS_REGISTER_COMMANDS(Stream, MakeCmdAttr<CommandXAck>("xack", -4, "write no-d
                         MakeCmdAttr<CommandXInfo>("xinfo", -2, "read-only", NO_KEY),
                         MakeCmdAttr<CommandXPending>("xpending", -3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandXRange>("xrange", -4, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandXRevRange>("xrevrange", -2, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandXRevRange>("xrevrange", -4, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandXRead>("xread", -4, "read-only blocking", CommandXRead::keyRangeGen),
                         MakeCmdAttr<CommandXReadGroup>("xreadgroup", -7, "write blocking",
                                                        CommandXReadGroup::keyRangeGen),

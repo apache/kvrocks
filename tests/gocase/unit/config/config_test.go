@@ -310,14 +310,12 @@ func TestGenerateConfigsMatrix(t *testing.T) {
 	t.Parallel()
 	configOptions := []util.ConfigOptions{
 		{
-			Name:       "txn-context-enabled",
-			Options:    []string{"yes", "no"},
-			ConfigType: util.YesNo,
+			Name:    "txn-context-enabled",
+			Options: []string{"yes", "no"},
 		},
 		{
-			Name:       "resp3-enabled",
-			Options:    []string{"yes", "no"},
-			ConfigType: util.YesNo,
+			Name:    "resp3-enabled",
+			Options: []string{"yes", "no"},
 		},
 	}
 

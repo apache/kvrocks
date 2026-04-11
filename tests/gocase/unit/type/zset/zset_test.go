@@ -1940,14 +1940,12 @@ func stressTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding 
 func TestZSet(t *testing.T) {
 	configOptions := []util.ConfigOptions{
 		{
-			Name:       "txn-context-enabled",
-			Options:    []string{"yes", "no"},
-			ConfigType: util.YesNo,
+			Name:    "txn-context-enabled",
+			Options: []string{"yes", "no"},
 		},
 		{
-			Name:       "resp3-enabled",
-			Options:    []string{"yes", "no"},
-			ConfigType: util.YesNo,
+			Name:    "resp3-enabled",
+			Options: []string{"yes", "no"},
 		},
 	}
 

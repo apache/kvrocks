@@ -19,34 +19,12 @@
 
 package util
 
-import "fmt"
-
-type FieldType int
-
-const (
-	YesNo FieldType = iota
-)
-
 type ConfigOptions struct {
-	Name       string
-	Options    []string
-	ConfigType FieldType
+	Name    string
+	Options []string
 }
 
 type KvrocksServerConfigs map[string]string
-
-func verifyConfigOptions(configType FieldType, option string) error {
-	switch configType {
-	case YesNo:
-		if option == "yes" || option == "no" {
-			break
-		}
-		return fmt.Errorf("invalid option for yes/no config")
-	default:
-		return fmt.Errorf("unsupported config type")
-	}
-	return nil
-}
 
 // / GenerateConfigsMatrix generates all possible combinations of config options
 func GenerateConfigsMatrix(configOptions []ConfigOptions) ([]KvrocksServerConfigs, error) {
@@ -66,13 +44,8 @@ func GenerateConfigsMatrix(configOptions []ConfigOptions) ([]KvrocksServerConfig
 		}
 
 		for _, option := range configs[currentIndex].Options {
-			err := verifyConfigOptions(configs[currentIndex].ConfigType, option)
-			if err != nil {
-				return err
-			}
-
 			currentConfig[configs[currentIndex].Name] = option
-			err = helper(configs, currentIndex+1, currentConfig)
+			err := helper(configs, currentIndex+1, currentConfig)
 			if err != nil {
 				return err
 			}

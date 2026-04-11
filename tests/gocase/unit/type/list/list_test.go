@@ -45,9 +45,8 @@ var largeValue = map[string]string{
 func TestLTRIM(t *testing.T) {
 	configOptions := []util.ConfigOptions{
 		{
-			Name:       "txn-context-enabled",
-			Options:    []string{"yes", "no"},
-			ConfigType: util.YesNo,
+			Name:    "txn-context-enabled",
+			Options: []string{"yes", "no"},
 		},
 	}
 
@@ -105,9 +104,8 @@ func testLTRIM(t *testing.T, configs util.KvrocksServerConfigs) {
 func TestZipList(t *testing.T) {
 	configOptions := []util.ConfigOptions{
 		{
-			Name:       "txn-context-enabled",
-			Options:    []string{"yes", "no"},
-			ConfigType: util.YesNo,
+			Name:    "txn-context-enabled",
+			Options: []string{"yes", "no"},
 		},
 	}
 
@@ -270,14 +268,12 @@ func testZipList(t *testing.T, configs util.KvrocksServerConfigs) {
 func TestList(t *testing.T) {
 	configOptions := []util.ConfigOptions{
 		{
-			Name:       "txn-context-enabled",
-			Options:    []string{"yes", "no"},
-			ConfigType: util.YesNo,
+			Name:    "txn-context-enabled",
+			Options: []string{"yes", "no"},
 		},
 		{
-			Name:       "resp3-enabled",
-			Options:    []string{"yes", "no"},
-			ConfigType: util.YesNo,
+			Name:    "resp3-enabled",
+			Options: []string{"yes", "no"},
 		},
 	}
 
@@ -1576,9 +1572,8 @@ func ExtractKMetadataResponse(result interface{}) (*kMetadataResponse, error) {
 func TestRPOPLPUSH(t *testing.T) {
 	configOptions := []util.ConfigOptions{
 		{
-			Name:       "resp3-enabled",
-			Options:    []string{"yes"},
-			ConfigType: util.YesNo,
+			Name:    "resp3-enabled",
+			Options: []string{"yes"},
 		},
 	}
 

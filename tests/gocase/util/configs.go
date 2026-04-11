@@ -34,22 +34,29 @@ func GenerateConfigsMatrix(configOptions []ConfigOptions) ([]KvrocksServerConfig
 
 	helper = func(configs []ConfigOptions, currentIndex int, currentConfig map[string]string) error {
 		if currentIndex == len(configOptions) {
-			configsMatrix = append(configsMatrix, currentConfig)
+			config := make(KvrocksServerConfigs, len(currentConfig))
+			for k, v := range currentConfig {
+				config[k] = v
+			}
+			configsMatrix = append(configsMatrix, config)
 			return nil
 		}
 
-		currentConfigBackup := make(KvrocksServerConfigs, len(currentConfig))
-		for k, v := range currentConfig {
-			currentConfigBackup[k] = v
-		}
+		configName := configs[currentIndex].Name
+		originalValue, hadOriginalValue := currentConfig[configName]
 
 		for _, option := range configs[currentIndex].Options {
-			currentConfig[configs[currentIndex].Name] = option
+			currentConfig[configName] = option
 			err := helper(configs, currentIndex+1, currentConfig)
 			if err != nil {
 				return err
 			}
-			currentConfig = currentConfigBackup
+		}
+
+		if hadOriginalValue {
+			currentConfig[configName] = originalValue
+		} else {
+			delete(currentConfig, configName)
 		}
 
 		return nil

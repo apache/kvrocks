@@ -194,7 +194,7 @@ class SubKeyScanner : public redis::Database {
   };
 
   template <typename MetadataT>
-  static MetadataT CreateScanMetadata(RedisType type) {
+  static MetadataT createScanMetadata(RedisType type) {
     if constexpr (std::is_same_v<MetadataT, Metadata>) {
       return Metadata(type, false);
     } else {
@@ -203,12 +203,12 @@ class SubKeyScanner : public redis::Database {
   }
 
   template <typename MetadataT, typename ValueAdapter = RawSubkeyValueAdapter>
-  rocksdb::Status ScanSubkeys(engine::Context &ctx, RedisType type, const Slice &user_key, const std::string &cursor,
+  rocksdb::Status scanSubkeys(engine::Context &ctx, RedisType type, const Slice &user_key, const std::string &cursor,
                               uint64_t limit, const std::string &subkey_prefix, std::vector<std::string> *keys,
                               std::vector<std::string> *values = nullptr, ValueAdapter value_adapter = {}) {
     uint64_t cnt = 0;
     std::string ns_key = AppendNamespacePrefix(user_key);
-    MetadataT metadata = CreateScanMetadata<MetadataT>(type);
+    MetadataT metadata = createScanMetadata<MetadataT>(type);
     rocksdb::Status s = GetMetadata(ctx, {type}, ns_key, &metadata);
     if (!s.ok()) return s;
 

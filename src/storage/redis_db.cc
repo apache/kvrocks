@@ -558,7 +558,7 @@ rocksdb::Status Database::KeyExist(engine::Context &ctx, const std::string &key)
 rocksdb::Status SubKeyScanner::Scan(engine::Context &ctx, RedisType type, const Slice &user_key,
                                     const std::string &cursor, uint64_t limit, const std::string &subkey_prefix,
                                     std::vector<std::string> *keys, std::vector<std::string> *values) {
-  return ScanSubkeys<Metadata>(ctx, type, user_key, cursor, limit, subkey_prefix, keys, values);
+  return scanSubkeys<Metadata>(ctx, type, user_key, cursor, limit, subkey_prefix, keys, values);
 }
 
 RedisType WriteBatchLogData::GetRedisType() const { return type_; }

@@ -208,7 +208,7 @@ class SubKeyScanner : public redis::Database {
                               std::vector<std::string> *values = nullptr, ValueAdapter value_adapter = {}) {
     uint64_t cnt = 0;
     std::string ns_key = AppendNamespacePrefix(user_key);
-    MetadataT metadata = createScanMetadata<MetadataT>(type);
+    auto metadata = createScanMetadata<MetadataT>(type);
     rocksdb::Status s = GetMetadata(ctx, {type}, ns_key, &metadata);
     if (!s.ok()) return s;
 

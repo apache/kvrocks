@@ -73,6 +73,8 @@ class RedisHashFieldExpirationEncodingTest : public ::testing::Test {
     hash_ = std::make_unique<redis::Hash>(storage_.get(), "hash_ns");
     db_ = std::make_unique<redis::Database>(storage_.get(), "hash_ns");
   }
+  RedisHashFieldExpirationEncodingTest(const RedisHashFieldExpirationEncodingTest &) = delete;
+  RedisHashFieldExpirationEncodingTest &operator=(const RedisHashFieldExpirationEncodingTest &) = delete;
 
   ~RedisHashFieldExpirationEncodingTest() override {
     ctx_.reset();
@@ -85,7 +87,7 @@ class RedisHashFieldExpirationEncodingTest : public ::testing::Test {
     unlink("test_hash_field_expiration.conf");
   }
 
-  std::string RawHashValue(const std::string &key, const std::string &field, HashMetadata *metadata) {
+  std::string rawHashValue(const std::string &key, const std::string &field, HashMetadata *metadata) {
     std::string ns_key = db_->AppendNamespacePrefix(key);
     auto s = db_->GetMetadata(*ctx_, {kRedisHash}, ns_key, metadata);
     assert(s.ok());
@@ -245,7 +247,7 @@ TEST_F(RedisHashFieldExpirationEncodingTest, StoreAndScanValuesWithModeOneEncodi
   ASSERT_EQ(added, 1);
 
   HashMetadata metadata(false);
-  std::string raw_value = RawHashValue(key.ToString(), field.ToString(), &metadata);
+  std::string raw_value = rawHashValue(key.ToString(), field.ToString(), &metadata);
   EXPECT_EQ(metadata.mode, HashSubkeyEncodingMode::kFieldExpiration);
   EXPECT_EQ(metadata.expsz, 0);
   EXPECT_EQ(raw_value.size(), HashMetadata::kFieldExpirationPrefixSize + value.size());

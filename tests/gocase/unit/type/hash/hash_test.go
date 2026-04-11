@@ -52,36 +52,18 @@ func getVals(hash map[string]string) []string {
 	return r
 }
 
-func cloneConfigs(configs util.KvrocksServerConfigs) util.KvrocksServerConfigs {
-	cloned := make(util.KvrocksServerConfigs, len(configs))
-	for k, v := range configs {
-		cloned[k] = v
-	}
-	return cloned
-}
-
-func formatConfigs(configs util.KvrocksServerConfigs) string {
-	keys := make([]string, 0, len(configs))
-	for key := range configs {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-
-	parts := make([]string, 0, len(keys))
-	for _, key := range keys {
-		parts = append(parts, fmt.Sprintf("%s=%s", key, configs[key]))
-	}
-	return strings.Join(parts, ",")
-}
-
-func runWithHashEncodingModes(t *testing.T, baseConfigs util.KvrocksServerConfigs,
+func runWithHashConfigs(t *testing.T, configOptions []util.ConfigOptions,
 	fn func(t *testing.T, configs util.KvrocksServerConfigs)) {
 	t.Helper()
 
-	for _, encodingMode := range []string{"legacy", "field-expiration"} {
-		configs := cloneConfigs(baseConfigs)
-		configs["hash-encoding-mode"] = encodingMode
-		t.Logf("running hash test config: %s", formatConfigs(configs))
+	configOptions = append(configOptions, util.ConfigOptions{
+		Name:    "hash-encoding-mode",
+		Options: []string{"legacy", "field-expiration"},
+	})
+	configsMatrix, err := util.GenerateConfigsMatrix(configOptions)
+	require.NoError(t, err)
+
+	for _, configs := range configsMatrix {
 		fn(t, configs)
 	}
 }
@@ -89,14 +71,16 @@ func runWithHashEncodingModes(t *testing.T, baseConfigs util.KvrocksServerConfig
 func TestHash(t *testing.T) {
 	configOptions := []util.ConfigOptions{
 		{
-			Name:       "txn-context-enabled",
-			Options:    []string{"yes", "no"},
-			ConfigType: util.YesNo,
+			Name:    "txn-context-enabled",
+			Options: []string{"yes", "no"},
 		},
 		{
-			Name:       "resp3-enabled",
-			Options:    []string{"yes", "no"},
-			ConfigType: util.YesNo,
+			Name:    "resp3-enabled",
+			Options: []string{"yes", "no"},
+		},
+		{
+			Name:    "hash-encoding-mode",
+			Options: []string{"legacy", "field-expiration"},
 		},
 	}
 
@@ -104,7 +88,7 @@ func TestHash(t *testing.T) {
 	require.NoError(t, err)
 
 	for _, configs := range configsMatrix {
-		runWithHashEncodingModes(t, configs, testHash)
+		testHash(t, configs)
 	}
 }
 
@@ -1027,8 +1011,11 @@ var testHash = func(t *testing.T, configs util.KvrocksServerConfigs) {
 }
 
 func TestHGetAllWithRESP3(t *testing.T) {
-	runWithHashEncodingModes(t, util.KvrocksServerConfigs{
-		"resp3-enabled": "yes",
+	runWithHashConfigs(t, []util.ConfigOptions{
+		{
+			Name:    "resp3-enabled",
+			Options: []string{"yes"},
+		},
 	}, func(t *testing.T, configs util.KvrocksServerConfigs) {
 		srv := util.StartServer(t, configs)
 		defer srv.Close()
@@ -1053,8 +1040,11 @@ func TestHGetAllWithRESP3(t *testing.T) {
 }
 
 func TestHashWithAsyncIOEnabled(t *testing.T) {
-	runWithHashEncodingModes(t, util.KvrocksServerConfigs{
-		"rocksdb.read_options.async_io": "yes",
+	runWithHashConfigs(t, []util.ConfigOptions{
+		{
+			Name:    "rocksdb.read_options.async_io",
+			Options: []string{"yes"},
+		},
 	}, func(t *testing.T, configs util.KvrocksServerConfigs) {
 		srv := util.StartServer(t, configs)
 		defer srv.Close()
@@ -1096,8 +1086,11 @@ func TestHashWithAsyncIOEnabled(t *testing.T) {
 }
 
 func TestHashWithAsyncIODisabled(t *testing.T) {
-	runWithHashEncodingModes(t, util.KvrocksServerConfigs{
-		"rocksdb.read_options.async_io": "no",
+	runWithHashConfigs(t, []util.ConfigOptions{
+		{
+			Name:    "rocksdb.read_options.async_io",
+			Options: []string{"no"},
+		},
 	}, func(t *testing.T, configs util.KvrocksServerConfigs) {
 		srv := util.StartServer(t, configs)
 		defer srv.Close()

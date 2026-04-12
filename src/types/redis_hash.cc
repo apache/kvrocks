@@ -47,7 +47,7 @@ rocksdb::Status Hash::getRawValue(engine::Context &ctx, const std::string &sub_k
   return storage_->Get(ctx, ctx.GetReadOptions(), sub_key, value);
 }
 
-rocksdb::Status Hash::decodeValue(const HashMetadata &metadata, Slice *value, uint64_t *expire) const {
+rocksdb::Status Hash::decodeValue(const HashMetadata &metadata, Slice *value, uint64_t *expire) {
   return metadata.DecodeSubkeyValue(value, expire);
 }
 

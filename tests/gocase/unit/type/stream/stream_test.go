@@ -2475,6 +2475,11 @@ func TestStreamOffset(t *testing.T) {
 
 		require.NoError(t, rdb.Del(ctx, streamName).Err())
 	})
+
+	t.Run("XREVRANGE with too few args should return error", func(t *testing.T) {
+		require.ErrorContains(t, rdb.Do(ctx, "XREVRANGE", "mystream").Err(), "wrong number of arguments")
+		require.ErrorContains(t, rdb.Do(ctx, "XREVRANGE", "mystream", "+").Err(), "wrong number of arguments")
+	})
 }
 
 func parseStreamEntryID(id string) (ts int64, seqNum int64) {

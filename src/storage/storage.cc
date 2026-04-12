@@ -178,6 +178,8 @@ rocksdb::Options Storage::InitRocksDBOptions() {
   options.write_buffer_size = config_->rocks_db.write_buffer_size * MiB;
   options.num_levels = KVROCKS_MAX_LSM_LEVEL;
   options.compression_opts.level = config_->rocks_db.compression_level;
+  options.compression_opts.max_dict_bytes = config_->rocks_db.compression_max_dict_bytes;
+  options.compression_opts.zstd_max_train_bytes = config_->rocks_db.compression_zstd_max_train_bytes;
   options.compression_per_level.resize(options.num_levels);
   options.wal_compression = config_->rocks_db.wal_compression;
   for (int i = 0; i < options.num_levels; ++i) {

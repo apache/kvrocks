@@ -70,15 +70,17 @@ jobs:
     needs: [precondition, check-typos]
     if: ${{ needs.precondition.outputs.docs_only != 'true' }}
     runs-on: ubuntu-24.04
+    env:
+      DEPS_FETCH_DIR: build-deps
+      CMAKE_JEMALLOC_VARIANT: with-jemalloc
+      CMAKE_LUA_VARIANT: with-luajit
     steps:
       - uses: actions/checkout@v6
-      - name: Cache CMake FetchContent
+      - name: Cache CMake dependency archives
         uses: actions/cache@v5
         with:
-          path: |
-            build/_deps/*-src
-            build/_deps/*-subbuild
-          key: ${{ format('cmake-fetch-v1-{0}-{1}-{2}', 'ubuntu-24.04', 'makefiles', hashFiles('CMakeLists.txt', 'cmake/**/*')) }}
+          path: ${{ env.DEPS_FETCH_DIR }}
+          key: ${{ format('cmake-fetch-archives-v1-{0}-{1}-{2}-{3}', 'ubuntu-24.04', env.CMAKE_JEMALLOC_VARIANT, env.CMAKE_LUA_VARIANT, hashFiles('CMakeLists.txt', 'cmake/**/*')) }}
       - uses: actions/setup-go@v6
         with:
           go-version-file: 'tests/gocase/go.mod'
@@ -94,7 +96,7 @@ jobs:
         run: ./x.py check format --clang-format-path clang-format-18
       - name: Check with clang-tidy
         run: |
-          ./x.py build --skip-build
+          ./x.py build --skip-build --dep-dir "$DEPS_FETCH_DIR"
           ./x.py check tidy -j $(nproc) --clang-tidy-path clang-tidy-18 --run-clang-tidy-path run-clang-tidy-18
       - name: Lint with golangci-lint
         run: ./x.py check golangci-lint
@@ -243,6 +245,9 @@ jobs:
 
     runs-on: ${{ matrix.os }}
     env:
+      DEPS_FETCH_DIR: build-deps
+      CMAKE_JEMALLOC_VARIANT: ${{ startsWith(matrix.os, 'macos') && 'without-jemalloc' || matrix.without_jemalloc && 'without-jemalloc' || 'with-jemalloc' }}
+      CMAKE_LUA_VARIANT: ${{ matrix.without_luajit && 'without-luajit' || 'with-luajit' }}
       SONARCLOUD_OUTPUT_DIR: sonarcloud-data
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE20: true
       RISCV_PATH: "/opt/riscv"
@@ -324,13 +329,11 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - name: Cache CMake FetchContent
+      - name: Cache CMake dependency archives
         uses: actions/cache@v5
         with:
-          path: |
-            build/_deps/*-src
-            build/_deps/*-subbuild
-          key: ${{ format('cmake-fetch-v1-{0}-{1}-{2}', matrix.os, matrix.with_ninja && 'ninja' || 'makefiles', hashFiles('CMakeLists.txt', 'cmake/**/*')) }}
+          path: ${{ env.DEPS_FETCH_DIR }}
+          key: ${{ format('cmake-fetch-archives-v1-{0}-{1}-{2}-{3}', matrix.os, env.CMAKE_JEMALLOC_VARIANT, env.CMAKE_LUA_VARIANT, hashFiles('CMakeLists.txt', 'cmake/**/*')) }}
       - uses: actions/setup-python@v6
         if: ${{ !matrix.arm_linux }}
         with:
@@ -353,19 +356,19 @@ jobs:
         run: |
           ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.without_jemalloc }} \
             ${{ matrix.without_luajit }} ${{ matrix.with_ninja }} ${{ matrix.with_sanitizer }} ${{ matrix.with_openssl }} \
-            ${{ matrix.new_encoding }} ${{ env.CMAKE_EXTRA_DEFS }}
+            ${{ matrix.new_encoding }} ${{ env.CMAKE_EXTRA_DEFS }} --dep-dir "$DEPS_FETCH_DIR"
 
       - name: Build Kvrocks (SonarCloud)
         if: ${{ matrix.sonarcloud }}
         run: |
-          build-wrapper-linux-x86-64 --out-dir ${{ env.SONARCLOUD_OUTPUT_DIR }} ./x.py build -j$NPROC --compiler ${{ matrix.compiler }}  --skip-build
+          build-wrapper-linux-x86-64 --out-dir ${{ env.SONARCLOUD_OUTPUT_DIR }} ./x.py build -j$NPROC --compiler ${{ matrix.compiler }} --skip-build --dep-dir "$DEPS_FETCH_DIR"
           cp -r build _build
-          build-wrapper-linux-x86-64 --out-dir ${{ env.SONARCLOUD_OUTPUT_DIR }} ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.sonarcloud }}
+          build-wrapper-linux-x86-64 --out-dir ${{ env.SONARCLOUD_OUTPUT_DIR }} ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.sonarcloud }} --dep-dir "$DEPS_FETCH_DIR"
 
       - name: Build Kvrocks (RISC-V)
         if: ${{ matrix.riscv_toolchain }}
         run: |
-          ./x.py build -j$NPROC --unittest --toolchain ${{ matrix.toolchain_file }}
+          ./x.py build -j$NPROC --unittest --toolchain ${{ matrix.toolchain_file }} --dep-dir "$DEPS_FETCH_DIR"
 
       - name: Setup Coredump
         if: ${{ startsWith(matrix.os, 'ubuntu') }}
@@ -533,6 +536,10 @@ jobs:
             disable_jemalloc: -DDISABLE_JEMALLOC=ON
 
     runs-on: ubuntu-22.04
+    env:
+      DEPS_FETCH_DIR: build-deps
+      CMAKE_JEMALLOC_VARIANT: ${{ matrix.disable_jemalloc && 'without-jemalloc' || 'with-jemalloc' }}
+      CMAKE_LUA_VARIANT: with-luajit
     container:
       image: ${{ matrix.image }}
       volumes:
@@ -632,13 +639,11 @@ jobs:
           pushd redis-6.2.14 && USE_JEMALLOC=no make -j$NPROC redis-server && mv src/redis-server $HOME/local/bin/ && popd
 
       - uses: actions/checkout@v6
-      - name: Cache CMake FetchContent
+      - name: Cache CMake dependency archives
         uses: actions/cache@v5
         with:
-          path: |
-            build/_deps/*-src
-            build/_deps/*-subbuild
-          key: ${{ format('cmake-fetch-v1-{0}-{1}-{2}', matrix.image, 'makefiles', hashFiles('CMakeLists.txt', 'cmake/**/*')) }}
+          path: ${{ env.DEPS_FETCH_DIR }}
+          key: ${{ format('cmake-fetch-archives-v1-{0}-{1}-{2}-{3}', matrix.image, env.CMAKE_JEMALLOC_VARIANT, env.CMAKE_LUA_VARIANT, hashFiles('CMakeLists.txt', 'cmake/**/*')) }}
       - uses: actions/setup-go@v6
         if: ${{ !startsWith(matrix.image, 'opensuse') }}
         with:
@@ -647,7 +652,7 @@ jobs:
 
       - name: Build Kvrocks
         run: |
-          ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.disable_jemalloc }}
+          ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.disable_jemalloc }} --dep-dir "$DEPS_FETCH_DIR"
 
       - name: Run Unit Test
         run: |

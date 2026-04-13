@@ -72,6 +72,13 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
+      - name: Cache CMake FetchContent
+        uses: actions/cache@v5
+        with:
+          path: |
+            build/_deps/*-src
+            build/_deps/*-subbuild
+          key: ${{ format('cmake-fetch-v1-{0}-{1}-{2}-{3}', runner.os, 'ubuntu-24.04', 'makefiles', hashFiles('CMakeLists.txt', 'cmake/**/*')) }}
       - uses: actions/setup-go@v6
         with:
           go-version-file: 'tests/gocase/go.mod'
@@ -317,6 +324,13 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
+      - name: Cache CMake FetchContent
+        uses: actions/cache@v5
+        with:
+          path: |
+            build/_deps/*-src
+            build/_deps/*-subbuild
+          key: ${{ format('cmake-fetch-v1-{0}-{1}-{2}-{3}-{4}-{5}-{6}-{7}', runner.os, matrix.os, matrix.compiler || 'auto', matrix.with_ninja && 'ninja' || 'makefiles', matrix.without_jemalloc && 'without-jemalloc' || 'with-jemalloc', matrix.without_luajit && 'without-luajit' || 'with-luajit', matrix.riscv_toolchain && 'cross' || 'native', hashFiles('CMakeLists.txt', 'cmake/**/*')) }}
       - uses: actions/setup-python@v6
         if: ${{ !matrix.arm_linux }}
         with:
@@ -618,6 +632,13 @@ jobs:
           pushd redis-6.2.14 && USE_JEMALLOC=no make -j$NPROC redis-server && mv src/redis-server $HOME/local/bin/ && popd
 
       - uses: actions/checkout@v6
+      - name: Cache CMake FetchContent
+        uses: actions/cache@v5
+        with:
+          path: |
+            build/_deps/*-src
+            build/_deps/*-subbuild
+          key: ${{ format('cmake-fetch-v1-{0}-{1}-{2}-{3}-{4}-{5}', runner.os, matrix.image, matrix.compiler || 'auto', 'makefiles', matrix.disable_jemalloc && 'without-jemalloc' || 'with-jemalloc', hashFiles('CMakeLists.txt', 'cmake/**/*')) }}
       - uses: actions/setup-go@v6
         if: ${{ !startsWith(matrix.image, 'opensuse') }}
         with:

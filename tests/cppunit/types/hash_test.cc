@@ -50,6 +50,10 @@ class RedisHashTest : public TestBase {
 };
 
 class RedisHashFieldExpirationEncodingTest : public ::testing::Test {
+ public:
+  RedisHashFieldExpirationEncodingTest(const RedisHashFieldExpirationEncodingTest &) = delete;
+  RedisHashFieldExpirationEncodingTest &operator=(const RedisHashFieldExpirationEncodingTest &) = delete;
+
  protected:
   RedisHashFieldExpirationEncodingTest() {
     const char *path = "test_hash_field_expiration.conf";
@@ -73,8 +77,6 @@ class RedisHashFieldExpirationEncodingTest : public ::testing::Test {
     hash_ = std::make_unique<redis::Hash>(storage_.get(), "hash_ns");
     db_ = std::make_unique<redis::Database>(storage_.get(), "hash_ns");
   }
-  RedisHashFieldExpirationEncodingTest(const RedisHashFieldExpirationEncodingTest &) = delete;
-  RedisHashFieldExpirationEncodingTest &operator=(const RedisHashFieldExpirationEncodingTest &) = delete;
 
   ~RedisHashFieldExpirationEncodingTest() override {
     ctx_.reset();

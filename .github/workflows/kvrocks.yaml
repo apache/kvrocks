@@ -78,7 +78,7 @@ jobs:
           path: |
             build/_deps/*-src
             build/_deps/*-subbuild
-          key: ${{ format('cmake-fetch-v1-{0}-{1}-{2}-{3}', runner.os, 'ubuntu-24.04', 'makefiles', hashFiles('CMakeLists.txt', 'cmake/**/*')) }}
+          key: ${{ format('cmake-fetch-v1-{0}-{1}-{2}', 'ubuntu-24.04', 'makefiles', hashFiles('CMakeLists.txt', 'cmake/**/*')) }}
       - uses: actions/setup-go@v6
         with:
           go-version-file: 'tests/gocase/go.mod'
@@ -330,7 +330,7 @@ jobs:
           path: |
             build/_deps/*-src
             build/_deps/*-subbuild
-          key: ${{ format('cmake-fetch-v1-{0}-{1}-{2}-{3}-{4}-{5}-{6}-{7}', runner.os, matrix.os, matrix.compiler || 'auto', matrix.with_ninja && 'ninja' || 'makefiles', matrix.without_jemalloc && 'without-jemalloc' || 'with-jemalloc', matrix.without_luajit && 'without-luajit' || 'with-luajit', matrix.riscv_toolchain && 'cross' || 'native', hashFiles('CMakeLists.txt', 'cmake/**/*')) }}
+          key: ${{ format('cmake-fetch-v1-{0}-{1}-{2}', matrix.os, matrix.with_ninja && 'ninja' || 'makefiles', hashFiles('CMakeLists.txt', 'cmake/**/*')) }}
       - uses: actions/setup-python@v6
         if: ${{ !matrix.arm_linux }}
         with:
@@ -638,7 +638,7 @@ jobs:
           path: |
             build/_deps/*-src
             build/_deps/*-subbuild
-          key: ${{ format('cmake-fetch-v1-{0}-{1}-{2}-{3}-{4}-{5}', runner.os, matrix.image, matrix.compiler || 'auto', 'makefiles', matrix.disable_jemalloc && 'without-jemalloc' || 'with-jemalloc', hashFiles('CMakeLists.txt', 'cmake/**/*')) }}
+          key: ${{ format('cmake-fetch-v1-{0}-{1}-{2}', matrix.image, 'makefiles', hashFiles('CMakeLists.txt', 'cmake/**/*')) }}
       - uses: actions/setup-go@v6
         if: ${{ !startsWith(matrix.image, 'opensuse') }}
         with:

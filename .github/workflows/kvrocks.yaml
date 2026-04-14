@@ -32,6 +32,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.number || github.run_id }}
   cancel-in-progress: true
 
+env:
+  KVROCKS_DEPS_CACHE_DIR: build-deps
+
 jobs:
   precondition:
     name: Precondition
@@ -65,22 +68,40 @@ jobs:
         with:
           config: .github/config/licenserc.yml
 
-  check-and-lint:
-    name: Lint and check code
-    needs: [precondition, check-typos]
+  prepare-deps-cache:
+    name: Prepare dependency cache
+    needs: [precondition]
     if: ${{ needs.precondition.outputs.docs_only != 'true' }}
-    runs-on: ubuntu-24.04
-    env:
-      DEPS_FETCH_DIR: build-deps
-      CMAKE_JEMALLOC_VARIANT: with-jemalloc
-      CMAKE_LUA_VARIANT: with-luajit
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v6
-      - name: Cache CMake dependency archives
+      - name: Cache Kvrocks dependencies
+        id: cache-kvrocks-deps
         uses: actions/cache@v5
         with:
-          path: ${{ env.DEPS_FETCH_DIR }}
-          key: ${{ format('cmake-fetch-archives-v1-{0}-{1}-{2}-{3}', 'ubuntu-24.04', env.CMAKE_JEMALLOC_VARIANT, env.CMAKE_LUA_VARIANT, hashFiles('CMakeLists.txt', 'cmake/**/*')) }}
+          path: ${{ env.KVROCKS_DEPS_CACHE_DIR }}
+          key: kvrocks-full-deps-${{ hashFiles('x.py', 'CMakeLists.txt', 'cmake/**/*.cmake') }}
+          enableCrossOsArchive: true
+      - name: Warm Kvrocks dependency cache
+        if: ${{ steps.cache-kvrocks-deps.outputs.cache-hit != 'true' }}
+        run: |
+          ./x.py build .github/ci-cache-default --skip-build --dep-dir ${{ env.KVROCKS_DEPS_CACHE_DIR }}
+          ./x.py build .github/ci-cache-lua --skip-build --dep-dir ${{ env.KVROCKS_DEPS_CACHE_DIR }} -D ENABLE_LUAJIT=OFF
+          rm -rf .github/ci-cache-default .github/ci-cache-lua
+
+  check-and-lint:
+    name: Lint and check code
+    needs: [precondition, check-typos, prepare-deps-cache]
+    if: ${{ needs.precondition.outputs.docs_only != 'true' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - name: Restore Kvrocks dependency cache
+        uses: actions/cache@v5
+        with:
+          path: ${{ env.KVROCKS_DEPS_CACHE_DIR }}
+          key: kvrocks-full-deps-${{ hashFiles('x.py', 'CMakeLists.txt', 'cmake/**/*.cmake') }}
+          enableCrossOsArchive: true
       - uses: actions/setup-go@v6
         with:
           go-version-file: 'tests/gocase/go.mod'
@@ -96,7 +117,7 @@ jobs:
         run: ./x.py check format --clang-format-path clang-format-18
       - name: Check with clang-tidy
         run: |
-          ./x.py build --skip-build --dep-dir "$DEPS_FETCH_DIR"
+          ./x.py build --skip-build --dep-dir ${{ env.KVROCKS_DEPS_CACHE_DIR }}
           ./x.py check tidy -j $(nproc) --clang-tidy-path clang-tidy-18 --run-clang-tidy-path run-clang-tidy-18
       - name: Lint with golangci-lint
         run: ./x.py check golangci-lint
@@ -114,7 +135,7 @@ jobs:
 
   build-and-test:
     name: Build and test
-    needs: [precondition, check-typos]
+    needs: [precondition, check-typos, prepare-deps-cache]
     if: ${{ needs.precondition.outputs.docs_only != 'true' }}
     strategy:
       fail-fast: false
@@ -245,9 +266,6 @@ jobs:
 
     runs-on: ${{ matrix.os }}
     env:
-      DEPS_FETCH_DIR: build-deps
-      CMAKE_JEMALLOC_VARIANT: ${{ startsWith(matrix.os, 'macos') && 'without-jemalloc' || matrix.without_jemalloc && 'without-jemalloc' || 'with-jemalloc' }}
-      CMAKE_LUA_VARIANT: ${{ matrix.without_luajit && 'without-luajit' || 'with-luajit' }}
       SONARCLOUD_OUTPUT_DIR: sonarcloud-data
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE20: true
       RISCV_PATH: "/opt/riscv"
@@ -329,11 +347,12 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - name: Cache CMake dependency archives
+      - name: Restore Kvrocks dependency cache
         uses: actions/cache@v5
         with:
-          path: ${{ env.DEPS_FETCH_DIR }}
-          key: ${{ format('cmake-fetch-archives-v1-{0}-{1}-{2}-{3}', matrix.os, env.CMAKE_JEMALLOC_VARIANT, env.CMAKE_LUA_VARIANT, hashFiles('CMakeLists.txt', 'cmake/**/*')) }}
+          path: ${{ env.KVROCKS_DEPS_CACHE_DIR }}
+          key: kvrocks-full-deps-${{ hashFiles('x.py', 'CMakeLists.txt', 'cmake/**/*.cmake') }}
+          enableCrossOsArchive: true
       - uses: actions/setup-python@v6
         if: ${{ !matrix.arm_linux }}
         with:
@@ -356,19 +375,19 @@ jobs:
         run: |
           ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.without_jemalloc }} \
             ${{ matrix.without_luajit }} ${{ matrix.with_ninja }} ${{ matrix.with_sanitizer }} ${{ matrix.with_openssl }} \
-            ${{ matrix.new_encoding }} ${{ env.CMAKE_EXTRA_DEFS }} --dep-dir "$DEPS_FETCH_DIR"
+            ${{ matrix.new_encoding }} ${{ env.CMAKE_EXTRA_DEFS }} --dep-dir ${{ env.KVROCKS_DEPS_CACHE_DIR }}
 
       - name: Build Kvrocks (SonarCloud)
         if: ${{ matrix.sonarcloud }}
         run: |
-          build-wrapper-linux-x86-64 --out-dir ${{ env.SONARCLOUD_OUTPUT_DIR }} ./x.py build -j$NPROC --compiler ${{ matrix.compiler }} --skip-build --dep-dir "$DEPS_FETCH_DIR"
+          build-wrapper-linux-x86-64 --out-dir ${{ env.SONARCLOUD_OUTPUT_DIR }} ./x.py build -j$NPROC --compiler ${{ matrix.compiler }} --skip-build --dep-dir ${{ env.KVROCKS_DEPS_CACHE_DIR }}
           cp -r build _build
-          build-wrapper-linux-x86-64 --out-dir ${{ env.SONARCLOUD_OUTPUT_DIR }} ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.sonarcloud }} --dep-dir "$DEPS_FETCH_DIR"
+          build-wrapper-linux-x86-64 --out-dir ${{ env.SONARCLOUD_OUTPUT_DIR }} ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.sonarcloud }} --dep-dir ${{ env.KVROCKS_DEPS_CACHE_DIR }}
 
       - name: Build Kvrocks (RISC-V)
         if: ${{ matrix.riscv_toolchain }}
         run: |
-          ./x.py build -j$NPROC --unittest --toolchain ${{ matrix.toolchain_file }} --dep-dir "$DEPS_FETCH_DIR"
+          ./x.py build -j$NPROC --unittest --toolchain ${{ matrix.toolchain_file }} --dep-dir ${{ env.KVROCKS_DEPS_CACHE_DIR }}
 
       - name: Setup Coredump
         if: ${{ startsWith(matrix.os, 'ubuntu') }}
@@ -509,7 +528,7 @@ jobs:
 
   build-and-test-in-container:
     name: Build and test in container
-    needs: [precondition, check-typos]
+    needs: [precondition, check-typos, prepare-deps-cache]
     if: ${{ needs.precondition.outputs.docs_only != 'true' }}
     strategy:
       fail-fast: false
@@ -536,10 +555,6 @@ jobs:
             disable_jemalloc: -DDISABLE_JEMALLOC=ON
 
     runs-on: ubuntu-22.04
-    env:
-      DEPS_FETCH_DIR: build-deps
-      CMAKE_JEMALLOC_VARIANT: ${{ matrix.disable_jemalloc && 'without-jemalloc' || 'with-jemalloc' }}
-      CMAKE_LUA_VARIANT: with-luajit
     container:
       image: ${{ matrix.image }}
       volumes:
@@ -639,11 +654,12 @@ jobs:
           pushd redis-6.2.14 && USE_JEMALLOC=no make -j$NPROC redis-server && mv src/redis-server $HOME/local/bin/ && popd
 
       - uses: actions/checkout@v6
-      - name: Cache CMake dependency archives
+      - name: Restore Kvrocks dependency cache
         uses: actions/cache@v5
         with:
-          path: ${{ env.DEPS_FETCH_DIR }}
-          key: ${{ format('cmake-fetch-archives-v1-{0}-{1}-{2}-{3}', matrix.image, env.CMAKE_JEMALLOC_VARIANT, env.CMAKE_LUA_VARIANT, hashFiles('CMakeLists.txt', 'cmake/**/*')) }}
+          path: ${{ env.KVROCKS_DEPS_CACHE_DIR }}
+          key: kvrocks-full-deps-${{ hashFiles('x.py', 'CMakeLists.txt', 'cmake/**/*.cmake') }}
+          enableCrossOsArchive: true
       - uses: actions/setup-go@v6
         if: ${{ !startsWith(matrix.image, 'opensuse') }}
         with:
@@ -652,7 +668,7 @@ jobs:
 
       - name: Build Kvrocks
         run: |
-          ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.disable_jemalloc }} --dep-dir "$DEPS_FETCH_DIR"
+          ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.disable_jemalloc }} --dep-dir ${{ env.KVROCKS_DEPS_CACHE_DIR }}
 
       - name: Run Unit Test
         run: |

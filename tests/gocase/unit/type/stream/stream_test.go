@@ -38,14 +38,12 @@ import (
 func TestStream(t *testing.T) {
 	configOptions := []util.ConfigOptions{
 		{
-			Name:       "txn-context-enabled",
-			Options:    []string{"yes", "no"},
-			ConfigType: util.YesNo,
+			Name:    "txn-context-enabled",
+			Options: []string{"yes", "no"},
 		},
 		{
-			Name:       "resp3-enabled",
-			Options:    []string{"yes", "no"},
-			ConfigType: util.YesNo,
+			Name:    "resp3-enabled",
+			Options: []string{"yes", "no"},
 		},
 	}
 
@@ -2474,6 +2472,11 @@ func TestStreamOffset(t *testing.T) {
 		require.Empty(t, errors, "XREADGROUP BLOCK should not produce protocol errors under concurrent load")
 
 		require.NoError(t, rdb.Del(ctx, streamName).Err())
+	})
+
+	t.Run("XREVRANGE with too few args should return error", func(t *testing.T) {
+		require.ErrorContains(t, rdb.Do(ctx, "XREVRANGE", "mystream").Err(), "wrong number of arguments")
+		require.ErrorContains(t, rdb.Do(ctx, "XREVRANGE", "mystream", "+").Err(), "wrong number of arguments")
 	})
 }
 

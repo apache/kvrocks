@@ -100,14 +100,12 @@ var geoAddAndGeoRangeservers []*util.KvrocksServer
 func TestGeo(t *testing.T) {
 	configOptions := []util.ConfigOptions{
 		{
-			Name:       "txn-context-enabled",
-			Options:    []string{"yes", "no"},
-			ConfigType: util.YesNo,
+			Name:    "txn-context-enabled",
+			Options: []string{"yes", "no"},
 		},
 		{
-			Name:       "resp3-enabled",
-			Options:    []string{"yes", "no"},
-			ConfigType: util.YesNo,
+			Name:    "resp3-enabled",
+			Options: []string{"yes", "no"},
 		},
 	}
 
@@ -561,5 +559,18 @@ var testGeo = func(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.NoError(t, rdb.GeoAdd(ctx, "points", &redis.GeoLocation{Name: "Palermo", Longitude: 13.361389, Latitude: 38.115556}, &redis.GeoLocation{Name: "Catania", Longitude: 15.087269, Latitude: 37.502669}).Err())
 		rdb.GeoRadiusStore(ctx, "points", 13.361389, 38.115556, &redis.GeoRadiusQuery{Radius: 500, Unit: "km", Store: "points2"})
 		require.EqualValues(t, rdb.ZRange(ctx, "points", 0, -1).Val(), rdb.ZRange(ctx, "points2", 0, -1).Val())
+	})
+
+	t.Run("GEORADIUS DESC with equal distances should not crash", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "geokey").Err())
+		require.NoError(t, rdb.GeoAdd(ctx, "geokey",
+			&redis.GeoLocation{Name: "A", Longitude: 13.361389, Latitude: 38.115556},
+			&redis.GeoLocation{Name: "B", Longitude: 13.361389, Latitude: 38.115556},
+			&redis.GeoLocation{Name: "C", Longitude: 13.361389, Latitude: 38.115556},
+			&redis.GeoLocation{Name: "D", Longitude: 15.087269, Latitude: 37.502669},
+		).Err())
+		results := rdb.GeoRadius(ctx, "geokey", 13.361389, 38.115556,
+			&redis.GeoRadiusQuery{Radius: 500, Unit: "km", Sort: "DESC"}).Val()
+		require.Len(t, results, 4)
 	})
 }

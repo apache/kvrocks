@@ -151,6 +151,8 @@ struct TSCreateOption {
   uint64_t chunk_size;
   TimeSeriesMetadata::ChunkType chunk_type;
   TimeSeriesMetadata::DuplicatePolicy duplicate_policy;
+  uint64_t ignore_max_time_diff;
+  double ignore_max_val_diff;
   std::string source_key;
   LabelKVList labels;
 
@@ -257,8 +259,7 @@ enum class TSAlterMode : uint8_t {
   RETENTION = 1,
   CHUNK_SIZE = 1 << 1,
   DUPLICATE_POLICY = 1 << 2,
-  IGNORE = 1 << 3,
-  LABELS = 1 << 4,
+  LABELS = 1 << 3,
 };
 
 std::vector<TSSample> GroupSamplesAndReduce(const std::vector<std::vector<TSSample>> &all_samples,
@@ -317,6 +318,8 @@ class TimeSeries : public SubKeyScanner {
                                    const TSCreateOption *options);
   rocksdb::Status getOrCreateTimeSeries(engine::Context &ctx, const Slice &ns_key, TimeSeriesMetadata *metadata_out,
                                         const TSCreateOption *option = nullptr);
+  rocksdb::Status filterSamplesByIgnorePolicy(engine::Context &ctx, const Slice &ns_key,
+                                              const TimeSeriesMetadata &metadata, SampleBatch *sample_batch);
   rocksdb::Status getLabelKVList(engine::Context &ctx, const Slice &ns_key, const TimeSeriesMetadata &metadata,
                                  LabelKVList *labels);
   rocksdb::Status upsertCommon(engine::Context &ctx, const Slice &ns_key, TimeSeriesMetadata &metadata,

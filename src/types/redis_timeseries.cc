@@ -20,6 +20,7 @@
 
 #include "redis_timeseries.h"
 
+#include <cmath>
 #include <queue>
 
 #include "commands/error_constants.h"
@@ -515,7 +516,9 @@ TSCreateOption::TSCreateOption()
     : retention_time(kDefaultRetentionTime),
       chunk_size(kDefaultChunkSize),
       chunk_type(kDefaultChunkType),
-      duplicate_policy(kDefaultDuplicatePolicy) {}
+      duplicate_policy(kDefaultDuplicatePolicy),
+      ignore_max_time_diff(0),
+      ignore_max_val_diff(0.0) {}
 
 Status TSMQueryFilterParser::Parse(std::string_view expr) {
   if (expr.empty()) return Status::OK();
@@ -678,6 +681,8 @@ TimeSeriesMetadata CreateMetadataFromOption(const TSCreateOption &option) {
   metadata.chunk_size = option.chunk_size;
   metadata.chunk_type = option.chunk_type;
   metadata.duplicate_policy = option.duplicate_policy;
+  metadata.ignore_max_time_diff = option.ignore_max_time_diff;
+  metadata.ignore_max_val_diff = option.ignore_max_val_diff;
   metadata.SetSourceKey(option.source_key);
 
   return metadata;
@@ -849,6 +854,43 @@ rocksdb::Status TimeSeries::getOrCreateTimeSeries(engine::Context &ctx, const Sl
     return s;
   }
   return createTimeSeries(ctx, ns_key, metadata_out, option);
+}
+
+rocksdb::Status TimeSeries::filterSamplesByIgnorePolicy(engine::Context &ctx, const Slice &ns_key,
+                                                        const TimeSeriesMetadata &metadata, SampleBatch *sample_batch) {
+  if (!metadata.source_key.empty() || metadata.duplicate_policy != DuplicatePolicy::LAST) {
+    return rocksdb::Status::OK();
+  }
+
+  std::vector<TSSample> latest_samples;
+  auto s = getCommon(ctx, ns_key, metadata, true, &latest_samples);
+  if (!s.ok() || latest_samples.empty()) {
+    return s;
+  }
+
+  auto latest_sample = latest_samples.back();
+  auto all_samples = sample_batch->AsSlice();
+  auto samples = all_samples.GetSampleSpan();
+  auto add_results = all_samples.GetAddResultSpan();
+
+  for (size_t i = 0; i < samples.size(); i++) {
+    if (add_results[i].type != TSChunk::AddResultType::kNone) {
+      continue;
+    }
+
+    const auto &sample = samples[i];
+    if (sample.ts >= latest_sample.ts && sample.ts - latest_sample.ts <= metadata.ignore_max_time_diff &&
+        std::abs(sample.v - latest_sample.v) <= metadata.ignore_max_val_diff) {
+      add_results[i].type = TSChunk::AddResultType::kSkip;
+      continue;
+    }
+
+    if (sample.ts >= latest_sample.ts) {
+      latest_sample = sample;
+    }
+  }
+
+  return rocksdb::Status::OK();
 }
 
 rocksdb::Status TimeSeries::upsertCommon(engine::Context &ctx, const Slice &ns_key, TimeSeriesMetadata &metadata,
@@ -1930,6 +1972,8 @@ rocksdb::Status TimeSeries::Add(engine::Context &ctx, const Slice &user_key, TSS
   rocksdb::Status s = getOrCreateTimeSeries(ctx, ns_key, &metadata, &option);
   if (!s.ok()) return s;
   auto sample_batch = SampleBatch({sample}, on_dup_policy ? *on_dup_policy : metadata.duplicate_policy);
+  s = filterSamplesByIgnorePolicy(ctx, ns_key, metadata, &sample_batch);
+  if (!s.ok()) return s;
 
   DownstreamUpsertArgs ds_args;
   s = upsertCommon(ctx, ns_key, metadata, sample_batch, &ds_args);
@@ -1950,6 +1994,8 @@ rocksdb::Status TimeSeries::MAdd(engine::Context &ctx, const Slice &user_key, st
     return s;
   }
   auto sample_batch = SampleBatch(std::move(samples), metadata.duplicate_policy);
+  s = filterSamplesByIgnorePolicy(ctx, ns_key, metadata, &sample_batch);
+  if (!s.ok()) return s;
   DownstreamUpsertArgs ds_args;
   s = upsertCommon(ctx, ns_key, metadata, sample_batch, &ds_args);
   if (!s.ok()) return s;

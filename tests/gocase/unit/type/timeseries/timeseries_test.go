@@ -202,6 +202,24 @@ func testTimeSeries(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.ErrorContains(t, rdb.Do(ctx, "ts.add", key, "1000", "13.4").Err(), "update is not supported when DUPLICATE_POLICY is set to BLOCK mode")
 	})
 
+	t.Run("TS.ADD Ignore Option", func(t *testing.T) {
+		ignoreKey := "test_add_ignore_key"
+		require.NoError(t, rdb.Del(ctx, ignoreKey).Err())
+		require.NoError(t, rdb.Do(ctx, "ts.create", ignoreKey, "duplicate_policy", "last", "ignore", "5", "2").Err())
+
+		require.Equal(t, int64(1000), rdb.Do(ctx, "ts.add", ignoreKey, "1000", "10").Val())
+		require.Equal(t, int64(1003), rdb.Do(ctx, "ts.add", ignoreKey, "1003", "11").Val())
+
+		res := rdb.Do(ctx, "ts.range", ignoreKey, "-", "+").Val().([]interface{})
+		require.Equal(t, 1, len(res))
+		assert.Equal(t, []interface{}{int64(1000), float64(10)}, res[0])
+
+		require.Equal(t, int64(1008), rdb.Do(ctx, "ts.add", ignoreKey, "1008", "20").Val())
+		res = rdb.Do(ctx, "ts.range", ignoreKey, "-", "+").Val().([]interface{})
+		require.Equal(t, 2, len(res))
+		assert.Equal(t, []interface{}{int64(1008), float64(20)}, res[1])
+	})
+
 	t.Run("TS.ADD With Retention", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, key).Err())
 		require.NoError(t, rdb.Do(ctx, "ts.create", key, "retention", "1000").Err())
@@ -230,6 +248,21 @@ func testTimeSeries(t *testing.T, configs util.KvrocksServerConfigs) {
 		res := rdb.Do(ctx, "ts.madd", key, "1000", "13.4", key, "1000", "14.5").Val().([]interface{})
 		assert.Contains(t, res[0], "update is not supported when DUPLICATE_POLICY is set to BLOCK mode")
 		assert.Contains(t, res[1], "update is not supported when DUPLICATE_POLICY is set to BLOCK mode")
+	})
+
+	t.Run("TS.MADD Ignore Option", func(t *testing.T) {
+		ignoreKey := "test_madd_ignore_key"
+		require.NoError(t, rdb.Del(ctx, ignoreKey).Err())
+		require.NoError(t, rdb.Do(ctx, "ts.create", ignoreKey, "duplicate_policy", "last", "ignore", "5", "2").Err())
+		require.Equal(t, int64(1000), rdb.Do(ctx, "ts.add", ignoreKey, "1000", "10").Val())
+
+		res := rdb.Do(ctx, "ts.madd", ignoreKey, "1003", "11", ignoreKey, "1004", "13", ignoreKey, "1007", "14").Val().([]interface{})
+		assert.Equal(t, []interface{}{int64(1003), int64(1004), int64(1007)}, res)
+
+		samples := rdb.Do(ctx, "ts.range", ignoreKey, "-", "+").Val().([]interface{})
+		require.Equal(t, 2, len(samples))
+		assert.Equal(t, []interface{}{int64(1000), float64(10)}, samples[0])
+		assert.Equal(t, []interface{}{int64(1004), float64(13)}, samples[1])
 	})
 
 	t.Run("TS.MADD Nonexistent Key", func(t *testing.T) {

@@ -29,6 +29,7 @@ constexpr const char *errBadRetention = "Couldn't parse RETENTION";
 constexpr const char *errBadChunkSize = "invalid CHUNK_SIZE";
 constexpr const char *errBadEncoding = "unknown ENCODING parameter";
 constexpr const char *errDuplicatePolicy = "Unknown DUPLICATE_POLICY";
+constexpr const char *errBadIgnore = "Couldn't parse IGNORE";
 constexpr const char *errInvalidTimestamp = "invalid timestamp";
 constexpr const char *errInvalidValue = "invalid value";
 constexpr const char *errOldTimestamp = "Timestamp is older than retention";
@@ -252,6 +253,9 @@ class CommandTSCreateBase : public KeywordCommandBase {
     registerHandler("DUPLICATE_POLICY", [this](TSOptionsParser &parser) {
       return handleDuplicatePolicy(parser, create_option_.duplicate_policy);
     });
+    registerHandler("IGNORE", [this](TSOptionsParser &parser) {
+      return handleIgnore(parser, create_option_.ignore_max_time_diff, create_option_.ignore_max_val_diff);
+    });
     registerHandler("LABELS", [this](TSOptionsParser &parser) { return handleLabels(parser, create_option_.labels); });
   }
 
@@ -312,6 +316,17 @@ class CommandTSCreateBase : public KeywordCommandBase {
       }
       labels.push_back({parse_key.GetValue(), parse_value.GetValue()});
     }
+    return Status::OK();
+  }
+
+  static Status handleIgnore(TSOptionsParser &parser, uint64_t &ignore_max_time_diff, double &ignore_max_val_diff) {
+    auto parse_time_diff = parser.TakeInt<uint64_t>();
+    auto parse_val_diff = parser.TakeFloat<double>();
+    if (!parse_time_diff.IsOK() || !parse_val_diff.IsOK() || parse_val_diff.GetValue() < 0) {
+      return {Status::RedisParseErr, errBadIgnore};
+    }
+    ignore_max_time_diff = parse_time_diff.GetValue();
+    ignore_max_val_diff = parse_val_diff.GetValue();
     return Status::OK();
   }
 

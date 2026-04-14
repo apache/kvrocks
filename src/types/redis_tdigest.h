@@ -135,7 +135,6 @@ class TDigest : public SubKeyScanner {
    * @param batch The write batch to store metadata updates.
    * @param metadata The metadata of the t-digest (may be updated if buffer is merged).
    * @param centroids The output vector to store the centroids.
-   * @return rocksdb::Status
    */
   rocksdb::Status getCentroidsForMerge(engine::Context& ctx, const std::string& ns_key,
                                        ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch, TDigestMetadata* metadata,

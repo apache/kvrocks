@@ -68,40 +68,25 @@ jobs:
         with:
           config: .github/config/licenserc.yml
 
-  prepare-deps-cache:
-    name: Prepare dependency cache
-    needs: [precondition]
+  check-and-lint:
+    name: Lint and check code
+    needs: [precondition, check-typos]
     if: ${{ needs.precondition.outputs.docs_only != 'true' }}
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
-      - name: Cache Kvrocks dependencies
+      - name: Restore Kvrocks dependency cache
         id: cache-kvrocks-deps
         uses: actions/cache@v5
         with:
           path: ${{ env.KVROCKS_DEPS_CACHE_DIR }}
           key: kvrocks-full-deps-${{ hashFiles('x.py', 'CMakeLists.txt', 'cmake/**/*.cmake') }}
           enableCrossOsArchive: true
-      - name: Warm Kvrocks dependency cache
+      - name: Fetch Kvrocks dependencies
         if: ${{ steps.cache-kvrocks-deps.outputs.cache-hit != 'true' }}
         run: |
-          ./x.py build .github/ci-cache-default --skip-build --dep-dir ${{ env.KVROCKS_DEPS_CACHE_DIR }}
-          ./x.py build .github/ci-cache-lua --skip-build --dep-dir ${{ env.KVROCKS_DEPS_CACHE_DIR }} -D ENABLE_LUAJIT=OFF
-          rm -rf .github/ci-cache-default .github/ci-cache-lua
-
-  check-and-lint:
-    name: Lint and check code
-    needs: [precondition, check-typos, prepare-deps-cache]
-    if: ${{ needs.precondition.outputs.docs_only != 'true' }}
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v6
-      - name: Restore Kvrocks dependency cache
-        uses: actions/cache@v5
-        with:
-          path: ${{ env.KVROCKS_DEPS_CACHE_DIR }}
-          key: kvrocks-full-deps-${{ hashFiles('x.py', 'CMakeLists.txt', 'cmake/**/*.cmake') }}
-          enableCrossOsArchive: true
+          ./x.py fetch-deps ${{ env.KVROCKS_DEPS_CACHE_DIR }}
+          ./x.py fetch-deps ${{ env.KVROCKS_DEPS_CACHE_DIR }} -D ENABLE_LUAJIT=OFF
       - uses: actions/setup-go@v6
         with:
           go-version-file: 'tests/gocase/go.mod'
@@ -135,7 +120,7 @@ jobs:
 
   build-and-test:
     name: Build and test
-    needs: [precondition, check-typos, prepare-deps-cache]
+    needs: [precondition, check-typos]
     if: ${{ needs.precondition.outputs.docs_only != 'true' }}
     strategy:
       fail-fast: false
@@ -528,7 +513,7 @@ jobs:
 
   build-and-test-in-container:
     name: Build and test in container
-    needs: [precondition, check-typos, prepare-deps-cache]
+    needs: [precondition, check-typos]
     if: ${{ needs.precondition.outputs.docs_only != 'true' }}
     strategy:
       fail-fast: false

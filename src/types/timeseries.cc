@@ -165,7 +165,9 @@ std::vector<TSChunk::AddResult> TSChunk::SampleBatch::GetFinalResults() const {
   res.resize(add_results_.size());
   for (size_t idx = 0; idx < add_results_.size(); idx++) {
     res[indexes_[idx]] = add_results_[idx];
-    res[indexes_[idx]].sample.ts = samples_[idx].ts;
+    if (!(res[indexes_[idx]].type == AddResultType::kSkip && res[indexes_[idx]].sample.ts != 0)) {
+      res[indexes_[idx]].sample.ts = samples_[idx].ts;
+    }
   }
   return res;
 }

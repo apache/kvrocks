@@ -882,6 +882,7 @@ rocksdb::Status TimeSeries::filterSamplesByIgnorePolicy(engine::Context &ctx, co
     if (sample.ts >= latest_sample.ts && sample.ts - latest_sample.ts <= metadata.ignore_max_time_diff &&
         std::abs(sample.v - latest_sample.v) <= metadata.ignore_max_val_diff) {
       add_results[i].type = TSChunk::AddResultType::kSkip;
+      add_results[i].sample.ts = latest_sample.ts;
       continue;
     }
 

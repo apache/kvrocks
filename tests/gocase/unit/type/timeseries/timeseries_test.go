@@ -208,7 +208,7 @@ func testTimeSeries(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.NoError(t, rdb.Do(ctx, "ts.create", ignoreKey, "duplicate_policy", "last", "ignore", "5", "2").Err())
 
 		require.Equal(t, int64(1000), rdb.Do(ctx, "ts.add", ignoreKey, "1000", "10").Val())
-		require.Equal(t, int64(1003), rdb.Do(ctx, "ts.add", ignoreKey, "1003", "11").Val())
+		require.Equal(t, int64(1000), rdb.Do(ctx, "ts.add", ignoreKey, "1003", "11").Val())
 
 		res := rdb.Do(ctx, "ts.range", ignoreKey, "-", "+").Val().([]interface{})
 		require.Equal(t, 1, len(res))
@@ -257,7 +257,7 @@ func testTimeSeries(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.Equal(t, int64(1000), rdb.Do(ctx, "ts.add", ignoreKey, "1000", "10").Val())
 
 		res := rdb.Do(ctx, "ts.madd", ignoreKey, "1003", "11", ignoreKey, "1004", "13", ignoreKey, "1007", "14").Val().([]interface{})
-		assert.Equal(t, []interface{}{int64(1003), int64(1004), int64(1007)}, res)
+		assert.Equal(t, []interface{}{int64(1000), int64(1004), int64(1004)}, res)
 
 		samples := rdb.Do(ctx, "ts.range", ignoreKey, "-", "+").Val().([]interface{})
 		require.Equal(t, 2, len(samples))

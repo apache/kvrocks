@@ -21,7 +21,11 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <cassert>
 #include <climits>
+#include <cstdint>
+#include <filesystem>
+#include <fstream>
 #include <memory>
 #include <random>
 #include <string>
@@ -43,6 +47,64 @@ class RedisHashTest : public TestBase {
   void TearDown() override {}
 
   std::unique_ptr<redis::Hash> hash_;
+};
+
+class RedisHashFieldExpirationEncodingTest : public ::testing::Test {
+ public:
+  RedisHashFieldExpirationEncodingTest(const RedisHashFieldExpirationEncodingTest &) = delete;
+  RedisHashFieldExpirationEncodingTest &operator=(const RedisHashFieldExpirationEncodingTest &) = delete;
+
+ protected:
+  RedisHashFieldExpirationEncodingTest() {
+    const char *path = "test_hash_field_expiration.conf";
+    unlink(path);
+    std::ofstream output_file(path, std::ios::out);
+    output_file << "hash-encoding-mode field-expiration\n";
+    output_file.close();
+
+    auto s = config_.Load(CLIOptions(path));
+    assert(s.IsOK());
+    config_.db_dir = "testdb_hash_field_expiration";
+    config_.rocks_db.compression = rocksdb::CompressionType::kNoCompression;
+    config_.rocks_db.write_buffer_size = 1;
+    config_.rocks_db.block_size = 100;
+
+    storage_ = std::make_unique<engine::Storage>(&config_);
+    s = storage_->Open();
+    assert(s.IsOK());
+
+    ctx_ = std::make_unique<engine::Context>(storage_.get());
+    hash_ = std::make_unique<redis::Hash>(storage_.get(), "hash_ns");
+    db_ = std::make_unique<redis::Database>(storage_.get(), "hash_ns");
+  }
+
+  ~RedisHashFieldExpirationEncodingTest() override {
+    ctx_.reset();
+    hash_.reset();
+    db_.reset();
+    storage_.reset();
+
+    std::error_code ec;
+    std::filesystem::remove_all(config_.db_dir, ec);
+    unlink("test_hash_field_expiration.conf");
+  }
+
+  std::string rawHashValue(const std::string &key, const std::string &field, HashMetadata *metadata) {
+    std::string ns_key = db_->AppendNamespacePrefix(key);
+    auto s = db_->GetMetadata(*ctx_, {kRedisHash}, ns_key, metadata);
+    assert(s.ok());
+    std::string sub_key = InternalKey(ns_key, field, metadata->version, storage_->IsSlotIdEncoded()).Encode();
+    std::string raw_value;
+    s = storage_->Get(*ctx_, ctx_->GetReadOptions(), sub_key, &raw_value);
+    assert(s.ok());
+    return raw_value;
+  }
+
+  Config config_;
+  std::unique_ptr<engine::Storage> storage_;
+  std::unique_ptr<engine::Context> ctx_;
+  std::unique_ptr<redis::Hash> hash_;
+  std::unique_ptr<redis::Database> db_;
 };
 
 TEST_F(RedisHashTest, GetAndSet) {
@@ -174,6 +236,48 @@ TEST_F(RedisHashTest, HGetAll) {
   s = hash_->Delete(*ctx_, key_, fields_, &ret);
   EXPECT_TRUE(s.ok() && fields_.size() == ret);
   s = hash_->Del(*ctx_, key_);
+}
+
+TEST_F(RedisHashFieldExpirationEncodingTest, StoreAndScanValuesWithModeOneEncoding) {
+  const Slice key = "mode-one-hash";
+  const Slice field = "field-1";
+  const Slice value = "value-1";
+
+  uint64_t added = 0;
+  auto s = hash_->Set(*ctx_, key, field, value, &added);
+  ASSERT_TRUE(s.ok());
+  ASSERT_EQ(added, 1);
+
+  HashMetadata metadata(false);
+  std::string raw_value = rawHashValue(key.ToString(), field.ToString(), &metadata);
+  EXPECT_EQ(metadata.mode, HashSubkeyEncodingMode::kFieldExpiration);
+  EXPECT_EQ(metadata.expsz, 0);
+  EXPECT_EQ(raw_value.size(), HashMetadata::kFieldExpirationPrefixSize + value.size());
+
+  Slice decoded_value(raw_value);
+  uint64_t field_expire = UINT64_MAX;
+  ASSERT_TRUE(metadata.DecodeSubkeyValue(&decoded_value, &field_expire).ok());
+  EXPECT_EQ(decoded_value.ToStringView(), value.ToStringView());
+  EXPECT_EQ(field_expire, 0);
+
+  std::string got;
+  s = hash_->Get(*ctx_, key, field, &got);
+  ASSERT_TRUE(s.ok());
+  EXPECT_EQ(got, value.ToString());
+
+  std::vector<std::string> fields;
+  std::vector<std::string> values;
+  s = hash_->Scan(*ctx_, key, "", 10, "", &fields, &values);
+  ASSERT_TRUE(s.ok());
+  ASSERT_EQ(fields, std::vector<std::string>({"field-1"}));
+  ASSERT_EQ(values, std::vector<std::string>({"value-1"}));
+
+  std::vector<FieldValue> field_values;
+  s = hash_->GetAll(*ctx_, key, &field_values);
+  ASSERT_TRUE(s.ok());
+  ASSERT_EQ(field_values.size(), 1);
+  EXPECT_EQ(field_values[0].field, "field-1");
+  EXPECT_EQ(field_values[0].value, "value-1");
 }
 
 TEST_F(RedisHashTest, HIncr) {

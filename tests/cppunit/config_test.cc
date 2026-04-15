@@ -61,6 +61,8 @@ TEST(Config, GetAndSet) {
       {"profiling-sample-record-threshold-ms", "50"},
       {"profiling-sample-commands", "get,set"},
       {"backup-dir", "test_dir/backup"},
+      {"hash-encoding-mode", "field-expiration"},
+      {"hash-length-mode", "approximate"},
 
       {"rocksdb.compression", "no"},
       {"rocksdb.max_open_files", "1234"},

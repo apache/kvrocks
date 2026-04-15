@@ -93,6 +93,16 @@ const std::vector<ConfigEnum<BlockCacheType>> cache_types{[] {
 const std::vector<ConfigEnum<MigrationType>> migration_types{{"redis-command", MigrationType::kRedisCommand},
                                                              {"raw-key-value", MigrationType::kRawKeyValue}};
 
+const std::vector<ConfigEnum<HashSubkeyEncodingMode>> hash_subkey_encoding_modes{
+    {"legacy", HashSubkeyEncodingMode::kLegacy},
+    {"field-expiration", HashSubkeyEncodingMode::kFieldExpiration},
+};
+
+const std::vector<ConfigEnum<HashLengthMode>> hash_length_modes{
+    {"accurate", HashLengthMode::kAccurate},
+    {"approximate", HashLengthMode::kApproximate},
+};
+
 std::string TrimRocksDbPrefix(std::string s) {
   constexpr std::string_view prefix = "rocksdb.";
   if (!util::StartsWithICase(s, prefix)) return s;
@@ -237,6 +247,11 @@ Config::Config() {
       {"redis-cursor-compatible", false, new YesNoField(&redis_cursor_compatible, true)},
       {"redis-databases", true, new IntField(&redis_databases, 0, 0, INT_MAX)},
       {"resp3-enabled", false, new YesNoField(&resp3_enabled, true)},
+      {"hash-encoding-mode", false,
+       new EnumField<HashSubkeyEncodingMode>(&hash_encoding_mode, hash_subkey_encoding_modes,
+                                             HashSubkeyEncodingMode::kLegacy)},
+      {"hash-length-mode", false,
+       new EnumField<HashLengthMode>(&hash_length_mode, hash_length_modes, HashLengthMode::kAccurate)},
       {"repl-namespace-enabled", false, new YesNoField(&repl_namespace_enabled, false)},
       {"proto-max-bulk-len", false,
        new IntWithUnitField<uint64_t>(&proto_max_bulk_len, std::to_string(512 * MiB), 1 * MiB,

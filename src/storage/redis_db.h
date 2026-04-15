@@ -22,11 +22,13 @@
 
 #include <optional>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <variant>
 #include <vector>
 
 #include "cluster/cluster_defs.h"
+#include "common/db_util.h"
 #include "redis_metadata.h"
 #include "storage.h"
 
@@ -182,6 +184,68 @@ class SubKeyScanner : public redis::Database {
   rocksdb::Status Scan(engine::Context &ctx, RedisType type, const Slice &user_key, const std::string &cursor,
                        uint64_t limit, const std::string &subkey_prefix, std::vector<std::string> *keys,
                        std::vector<std::string> *values = nullptr);
+
+ protected:
+  struct RawSubkeyValueAdapter {
+    template <typename MetadataT>
+    rocksdb::Status operator()(const MetadataT &, Slice *) const {
+      return rocksdb::Status::OK();
+    }
+  };
+
+  template <typename MetadataT>
+  static MetadataT createScanMetadata(RedisType type) {
+    if constexpr (std::is_same_v<MetadataT, Metadata>) {
+      return Metadata(type, false);
+    } else {
+      return MetadataT(false);
+    }
+  }
+
+  template <typename MetadataT, typename ValueAdapter = RawSubkeyValueAdapter>
+  rocksdb::Status scanSubkeys(engine::Context &ctx, RedisType type, const Slice &user_key, const std::string &cursor,
+                              uint64_t limit, const std::string &subkey_prefix, std::vector<std::string> *keys,
+                              std::vector<std::string> *values = nullptr, ValueAdapter value_adapter = {}) {
+    uint64_t cnt = 0;
+    std::string ns_key = AppendNamespacePrefix(user_key);
+    auto metadata = createScanMetadata<MetadataT>(type);
+    rocksdb::Status s = GetMetadata(ctx, {type}, ns_key, &metadata);
+    if (!s.ok()) return s;
+
+    auto iter = util::UniqueIterator(ctx, ctx.DefaultScanOptions());
+    std::string match_prefix_key =
+        InternalKey(ns_key, subkey_prefix, metadata.version, storage_->IsSlotIdEncoded()).Encode();
+
+    std::string start_key;
+    if (!cursor.empty()) {
+      start_key = InternalKey(ns_key, cursor, metadata.version, storage_->IsSlotIdEncoded()).Encode();
+    } else {
+      start_key = match_prefix_key;
+    }
+    for (iter->Seek(start_key); iter->Valid(); iter->Next()) {
+      if (!cursor.empty() && iter->key() == start_key) {
+        // if cursor is not empty, then we need to skip start_key
+        // because we already return that key in the last scan
+        continue;
+      }
+      if (!iter->key().starts_with(match_prefix_key)) {
+        break;
+      }
+      InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
+      keys->emplace_back(ikey.GetSubKey().ToString());
+      if (values != nullptr) {
+        Slice value(iter->value());
+        s = value_adapter(metadata, &value);
+        if (!s.ok()) return s;
+        values->emplace_back(value.data(), value.size());
+      }
+      cnt++;
+      if (limit > 0 && cnt >= limit) {
+        break;
+      }
+    }
+    return iter->status();
+  }
 };
 
 class WriteBatchLogData {

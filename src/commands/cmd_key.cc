@@ -608,9 +608,11 @@ class CommandKMetadata : public Commander {
       if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
       response.insert({redis::BulkString("mode"), redis::BulkString(HashSubkeyEncodingModeName(hash_metadata.mode))});
-      response.insert({redis::BulkString("expsz"), redis::Integer(hash_metadata.expsz)});
-      response.insert({redis::BulkString("lower"), redis::Integer(hash_metadata.lower)});
-      response.insert({redis::BulkString("upper"), redis::Integer(hash_metadata.upper)});
+      if (hash_metadata.IsFieldExpirationEncoding()) {
+        response.insert({redis::BulkString("expsz"), redis::Integer(hash_metadata.expsz)});
+        response.insert({redis::BulkString("lower"), redis::Integer(hash_metadata.lower)});
+        response.insert({redis::BulkString("upper"), redis::Integer(hash_metadata.upper)});
+      }
     } else if (metadata.Type() == kRedisList) {
       ListMetadata list_metadata(false);
       Slice metadata_bytes(raw_metadata);

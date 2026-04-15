@@ -104,6 +104,14 @@ func ExtractKMetadataResponse(result interface{}) (*kMetadataResponse, error) {
 	return response, nil
 }
 
+func MustKMetadataMap(t *testing.T, result interface{}) map[interface{}]interface{} {
+	t.Helper()
+
+	resultMap, ok := result.(map[interface{}]interface{})
+	require.Truef(t, ok, "expected map[interface{}]interface{}, got %T", result)
+	return resultMap
+}
+
 func TestKMetadata(t *testing.T) {
 	configOptions := []util.ConfigOptions{
 		{
@@ -156,15 +164,25 @@ var testKMetadata = func(t *testing.T, configs util.KvrocksServerConfigs) {
 		result, err := r.Result()
 		require.NoError(t, err)
 
+		resultMap := MustKMetadataMap(t, result)
 		metaResponse, err := ExtractKMetadataResponse(result)
 		require.NoError(t, err)
 		require.Equal(t, "hash", metaResponse.ktype)
 		require.NotEqual(t, int64(0), metaResponse.version)
 		require.Equal(t, int64(2), metaResponse.size)
 		require.Equal(t, configs["hash-encoding-mode"], metaResponse.mode)
-		require.Equal(t, int64(0), metaResponse.expsz)
-		require.Equal(t, int64(0), metaResponse.lower)
-		require.Equal(t, int64(0), metaResponse.upper)
+		if configs["hash-encoding-mode"] == "field-expiration" {
+			require.Equal(t, int64(0), metaResponse.expsz)
+			require.Equal(t, int64(0), metaResponse.lower)
+			require.Equal(t, int64(0), metaResponse.upper)
+			require.Contains(t, resultMap, "expsz")
+			require.Contains(t, resultMap, "lower")
+			require.Contains(t, resultMap, "upper")
+		} else {
+			require.NotContains(t, resultMap, "expsz")
+			require.NotContains(t, resultMap, "lower")
+			require.NotContains(t, resultMap, "upper")
+		}
 	})
 
 	t.Run("Test KMetadata for set type", func(t *testing.T) {

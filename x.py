@@ -162,10 +162,10 @@ def build(dir: str, jobs: Optional[int] = None, ninja: bool = False, unittest: b
     run(cmake, *options, verbose=True, cwd=dir)
 
 
-def fetch_deps(dir: str) -> None:
+def fetch_deps(dir: str, D: List[str] = []) -> None:
     dir = os.path.abspath(dir)
     with TemporaryDirectory(prefix="kvrocks-fetch-deps-") as build_dir:
-        build(build_dir, dep_dir=dir, skip_build=True)
+        build(build_dir, D=D, dep_dir=dir, skip_build=True)
 
 
 def get_source_files(dir: Path) -> List[str]:
@@ -418,6 +418,8 @@ if __name__ == '__main__':
     )
     parser_fetch_deps.add_argument('dir', metavar='DEP_DIR', nargs='?', default='build-deps',
                               help="directory to store fetched archives of dependencies")
+    parser_fetch_deps.add_argument('-D', action='append', metavar='key=value',
+                              help='extra CMake definitions used to determine fetched dependencies')
     parser_fetch_deps.set_defaults(func=fetch_deps)
 
     parser_package = subparsers.add_parser(

@@ -90,9 +90,8 @@ func ExtractKMetadataResponse(result interface{}) (*kMetadataResponse, error) {
 func TestKMetadata(t *testing.T) {
 	configOptions := []util.ConfigOptions{
 		{
-			Name:       "resp3-enabled",
-			Options:    []string{"yes"},
-			ConfigType: util.YesNo,
+			Name:    "resp3-enabled",
+			Options: []string{"yes"},
 		},
 	}
 	configsMatrix, err := util.GenerateConfigsMatrix(configOptions)

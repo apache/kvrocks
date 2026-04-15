@@ -35,8 +35,20 @@
 
 namespace redis {
 
-rocksdb::Status Hash::GetMetadata(engine::Context &ctx, const Slice &ns_key, HashMetadata *metadata) {
+HashMetadata Hash::createMetadataForWrite(bool generate_version) const {
+  return HashMetadata(generate_version, storage_->GetConfig()->hash_encoding_mode);
+}
+
+rocksdb::Status Hash::getMetadata(engine::Context &ctx, const Slice &ns_key, HashMetadata *metadata) {
   return Database::GetMetadata(ctx, {kRedisHash}, ns_key, metadata);
+}
+
+rocksdb::Status Hash::getRawValue(engine::Context &ctx, const std::string &sub_key, std::string *value) {
+  return storage_->Get(ctx, ctx.GetReadOptions(), sub_key, value);
+}
+
+rocksdb::Status Hash::decodeValue(const HashMetadata &metadata, Slice *value, uint64_t *expire) {
+  return metadata.DecodeSubkeyValue(value, expire);
 }
 
 rocksdb::Status Hash::Size(engine::Context &ctx, const Slice &user_key, uint64_t *size) {
@@ -44,7 +56,7 @@ rocksdb::Status Hash::Size(engine::Context &ctx, const Slice &user_key, uint64_t
 
   std::string ns_key = AppendNamespacePrefix(user_key);
   HashMetadata metadata(false);
-  rocksdb::Status s = GetMetadata(ctx, ns_key, &metadata);
+  rocksdb::Status s = getMetadata(ctx, ns_key, &metadata);
   if (!s.ok()) return s;
   *size = metadata.size;
   return rocksdb::Status::OK();
@@ -53,11 +65,17 @@ rocksdb::Status Hash::Size(engine::Context &ctx, const Slice &user_key, uint64_t
 rocksdb::Status Hash::Get(engine::Context &ctx, const Slice &user_key, const Slice &field, std::string *value) {
   std::string ns_key = AppendNamespacePrefix(user_key);
   HashMetadata metadata(false);
-  rocksdb::Status s = GetMetadata(ctx, ns_key, &metadata);
+  rocksdb::Status s = getMetadata(ctx, ns_key, &metadata);
   if (!s.ok()) return s;
-  rocksdb::ReadOptions read_options;
   std::string sub_key = InternalKey(ns_key, field, metadata.version, storage_->IsSlotIdEncoded()).Encode();
-  return storage_->Get(ctx, ctx.GetReadOptions(), sub_key, value);
+  std::string raw_value;
+  s = getRawValue(ctx, sub_key, &raw_value);
+  if (!s.ok()) return s;
+  Slice payload(raw_value);
+  s = decodeValue(metadata, &payload);
+  if (!s.ok()) return s;
+  value->assign(payload.data(), payload.size());
+  return rocksdb::Status::OK();
 }
 
 rocksdb::Status Hash::IncrBy(engine::Context &ctx, const Slice &user_key, const Slice &field, int64_t increment,
@@ -67,17 +85,21 @@ rocksdb::Status Hash::IncrBy(engine::Context &ctx, const Slice &user_key, const 
 
   std::string ns_key = AppendNamespacePrefix(user_key);
 
-  HashMetadata metadata;
-  rocksdb::Status s = GetMetadata(ctx, ns_key, &metadata);
+  HashMetadata metadata = createMetadataForWrite();
+  rocksdb::Status s = getMetadata(ctx, ns_key, &metadata);
   if (!s.ok() && !s.IsNotFound()) return s;
 
   std::string sub_key = InternalKey(ns_key, field, metadata.version, storage_->IsSlotIdEncoded()).Encode();
   if (s.ok()) {
-    std::string value_bytes;
-    s = storage_->Get(ctx, ctx.GetReadOptions(), sub_key, &value_bytes);
+    std::string raw_value;
+    Slice value_bytes;
+    s = getRawValue(ctx, sub_key, &raw_value);
     if (!s.ok() && !s.IsNotFound()) return s;
     if (s.ok()) {
-      auto parse_result = ParseInt<int64_t>(value_bytes, 10);
+      value_bytes = Slice(raw_value);
+      s = decodeValue(metadata, &value_bytes);
+      if (!s.ok()) return s;
+      auto parse_result = ParseInt<int64_t>(value_bytes.ToStringView(), 10);
       if (!parse_result) {
         return rocksdb::Status::InvalidArgument(parse_result.Msg());
       }
@@ -98,7 +120,8 @@ rocksdb::Status Hash::IncrBy(engine::Context &ctx, const Slice &user_key, const 
   WriteBatchLogData log_data(kRedisHash);
   s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) return s;
-  s = batch->Put(sub_key, std::to_string(*new_value));
+  std::string encoded_value = metadata.EncodeSubkeyValue(std::to_string(*new_value));
+  s = batch->Put(sub_key, encoded_value);
   if (!s.ok()) return s;
   if (!exists) {
     metadata.size += 1;
@@ -117,17 +140,21 @@ rocksdb::Status Hash::IncrByFloat(engine::Context &ctx, const Slice &user_key, c
 
   std::string ns_key = AppendNamespacePrefix(user_key);
 
-  HashMetadata metadata;
-  rocksdb::Status s = GetMetadata(ctx, ns_key, &metadata);
+  HashMetadata metadata = createMetadataForWrite();
+  rocksdb::Status s = getMetadata(ctx, ns_key, &metadata);
   if (!s.ok() && !s.IsNotFound()) return s;
 
   std::string sub_key = InternalKey(ns_key, field, metadata.version, storage_->IsSlotIdEncoded()).Encode();
   if (s.ok()) {
-    std::string value_bytes;
-    s = storage_->Get(ctx, ctx.GetReadOptions(), sub_key, &value_bytes);
+    std::string raw_value;
+    Slice value_bytes;
+    s = getRawValue(ctx, sub_key, &raw_value);
     if (!s.ok() && !s.IsNotFound()) return s;
     if (s.ok()) {
-      auto value_stat = ParseFloat(value_bytes);
+      value_bytes = Slice(raw_value);
+      s = decodeValue(metadata, &value_bytes);
+      if (!s.ok()) return s;
+      auto value_stat = ParseFloat(value_bytes.ToStringView());
       if (!value_stat || isspace(value_bytes[0])) {
         return rocksdb::Status::InvalidArgument("value is not a number");
       }
@@ -145,7 +172,8 @@ rocksdb::Status Hash::IncrByFloat(engine::Context &ctx, const Slice &user_key, c
   WriteBatchLogData log_data(kRedisHash);
   s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) return s;
-  s = batch->Put(sub_key, util::Float2String(*new_value));
+  std::string encoded_value = metadata.EncodeSubkeyValue(util::Float2String(*new_value));
+  s = batch->Put(sub_key, encoded_value);
   if (!s.ok()) return s;
   if (!exists) {
     metadata.size += 1;
@@ -164,7 +192,7 @@ rocksdb::Status Hash::MGet(engine::Context &ctx, const Slice &user_key, const st
 
   std::string ns_key = AppendNamespacePrefix(user_key);
   HashMetadata metadata(false);
-  rocksdb::Status s = GetMetadata(ctx, ns_key, &metadata);
+  rocksdb::Status s = getMetadata(ctx, ns_key, &metadata);
   if (!s.ok()) {
     return s;
   }
@@ -189,7 +217,14 @@ rocksdb::Status Hash::MGet(engine::Context &ctx, const Slice &user_key, const st
                      values_vector.data(), statuses_vector.data());
   for (size_t i = 0; i < keys.size(); i++) {
     if (!statuses_vector[i].ok() && !statuses_vector[i].IsNotFound()) return statuses_vector[i];
-    values->emplace_back(values_vector[i].ToString());
+    if (statuses_vector[i].ok()) {
+      Slice value(values_vector[i]);
+      s = decodeValue(metadata, &value);
+      if (!s.ok()) return s;
+      values->emplace_back(value.data(), value.size());
+    } else {
+      values->emplace_back("");
+    }
     statuses->emplace_back(statuses_vector[i]);
   }
   return rocksdb::Status::OK();
@@ -211,7 +246,7 @@ rocksdb::Status Hash::Delete(engine::Context &ctx, const Slice &user_key, const 
   auto s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) return s;
 
-  s = GetMetadata(ctx, ns_key, &metadata);
+  s = getMetadata(ctx, ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   std::string value;
@@ -244,8 +279,8 @@ rocksdb::Status Hash::MSet(engine::Context &ctx, const Slice &user_key, const st
   *added_cnt = 0;
   std::string ns_key = AppendNamespacePrefix(user_key);
 
-  HashMetadata metadata;
-  rocksdb::Status s = GetMetadata(ctx, ns_key, &metadata);
+  HashMetadata metadata = createMetadataForWrite();
+  rocksdb::Status s = getMetadata(ctx, ns_key, &metadata);
   if (!s.ok() && !s.IsNotFound()) return s;
   bool ttl_updated = false;
   if (expire > 0 && metadata.expire != expire) {
@@ -292,7 +327,13 @@ rocksdb::Status Hash::MSet(engine::Context &ctx, const Slice &user_key, const st
         return field_status;
       }
       if (field_status.ok()) {
-        if (nx || values_vector[field_index] == values[field_index]) {
+        if (nx) {
+          continue;
+        }
+        Slice existing_value(values_vector[field_index]);
+        s = decodeValue(metadata, &existing_value);
+        if (!s.ok()) return s;
+        if (existing_value.ToStringView() == values[field_index]) {
           continue;
         }
         exists = true;
@@ -303,7 +344,8 @@ rocksdb::Status Hash::MSet(engine::Context &ctx, const Slice &user_key, const st
       added++;
     }
 
-    s = batch->Put(field_key, values[field_index]);
+    std::string encoded_value = metadata.EncodeSubkeyValue(values[field_index]);
+    s = batch->Put(field_key, encoded_value);
     if (!s.ok()) return s;
   }
 
@@ -327,7 +369,7 @@ rocksdb::Status Hash::RangeByLex(engine::Context &ctx, const Slice &user_key, co
   }
   std::string ns_key = AppendNamespacePrefix(user_key);
   HashMetadata metadata(false);
-  rocksdb::Status s = GetMetadata(ctx, ns_key, &metadata);
+  rocksdb::Status s = getMetadata(ctx, ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   std::string start_member = spec.reversed ? spec.max : spec.min;
@@ -370,7 +412,10 @@ rocksdb::Status Hash::RangeByLex(engine::Context &ctx, const Slice &user_key, co
     }
     if (spec.offset >= 0 && pos++ < spec.offset) continue;
 
-    field_values->emplace_back(ikey.GetSubKey().ToString(), iter->value().ToString());
+    Slice value(iter->value());
+    s = decodeValue(metadata, &value);
+    if (!s.ok()) return s;
+    field_values->emplace_back(ikey.GetSubKey().ToString(), std::string(value.data(), value.size()));
     if (spec.count > 0 && field_values->size() >= static_cast<unsigned>(spec.count)) break;
   }
   return rocksdb::Status::OK();
@@ -382,7 +427,7 @@ rocksdb::Status Hash::GetAll(engine::Context &ctx, const Slice &user_key, std::v
 
   std::string ns_key = AppendNamespacePrefix(user_key);
   HashMetadata metadata(false);
-  rocksdb::Status s = GetMetadata(ctx, ns_key, &metadata);
+  rocksdb::Status s = getMetadata(ctx, ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   std::string prefix_key = InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode();
@@ -399,10 +444,16 @@ rocksdb::Status Hash::GetAll(engine::Context &ctx, const Slice &user_key, std::v
       InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
       field_values->emplace_back(ikey.GetSubKey().ToString(), "");
     } else if (type == HashFetchType::kOnlyValue) {
-      field_values->emplace_back("", iter->value().ToString());
+      Slice value(iter->value());
+      s = decodeValue(metadata, &value);
+      if (!s.ok()) return s;
+      field_values->emplace_back("", std::string(value.data(), value.size()));
     } else {
       InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
-      field_values->emplace_back(ikey.GetSubKey().ToString(), iter->value().ToString());
+      Slice value(iter->value());
+      s = decodeValue(metadata, &value);
+      if (!s.ok()) return s;
+      field_values->emplace_back(ikey.GetSubKey().ToString(), std::string(value.data(), value.size()));
     }
   }
   return rocksdb::Status::OK();
@@ -411,7 +462,9 @@ rocksdb::Status Hash::GetAll(engine::Context &ctx, const Slice &user_key, std::v
 rocksdb::Status Hash::Scan(engine::Context &ctx, const Slice &user_key, const std::string &cursor, uint64_t limit,
                            const std::string &field_prefix, std::vector<std::string> *fields,
                            std::vector<std::string> *values) {
-  return SubKeyScanner::Scan(ctx, kRedisHash, user_key, cursor, limit, field_prefix, fields, values);
+  return scanSubkeys<HashMetadata>(
+      ctx, kRedisHash, user_key, cursor, limit, field_prefix, fields, values,
+      [](const HashMetadata &metadata, Slice *value) { return metadata.DecodeSubkeyValue(value); });
 }
 
 rocksdb::Status Hash::RandField(engine::Context &ctx, const Slice &user_key, int64_t command_count,
@@ -421,7 +474,7 @@ rocksdb::Status Hash::RandField(engine::Context &ctx, const Slice &user_key, int
 
   std::string ns_key = AppendNamespacePrefix(user_key);
   HashMetadata metadata(/*generate_version=*/false);
-  rocksdb::Status s = GetMetadata(ctx, ns_key, &metadata);
+  rocksdb::Status s = getMetadata(ctx, ns_key, &metadata);
   if (!s.ok()) return s;
 
   std::vector<FieldValue> samples;

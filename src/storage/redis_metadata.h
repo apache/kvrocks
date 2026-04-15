@@ -103,6 +103,16 @@ enum RedisCommand {
 constexpr const char *kErrMsgWrongType = "WRONGTYPE Operation against a key holding the wrong kind of value";
 constexpr const char *kErrMsgKeyExpired = "the key was expired";
 
+enum class HashSubkeyEncodingMode : uint8_t {
+  kLegacy = 0,
+  kFieldExpiration = 1,
+};
+
+enum class HashLengthMode : uint8_t {
+  kAccurate = 0,
+  kApproximate = 1,
+};
+
 using rocksdb::Slice;
 
 struct KeyNumStats {
@@ -211,7 +221,25 @@ class Metadata {
 
 class HashMetadata : public Metadata {
  public:
-  explicit HashMetadata(bool generate_version = true) : Metadata(kRedisHash, generate_version) {}
+  static constexpr size_t kFieldExpirationPrefixSize = sizeof(uint64_t);
+
+  HashSubkeyEncodingMode mode = HashSubkeyEncodingMode::kLegacy;
+  uint64_t expsz = 0;
+  uint64_t lower = 0;
+  uint64_t upper = 0;
+
+  explicit HashMetadata(bool generate_version = true, HashSubkeyEncodingMode mode = HashSubkeyEncodingMode::kLegacy)
+      : Metadata(kRedisHash, generate_version), mode(mode) {}
+
+  bool IsLegacySubkeyEncoding() const { return mode == HashSubkeyEncodingMode::kLegacy; }
+  bool IsFieldExpirationEncoding() const { return mode == HashSubkeyEncodingMode::kFieldExpiration; }
+
+  [[nodiscard]] std::string EncodeSubkeyValue(Slice value, uint64_t expire = 0) const;
+  [[nodiscard]] rocksdb::Status DecodeSubkeyValue(Slice *value, uint64_t *expire = nullptr) const;
+
+  void Encode(std::string *dst) const override;
+  using Metadata::Decode;
+  rocksdb::Status Decode(Slice *input) override;
 };
 
 class SetMetadata : public Metadata {

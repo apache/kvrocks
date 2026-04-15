@@ -1205,3 +1205,19 @@ func testString(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.Equal(t, []redis.LCSMatchedPosition{}, rdb.LCS(ctx, &redis.LCSQuery{Key1: "virus1", Key2: "virus2", Idx: true, WithMatchLen: true}).Val().Matches)
 	})
 }
+
+func TestSetConditional(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{})
+	defer srv.Close()
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	// Failure scenario: Extended SET GET and NX option on wrong type
+	t.Run("Extended SET GET and NX option on wrong type", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "listkey").Err())
+		require.NoError(t, rdb.LPush(ctx, "listkey", "v1").Err())
+
+		require.ErrorContains(t, rdb.Do(ctx, "SET", "listkey", "v", "NX", "GET").Err(), "WRONGTYPE")
+	})
+}

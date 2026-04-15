@@ -108,51 +108,6 @@ class CommandGetEx : public Commander {
   std::optional<uint64_t> expire_;
 };
 
-class CommandDelEX : public Commander {
- public:
-  Status Parse(const std::vector<std::string> &args) override {
-    if (args.size() > 4) {
-      return {Status::RedisParseErr, errWrongNumOfArguments};
-    }
-
-    CommandParser parser(args, 2);
-    while (parser.Good()) {
-      if (parser.EatEqICase("ifdeq")) {
-        option_ = {DelExOption::IFDEQ, GET_OR_RET(parser.TakeStr())};
-      } else if (parser.EatEqICase("ifdne")) {
-        option_ = {DelExOption::IFDNE, GET_OR_RET(parser.TakeStr())};
-      } else if (parser.EatEqICase("ifeq")) {
-        option_ = {DelExOption::IFEQ, GET_OR_RET(parser.TakeStr())};
-      } else if (parser.EatEqICase("ifne")) {
-        option_ = {DelExOption::IFNE, GET_OR_RET(parser.TakeStr())};
-      } else {
-        return {Status::RedisParseErr, errInvalidSyntax};
-      }
-    }
-    return Status::OK();
-  }
-
-  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
-    redis::String string_db(srv->storage, conn->GetNamespace());
-    bool deleted = false;
-    auto s = string_db.DelEX(ctx, args_[1], option_, deleted);
-
-    if (!s.ok() && !s.IsNotFound()) {
-      return {Status::RedisExecErr, s.ToString()};
-    }
-
-    if (s.IsNotFound() || !deleted) {
-      *output = redis::Integer(0);
-    } else {
-      *output = redis::Integer(1);
-    }
-    return Status::OK();
-  }
-
- private:
-  DelExOption option_;
-};
-
 class CommandStrlen : public Commander {
  public:
   Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
@@ -344,6 +299,18 @@ class CommandSet : public Commander {
         set_flag_ = StringSetType::NX;
       } else if (parser.EatEqICaseFlag("XX", set_flag)) {
         set_flag_ = StringSetType::XX;
+      } else if (parser.EatEqICaseFlag("IFEQ", set_flag)) {
+        set_flag_ = StringSetType::IFEQ;
+        cmp_value_ = GET_OR_RET(parser.TakeStr());
+      } else if (parser.EatEqICaseFlag("IFNE", set_flag)) {
+        set_flag_ = StringSetType::IFNE;
+        cmp_value_ = GET_OR_RET(parser.TakeStr());
+      } else if (parser.EatEqICaseFlag("IFDEQ", set_flag)) {
+        set_flag_ = StringSetType::IFDEQ;
+        cmp_value_ = GET_OR_RET(parser.TakeStr());
+      } else if (parser.EatEqICaseFlag("IFDNE", set_flag)) {
+        set_flag_ = StringSetType::IFDNE;
+        cmp_value_ = GET_OR_RET(parser.TakeStr());
       } else if (parser.EatEqICase("GET")) {
         get_ = true;
       } else {
@@ -358,7 +325,7 @@ class CommandSet : public Commander {
     std::optional<std::string> ret;
     redis::String string_db(srv->storage, conn->GetNamespace());
 
-    rocksdb::Status s = string_db.Set(ctx, args_[1], args_[2], {expire_, set_flag_, get_, keep_ttl_}, ret);
+    rocksdb::Status s = string_db.Set(ctx, args_[1], args_[2], {expire_, set_flag_, get_, keep_ttl_, cmp_value_}, ret);
 
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
@@ -385,6 +352,7 @@ class CommandSet : public Commander {
   bool get_ = false;
   bool keep_ttl_ = false;
   StringSetType set_flag_ = StringSetType::NONE;
+  std::string cmp_value_;
 };
 
 class CommandSetEX : public Commander {
@@ -857,7 +825,6 @@ REDIS_REGISTER_COMMANDS(
     MakeCmdAttr<CommandGetRange>("getrange", 4, "read-only", 1, 1, 1),
     MakeCmdAttr<CommandSubStr>("substr", 4, "read-only", 1, 1, 1),
     MakeCmdAttr<CommandGetDel>("getdel", 2, "write no-dbsize-check", 1, 1, 1),
-    MakeCmdAttr<CommandDelEX>("delex", -2, "write", 1, 1, 1),
     MakeCmdAttr<CommandSetRange>("setrange", 4, "write", 1, 1, 1),
     MakeCmdAttr<CommandMGet>("mget", -2, "read-only", 1, -1, 1),
     MakeCmdAttr<CommandAppend>("append", 3, "write", 1, 1, 1), MakeCmdAttr<CommandSet>("set", -3, "write", 1, 1, 1),

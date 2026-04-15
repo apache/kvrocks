@@ -462,15 +462,133 @@ func tdigestTests(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", sourceKey2, "compression", "30").Err())
 		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", sourceKey2, "4.0", "5.0", "6.0", "100", "-200").Err())
 
-		// create a destination digest
+		// create a destination digest and add some data (for testing merge into existing dest)
 		destKey := keyPrefix + "dest"
 		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", destKey, "compression", "100").Err())
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", destKey, "7.0", "8.0", "9.0").Err())
 
-		// merge the source into the destination without override
-		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.MERGE", destKey, 2, sourceKey1, sourceKey2).Err(), errMsgKeyAlreadyExists)
+		// merge the source into the existing destination without override
+		// should merge dest + sources together (not return error)
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.MERGE", destKey, 2, sourceKey1, sourceKey2).Err())
 
-		// merge the source into the destination with override
+		// verify the merged result contains data from both dest and sources
+		rsp := rdb.Do(ctx, "TDIGEST.INFO", destKey)
+		require.NoError(t, rsp.Err())
+		info := toTdigestInfo(t, rsp.Val())
+		// dest(3) + source1(3) + source2(5) = 11 observations
+		require.EqualValues(t, 11, info.Observations)
+		// dest compression (100) should be preserved when merging without OVERRIDE
+		// (sourceKey1 has compression 101, sourceKey2 has compression 30)
+		require.EqualValues(t, 100, info.Compression)
+
+		rsp = rdb.Do(ctx, "TDIGEST.MIN", destKey)
+		require.NoError(t, rsp.Err())
+		minVal, err := rsp.Float64()
+		require.NoError(t, err)
+		require.InEpsilon(t, -200, minVal, 0.001)
+
+		rsp = rdb.Do(ctx, "TDIGEST.MAX", destKey)
+		require.NoError(t, rsp.Err())
+		maxVal, err := rsp.Float64()
+		require.NoError(t, err)
+		require.InEpsilon(t, 100, maxVal, 0.001)
+
+		// merge the source into the destination with override (should overwrite existing dest data)
 		require.NoError(t, rdb.Do(ctx, "TDIGEST.MERGE", destKey, 2, sourceKey1, sourceKey2, "override").Err())
+
+		// verify override result: should only contain source data (not previous dest data)
+		rsp = rdb.Do(ctx, "TDIGEST.INFO", destKey)
+		require.NoError(t, rsp.Err())
+		infoOverride := toTdigestInfo(t, rsp.Val())
+		// source1(3) + source2(5) = 8 observations (dest data was overwritten)
+		require.EqualValues(t, 8, infoOverride.Observations)
+		// with OVERRIDE, compression should be max of sources (101 from sourceKey1)
+		require.EqualValues(t, 101, infoOverride.Compression)
+
+		// Test: dest in source list without OVERRIDE - dest data is merged twice (Redis behavior)
+		// When dest is both destination and in source list without OVERRIDE:
+		// Redis merges dest's existing data first, then merges the source list (including dest)
+		t.Run("dest in source list without OVERRIDE double-counts dest (Redis behavior)", func(t *testing.T) {
+			destKey := keyPrefix + "dest_in_source"
+			srcKey := keyPrefix + "src_for_dest_in_source"
+
+			// Create dest with 3 values: 1, 2, 3
+			require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", destKey, "compression", "100").Err())
+			require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", destKey, "1", "2", "3").Err())
+
+			// Create source with 2 values: 10, 20
+			require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", srcKey, "compression", "100").Err())
+			require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", srcKey, "10", "20").Err())
+
+			// Record observations before merge
+			rsp := rdb.Do(ctx, "TDIGEST.INFO", destKey)
+			require.NoError(t, rsp.Err())
+			infoBefore := toTdigestInfo(t, rsp.Val())
+			require.EqualValues(t, 3, infoBefore.Observations)
+
+			// Merge: TDIGEST.MERGE dest 2 dest src
+			// dest is both the destination AND in the source list
+			// Redis behavior: dest's existing data + dest(in source) + src = 3+3+2 = 8
+			require.NoError(t, rdb.Do(ctx, "TDIGEST.MERGE", destKey, 2, destKey, srcKey).Err())
+
+			// Verify: should have dest(3) + dest(3) + src(2) = 8 observations
+			rsp = rdb.Do(ctx, "TDIGEST.INFO", destKey)
+			require.NoError(t, rsp.Err())
+			infoAfter := toTdigestInfo(t, rsp.Val())
+			require.EqualValues(t, 8, infoAfter.Observations, "dest is double-counted when in source list without OVERRIDE (Redis behavior)")
+
+			// Verify min/max: min should be 1 (from dest), max should be 20 (from src)
+			rsp = rdb.Do(ctx, "TDIGEST.MIN", destKey)
+			require.NoError(t, rsp.Err())
+			minVal, err := rsp.Float64()
+			require.NoError(t, err)
+			require.InEpsilon(t, 1.0, minVal, 0.001)
+
+			rsp = rdb.Do(ctx, "TDIGEST.MAX", destKey)
+			require.NoError(t, rsp.Err())
+			maxVal, err := rsp.Float64()
+			require.NoError(t, err)
+			require.InEpsilon(t, 20.0, maxVal, 0.001)
+		})
+
+		// Test: dest in source list WITH OVERRIDE
+		t.Run("dest in source list WITH OVERRIDE should replace dest", func(t *testing.T) {
+			destKey := keyPrefix + "dest_in_source_override"
+			srcKey := keyPrefix + "src_for_override"
+
+			// Create dest with 3 values: 1, 2, 3
+			require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", destKey, "compression", "100").Err())
+			require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", destKey, "1", "2", "3").Err())
+
+			// Create source with 2 values: 10, 20
+			require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", srcKey, "compression", "100").Err())
+			require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", srcKey, "10", "20").Err())
+
+			// Merge with OVERRIDE: TDIGEST.MERGE dest 2 dest src OVERRIDE
+			// With OVERRIDE, dest's existing data should be replaced
+			// dest in source list should still be included once
+			require.NoError(t, rdb.Do(ctx, "TDIGEST.MERGE", destKey, 2, destKey, srcKey, "OVERRIDE").Err())
+
+			// Verify: should have dest(3) + src(2) = 5 observations
+			// (dest is included from source list, plus src)
+			rsp := rdb.Do(ctx, "TDIGEST.INFO", destKey)
+			require.NoError(t, rsp.Err())
+			info := toTdigestInfo(t, rsp.Val())
+			require.EqualValues(t, 5, info.Observations, "with OVERRIDE, dest in source should be counted once")
+
+			// Verify min/max
+			rsp = rdb.Do(ctx, "TDIGEST.MIN", destKey)
+			require.NoError(t, rsp.Err())
+			minVal, err := rsp.Float64()
+			require.NoError(t, err)
+			require.InEpsilon(t, 1.0, minVal, 0.001)
+
+			rsp = rdb.Do(ctx, "TDIGEST.MAX", destKey)
+			require.NoError(t, rsp.Err())
+			maxVal, err := rsp.Float64()
+			require.NoError(t, err)
+			require.InEpsilon(t, 20.0, maxVal, 0.001)
+		})
 
 		// merge to a new destination key
 		newDestKey1 := keyPrefix + "new_dest"

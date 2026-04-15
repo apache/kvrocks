@@ -249,6 +249,21 @@ rocksdb::Status String::Set(engine::Context &ctx, const std::string &user_key, c
     uint64_t old_expire = 0;
     auto s = getValueAndExpire(ctx, ns_key, &old_value, &old_expire);
     if (!s.ok() && !s.IsNotFound() && !s.IsInvalidArgument()) return s;
+    // If the existing key is not a string type, enforce expected behaviors:
+    if (s.IsInvalidArgument()) {
+      // For conditional comparisons (IFEQ/IFNE/IFDEQ/IFDNE), reading the old value is required,
+      // so return the underlying WRONGTYPE (InvalidArgument) error.
+      if (args.type == StringSetType::IFEQ || args.type == StringSetType::IFNE || args.type == StringSetType::IFDEQ ||
+          args.type == StringSetType::IFDNE) {
+        return s;
+      }
+      // For NX option, treat a wrong type as "key exists" so the condition is not met.
+      if (args.type == StringSetType::NX) {
+        if (!args.get) ret = std::nullopt;
+        return rocksdb::Status::OK();
+      }
+      // For other options, continue (e.g., XX may still proceed since key exists).
+    }
     // GET option
     if (args.get) {
       if (s.IsInvalidArgument()) {

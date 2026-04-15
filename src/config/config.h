@@ -180,6 +180,8 @@ struct Config {
   int redis_databases = 0;
   bool resp3_enabled = false;
   int log_retention_days;
+  HashSubkeyEncodingMode hash_encoding_mode = HashSubkeyEncodingMode::kLegacy;
+  HashLengthMode hash_length_mode = HashLengthMode::kAccurate;
 
   // load_tokens is used to buffer the tokens when loading,
   // don't use it to authenticate or rewrite the configuration file.

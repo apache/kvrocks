@@ -308,27 +308,91 @@ func TestGetConfigTxnContext(t *testing.T) {
 
 func TestGenerateConfigsMatrix(t *testing.T) {
 	t.Parallel()
-	configOptions := []util.ConfigOptions{
-		{
-			Name:       "txn-context-enabled",
-			Options:    []string{"yes", "no"},
-			ConfigType: util.YesNo,
-		},
-		{
-			Name:       "resp3-enabled",
-			Options:    []string{"yes", "no"},
-			ConfigType: util.YesNo,
-		},
-	}
+	t.Run("Generate one by one matrix", func(t *testing.T) {
+		configOptions := []util.ConfigOptions{
+			{
+				Name:    "resp3-enabled",
+				Options: []string{"yes"},
+			},
+		}
 
-	configsMatrix, err := util.GenerateConfigsMatrix(configOptions)
+		configsMatrix, err := util.GenerateConfigsMatrix(configOptions)
 
-	require.NoError(t, err)
-	require.Equal(t, 4, len(configsMatrix))
-	require.Contains(t, configsMatrix, util.KvrocksServerConfigs{"txn-context-enabled": "yes", "resp3-enabled": "yes"})
-	require.Contains(t, configsMatrix, util.KvrocksServerConfigs{"txn-context-enabled": "yes", "resp3-enabled": "no"})
-	require.Contains(t, configsMatrix, util.KvrocksServerConfigs{"txn-context-enabled": "no", "resp3-enabled": "yes"})
-	require.Contains(t, configsMatrix, util.KvrocksServerConfigs{"txn-context-enabled": "no", "resp3-enabled": "no"})
+		require.NoError(t, err)
+		require.Equal(t, []util.KvrocksServerConfigs{
+			{"resp3-enabled": "yes"},
+		}, configsMatrix)
+	})
+
+	t.Run("Generate one by two matrix", func(t *testing.T) {
+		configOptions := []util.ConfigOptions{
+			{
+				Name:    "txn-context-enabled",
+				Options: []string{"yes"},
+			},
+			{
+				Name:    "resp3-enabled",
+				Options: []string{"yes", "no"},
+			},
+		}
+
+		configsMatrix, err := util.GenerateConfigsMatrix(configOptions)
+
+		require.NoError(t, err)
+		require.Equal(t, []util.KvrocksServerConfigs{
+			{"txn-context-enabled": "yes", "resp3-enabled": "yes"},
+			{"txn-context-enabled": "yes", "resp3-enabled": "no"},
+		}, configsMatrix)
+	})
+
+	t.Run("Generate two by two matrix", func(t *testing.T) {
+		configOptions := []util.ConfigOptions{
+			{
+				Name:    "txn-context-enabled",
+				Options: []string{"yes", "no"},
+			},
+			{
+				Name:    "resp3-enabled",
+				Options: []string{"yes", "no"},
+			},
+		}
+
+		configsMatrix, err := util.GenerateConfigsMatrix(configOptions)
+
+		require.NoError(t, err)
+		require.Equal(t, 4, len(configsMatrix))
+		require.Contains(t, configsMatrix, util.KvrocksServerConfigs{"txn-context-enabled": "yes", "resp3-enabled": "yes"})
+		require.Contains(t, configsMatrix, util.KvrocksServerConfigs{"txn-context-enabled": "yes", "resp3-enabled": "no"})
+		require.Contains(t, configsMatrix, util.KvrocksServerConfigs{"txn-context-enabled": "no", "resp3-enabled": "yes"})
+		require.Contains(t, configsMatrix, util.KvrocksServerConfigs{"txn-context-enabled": "no", "resp3-enabled": "no"})
+	})
+
+	t.Run("Generate three by three matrix without reusing result maps", func(t *testing.T) {
+		configOptions := []util.ConfigOptions{
+			{
+				Name:    "a",
+				Options: []string{"1", "2", "3"},
+			},
+			{
+				Name:    "b",
+				Options: []string{"x", "y", "z"},
+			},
+		}
+
+		configsMatrix, err := util.GenerateConfigsMatrix(configOptions)
+
+		require.NoError(t, err)
+		require.Len(t, configsMatrix, 9)
+		require.Contains(t, configsMatrix, util.KvrocksServerConfigs{"a": "1", "b": "x"})
+		require.Contains(t, configsMatrix, util.KvrocksServerConfigs{"a": "1", "b": "y"})
+		require.Contains(t, configsMatrix, util.KvrocksServerConfigs{"a": "1", "b": "z"})
+		require.Contains(t, configsMatrix, util.KvrocksServerConfigs{"a": "2", "b": "x"})
+		require.Contains(t, configsMatrix, util.KvrocksServerConfigs{"a": "2", "b": "y"})
+		require.Contains(t, configsMatrix, util.KvrocksServerConfigs{"a": "2", "b": "z"})
+		require.Contains(t, configsMatrix, util.KvrocksServerConfigs{"a": "3", "b": "x"})
+		require.Contains(t, configsMatrix, util.KvrocksServerConfigs{"a": "3", "b": "y"})
+		require.Contains(t, configsMatrix, util.KvrocksServerConfigs{"a": "3", "b": "z"})
+	})
 }
 
 func TestGetConfigSkipBlockCacheDeallocationOnClose(t *testing.T) {

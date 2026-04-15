@@ -77,9 +77,8 @@ func toTdigestInfo(t *testing.T, value interface{}) tdigestInfo {
 func TestTDigest(t *testing.T) {
 	configOptions := []util.ConfigOptions{
 		{
-			Name:       "txn-context-enabled",
-			Options:    []string{"yes", "no"},
-			ConfigType: util.YesNo,
+			Name:    "txn-context-enabled",
+			Options: []string{"yes", "no"},
 		},
 	}
 
@@ -839,14 +838,12 @@ func tdigestTests(t *testing.T, configs util.KvrocksServerConfigs) {
 func TestTDigestByRankAndByRevRank(t *testing.T) {
 	configOptions := []util.ConfigOptions{
 		{
-			Name:       "txn-context-enabled",
-			Options:    []string{"yes", "no"},
-			ConfigType: util.YesNo,
+			Name:    "txn-context-enabled",
+			Options: []string{"yes", "no"},
 		},
 		{
-			Name:       "resp3-enabled",
-			Options:    []string{"yes", "no"},
-			ConfigType: util.YesNo,
+			Name:    "resp3-enabled",
+			Options: []string{"yes", "no"},
 		},
 	}
 

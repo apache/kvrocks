@@ -352,6 +352,24 @@ class CommandSet : public Commander {
         set_flag_ = StringSetType::NX;
       } else if (parser.EatEqICaseFlag("XX", set_flag)) {
         set_flag_ = StringSetType::XX;
+      } else if (parser.EatEqICaseFlag("IFEQ", set_flag)) {
+        set_flag_ = StringSetType::IFEQ;
+        cmp_value_ = GET_OR_RET(parser.TakeStr());
+      } else if (parser.EatEqICaseFlag("IFNE", set_flag)) {
+        set_flag_ = StringSetType::IFNE;
+        cmp_value_ = GET_OR_RET(parser.TakeStr());
+      } else if (parser.EatEqICaseFlag("IFDEQ", set_flag)) {
+        set_flag_ = StringSetType::IFDEQ;
+        cmp_value_ = GET_OR_RET(parser.TakeStr());
+        if (cmp_value_.size() != 16) {
+          return {Status::RedisParseErr, "ERR digest must be exactly 16 hexadecimal characters"};
+        }
+      } else if (parser.EatEqICaseFlag("IFDNE", set_flag)) {
+        set_flag_ = StringSetType::IFDNE;
+        cmp_value_ = GET_OR_RET(parser.TakeStr());
+        if (cmp_value_.size() != 16) {
+          return {Status::RedisParseErr, "ERR digest must be exactly 16 hexadecimal characters"};
+        }
       } else if (parser.EatEqICase("GET")) {
         get_ = true;
       } else {
@@ -366,7 +384,7 @@ class CommandSet : public Commander {
     std::optional<std::string> ret;
     redis::String string_db(srv->storage, conn->GetNamespace());
 
-    rocksdb::Status s = string_db.Set(ctx, args_[1], args_[2], {expire_, set_flag_, get_, keep_ttl_}, ret);
+    rocksdb::Status s = string_db.Set(ctx, args_[1], args_[2], {expire_, set_flag_, get_, keep_ttl_, cmp_value_}, ret);
 
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
@@ -393,6 +411,7 @@ class CommandSet : public Commander {
   bool get_ = false;
   bool keep_ttl_ = false;
   StringSetType set_flag_ = StringSetType::NONE;
+  std::string cmp_value_;
 };
 
 class CommandSetEX : public Commander {

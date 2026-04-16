@@ -67,7 +67,7 @@ struct FieldValueRetriever {
   StatusOr<kqir::Value> Retrieve(engine::Context &ctx, std::string_view field, const redis::IndexFieldMetadata *type);
 
   static StatusOr<kqir::Value> ParseFromJson(const jsoncons::json &value, const redis::IndexFieldMetadata *type);
-  static StatusOr<kqir::Value> ParseFromHash(const std::string &value, const redis::IndexFieldMetadata *type);
+  static StatusOr<kqir::Value> ParseFromHash(std::string_view value, const redis::IndexFieldMetadata *type);
 };
 
 struct IndexUpdater {

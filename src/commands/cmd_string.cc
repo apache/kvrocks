@@ -118,9 +118,17 @@ class CommandDelEX : public Commander {
     CommandParser parser(args, 2);
     while (parser.Good()) {
       if (parser.EatEqICase("ifdeq")) {
-        option_ = {DelExOption::IFDEQ, GET_OR_RET(parser.TakeStr())};
+        std::string digest = GET_OR_RET(parser.TakeStr());
+        if (digest.size() != 16) {
+          return {Status::RedisParseErr, "ERR digest must be exactly 16 hexadecimal characters"};
+        }
+        option_ = {DelExOption::IFDEQ, std::move(digest)};
       } else if (parser.EatEqICase("ifdne")) {
-        option_ = {DelExOption::IFDNE, GET_OR_RET(parser.TakeStr())};
+        std::string digest = GET_OR_RET(parser.TakeStr());
+        if (digest.size() != 16) {
+          return {Status::RedisParseErr, "ERR digest must be exactly 16 hexadecimal characters"};
+        }
+        option_ = {DelExOption::IFDNE, std::move(digest)};
       } else if (parser.EatEqICase("ifeq")) {
         option_ = {DelExOption::IFEQ, GET_OR_RET(parser.TakeStr())};
       } else if (parser.EatEqICase("ifne")) {

@@ -30,6 +30,30 @@
 
 namespace redis {
 
+namespace {
+
+std::string HashSubkeyEncodingModeName(HashSubkeyEncodingMode mode) {
+  switch (mode) {
+    case HashSubkeyEncodingMode::kLegacy:
+      return "legacy";
+    case HashSubkeyEncodingMode::kFieldExpiration:
+      return "field-expiration";
+  }
+  return "unknown";
+}
+
+std::string JsonStorageFormatName(JsonStorageFormat format) {
+  switch (format) {
+    case JsonStorageFormat::JSON:
+      return "json";
+    case JsonStorageFormat::CBOR:
+      return "cbor";
+  }
+  return "unknown";
+}
+
+}  // namespace
+
 class CommandType : public Commander {
  public:
   Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
@@ -560,21 +584,53 @@ class CommandKMetadata : public Commander {
     std::string &key = args_[1];
     std::string nskey = redis.AppendNamespacePrefix(key);
 
+    std::string raw_metadata;
+    Slice rest;
     Metadata metadata(kRedisNone, false);
-    auto s = redis.GetMetadata(ctx, RedisTypes::All(), nskey, &metadata);
+    auto s = redis.GetMetadata(ctx, RedisTypes::All(), nskey, &raw_metadata, &metadata, &rest);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
-    if (metadata.IsSingleKVType()) {
-      *output = conn->Map({{redis::BulkString("type"), redis::BulkString(metadata.TypeName())},
-                           {redis::BulkString("expire"), redis::Integer(metadata.expire)},
-                           {redis::BulkString("flags"), redis::Integer(metadata.flags)}});
-    } else {
-      *output = conn->Map({{redis::BulkString("type"), redis::BulkString(metadata.TypeName())},
-                           {redis::BulkString("size"), redis::Integer(metadata.size)},
-                           {redis::BulkString("expire"), redis::Integer(metadata.expire)},
-                           {redis::BulkString("flags"), redis::Integer(metadata.flags)},
-                           {redis::BulkString("version"), redis::Integer(metadata.version)}});
+    std::map<std::string, std::string> response = {
+        {redis::BulkString("type"), redis::BulkString(metadata.TypeName())},
+        {redis::BulkString("expire"), redis::Integer(metadata.expire)},
+        {redis::BulkString("flags"), redis::Integer(metadata.flags)},
+    };
+
+    if (!metadata.IsSingleKVType()) {
+      response.insert({redis::BulkString("size"), redis::Integer(metadata.size)});
+      response.insert({redis::BulkString("version"), redis::Integer(metadata.version)});
     }
+
+    if (metadata.Type() == kRedisHash) {
+      HashMetadata hash_metadata(false);
+      Slice metadata_bytes(raw_metadata);
+      s = Database::ParseMetadata({kRedisHash}, &metadata_bytes, &hash_metadata);
+      if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+
+      response.insert({redis::BulkString("mode"), redis::BulkString(HashSubkeyEncodingModeName(hash_metadata.mode))});
+      if (hash_metadata.IsFieldExpirationEncoding()) {
+        response.insert({redis::BulkString("expsz"), redis::Integer(hash_metadata.expsz)});
+        response.insert({redis::BulkString("lower"), redis::Integer(hash_metadata.lower)});
+        response.insert({redis::BulkString("upper"), redis::Integer(hash_metadata.upper)});
+      }
+    } else if (metadata.Type() == kRedisList) {
+      ListMetadata list_metadata(false);
+      Slice metadata_bytes(raw_metadata);
+      s = Database::ParseMetadata({kRedisList}, &metadata_bytes, &list_metadata);
+      if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+
+      response.insert({redis::BulkString("head"), redis::Integer(list_metadata.head)});
+      response.insert({redis::BulkString("tail"), redis::Integer(list_metadata.tail)});
+    } else if (metadata.Type() == kRedisJson) {
+      JsonMetadata json_metadata(false);
+      Slice metadata_bytes(raw_metadata);
+      s = Database::ParseMetadata({kRedisJson}, &metadata_bytes, &json_metadata);
+      if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+
+      response.insert({redis::BulkString("format"), redis::BulkString(JsonStorageFormatName(json_metadata.format))});
+    }
+
+    *output = conn->Map(response);
     return Status::OK();
   }
 };

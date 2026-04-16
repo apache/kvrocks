@@ -21,7 +21,11 @@ package auth
 
 import (
 	"context"
+	"fmt"
+	"net"
+	"regexp"
 	"testing"
+	"time"
 
 	"github.com/apache/kvrocks/tests/gocase/util"
 	"github.com/stretchr/testify/require"
@@ -43,6 +47,14 @@ func TestNoAuth(t *testing.T) {
 	t.Run("Connections accepted before requirepass is set remain usable", func(t *testing.T) {
 		idleConn := srv.NewTCPClient()
 		defer func() { require.NoError(t, idleConn.Close()) }()
+
+		_, idlePort, err := net.SplitHostPort(idleConn.LocalAddr().String())
+		require.NoError(t, err)
+
+		idleConnPattern := regexp.MustCompile(fmt.Sprintf(`(?:^| )addr=[^ ]*:%s(?: |$)`, idlePort))
+		require.Eventually(t, func() bool {
+			return idleConnPattern.MatchString(rdb.ClientList(ctx).Val())
+		}, 5*time.Second, 10*time.Millisecond)
 
 		require.NoError(t, rdb.ConfigSet(ctx, "requirepass", "foobar").Err())
 

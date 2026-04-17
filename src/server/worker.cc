@@ -183,6 +183,11 @@ void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd, [[ma
   conn->SetCB(bev);
   bufferevent_enable(bev, EV_READ);
 
+  if (auto s = util::GetPeerAddr(fd)) {
+    auto [ip, port] = std::move(*s);
+    conn->SetAddr(ip, port);
+  }
+
   s = AddConnection(conn);
   if (!s.IsOK()) {
     std::string err_msg = redis::Error({Status::NotOK, s.Msg()});
@@ -192,11 +197,6 @@ void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd, [[ma
     }
     conn->Close();
     return;
-  }
-
-  if (auto s = util::GetPeerAddr(fd)) {
-    auto [ip, port] = std::move(*s);
-    conn->SetAddr(ip, port);
   }
 
   if (rate_limit_group_) {

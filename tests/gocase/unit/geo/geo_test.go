@@ -481,6 +481,18 @@ var testGeo = func(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.Equal(t, []string{"Beijing"}, rdb.ZRange(ctx, "dst", 0, -1).Val())
 	})
 
+	t.Run("GEOSEARCHSTORE should not delete source key when result is empty", func(t *testing.T) {
+		require.NoError(t, rdb.Do(ctx, "DEL", "src", "dst").Err())
+		require.NoError(t, rdb.Do(ctx, "GEOADD", "src", "13.361389", "38.115556", "Palermo").Err())
+		require.NoError(t, rdb.Do(ctx, "GEOADD", "dst", "20", "20", "OldMember").Err())
+		// Search from src with a tiny radius that yields no results, storing into dst.
+		require.EqualValues(t, 0,
+			rdb.Do(ctx, "GEOSEARCHSTORE", "dst", "src", "FROMLONLAT", "1", "1", "BYRADIUS", "1", "m").Val())
+		// The dst key should be removed, but the src key must still exist.
+		require.EqualValues(t, 0, rdb.Exists(ctx, "dst").Val())
+		require.EqualValues(t, 1, rdb.Exists(ctx, "src").Val())
+	})
+
 	t.Run("GEOHASH is able to return geohash strings", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "points").Err())
 		require.NoError(t, rdb.GeoAdd(ctx, "points", &redis.GeoLocation{Name: "test", Longitude: -5.6, Latitude: 42.6}).Err())

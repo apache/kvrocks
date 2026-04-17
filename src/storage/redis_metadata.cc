@@ -38,6 +38,7 @@ const int VersionCounterBits = 11;
 static std::atomic<uint64_t> version_counter_ = 0;
 
 constexpr const char *kErrMetadataTooShort = "metadata is too short";
+constexpr const char *kErrHashSubkeyValueTooShort = "hash subkey value is too short";
 
 InternalKey::InternalKey(Slice input, bool slot_id_encoded) : slot_id_encoded_(slot_id_encoded) {
   uint32_t key_size = 0;
@@ -338,6 +339,80 @@ bool Metadata::IsEmptyableType() const {
 }
 
 bool Metadata::Expired() const { return ExpireAt(util::GetTimeStampMS()); }
+
+void HashMetadata::Encode(std::string *dst) const {
+  Metadata::Encode(dst);
+  if (IsLegacySubkeyEncoding()) {
+    return;
+  }
+
+  PutFixed8(dst, static_cast<uint8_t>(mode));
+  PutFixed64(dst, expsz);
+  PutFixed64(dst, lower);
+  PutFixed64(dst, upper);
+}
+
+rocksdb::Status HashMetadata::Decode(Slice *input) {
+  if (auto s = Metadata::Decode(input); !s.ok()) {
+    return s;
+  }
+
+  if (input->empty()) {
+    mode = HashSubkeyEncodingMode::kLegacy;
+    expsz = 0;
+    lower = 0;
+    upper = 0;
+    return rocksdb::Status::OK();
+  }
+
+  if (input->size() < 1 + 8 + 8 + 8) {
+    return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
+  }
+
+  uint8_t encoded_mode = 0;
+  GetFixed8(input, &encoded_mode);
+  if (encoded_mode > static_cast<uint8_t>(HashSubkeyEncodingMode::kFieldExpiration)) {
+    return rocksdb::Status::InvalidArgument("invalid hash subkey encoding mode");
+  }
+
+  mode = static_cast<HashSubkeyEncodingMode>(encoded_mode);
+  GetFixed64(input, &expsz);
+  GetFixed64(input, &lower);
+  GetFixed64(input, &upper);
+  return rocksdb::Status::OK();
+}
+
+std::string HashMetadata::EncodeSubkeyValue(Slice value, uint64_t expire) const {
+  if (IsLegacySubkeyEncoding()) {
+    return value.ToString();
+  }
+
+  std::string encoded;
+  encoded.reserve(kFieldExpirationPrefixSize + value.size());
+  PutFixed64(&encoded, expire);
+  encoded.append(value.data(), value.size());
+  return encoded;
+}
+
+rocksdb::Status HashMetadata::DecodeSubkeyValue(Slice *value, uint64_t *expire) const {
+  if (IsLegacySubkeyEncoding()) {
+    if (expire != nullptr) {
+      *expire = 0;
+    }
+    return rocksdb::Status::OK();
+  }
+
+  if (value->size() < kFieldExpirationPrefixSize) {
+    return rocksdb::Status::InvalidArgument(kErrHashSubkeyValueTooShort);
+  }
+
+  uint64_t encoded_expire = 0;
+  GetFixed64(value, &encoded_expire);
+  if (expire != nullptr) {
+    *expire = encoded_expire;
+  }
+  return rocksdb::Status::OK();
+}
 
 ListMetadata::ListMetadata(bool generate_version)
     : Metadata(kRedisList, generate_version), head(UINT64_MAX / 2), tail(head) {}

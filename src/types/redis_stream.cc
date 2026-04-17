@@ -685,9 +685,6 @@ rocksdb::Status Stream::AutoClaim(engine::Context &ctx, const Slice &stream_name
 }
 rocksdb::Status Stream::CreateGroup(engine::Context &ctx, const Slice &stream_name,
                                     const StreamXGroupCreateOptions &options, const std::string &group_name) {
-  if (std::isdigit(group_name[0])) {
-    return rocksdb::Status::InvalidArgument("group name cannot start with number");
-  }
   std::string ns_key = AppendNamespacePrefix(stream_name);
 
   StreamMetadata metadata;
@@ -797,9 +794,6 @@ rocksdb::Status Stream::DestroyGroup(engine::Context &ctx, const Slice &stream_n
 rocksdb::Status Stream::createConsumerWithoutLock(engine::Context &ctx, const Slice &stream_name,
                                                   const std::string &group_name, const std::string &consumer_name,
                                                   int *created_number) {
-  if (std::isdigit(consumer_name[0])) {
-    return rocksdb::Status::InvalidArgument("consumer name cannot start with number");
-  }
   std::string ns_key = AppendNamespacePrefix(stream_name);
   StreamMetadata metadata;
   rocksdb::Status s = GetMetadata(ctx, ns_key, &metadata);

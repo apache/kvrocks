@@ -36,6 +36,13 @@ type kMetadataResponse struct {
 	ktype   string `redis:"type"`
 	flags   int64  `redis:"flags"`
 	version int64  `redis:"version"`
+	mode    string `redis:"mode"`
+	format  string `redis:"format"`
+	expsz   int64  `redis:"expsz"`
+	lower   int64  `redis:"lower"`
+	upper   int64  `redis:"upper"`
+	head    int64  `redis:"head"`
+	tail    int64  `redis:"tail"`
 }
 
 func toInt64(val interface{}) (int64, error) {
@@ -65,6 +72,11 @@ func ExtractKMetadataResponse(result interface{}) (*kMetadataResponse, error) {
 		"size":    &response.size,
 		"flags":   &response.flags,
 		"version": &response.version,
+		"expsz":   &response.expsz,
+		"lower":   &response.lower,
+		"upper":   &response.upper,
+		"head":    &response.head,
+		"tail":    &response.tail,
 	} {
 		if val, ok := resultMap[field]; ok {
 			converted, err := toInt64(val)
@@ -75,16 +87,29 @@ func ExtractKMetadataResponse(result interface{}) (*kMetadataResponse, error) {
 		}
 	}
 
-	// Extract Type field
-	if val, ok := resultMap["type"]; ok {
-		if strVal, ok := val.(string); ok {
-			response.ktype = strVal
-		} else {
-			return nil, fmt.Errorf("type is not a string, got %T", val)
+	for field, target := range map[string]*string{
+		"type":   &response.ktype,
+		"mode":   &response.mode,
+		"format": &response.format,
+	} {
+		if val, ok := resultMap[field]; ok {
+			if strVal, ok := val.(string); ok {
+				*target = strVal
+			} else {
+				return nil, fmt.Errorf("%s is not a string, got %T", field, val)
+			}
 		}
 	}
 
 	return response, nil
+}
+
+func MustKMetadataMap(t *testing.T, result interface{}) map[interface{}]interface{} {
+	t.Helper()
+
+	resultMap, ok := result.(map[interface{}]interface{})
+	require.Truef(t, ok, "expected map[interface{}]interface{}, got %T", result)
+	return resultMap
 }
 
 func TestKMetadata(t *testing.T) {
@@ -92,6 +117,14 @@ func TestKMetadata(t *testing.T) {
 		{
 			Name:    "resp3-enabled",
 			Options: []string{"yes"},
+		},
+		{
+			Name:    "hash-encoding-mode",
+			Options: []string{"legacy", "field-expiration"},
+		},
+		{
+			Name:    "json-storage-format",
+			Options: []string{"json", "cbor"},
 		},
 	}
 	configsMatrix, err := util.GenerateConfigsMatrix(configOptions)
@@ -131,11 +164,25 @@ var testKMetadata = func(t *testing.T, configs util.KvrocksServerConfigs) {
 		result, err := r.Result()
 		require.NoError(t, err)
 
+		resultMap := MustKMetadataMap(t, result)
 		metaResponse, err := ExtractKMetadataResponse(result)
 		require.NoError(t, err)
 		require.Equal(t, "hash", metaResponse.ktype)
 		require.NotEqual(t, int64(0), metaResponse.version)
 		require.Equal(t, int64(2), metaResponse.size)
+		require.Equal(t, configs["hash-encoding-mode"], metaResponse.mode)
+		if configs["hash-encoding-mode"] == "field-expiration" {
+			require.Equal(t, int64(0), metaResponse.expsz)
+			require.Equal(t, int64(0), metaResponse.lower)
+			require.Equal(t, int64(0), metaResponse.upper)
+			require.Contains(t, resultMap, "expsz")
+			require.Contains(t, resultMap, "lower")
+			require.Contains(t, resultMap, "upper")
+		} else {
+			require.NotContains(t, resultMap, "expsz")
+			require.NotContains(t, resultMap, "lower")
+			require.NotContains(t, resultMap, "upper")
+		}
 	})
 
 	t.Run("Test KMetadata for set type", func(t *testing.T) {
@@ -187,7 +234,9 @@ var testKMetadata = func(t *testing.T, configs util.KvrocksServerConfigs) {
 
 	t.Run("Test KMetadata for List type", func(t *testing.T) {
 		listKey := "list_" + util.RandString(1, 10, util.Alpha)
-		require.NoError(t, rdb.RPush(ctx, listKey, "a", "b").Err())
+		const listInitialIndex = int64(^uint64(0) >> 1)
+
+		require.NoError(t, rdb.LPush(ctx, listKey, "a", "b").Err())
 		r := rdb.Do(ctx, "kmetadata", listKey)
 		result, err := r.Result()
 		require.NoError(t, err)
@@ -197,6 +246,24 @@ var testKMetadata = func(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.Equal(t, "list", metaResponse.ktype)
 		require.NotEqual(t, int64(0), metaResponse.version)
 		require.Equal(t, int64(2), metaResponse.size)
+		require.Equal(t, listInitialIndex-2, metaResponse.head)
+		require.Equal(t, listInitialIndex, metaResponse.tail)
+	})
+
+	t.Run("Test KMetadata for JSON type", func(t *testing.T) {
+		jsonKey := "json_" + util.RandString(1, 10, util.Alpha)
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", jsonKey, "$", `{"x":1,"y":2}`).Err())
+
+		r := rdb.Do(ctx, "kmetadata", jsonKey)
+		result, err := r.Result()
+		require.NoError(t, err)
+
+		metaResponse, err := ExtractKMetadataResponse(result)
+		require.NoError(t, err)
+		require.Equal(t, "ReJSON-RL", metaResponse.ktype)
+		require.Equal(t, configs["json-storage-format"], metaResponse.format)
+		require.Equal(t, int64(0), metaResponse.version)
+		require.Equal(t, int64(0), metaResponse.size)
 	})
 
 	t.Run("Test Key not present", func(t *testing.T) {

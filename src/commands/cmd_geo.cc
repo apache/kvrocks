@@ -88,12 +88,13 @@ class CommandGeoBase : public Commander {
     return conversion;
   }
 
-  static int GetReturnedItemsCount(int result_length, int count) {
-    return (count == 0 || result_length < count) ? result_length : count;
-  }
+  static size_t GetReturnedItemsCount(size_t result_length, int count) {
+    if (count == 0) {
+      return result_length;
+    }
 
-  static int GetReturnedItemsCount(size_t result_length, int count) {
-    return GetReturnedItemsCount(static_cast<int>(result_length), count);
+    size_t requested_count = static_cast<size_t>(count);
+    return result_length < requested_count ? result_length : requested_count;
   }
 
  protected:
@@ -332,10 +333,9 @@ class CommandGeoRadius : public CommandGeoBase {
   }
 
   std::string GenerateOutput(const Connection *conn, const std::vector<GeoPoint> &geo_points) {
-    int result_length = static_cast<int>(geo_points.size());
-    int returned_items_count = GetReturnedItemsCount(result_length, count_);
+    size_t returned_items_count = GetReturnedItemsCount(geo_points.size(), count_);
     std::vector<std::string> list;
-    for (int i = 0; i < returned_items_count; i++) {
+    for (size_t i = 0; i < returned_items_count; i++) {
       const auto &geo_point = geo_points[i];
       if (!with_coord_ && !with_hash_ && !with_dist_) {
         list.emplace_back(redis::BulkString(geo_point.member));
@@ -528,11 +528,10 @@ class CommandGeoSearch : public CommandGeoBase {
   }
 
   std::string generateOutput(const Connection *conn, const std::vector<GeoPoint> &geo_points) {
-    int result_length = static_cast<int>(geo_points.size());
-    int returned_items_count = GetReturnedItemsCount(result_length, count_);
+    size_t returned_items_count = GetReturnedItemsCount(geo_points.size(), count_);
     std::vector<std::string> output;
     output.reserve(returned_items_count);
-    for (int i = 0; i < returned_items_count; i++) {
+    for (size_t i = 0; i < returned_items_count; i++) {
       const auto &geo_point = geo_points[i];
       if (!with_coord_ && !with_hash_ && !with_dist_) {
         output.emplace_back(redis::BulkString(geo_point.member));

@@ -338,6 +338,25 @@ var testGeo = func(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.EqualValues(t, []interface{}([]interface{}{"Shenzhen", "Guangzhou"}), rdb.Do(ctx, "ZRANGE", "dst", 0, -1).Val())
 	})
 
+	t.Run("GEORADIUSBYMEMBER STORE with COUNT should return stored item count", func(t *testing.T) {
+		require.NoError(t, rdb.Do(ctx, "DEL", "points", "points2").Err())
+		require.NoError(t, rdb.GeoAdd(ctx, "points",
+			&redis.GeoLocation{Name: "Washington", Longitude: -77.0369, Latitude: 38.9072},
+			&redis.GeoLocation{Name: "Baltimore", Longitude: -76.6121893, Latitude: 39.2903848},
+			&redis.GeoLocation{Name: "New York", Longitude: -74.0059413, Latitude: 40.7127837},
+			&redis.GeoLocation{Name: "Philadelphia", Longitude: -75.16521960, Latitude: 39.95258288}).Err())
+
+		require.EqualValues(t, 1, rdb.GeoRadiusByMemberStore(ctx, "points", "Washington", &redis.GeoRadiusQuery{
+			Radius: 200,
+			Unit:   "km",
+			Sort:   "ASC",
+			Count:  1,
+			Store:  "points2",
+		}).Val())
+		require.EqualValues(t, 1, rdb.ZCard(ctx, "points2").Val())
+		require.EqualValues(t, []string{"Washington"}, rdb.ZRange(ctx, "points2", 0, -1).Val())
+	})
+
 	t.Run("GEOHASH errors", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "points").Err())
 
@@ -461,6 +480,31 @@ var testGeo = func(t *testing.T, configs util.KvrocksServerConfigs) {
 			rdb.GeoSearchStore(ctx, "points", "points2", &redis.GeoSearchStoreQuery{GeoSearchQuery: redis.GeoSearchQuery{BoxWidth: 200, BoxHeight: 200, BoxUnit: "km", Longitude: -77.0368707, Latitude: 38.9071923, Sort: "DESC"}, StoreDist: false}).Val())
 	})
 
+	t.Run("GEOSEARCHSTORE with COUNT should return stored item count", func(t *testing.T) {
+		require.NoError(t, rdb.Do(ctx, "DEL", "points", "points2").Err())
+		require.NoError(t, rdb.GeoAdd(ctx, "points",
+			&redis.GeoLocation{Name: "Washington", Longitude: -77.0369, Latitude: 38.9072},
+			&redis.GeoLocation{Name: "Baltimore", Longitude: -76.6121893, Latitude: 39.2903848},
+			&redis.GeoLocation{Name: "New York", Longitude: -74.0059413, Latitude: 40.7127837},
+			&redis.GeoLocation{Name: "Philadelphia", Longitude: -75.16521960, Latitude: 39.95258288}).Err())
+
+		require.EqualValues(t, 1,
+			rdb.GeoSearchStore(ctx, "points", "points2", &redis.GeoSearchStoreQuery{
+				GeoSearchQuery: redis.GeoSearchQuery{
+					BoxWidth:  200,
+					BoxHeight: 200,
+					BoxUnit:   "km",
+					Longitude: -77.0368707,
+					Latitude:  38.9071923,
+					Sort:      "DESC",
+					Count:     1,
+				},
+				StoreDist: false,
+			}).Val())
+		require.EqualValues(t, 1, rdb.ZCard(ctx, "points2").Val())
+		require.EqualValues(t, []string{"Baltimore"}, rdb.ZRange(ctx, "points2", 0, -1).Val())
+	})
+
 	t.Run("GEOSEARCHSTORE will overwrite the dst key", func(t *testing.T) {
 		// dst key wrong type
 		require.NoError(t, rdb.Do(ctx, "del", "src", "dst").Err())
@@ -559,6 +603,25 @@ var testGeo = func(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.NoError(t, rdb.GeoAdd(ctx, "points", &redis.GeoLocation{Name: "Palermo", Longitude: 13.361389, Latitude: 38.115556}, &redis.GeoLocation{Name: "Catania", Longitude: 15.087269, Latitude: 37.502669}).Err())
 		rdb.GeoRadiusStore(ctx, "points", 13.361389, 38.115556, &redis.GeoRadiusQuery{Radius: 500, Unit: "km", Store: "points2"})
 		require.EqualValues(t, rdb.ZRange(ctx, "points", 0, -1).Val(), rdb.ZRange(ctx, "points2", 0, -1).Val())
+	})
+
+	t.Run("GEORADIUS STORE with COUNT should return stored item count", func(t *testing.T) {
+		require.NoError(t, rdb.Do(ctx, "DEL", "points", "points2").Err())
+		require.NoError(t, rdb.GeoAdd(ctx, "points",
+			&redis.GeoLocation{Name: "Washington", Longitude: -77.0369, Latitude: 38.9072},
+			&redis.GeoLocation{Name: "Baltimore", Longitude: -76.6121893, Latitude: 39.2903848},
+			&redis.GeoLocation{Name: "New York", Longitude: -74.0059413, Latitude: 40.7127837},
+			&redis.GeoLocation{Name: "Philadelphia", Longitude: -75.16521960, Latitude: 39.95258288}).Err())
+
+		require.EqualValues(t, 1, rdb.GeoRadiusStore(ctx, "points", -77.0368707, 38.9071923, &redis.GeoRadiusQuery{
+			Radius: 200,
+			Unit:   "km",
+			Sort:   "ASC",
+			Count:  1,
+			Store:  "points2",
+		}).Val())
+		require.EqualValues(t, 1, rdb.ZCard(ctx, "points2").Val())
+		require.EqualValues(t, []string{"Washington"}, rdb.ZRange(ctx, "points2", 0, -1).Val())
 	})
 
 	t.Run("GEORADIUS DESC with equal distances should not crash", func(t *testing.T) {

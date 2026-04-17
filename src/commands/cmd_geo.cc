@@ -88,6 +88,10 @@ class CommandGeoBase : public Commander {
     return conversion;
   }
 
+  static int GetReturnedItemsCount(int result_length, int count) {
+    return (count == 0 || result_length < count) ? result_length : count;
+  }
+
  protected:
   DistanceUnit distance_unit_ = kDistanceMeter;
 };
@@ -316,7 +320,7 @@ class CommandGeoRadius : public CommandGeoBase {
     }
 
     if (store_key_.size() != 0) {
-      *output = redis::Integer(geo_points.size());
+      *output = redis::Integer(GetReturnedItemsCount(static_cast<int>(geo_points.size()), count_));
     } else {
       *output = GenerateOutput(conn, geo_points);
     }
@@ -325,7 +329,7 @@ class CommandGeoRadius : public CommandGeoBase {
 
   std::string GenerateOutput(const Connection *conn, const std::vector<GeoPoint> &geo_points) {
     int result_length = static_cast<int>(geo_points.size());
-    int returned_items_count = (count_ == 0 || result_length < count_) ? result_length : count_;
+    int returned_items_count = GetReturnedItemsCount(result_length, count_);
     std::vector<std::string> list;
     for (int i = 0; i < returned_items_count; i++) {
       const auto &geo_point = geo_points[i];
@@ -521,7 +525,7 @@ class CommandGeoSearch : public CommandGeoBase {
 
   std::string generateOutput(const Connection *conn, const std::vector<GeoPoint> &geo_points) {
     int result_length = static_cast<int>(geo_points.size());
-    int returned_items_count = (count_ == 0 || result_length < count_) ? result_length : count_;
+    int returned_items_count = GetReturnedItemsCount(result_length, count_);
     std::vector<std::string> output;
     output.reserve(returned_items_count);
     for (int i = 0; i < returned_items_count; i++) {
@@ -625,7 +629,7 @@ class CommandGeoSearchStore : public CommandGeoSearch {
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
-    *output = redis::Integer(geo_points.size());
+    *output = redis::Integer(GetReturnedItemsCount(static_cast<int>(geo_points.size()), count_));
     return Status::OK();
   }
 
@@ -669,7 +673,7 @@ class CommandGeoRadiusByMember : public CommandGeoRadius {
     }
 
     if (store_key_.size() != 0) {
-      *output = redis::Integer(geo_points.size());
+      *output = redis::Integer(GetReturnedItemsCount(static_cast<int>(geo_points.size()), count_));
     } else {
       *output = GenerateOutput(conn, geo_points);
     }

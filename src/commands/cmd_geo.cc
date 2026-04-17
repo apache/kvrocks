@@ -92,6 +92,10 @@ class CommandGeoBase : public Commander {
     return (count == 0 || result_length < count) ? result_length : count;
   }
 
+  static int GetReturnedItemsCount(size_t result_length, int count) {
+    return GetReturnedItemsCount(static_cast<int>(result_length), count);
+  }
+
  protected:
   DistanceUnit distance_unit_ = kDistanceMeter;
 };
@@ -320,7 +324,7 @@ class CommandGeoRadius : public CommandGeoBase {
     }
 
     if (store_key_.size() != 0) {
-      *output = redis::Integer(GetReturnedItemsCount(static_cast<int>(geo_points.size()), count_));
+      *output = redis::Integer(GetReturnedItemsCount(geo_points.size(), count_));
     } else {
       *output = GenerateOutput(conn, geo_points);
     }
@@ -629,7 +633,7 @@ class CommandGeoSearchStore : public CommandGeoSearch {
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
-    *output = redis::Integer(GetReturnedItemsCount(static_cast<int>(geo_points.size()), count_));
+    *output = redis::Integer(GetReturnedItemsCount(geo_points.size(), count_));
     return Status::OK();
   }
 
@@ -673,7 +677,7 @@ class CommandGeoRadiusByMember : public CommandGeoRadius {
     }
 
     if (store_key_.size() != 0) {
-      *output = redis::Integer(GetReturnedItemsCount(static_cast<int>(geo_points.size()), count_));
+      *output = redis::Integer(GetReturnedItemsCount(geo_points.size(), count_));
     } else {
       *output = GenerateOutput(conn, geo_points);
     }

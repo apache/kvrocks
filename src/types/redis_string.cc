@@ -197,10 +197,10 @@ rocksdb::Status String::DelEX(engine::Context &ctx, const std::string &user_key,
       matched = true;
       break;
     case DelExOption::IFDEQ:
-      matched = option.value == util::StringDigest(val);
+      matched = util::EqualICase(option.value, util::StringDigest(val));
       break;
     case DelExOption::IFDNE:
-      matched = option.value != util::StringDigest(val);
+      matched = !util::EqualICase(option.value, util::StringDigest(val));
       break;
     case DelExOption::IFEQ:
       matched = option.value == val;

@@ -349,6 +349,23 @@ func testString(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.Equal(t, "", rdb.Get(ctx, value).Val())
 	})
 
+	t.Run("DelEX IFDEQ and IFDNE accept uppercase digest", func(t *testing.T) {
+		key := "test-string-key-uppercase-digest"
+		value := "Hello world"
+		var digest string
+
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Set(ctx, key, value, 0).Err())
+		digest = strings.ToUpper(rdb.Do(ctx, "DIGEST", key).Val().(string))
+		require.Equal(t, int64(1), rdb.Do(ctx, "DelEX", key, "ifdeq", digest).Val())
+		require.Equal(t, int64(0), rdb.Exists(ctx, key).Val())
+
+		require.NoError(t, rdb.Set(ctx, key, value, 0).Err())
+		digest = strings.ToUpper(rdb.Do(ctx, "DIGEST", key).Val().(string))
+		require.Equal(t, int64(0), rdb.Do(ctx, "DelEX", key, "ifdne", digest).Val())
+		require.Equal(t, value, rdb.Get(ctx, key).Val())
+	})
+
 	t.Run("DelEX IFDEQ and IFDNE reject invalid digest length", func(t *testing.T) {
 		key := "test-string-key-invalid-digest"
 		value := "Hello world"

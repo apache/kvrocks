@@ -240,7 +240,7 @@ rocksdb::Status HyperLogLog::Merge(engine::Context &ctx, const Slice &dest_user_
   std::vector<std::string> registers;
   HyperLogLogMetadata metadata;
 
-  rocksdb::Status s = GetMetadata(ctx, dest_user_key, &metadata);
+  rocksdb::Status s = GetMetadata(ctx, dest_key, &metadata);
   if (!s.ok() && !s.IsNotFound()) return s;
   {
     std::vector<Slice> all_user_keys;

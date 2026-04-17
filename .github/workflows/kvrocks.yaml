@@ -32,6 +32,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.number || github.run_id }}
   cancel-in-progress: true
 
+env:
+  KVROCKS_DEPS_CACHE_DIR: build-deps
+
 jobs:
   precondition:
     name: Precondition
@@ -72,6 +75,18 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
+      - name: Restore Kvrocks dependency cache
+        id: cache-kvrocks-deps
+        uses: actions/cache@v5
+        with:
+          path: ${{ env.KVROCKS_DEPS_CACHE_DIR }}
+          key: kvrocks-full-deps-${{ hashFiles('x.py', 'CMakeLists.txt', 'cmake/**/*.cmake') }}
+          enableCrossOsArchive: true
+      - name: Fetch Kvrocks dependencies
+        if: ${{ steps.cache-kvrocks-deps.outputs.cache-hit != 'true' }}
+        run: |
+          ./x.py fetch-deps ${{ env.KVROCKS_DEPS_CACHE_DIR }}
+          ./x.py fetch-deps ${{ env.KVROCKS_DEPS_CACHE_DIR }} -D ENABLE_LUAJIT=OFF
       - uses: actions/setup-go@v6
         with:
           go-version-file: 'tests/gocase/go.mod'
@@ -87,7 +102,7 @@ jobs:
         run: ./x.py check format --clang-format-path clang-format-18
       - name: Check with clang-tidy
         run: |
-          ./x.py build --skip-build
+          ./x.py build --skip-build --dep-dir ${{ env.KVROCKS_DEPS_CACHE_DIR }}
           ./x.py check tidy -j $(nproc) --clang-tidy-path clang-tidy-18 --run-clang-tidy-path run-clang-tidy-18
       - name: Lint with golangci-lint
         run: ./x.py check golangci-lint
@@ -317,6 +332,12 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
+      - name: Restore Kvrocks dependency cache
+        uses: actions/cache@v5
+        with:
+          path: ${{ env.KVROCKS_DEPS_CACHE_DIR }}
+          key: kvrocks-full-deps-${{ hashFiles('x.py', 'CMakeLists.txt', 'cmake/**/*.cmake') }}
+          enableCrossOsArchive: true
       - uses: actions/setup-python@v6
         if: ${{ !matrix.arm_linux }}
         with:
@@ -339,19 +360,19 @@ jobs:
         run: |
           ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.without_jemalloc }} \
             ${{ matrix.without_luajit }} ${{ matrix.with_ninja }} ${{ matrix.with_sanitizer }} ${{ matrix.with_openssl }} \
-            ${{ matrix.new_encoding }} ${{ env.CMAKE_EXTRA_DEFS }}
+            ${{ matrix.new_encoding }} ${{ env.CMAKE_EXTRA_DEFS }} --dep-dir ${{ env.KVROCKS_DEPS_CACHE_DIR }}
 
       - name: Build Kvrocks (SonarCloud)
         if: ${{ matrix.sonarcloud }}
         run: |
-          build-wrapper-linux-x86-64 --out-dir ${{ env.SONARCLOUD_OUTPUT_DIR }} ./x.py build -j$NPROC --compiler ${{ matrix.compiler }}  --skip-build
+          build-wrapper-linux-x86-64 --out-dir ${{ env.SONARCLOUD_OUTPUT_DIR }} ./x.py build -j$NPROC --compiler ${{ matrix.compiler }} --skip-build --dep-dir ${{ env.KVROCKS_DEPS_CACHE_DIR }}
           cp -r build _build
-          build-wrapper-linux-x86-64 --out-dir ${{ env.SONARCLOUD_OUTPUT_DIR }} ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.sonarcloud }}
+          build-wrapper-linux-x86-64 --out-dir ${{ env.SONARCLOUD_OUTPUT_DIR }} ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.sonarcloud }} --dep-dir ${{ env.KVROCKS_DEPS_CACHE_DIR }}
 
       - name: Build Kvrocks (RISC-V)
         if: ${{ matrix.riscv_toolchain }}
         run: |
-          ./x.py build -j$NPROC --unittest --toolchain ${{ matrix.toolchain_file }}
+          ./x.py build -j$NPROC --unittest --toolchain ${{ matrix.toolchain_file }} --dep-dir ${{ env.KVROCKS_DEPS_CACHE_DIR }}
 
       - name: Setup Coredump
         if: ${{ startsWith(matrix.os, 'ubuntu') }}
@@ -618,6 +639,12 @@ jobs:
           pushd redis-6.2.14 && USE_JEMALLOC=no make -j$NPROC redis-server && mv src/redis-server $HOME/local/bin/ && popd
 
       - uses: actions/checkout@v6
+      - name: Restore Kvrocks dependency cache
+        uses: actions/cache@v5
+        with:
+          path: ${{ env.KVROCKS_DEPS_CACHE_DIR }}
+          key: kvrocks-full-deps-${{ hashFiles('x.py', 'CMakeLists.txt', 'cmake/**/*.cmake') }}
+          enableCrossOsArchive: true
       - uses: actions/setup-go@v6
         if: ${{ !startsWith(matrix.image, 'opensuse') }}
         with:
@@ -626,7 +653,7 @@ jobs:
 
       - name: Build Kvrocks
         run: |
-          ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.disable_jemalloc }}
+          ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.disable_jemalloc }} --dep-dir ${{ env.KVROCKS_DEPS_CACHE_DIR }}
 
       - name: Run Unit Test
         run: |

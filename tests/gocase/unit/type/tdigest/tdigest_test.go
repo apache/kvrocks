@@ -642,6 +642,53 @@ func tdigestTests(t *testing.T, configs util.KvrocksServerConfigs) {
 		validation(newDestKey2)
 	})
 
+	// https://github.com/apache/kvrocks/issues/3447
+	t.Run("tdigest.merge with COMPRESSION parameter (issue #3447)", func(t *testing.T) {
+		keyPrefix := "tdigest_merge_compression_"
+
+		srcKey := keyPrefix + "src"
+		destKey := keyPrefix + "dest"
+
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", srcKey, "compression", "100").Err())
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", srcKey, "1", "2", "3", "4", "5").Err())
+
+		// This should succeed, not return "ERR wrong keyword"
+		// Issue #3447: TDIGEST.MERGE dest 1 src COMPRESSION 100 fails with "ERR wrong keyword"
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.MERGE", destKey, 1, srcKey, "COMPRESSION", "100").Err())
+
+		// Verify the merge worked
+		rsp := rdb.Do(ctx, "TDIGEST.INFO", destKey)
+		require.NoError(t, rsp.Err())
+		info := toTdigestInfo(t, rsp.Val())
+		require.EqualValues(t, 100, info.Compression)
+		require.EqualValues(t, 5, info.Observations)
+	})
+
+	// Test COMPRESSION + OVERRIDE combination
+	t.Run("tdigest.merge with COMPRESSION and OVERRIDE together", func(t *testing.T) {
+		keyPrefix := "tdigest_merge_compression_override_"
+
+		srcKey := keyPrefix + "src"
+		destKey := keyPrefix + "dest"
+
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", srcKey, "compression", "100").Err())
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", srcKey, "1", "2", "3", "4", "5").Err())
+
+		// Create destination key first to test OVERRIDE
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", destKey, "compression", "50").Err())
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", destKey, "10", "20").Err())
+
+		// COMPRESSION + OVERRIDE should work together
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.MERGE", destKey, 1, srcKey, "COMPRESSION", "101", "OVERRIDE").Err())
+
+		// Verify the merge worked with new compression
+		rsp := rdb.Do(ctx, "TDIGEST.INFO", destKey)
+		require.NoError(t, rsp.Err())
+		info := toTdigestInfo(t, rsp.Val())
+		require.EqualValues(t, 101, info.Compression)
+		require.EqualValues(t, 5, info.Observations) // src data replaced dest data due to OVERRIDE
+	})
+
 	t.Run("tdigest.revrank with different arguments", func(t *testing.T) {
 		keyPrefix := "tdigest_revrank_"
 

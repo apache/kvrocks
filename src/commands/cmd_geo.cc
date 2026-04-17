@@ -93,7 +93,7 @@ class CommandGeoBase : public Commander {
       return result_length;
     }
 
-    size_t requested_count = static_cast<size_t>(count);
+    const auto requested_count = static_cast<size_t>(count);
     return result_length < requested_count ? result_length : requested_count;
   }
 

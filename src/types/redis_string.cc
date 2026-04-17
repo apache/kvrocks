@@ -224,8 +224,11 @@ rocksdb::Status String::Set(engine::Context &ctx, const std::string &user_key, c
       }
       // For NX option, treat a wrong type as "key exists" so the condition is not met.
       if (args.type == StringSetType::NX) {
-        if (!args.get) ret = std::nullopt;
-        return rocksdb::Status::OK();
+        if (!args.get) {
+          ret = std::nullopt;
+          return rocksdb::Status::OK();
+        }
+        // If GET option is set, continue to let GET handling return WRONGTYPE error.
       }
       // For other options, continue (e.g., XX may still proceed since key exists).
     }
@@ -269,7 +272,7 @@ rocksdb::Status String::Set(engine::Context &ctx, const std::string &user_key, c
       if (!args.get) ret = "";
     } else if (args.type == StringSetType::IFDEQ) {
       // condition met only when key exists AND digest matches
-      bool matched = s.ok() && (util::StringDigest(old_value) == args.cmp_value);
+      bool matched = s.ok() && util::EqualICase(util::StringDigest(old_value), args.cmp_value);
       if (!matched) {
         if (!args.get) ret = std::nullopt;
         return rocksdb::Status::OK();
@@ -277,7 +280,7 @@ rocksdb::Status String::Set(engine::Context &ctx, const std::string &user_key, c
       if (!args.get) ret = "";
     } else if (args.type == StringSetType::IFDNE) {
       // condition not met when key exists AND digest matches; key-not-found counts as met
-      bool not_matched = s.ok() && (util::StringDigest(old_value) == args.cmp_value);
+      bool not_matched = s.ok() && util::EqualICase(util::StringDigest(old_value), args.cmp_value);
       if (not_matched) {
         if (!args.get) ret = std::nullopt;
         return rocksdb::Status::OK();

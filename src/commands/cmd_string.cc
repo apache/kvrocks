@@ -308,9 +308,15 @@ class CommandSet : public Commander {
       } else if (parser.EatEqICaseFlag("IFDEQ", set_flag)) {
         set_flag_ = StringSetType::IFDEQ;
         cmp_value_ = GET_OR_RET(parser.TakeStr());
+        if (cmp_value_.size() != 16) {
+          return {Status::RedisParseErr, "ERR digest must be exactly 16 hexadecimal characters"};
+        }
       } else if (parser.EatEqICaseFlag("IFDNE", set_flag)) {
         set_flag_ = StringSetType::IFDNE;
         cmp_value_ = GET_OR_RET(parser.TakeStr());
+        if (cmp_value_.size() != 16) {
+          return {Status::RedisParseErr, "ERR digest must be exactly 16 hexadecimal characters"};
+        }
       } else if (parser.EatEqICase("GET")) {
         get_ = true;
       } else {

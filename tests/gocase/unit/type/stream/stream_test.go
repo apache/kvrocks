@@ -962,7 +962,8 @@ func TestStreamOffset(t *testing.T) {
 		require.Error(t, rdb.Do(ctx, "XGROUP", "CREAT", streamName, groupName, "$").Err())
 		require.Error(t, rdb.Do(ctx, "XGROUP", "CREATE", streamName, groupName, "$", "ENTRIEREAD", "10").Err())
 		require.Error(t, rdb.Do(ctx, "XGROUP", "CREATE", streamName, groupName, "$", "ENTRIESREAD", "-10").Err())
-		require.Error(t, rdb.Do(ctx, "XGROUP", "CREATE", streamName, "1test-group-c", "$").Err())
+		// Group names may start with a digit (RESP bulk string); same as Redis — not a syntax error.
+		require.NoError(t, rdb.Do(ctx, "XGROUP", "CREATE", streamName, "1test-group-c", "$").Err())
 
 		require.NoError(t, rdb.Del(ctx, "myStream").Err())
 		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "myStream", Values: []string{"iTeM", "1", "vAluE", "a"}}).Err())
@@ -976,6 +977,30 @@ func TestStreamOffset(t *testing.T) {
 		result, err = rdb.XGroupDestroy(ctx, "myStream", "myGroup").Result()
 		require.NoError(t, err)
 		require.Equal(t, int64(0), result)
+	})
+
+	t.Run("XGROUP CREATE and CREATECONSUMER with names starting with digits", func(t *testing.T) {
+		streamKey := "stream-digit-names"
+		require.NoError(t, rdb.Del(ctx, streamKey).Err())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: streamKey, Values: []string{"f", "v"}}).Err())
+
+		// Group name starting with a digit should be allowed (matches Redis behavior)
+		require.NoError(t, rdb.XGroupCreateMkStream(ctx, streamKey, "1group", "0").Err())
+
+		// Consumer name starting with a digit should be allowed
+		result := rdb.Do(ctx, "XGROUP", "CREATECONSUMER", streamKey, "1group", "2consumer")
+		require.NoError(t, result.Err())
+
+		// Read with the digit-prefixed group and consumer
+		_, err := rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    "1group",
+			Consumer: "2consumer",
+			Streams:  []string{streamKey, ">"},
+			Count:    10,
+		}).Result()
+		require.NoError(t, err)
+
+		require.NoError(t, rdb.Del(ctx, streamKey).Err())
 	})
 
 	t.Run("XGROUP CREATECONSUMER with different kinds of commands", func(t *testing.T) {

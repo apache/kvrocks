@@ -362,7 +362,7 @@ class TDigest {
   TDigestImpl impl_;
 };
 
-TDigest::TDigest(uint64_t delta) : impl_(TDigestImpl(delta)) { Reset({}); }
+TDigest::TDigest(uint64_t delta) : impl_(TDigestImpl(delta)) { Reset(); }
 
 void TDigest::Merge(const std::vector<TDigest>& others) {
   if (others.empty()) {

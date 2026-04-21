@@ -602,3 +602,349 @@ TEST_F(RedisTDigestTest, TrimmedMeanComplexInput) {
   ASSERT_FALSE(std::isnan(*result.mean));
   EXPECT_NEAR(*result.mean, 5.0 / 6.0, 0.01);
 }
+
+TEST_F(RedisTDigestTest, MergeIntoExistingDestWithoutOverride) {
+  // Test: When dest exists without OVERRIDE flag, merge dest + sources together (Redis behavior)
+  std::string ts = std::to_string(util::GetTimeStampMS());
+  std::string src1 = "tdigest_merge_src1_" + ts;
+  std::string src2 = "tdigest_merge_src2_" + ts;
+  std::string dest = "tdigest_merge_dest_" + ts;
+
+  bool exists = false;
+  // Create source1 with values: 1, 2, 3
+  ASSERT_TRUE(tdigest_->Create(*ctx_, src1, {100}, &exists).ok());
+  ASSERT_FALSE(exists);
+  ASSERT_TRUE(tdigest_->Add(*ctx_, src1, {1.0, 2.0, 3.0}).ok());
+
+  // Create source2 with values: 4, 5, 6, 100, -200
+  ASSERT_TRUE(tdigest_->Create(*ctx_, src2, {100}, &exists).ok());
+  ASSERT_FALSE(exists);
+  ASSERT_TRUE(tdigest_->Add(*ctx_, src2, {4.0, 5.0, 6.0, 100.0, -200.0}).ok());
+
+  // Create dest with values: 7, 8, 9
+  ASSERT_TRUE(tdigest_->Create(*ctx_, dest, {100}, &exists).ok());
+  ASSERT_FALSE(exists);
+  ASSERT_TRUE(tdigest_->Add(*ctx_, dest, {7.0, 8.0, 9.0}).ok());
+
+  // Merge sources into existing dest without OVERRIDE
+  // Should merge dest(3) + src1(3) + src2(5) = 11 observations
+  redis::TDigestMergeOptions options;
+  options.override_flag = false;
+  auto status = tdigest_->Merge(*ctx_, dest, {src1, src2}, options);
+  ASSERT_TRUE(status.ok()) << status.ToString();
+
+  // Verify total observations: 3 + 3 + 5 = 11
+  TDigestMetadata metadata;
+  ASSERT_TRUE(tdigest_->GetMetaData(*ctx_, dest, &metadata).ok());
+  EXPECT_EQ(metadata.total_observations, 11);
+
+  // Verify min: -200
+  std::vector<double> qs = {0.0};
+  redis::TDigestQuantitleResult result;
+  ASSERT_TRUE(tdigest_->Quantile(*ctx_, dest, qs, &result).ok());
+  ASSERT_TRUE(result.quantiles.has_value());
+  EXPECT_NEAR((*result.quantiles)[0], -200.0, 1.0);
+
+  // Verify max: 100 (quantile 1.0)
+  qs = {1.0};
+  ASSERT_TRUE(tdigest_->Quantile(*ctx_, dest, qs, &result).ok());
+  ASSERT_TRUE(result.quantiles.has_value());
+  EXPECT_NEAR((*result.quantiles)[0], 100.0, 1.0);
+}
+
+TEST_F(RedisTDigestTest, MergeIntoExistingDestWithOverride) {
+  // Test: When dest exists with OVERRIDE flag, overwrite dest data
+  std::string ts = std::to_string(util::GetTimeStampMS());
+  std::string src1 = "tdigest_merge_override_src1_" + ts;
+  std::string src2 = "tdigest_merge_override_src2_" + ts;
+  std::string dest = "tdigest_merge_override_dest_" + ts;
+
+  bool exists = false;
+  // Create source1 with values: 1, 2, 3
+  ASSERT_TRUE(tdigest_->Create(*ctx_, src1, {100}, &exists).ok());
+  ASSERT_FALSE(exists);
+  ASSERT_TRUE(tdigest_->Add(*ctx_, src1, {1.0, 2.0, 3.0}).ok());
+
+  // Create source2 with values: 4, 5, 6, 100, -200
+  ASSERT_TRUE(tdigest_->Create(*ctx_, src2, {100}, &exists).ok());
+  ASSERT_FALSE(exists);
+  ASSERT_TRUE(tdigest_->Add(*ctx_, src2, {4.0, 5.0, 6.0, 100.0, -200.0}).ok());
+
+  // Create dest with values: 7, 8, 9 (will be overwritten)
+  ASSERT_TRUE(tdigest_->Create(*ctx_, dest, {100}, &exists).ok());
+  ASSERT_FALSE(exists);
+  ASSERT_TRUE(tdigest_->Add(*ctx_, dest, {7.0, 8.0, 9.0}).ok());
+
+  // Merge sources into existing dest WITH OVERRIDE
+  // Should only have src1(3) + src2(5) = 8 observations (dest data overwritten)
+  redis::TDigestMergeOptions options;
+  options.override_flag = true;
+  auto status = tdigest_->Merge(*ctx_, dest, {src1, src2}, options);
+  ASSERT_TRUE(status.ok()) << status.ToString();
+
+  // Verify total observations: 3 + 5 = 8 (dest data was overwritten)
+  TDigestMetadata metadata;
+  ASSERT_TRUE(tdigest_->GetMetaData(*ctx_, dest, &metadata).ok());
+  EXPECT_EQ(metadata.total_observations, 8);
+
+  // Verify min: -200
+  std::vector<double> qs = {0.0};
+  redis::TDigestQuantitleResult result;
+  ASSERT_TRUE(tdigest_->Quantile(*ctx_, dest, qs, &result).ok());
+  ASSERT_TRUE(result.quantiles.has_value());
+  EXPECT_NEAR((*result.quantiles)[0], -200.0, 1.0);
+
+  // Verify max: 100
+  qs = {1.0};
+  ASSERT_TRUE(tdigest_->Quantile(*ctx_, dest, qs, &result).ok());
+  ASSERT_TRUE(result.quantiles.has_value());
+  EXPECT_NEAR((*result.quantiles)[0], 100.0, 1.0);
+}
+
+TEST_F(RedisTDigestTest, MergeDestInSourceListWithoutOverride) {
+  // Test: dest in source list without OVERRIDE - dest data is merged twice (Redis behavior)
+  std::string ts = std::to_string(util::GetTimeStampMS());
+  std::string dest = "tdigest_dest_in_src_" + ts;
+  std::string src = "tdigest_src_for_dest_" + ts;
+
+  bool exists = false;
+  // Create dest with values: 1, 2, 3
+  ASSERT_TRUE(tdigest_->Create(*ctx_, dest, {100}, &exists).ok());
+  ASSERT_FALSE(exists);
+  ASSERT_TRUE(tdigest_->Add(*ctx_, dest, {1.0, 2.0, 3.0}).ok());
+
+  // Create src with values: 10, 20
+  ASSERT_TRUE(tdigest_->Create(*ctx_, src, {100}, &exists).ok());
+  ASSERT_FALSE(exists);
+  ASSERT_TRUE(tdigest_->Add(*ctx_, src, {10.0, 20.0}).ok());
+
+  // Verify dest has 3 observations before merge
+  TDigestMetadata metadata_before;
+  ASSERT_TRUE(tdigest_->GetMetaData(*ctx_, dest, &metadata_before).ok());
+  EXPECT_EQ(metadata_before.total_observations, 3);
+
+  // Merge: TDIGEST.MERGE dest 2 dest src
+  // dest is both the destination AND in the source list
+  // Redis behavior: dest's existing data + dest(in source) + src = 3+3+2 = 8
+  redis::TDigestMergeOptions options;
+  options.override_flag = false;
+  auto status = tdigest_->Merge(*ctx_, dest, {dest, src}, options);
+  ASSERT_TRUE(status.ok()) << status.ToString();
+
+  // Verify: should have dest(3) + dest(3) + src(2) = 8 observations
+  // (dest is double-counted when in source list without OVERRIDE)
+  TDigestMetadata metadata_after;
+  ASSERT_TRUE(tdigest_->GetMetaData(*ctx_, dest, &metadata_after).ok());
+  EXPECT_EQ(metadata_after.total_observations, 8);
+
+  // Verify min: 1 (from dest)
+  std::vector<double> qs = {0.0};
+  redis::TDigestQuantitleResult result;
+  ASSERT_TRUE(tdigest_->Quantile(*ctx_, dest, qs, &result).ok());
+  ASSERT_TRUE(result.quantiles.has_value());
+  EXPECT_NEAR((*result.quantiles)[0], 1.0, 0.1);
+
+  // Verify max: 20 (from src)
+  qs = {1.0};
+  ASSERT_TRUE(tdigest_->Quantile(*ctx_, dest, qs, &result).ok());
+  ASSERT_TRUE(result.quantiles.has_value());
+  EXPECT_NEAR((*result.quantiles)[0], 20.0, 0.1);
+}
+
+TEST_F(RedisTDigestTest, MergeDestInSourceListWithOverride) {
+  // Test: dest in source list WITH OVERRIDE - dest in source counted once
+  std::string ts = std::to_string(util::GetTimeStampMS());
+  std::string dest = "tdigest_dest_in_src_override_" + ts;
+  std::string src = "tdigest_src_for_override_" + ts;
+
+  bool exists = false;
+  // Create dest with values: 1, 2, 3
+  ASSERT_TRUE(tdigest_->Create(*ctx_, dest, {100}, &exists).ok());
+  ASSERT_FALSE(exists);
+  ASSERT_TRUE(tdigest_->Add(*ctx_, dest, {1.0, 2.0, 3.0}).ok());
+
+  // Create src with values: 10, 20
+  ASSERT_TRUE(tdigest_->Create(*ctx_, src, {100}, &exists).ok());
+  ASSERT_FALSE(exists);
+  ASSERT_TRUE(tdigest_->Add(*ctx_, src, {10.0, 20.0}).ok());
+
+  // Merge with OVERRIDE: dest in source list should be counted once
+  // Result: dest(3) + src(2) = 5 observations
+  redis::TDigestMergeOptions options;
+  options.override_flag = true;
+  auto status = tdigest_->Merge(*ctx_, dest, {dest, src}, options);
+  ASSERT_TRUE(status.ok()) << status.ToString();
+
+  // Verify: should have dest(3) + src(2) = 5 observations
+  TDigestMetadata metadata;
+  ASSERT_TRUE(tdigest_->GetMetaData(*ctx_, dest, &metadata).ok());
+  EXPECT_EQ(metadata.total_observations, 5);
+
+  // Verify min: 1 (from dest in source list)
+  std::vector<double> qs = {0.0};
+  redis::TDigestQuantitleResult result;
+  ASSERT_TRUE(tdigest_->Quantile(*ctx_, dest, qs, &result).ok());
+  ASSERT_TRUE(result.quantiles.has_value());
+  EXPECT_NEAR((*result.quantiles)[0], 1.0, 0.1);
+
+  // Verify max: 20 (from src)
+  qs = {1.0};
+  ASSERT_TRUE(tdigest_->Quantile(*ctx_, dest, qs, &result).ok());
+  ASSERT_TRUE(result.quantiles.has_value());
+  EXPECT_NEAR((*result.quantiles)[0], 20.0, 0.1);
+}
+
+TEST_F(RedisTDigestTest, MergeIntoNewDest) {
+  // Test: Merge into a new (non-existing) destination
+  std::string ts = std::to_string(util::GetTimeStampMS());
+  std::string src1 = "tdigest_new_dest_src1_" + ts;
+  std::string src2 = "tdigest_new_dest_src2_" + ts;
+  std::string dest = "tdigest_new_dest_" + ts;
+
+  bool exists = false;
+  // Create source1 with values: 1, 2, 3
+  ASSERT_TRUE(tdigest_->Create(*ctx_, src1, {100}, &exists).ok());
+  ASSERT_FALSE(exists);
+  ASSERT_TRUE(tdigest_->Add(*ctx_, src1, {1.0, 2.0, 3.0}).ok());
+
+  // Create source2 with values: 4, 5, 6
+  ASSERT_TRUE(tdigest_->Create(*ctx_, src2, {100}, &exists).ok());
+  ASSERT_FALSE(exists);
+  ASSERT_TRUE(tdigest_->Add(*ctx_, src2, {4.0, 5.0, 6.0}).ok());
+
+  // Merge into new dest (dest does not exist)
+  // Result: src1(3) + src2(3) = 6 observations
+  redis::TDigestMergeOptions options;
+  options.override_flag = false;
+  auto status = tdigest_->Merge(*ctx_, dest, {src1, src2}, options);
+  ASSERT_TRUE(status.ok()) << status.ToString();
+
+  // Verify total observations: 3 + 3 = 6
+  TDigestMetadata metadata;
+  ASSERT_TRUE(tdigest_->GetMetaData(*ctx_, dest, &metadata).ok());
+  EXPECT_EQ(metadata.total_observations, 6);
+
+  // Verify min: 1
+  std::vector<double> qs = {0.0};
+  redis::TDigestQuantitleResult result;
+  ASSERT_TRUE(tdigest_->Quantile(*ctx_, dest, qs, &result).ok());
+  ASSERT_TRUE(result.quantiles.has_value());
+  EXPECT_NEAR((*result.quantiles)[0], 1.0, 0.1);
+
+  // Verify max: 6
+  qs = {1.0};
+  ASSERT_TRUE(tdigest_->Quantile(*ctx_, dest, qs, &result).ok());
+  ASSERT_TRUE(result.quantiles.has_value());
+  EXPECT_NEAR((*result.quantiles)[0], 6.0, 0.1);
+}
+
+TEST_F(RedisTDigestTest, MergeIntoExistingDestKeepsCompression) {
+  // Test: When merging into existing dest without OVERRIDE, dest's compression should be preserved
+  // (Redis behavior: compression is not overwritten by source's compression)
+  std::string ts = std::to_string(util::GetTimeStampMS());
+  std::string src = "tdigest_compression_src_" + ts;
+  std::string dest = "tdigest_compression_dest_" + ts;
+
+  bool exists = false;
+  // Create source with COMPRESSION 200
+  ASSERT_TRUE(tdigest_->Create(*ctx_, src, {200}, &exists).ok());
+  ASSERT_FALSE(exists);
+  ASSERT_TRUE(tdigest_->Add(*ctx_, src, {1.0}).ok());
+
+  // Create dest with COMPRESSION 100
+  ASSERT_TRUE(tdigest_->Create(*ctx_, dest, {100}, &exists).ok());
+  ASSERT_FALSE(exists);
+  ASSERT_TRUE(tdigest_->Add(*ctx_, dest, {2.0}).ok());
+
+  // Verify dest compression before merge
+  TDigestMetadata metadata_before;
+  ASSERT_TRUE(tdigest_->GetMetaData(*ctx_, dest, &metadata_before).ok());
+  EXPECT_EQ(metadata_before.compression, 100);
+
+  // Merge source into dest without OVERRIDE
+  // dest's compression (100) should be preserved, not overwritten by source's compression (200)
+  redis::TDigestMergeOptions options;
+  options.override_flag = false;
+  auto status = tdigest_->Merge(*ctx_, dest, {src}, options);
+  ASSERT_TRUE(status.ok()) << status.ToString();
+
+  // Verify dest compression is still 100 (not 200)
+  TDigestMetadata metadata_after;
+  ASSERT_TRUE(tdigest_->GetMetaData(*ctx_, dest, &metadata_after).ok());
+  EXPECT_EQ(metadata_after.compression, 100) << "dest compression should be preserved when merging without OVERRIDE";
+
+  // Verify total observations: dest(1) + src(1) = 2
+  EXPECT_EQ(metadata_after.total_observations, 2);
+}
+
+TEST_F(RedisTDigestTest, MergeWithOverrideTakesMaxCompression) {
+  // Test: When merging with OVERRIDE, compression should be max of all sources
+  std::string ts = std::to_string(util::GetTimeStampMS());
+  std::string src1 = "tdigest_override_compression_src1_" + ts;
+  std::string src2 = "tdigest_override_compression_src2_" + ts;
+  std::string dest = "tdigest_override_compression_dest_" + ts;
+
+  bool exists = false;
+  // Create source1 with COMPRESSION 200
+  ASSERT_TRUE(tdigest_->Create(*ctx_, src1, {200}, &exists).ok());
+  ASSERT_FALSE(exists);
+  ASSERT_TRUE(tdigest_->Add(*ctx_, src1, {1.0}).ok());
+
+  // Create source2 with COMPRESSION 300
+  ASSERT_TRUE(tdigest_->Create(*ctx_, src2, {300}, &exists).ok());
+  ASSERT_FALSE(exists);
+  ASSERT_TRUE(tdigest_->Add(*ctx_, src2, {2.0}).ok());
+
+  // Create dest with COMPRESSION 100
+  ASSERT_TRUE(tdigest_->Create(*ctx_, dest, {100}, &exists).ok());
+  ASSERT_FALSE(exists);
+  ASSERT_TRUE(tdigest_->Add(*ctx_, dest, {3.0}).ok());
+
+  // Merge with OVERRIDE - compression should be max(src1, src2) = 300
+  redis::TDigestMergeOptions options;
+  options.override_flag = true;
+  auto status = tdigest_->Merge(*ctx_, dest, {src1, src2}, options);
+  ASSERT_TRUE(status.ok()) << status.ToString();
+
+  // Verify dest compression is 300 (max of sources)
+  TDigestMetadata metadata;
+  ASSERT_TRUE(tdigest_->GetMetaData(*ctx_, dest, &metadata).ok());
+  EXPECT_EQ(metadata.compression, 300) << "with OVERRIDE, compression should be max of sources";
+
+  // Verify total observations: src1(1) + src2(1) = 2 (dest data was overwritten)
+  EXPECT_EQ(metadata.total_observations, 2);
+}
+
+TEST_F(RedisTDigestTest, MergeWithUserSpecifiedCompression) {
+  // Test: User-specified compression overrides all other compression values
+  std::string ts = std::to_string(util::GetTimeStampMS());
+  std::string src = "tdigest_user_compression_src_" + ts;
+  std::string dest = "tdigest_user_compression_dest_" + ts;
+
+  bool exists = false;
+  // Create source with COMPRESSION 200
+  ASSERT_TRUE(tdigest_->Create(*ctx_, src, {200}, &exists).ok());
+  ASSERT_FALSE(exists);
+  ASSERT_TRUE(tdigest_->Add(*ctx_, src, {1.0}).ok());
+
+  // Create dest with COMPRESSION 100
+  ASSERT_TRUE(tdigest_->Create(*ctx_, dest, {100}, &exists).ok());
+  ASSERT_FALSE(exists);
+  ASSERT_TRUE(tdigest_->Add(*ctx_, dest, {2.0}).ok());
+
+  // Merge with user-specified COMPRESSION 50
+  // User-specified compression should override both dest and source compression
+  redis::TDigestMergeOptions options;
+  options.override_flag = false;
+  options.compression = 50;
+  auto status = tdigest_->Merge(*ctx_, dest, {src}, options);
+  ASSERT_TRUE(status.ok()) << status.ToString();
+
+  // Verify dest compression is 50 (user-specified)
+  TDigestMetadata metadata;
+  ASSERT_TRUE(tdigest_->GetMetaData(*ctx_, dest, &metadata).ok());
+  EXPECT_EQ(metadata.compression, 50) << "user-specified compression should override all";
+
+  // Verify total observations: dest(1) + src(1) = 2
+  EXPECT_EQ(metadata.total_observations, 2);
+}

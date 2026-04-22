@@ -25,6 +25,7 @@ import (
 	"testing"
 
 	"github.com/apache/kvrocks/tests/gocase/util"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 )
 
@@ -54,5 +55,44 @@ func TestApplyBatch_Basic(t *testing.T) {
 		require.NoError(t, err)
 		require.EqualValues(t, len(batch), val)
 		require.Equal(t, "value", rdb.HGet(ctx, "hash", "field").Val())
+	})
+}
+
+func TestApplyBatch_AdminPermission(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{
+		"requirepass": "admin",
+	})
+	defer srv.Close()
+
+	ctx := context.Background()
+
+	adminClient := srv.NewClientWithOption(&redis.Options{
+		Password: "admin",
+	})
+	defer func() { require.NoError(t, adminClient.Close()) }()
+
+	require.NoError(t, adminClient.Do(ctx, "NAMESPACE", "ADD", "test_ns", "test_token").Err())
+
+	userClient := srv.NewClientWithOption(&redis.Options{
+		Password: "test_token",
+	})
+	defer func() { require.NoError(t, userClient.Close()) }()
+
+	t.Run("Non-admin user should be rejected", func(t *testing.T) {
+		// SET a 1
+		batch, err := hex.DecodeString("04000000000000000100000003013105010D0B5F5F6E616D6573706163656106010000000031")
+		require.NoError(t, err)
+		r := userClient.Do(ctx, "ApplyBatch", string(batch))
+		require.ErrorContains(t, r.Err(), "admin")
+	})
+
+	t.Run("Admin user should be allowed", func(t *testing.T) {
+		// SET a 1
+		batch, err := hex.DecodeString("04000000000000000100000003013105010D0B5F5F6E616D6573706163656106010000000031")
+		require.NoError(t, err)
+		r := adminClient.Do(ctx, "ApplyBatch", string(batch))
+		val, err := r.Int64()
+		require.NoError(t, err)
+		require.EqualValues(t, len(batch), val)
 	})
 }

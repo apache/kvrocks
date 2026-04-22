@@ -88,13 +88,36 @@ class CommandGeoBase : public Commander {
     return conversion;
   }
 
-  static size_t GetReturnedItemsCount(size_t result_length, int count) {
+  static Status ParseCount(std::string_view raw_count, size_t *count) {
+    auto signed_count = ParseInt<int64_t>(raw_count, 10);
+    if (signed_count) {
+      if (*signed_count <= 0) {
+        return {Status::RedisParseErr, "COUNT must be > 0"};
+      }
+
+      *count = static_cast<size_t>(*signed_count);
+      return Status::OK();
+    }
+
+    auto unsigned_count = ParseInt<size_t>(raw_count, 10);
+    if (!unsigned_count) {
+      return {Status::RedisParseErr, errValueNotInteger};
+    }
+
+    if (*unsigned_count == 0) {
+      return {Status::RedisParseErr, "COUNT must be > 0"};
+    }
+
+    *count = *unsigned_count;
+    return Status::OK();
+  }
+
+  static size_t GetReturnedItemsCount(size_t result_length, size_t count) {
     if (count == 0) {
       return result_length;
     }
 
-    const auto requested_count = static_cast<size_t>(count);
-    return result_length < requested_count ? result_length : requested_count;
+    return result_length < count ? result_length : count;
   }
 
  protected:
@@ -280,12 +303,8 @@ class CommandGeoRadius : public CommandGeoBase {
         sort_ = kSortDESC;
         i++;
       } else if (util::ToLower(args_[i]) == "count" && i + 1 < args_.size()) {
-        auto parse_result = ParseInt<int>(args_[i + 1], 10);
-        if (!parse_result) {
-          return {Status::RedisParseErr, errValueNotInteger};
-        }
-
-        count_ = *parse_result;
+        auto s = ParseCount(args_[i + 1], &count_);
+        if (!s.IsOK()) return s;
         i += 2;
       } else if ((attributes_->InitialFlags() & kCmdWrite) &&
                  (util::ToLower(args_[i]) == "store" || util::ToLower(args_[i]) == "storedist") &&
@@ -382,7 +401,7 @@ class CommandGeoRadius : public CommandGeoBase {
   bool with_coord_ = false;
   bool with_dist_ = false;
   bool with_hash_ = false;
-  int count_ = 0;
+  size_t count_ = 0;
   DistanceSort sort_ = kSortNone;
   std::string store_key_;
   bool store_distance_ = false;
@@ -434,7 +453,9 @@ class CommandGeoSearch : public CommandGeoBase {
       } else if (parser.EatEqICase("desc") && sort_ == kSortNone) {
         sort_ = kSortDESC;
       } else if (parser.EatEqICase("count")) {
-        count_ = GET_OR_RET(parser.TakeInt<int>(NumericRange<int>{1, std::numeric_limits<int>::max()}));
+        auto raw_count = GET_OR_RET(parser.TakeStr());
+        auto s = ParseCount(raw_count, &count_);
+        if (!s.IsOK()) return s;
       } else if (parser.EatEqICase("withcoord")) {
         with_coord_ = true;
       } else if (parser.EatEqICase("withdist")) {
@@ -480,7 +501,7 @@ class CommandGeoSearch : public CommandGeoBase {
   double radius_ = 0;
   double height_ = 0;
   double width_ = 0;
-  int count_ = 0;
+  size_t count_ = 0;
   double longitude_ = 0;
   double latitude_ = 0;
   std::string member_;
@@ -599,7 +620,9 @@ class CommandGeoSearchStore : public CommandGeoSearch {
       } else if (parser.EatEqICase("desc") && sort_ == kSortNone) {
         sort_ = kSortDESC;
       } else if (parser.EatEqICase("count")) {
-        count_ = GET_OR_RET(parser.TakeInt<int>(NumericRange<int>{1, std::numeric_limits<int>::max()}));
+        auto raw_count = GET_OR_RET(parser.TakeStr());
+        auto s = ParseCount(raw_count, &count_);
+        if (!s.IsOK()) return s;
       } else if (parser.EatEqICase("storedist")) {
         store_distance_ = true;
       } else {

@@ -104,16 +104,12 @@ class CommandGeoBase : public Commander {
       return {Status::RedisParseErr, errValueNotInteger};
     }
 
-    if (*unsigned_count == 0) {
-      return {Status::RedisParseErr, "COUNT must be > 0"};
-    }
-
     *count = *unsigned_count;
     return Status::OK();
   }
 
-  static size_t GetReturnedItemsCount(size_t result_length, size_t count) {
-    if (count == 0) {
+  static size_t GetReturnedItemsCount(size_t result_length, bool has_count, size_t count) {
+    if (!has_count) {
       return result_length;
     }
 
@@ -305,6 +301,7 @@ class CommandGeoRadius : public CommandGeoBase {
       } else if (util::ToLower(args_[i]) == "count" && i + 1 < args_.size()) {
         auto s = ParseCount(args_[i + 1], &count_);
         if (!s.IsOK()) return s;
+        has_count_ = true;
         i += 2;
       } else if ((attributes_->InitialFlags() & kCmdWrite) &&
                  (util::ToLower(args_[i]) == "store" || util::ToLower(args_[i]) == "storedist") &&
@@ -327,7 +324,7 @@ class CommandGeoRadius : public CommandGeoBase {
     /* COUNT without ordering does not make much sense, force ASC
      * ordering if COUNT was specified but no sorting was requested.
      * */
-    if (count_ != 0 && sort_ == kSortNone) {
+    if (has_count_ && sort_ == kSortNone) {
       sort_ = kSortASC;
     }
     return Status::OK();
@@ -337,14 +334,14 @@ class CommandGeoRadius : public CommandGeoBase {
     std::vector<GeoPoint> geo_points;
     redis::Geo geo_db(srv->storage, conn->GetNamespace());
 
-    auto s = geo_db.Radius(ctx, args_[1], longitude_, latitude_, GetRadiusMeters(radius_), count_, sort_, store_key_,
-                           store_distance_, GetUnitConversion(), &geo_points);
+    auto s = geo_db.Radius(ctx, args_[1], longitude_, latitude_, GetRadiusMeters(radius_), has_count_, count_, sort_,
+                           store_key_, store_distance_, GetUnitConversion(), &geo_points);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
 
     if (store_key_.size() != 0) {
-      *output = redis::Integer(GetReturnedItemsCount(geo_points.size(), count_));
+      *output = redis::Integer(GetReturnedItemsCount(geo_points.size(), has_count_, count_));
     } else {
       *output = GenerateOutput(conn, geo_points);
     }
@@ -352,7 +349,7 @@ class CommandGeoRadius : public CommandGeoBase {
   }
 
   std::string GenerateOutput(const Connection *conn, const std::vector<GeoPoint> &geo_points) {
-    size_t returned_items_count = GetReturnedItemsCount(geo_points.size(), count_);
+    size_t returned_items_count = GetReturnedItemsCount(geo_points.size(), has_count_, count_);
     std::vector<std::string> list;
     for (size_t i = 0; i < returned_items_count; i++) {
       const auto &geo_point = geo_points[i];
@@ -401,6 +398,7 @@ class CommandGeoRadius : public CommandGeoBase {
   bool with_coord_ = false;
   bool with_dist_ = false;
   bool with_hash_ = false;
+  bool has_count_ = false;
   size_t count_ = 0;
   DistanceSort sort_ = kSortNone;
   std::string store_key_;
@@ -456,6 +454,7 @@ class CommandGeoSearch : public CommandGeoBase {
         auto raw_count = GET_OR_RET(parser.TakeStr());
         auto s = ParseCount(raw_count, &count_);
         if (!s.IsOK()) return s;
+        has_count_ = true;
       } else if (parser.EatEqICase("withcoord")) {
         with_coord_ = true;
       } else if (parser.EatEqICase("withdist")) {
@@ -486,7 +485,7 @@ class CommandGeoSearch : public CommandGeoBase {
     std::vector<GeoPoint> geo_points;
     redis::Geo geo_db(srv->storage, conn->GetNamespace());
 
-    auto s = geo_db.Search(ctx, args_[1], geo_shape_, origin_point_type_, member_, count_, sort_, false,
+    auto s = geo_db.Search(ctx, args_[1], geo_shape_, origin_point_type_, member_, has_count_, count_, sort_, false,
                            GetUnitConversion(), &geo_points);
 
     if (!s.ok()) {
@@ -498,6 +497,7 @@ class CommandGeoSearch : public CommandGeoBase {
   }
 
  protected:
+  bool has_count_ = false;
   double radius_ = 0;
   double height_ = 0;
   double width_ = 0;
@@ -549,7 +549,7 @@ class CommandGeoSearch : public CommandGeoBase {
   }
 
   std::string generateOutput(const Connection *conn, const std::vector<GeoPoint> &geo_points) {
-    size_t returned_items_count = GetReturnedItemsCount(geo_points.size(), count_);
+    size_t returned_items_count = GetReturnedItemsCount(geo_points.size(), has_count_, count_);
     std::vector<std::string> output;
     output.reserve(returned_items_count);
     for (size_t i = 0; i < returned_items_count; i++) {
@@ -623,6 +623,7 @@ class CommandGeoSearchStore : public CommandGeoSearch {
         auto raw_count = GET_OR_RET(parser.TakeStr());
         auto s = ParseCount(raw_count, &count_);
         if (!s.IsOK()) return s;
+        has_count_ = true;
       } else if (parser.EatEqICase("storedist")) {
         store_distance_ = true;
       } else {
@@ -649,13 +650,13 @@ class CommandGeoSearchStore : public CommandGeoSearch {
     std::vector<GeoPoint> geo_points;
     redis::Geo geo_db(srv->storage, conn->GetNamespace());
 
-    auto s = geo_db.SearchStore(ctx, args_[2], geo_shape_, origin_point_type_, member_, count_, sort_, store_key_,
-                                store_distance_, GetUnitConversion(), &geo_points);
+    auto s = geo_db.SearchStore(ctx, args_[2], geo_shape_, origin_point_type_, member_, has_count_, count_, sort_,
+                                store_key_, store_distance_, GetUnitConversion(), &geo_points);
 
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
-    *output = redis::Integer(GetReturnedItemsCount(geo_points.size(), count_));
+    *output = redis::Integer(GetReturnedItemsCount(geo_points.size(), has_count_, count_));
     return Status::OK();
   }
 
@@ -692,14 +693,14 @@ class CommandGeoRadiusByMember : public CommandGeoRadius {
     std::vector<GeoPoint> geo_points;
     redis::Geo geo_db(srv->storage, conn->GetNamespace());
 
-    auto s = geo_db.RadiusByMember(ctx, args_[1], args_[2], GetRadiusMeters(radius_), count_, sort_, store_key_,
-                                   store_distance_, GetUnitConversion(), &geo_points);
+    auto s = geo_db.RadiusByMember(ctx, args_[1], args_[2], GetRadiusMeters(radius_), has_count_, count_, sort_,
+                                   store_key_, store_distance_, GetUnitConversion(), &geo_points);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
 
     if (store_key_.size() != 0) {
-      *output = redis::Integer(GetReturnedItemsCount(geo_points.size(), count_));
+      *output = redis::Integer(GetReturnedItemsCount(geo_points.size(), has_count_, count_));
     } else {
       *output = GenerateOutput(conn, geo_points);
     }

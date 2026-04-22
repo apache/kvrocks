@@ -79,8 +79,9 @@ rocksdb::Status Geo::Pos(engine::Context &ctx, const Slice &user_key, const std:
 }
 
 rocksdb::Status Geo::Radius(engine::Context &ctx, const Slice &user_key, double longitude, double latitude,
-                            double radius_meters, size_t count, DistanceSort sort, const std::string &store_key,
-                            bool store_distance, double unit_conversion, std::vector<GeoPoint> *geo_points) {
+                            double radius_meters, bool has_count, size_t count, DistanceSort sort,
+                            const std::string &store_key, bool store_distance, double unit_conversion,
+                            std::vector<GeoPoint> *geo_points) {
   GeoShape geo_shape;
   geo_shape.type = kGeoShapeTypeCircular;
   geo_shape.xy[0] = longitude;
@@ -89,32 +90,33 @@ rocksdb::Status Geo::Radius(engine::Context &ctx, const Slice &user_key, double 
   geo_shape.conversion = 1;
 
   std::string dummy_member;
-  return SearchStore(ctx, user_key, geo_shape, kLongLat, dummy_member, count, sort, store_key, store_distance,
-                     unit_conversion, geo_points);
+  return SearchStore(ctx, user_key, geo_shape, kLongLat, dummy_member, has_count, count, sort, store_key,
+                     store_distance, unit_conversion, geo_points);
 }
 
 rocksdb::Status Geo::RadiusByMember(engine::Context &ctx, const Slice &user_key, const Slice &member,
-                                    double radius_meters, size_t count, DistanceSort sort, const std::string &store_key,
-                                    bool store_distance, double unit_conversion, std::vector<GeoPoint> *geo_points) {
+                                    double radius_meters, bool has_count, size_t count, DistanceSort sort,
+                                    const std::string &store_key, bool store_distance, double unit_conversion,
+                                    std::vector<GeoPoint> *geo_points) {
   GeoPoint geo_point;
   auto s = Get(ctx, user_key, member, &geo_point);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
-  return Radius(ctx, user_key, geo_point.longitude, geo_point.latitude, radius_meters, count, sort, store_key,
-                store_distance, unit_conversion, geo_points);
+  return Radius(ctx, user_key, geo_point.longitude, geo_point.latitude, radius_meters, has_count, count, sort,
+                store_key, store_distance, unit_conversion, geo_points);
 }
 
 rocksdb::Status Geo::Search(engine::Context &ctx, const Slice &user_key, GeoShape geo_shape, OriginPointType point_type,
-                            std::string &member, size_t count, DistanceSort sort, bool store_distance,
+                            std::string &member, bool has_count, size_t count, DistanceSort sort, bool store_distance,
                             double unit_conversion, std::vector<GeoPoint> *geo_points) {
-  return SearchStore(ctx, user_key, geo_shape, point_type, member, count, sort, "", store_distance, unit_conversion,
-                     geo_points);
+  return SearchStore(ctx, user_key, geo_shape, point_type, member, has_count, count, sort, "", store_distance,
+                     unit_conversion, geo_points);
 }
 
 rocksdb::Status Geo::SearchStore(engine::Context &ctx, const Slice &user_key, GeoShape geo_shape,
-                                 OriginPointType point_type, std::string &member, size_t count, DistanceSort sort,
-                                 const std::string &store_key, bool store_distance, double unit_conversion,
-                                 std::vector<GeoPoint> *geo_points) {
+                                 OriginPointType point_type, std::string &member, bool has_count, size_t count,
+                                 DistanceSort sort, const std::string &store_key, bool store_distance,
+                                 double unit_conversion, std::vector<GeoPoint> *geo_points) {
   if (point_type == kMember) {
     GeoPoint geo_point;
     auto s = Get(ctx, user_key, member, &geo_point);
@@ -164,7 +166,7 @@ rocksdb::Status Geo::SearchStore(engine::Context &ctx, const Slice &user_key, Ge
 
   // storing
   if (!store_key.empty()) {
-    size_t returned_items_count = (count == 0 || geo_points->size() < count) ? geo_points->size() : count;
+    size_t returned_items_count = (!has_count || geo_points->size() < count) ? geo_points->size() : count;
     if (returned_items_count == 0) {
       auto s = ZSet::Del(ctx, store_key);
       if (!s.ok()) return s;

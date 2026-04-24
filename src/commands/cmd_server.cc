@@ -1665,7 +1665,7 @@ REDIS_REGISTER_COMMANDS(
     MakeCmdAttr<CommandStats>("stats", 1, "read-only", NO_KEY),
     MakeCmdAttr<CommandRdb>("rdb", -3, "write exclusive admin", NO_KEY),
     MakeCmdAttr<CommandReset>("reset", 1, "ok-loading bypass-multi no-script admin", NO_KEY),
-    MakeCmdAttr<CommandApplyBatch>("applybatch", -2, "write no-multi", NO_KEY),
+    MakeCmdAttr<CommandApplyBatch>("applybatch", -2, "write no-multi admin", NO_KEY),
     MakeCmdAttr<CommandDump>("dump", 2, "read-only", 1, 1, 1),
     MakeCmdAttr<CommandPollUpdates>("pollupdates", -2, "read-only admin", NO_KEY),
     MakeCmdAttr<CommandSST>("sst", -3, "write exclusive admin", 1, 1, 1),

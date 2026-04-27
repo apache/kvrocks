@@ -349,6 +349,38 @@ func testString(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.Equal(t, "", rdb.Get(ctx, value).Val())
 	})
 
+	t.Run("DelEX IFDEQ and IFDNE accept uppercase digest", func(t *testing.T) {
+		key := "test-string-key-uppercase-digest"
+		value := "Hello world"
+		var digest string
+
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Set(ctx, key, value, 0).Err())
+		digest = strings.ToUpper(rdb.Do(ctx, "DIGEST", key).Val().(string))
+		require.Equal(t, int64(1), rdb.Do(ctx, "DelEX", key, "ifdeq", digest).Val())
+		require.Equal(t, int64(0), rdb.Exists(ctx, key).Val())
+
+		require.NoError(t, rdb.Set(ctx, key, value, 0).Err())
+		digest = strings.ToUpper(rdb.Do(ctx, "DIGEST", key).Val().(string))
+		require.Equal(t, int64(0), rdb.Do(ctx, "DelEX", key, "ifdne", digest).Val())
+		require.Equal(t, value, rdb.Get(ctx, key).Val())
+	})
+
+	t.Run("DelEX IFDEQ and IFDNE reject invalid digest length", func(t *testing.T) {
+		key := "test-string-key-invalid-digest"
+		value := "Hello world"
+
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Set(ctx, key, value, 0).Err())
+		require.ErrorContains(t, rdb.Do(ctx, "DelEX", key, "ifdeq", "123456789012345").Err(),
+			"exactly 16 hexadecimal characters")
+		require.Equal(t, value, rdb.Get(ctx, key).Val())
+
+		require.ErrorContains(t, rdb.Do(ctx, "DelEX", key, "ifdne", "123456789012345").Err(),
+			"exactly 16 hexadecimal characters")
+		require.Equal(t, value, rdb.Get(ctx, key).Val())
+	})
+
 	t.Run("MGET command", func(t *testing.T) {
 		require.NoError(t, rdb.FlushDB(ctx).Err())
 		require.NoError(t, rdb.Set(ctx, "foo", "BAR", 0).Err())
@@ -1203,5 +1235,20 @@ func testString(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.Equal(t, int64(0), rdb.LCS(ctx, &redis.LCSQuery{Key1: "virus1", Key2: "virus2"}).Val().Len)
 		require.Equal(t, []redis.LCSMatchedPosition{}, rdb.LCS(ctx, &redis.LCSQuery{Key1: "virus1", Key2: "virus2", Idx: true}).Val().Matches)
 		require.Equal(t, []redis.LCSMatchedPosition{}, rdb.LCS(ctx, &redis.LCSQuery{Key1: "virus1", Key2: "virus2", Idx: true, WithMatchLen: true}).Val().Matches)
+	})
+
+	t.Run("DelEX IFDEQ and IFDNE reject invalid digest length", func(t *testing.T) {
+		key := "test-string-key-invalid-digest"
+		value := "Hello world"
+
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Set(ctx, key, value, 0).Err())
+		require.ErrorContains(t, rdb.Do(ctx, "DelEX", key, "ifdeq", "123456789012345").Err(),
+			"exactly 16 hexadecimal characters")
+		require.Equal(t, value, rdb.Get(ctx, key).Val())
+
+		require.ErrorContains(t, rdb.Do(ctx, "DelEX", key, "ifdne", "123456789012345").Err(),
+			"exactly 16 hexadecimal characters")
+		require.Equal(t, value, rdb.Get(ctx, key).Val())
 	})
 }

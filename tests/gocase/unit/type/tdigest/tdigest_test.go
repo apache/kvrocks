@@ -689,6 +689,62 @@ func tdigestTests(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.EqualValues(t, 5, info.Observations) // src data replaced dest data due to OVERRIDE
 	})
 
+	// Regression test for empty merge: min/max should be correctly initialized
+	// Before fix: merging empty sources initialized min/max to 0, corrupting subsequent add
+	t.Run("tdigest.merge empty sources then add samples", func(t *testing.T) {
+		keyPrefix := "tdigest_merge_empty_"
+
+		srcKey1 := keyPrefix + "src1"
+		srcKey2 := keyPrefix + "src2"
+		destKey := keyPrefix + "dest"
+
+		// Create empty sources (no observations added)
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", srcKey1, "compression", "100").Err())
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", srcKey2, "compression", "100").Err())
+
+		// Merge empty sources into new destination
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.MERGE", destKey, 2, srcKey1, srcKey2).Err())
+
+		// Verify dest is empty
+		rsp := rdb.Do(ctx, "TDIGEST.INFO", destKey)
+		require.NoError(t, rsp.Err())
+		info := toTdigestInfo(t, rsp.Val())
+		require.EqualValues(t, 0, info.Observations)
+
+		// Add positive samples and verify min/max
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", destKey, "10", "20", "30").Err())
+
+		rsp = rdb.Do(ctx, "TDIGEST.MIN", destKey)
+		require.NoError(t, rsp.Err())
+		minVal, err := rsp.Float64()
+		require.NoError(t, err)
+		require.InEpsilon(t, 10.0, minVal, 0.1, "min should be 10, not 0")
+
+		rsp = rdb.Do(ctx, "TDIGEST.MAX", destKey)
+		require.NoError(t, rsp.Err())
+		maxVal, err := rsp.Float64()
+		require.NoError(t, err)
+		require.InEpsilon(t, 30.0, maxVal, 0.1, "max should be 30")
+
+		// Test with negative samples
+		destKey2 := keyPrefix + "dest2"
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.MERGE", destKey2, 2, srcKey1, srcKey2).Err())
+
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", destKey2, "-10", "-20", "-30").Err())
+
+		rsp = rdb.Do(ctx, "TDIGEST.MIN", destKey2)
+		require.NoError(t, rsp.Err())
+		minVal, err = rsp.Float64()
+		require.NoError(t, err)
+		require.InEpsilon(t, -30.0, minVal, 0.1, "min should be -30")
+
+		rsp = rdb.Do(ctx, "TDIGEST.MAX", destKey2)
+		require.NoError(t, rsp.Err())
+		maxVal, err = rsp.Float64()
+		require.NoError(t, err)
+		require.InEpsilon(t, -10.0, maxVal, 0.1, "max should be -10, not 0")
+	})
+
 	t.Run("tdigest.revrank with different arguments", func(t *testing.T) {
 		keyPrefix := "tdigest_revrank_"
 

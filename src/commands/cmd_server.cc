@@ -504,11 +504,12 @@ class CommandClient : public Commander {
       return Status::OK();
     }
 
-    if (subcommand_ == "setinfo" && args.size() == 4) {
-      auto attr = util::ToLower(args[2]);
-      if (attr != "lib-name" && attr != "lib-ver") {
-        return {Status::RedisInvalidCmd, "Unrecognized option '" + args[2] + "'"};
+    if (subcommand_ == "setinfo") {
+      if (args.size() != 4) {
+        return {Status::RedisParseErr, errInvalidSyntax};
       }
+
+      auto attr = util::ToLower(args[2]);
 
       for (auto ch : args[3]) {
         if (ch < '!' || ch > '~') {
@@ -517,13 +518,15 @@ class CommandClient : public Commander {
         }
       }
 
-      setinfo_attr_ = attr;
-      setinfo_value_ = args[3];
-      return Status::OK();
-    }
+      if (attr == "lib-name") {
+        setinfo_lib_name_ = args[3];
+      } else if (attr == "lib-ver") {
+        setinfo_lib_ver_ = args[3];
+      } else {
+        return {Status::RedisInvalidCmd, "Unrecognized option '" + args[2] + "'"};
+      }
 
-    if (subcommand_ == "setinfo" && args.size() != 4) {
-      return {Status::RedisParseErr, errInvalidSyntax};
+      return Status::OK();
     }
 
     if (subcommand_ == "reply") {
@@ -682,10 +685,11 @@ class CommandClient : public Commander {
       *output = redis::RESP_OK;
       return Status::OK();
     } else if (subcommand_ == "setinfo") {
-      if (setinfo_attr_ == "lib-name") {
-        conn->SetLibName(setinfo_value_);
-      } else {
-        conn->SetLibVer(setinfo_value_);
+      if (setinfo_lib_name_) {
+        conn->SetLibName(*setinfo_lib_name_);
+      }
+      if (setinfo_lib_ver_) {
+        conn->SetLibVer(*setinfo_lib_ver_);
       }
       *output = redis::RESP_OK;
       return Status::OK();
@@ -700,8 +704,8 @@ class CommandClient : public Commander {
   std::string addr_;
   std::string conn_name_;
   std::string subcommand_;
-  std::string setinfo_attr_;
-  std::string setinfo_value_;
+  std::optional<std::string> setinfo_lib_name_;
+  std::optional<std::string> setinfo_lib_ver_;
   redis::Connection::ReplyMode reply_mode_ = redis::Connection::ReplyMode::ON;
   bool skipme_ = false;
   int64_t kill_type_ = 0;

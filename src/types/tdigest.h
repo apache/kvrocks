@@ -22,6 +22,7 @@
 
 #include <fmt/format.h>
 
+#include <limits>
 #include <map>
 #include <numeric>
 #include <variant>
@@ -47,10 +48,10 @@ struct Centroid {
 
 struct CentroidsWithDelta {
   std::vector<Centroid> centroids;
-  uint64_t delta;
-  double min;
-  double max;
-  double total_weight;
+  uint64_t delta = 0;
+  double min = std::numeric_limits<double>::max();
+  double max = std::numeric_limits<double>::lowest();
+  double total_weight = 0;
 };
 
 StatusOr<CentroidsWithDelta> TDigestMerge(const std::vector<CentroidsWithDelta>& centroids_list, uint64_t delta);

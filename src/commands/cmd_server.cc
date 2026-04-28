@@ -1627,6 +1627,102 @@ class CommandFlushBlockCache : public Commander {
   }
 };
 
+class CommandLatency : public Commander {
+ public:
+  Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    if (args_.size() < 2) {
+      return {Status::RedisParseErr, errWrongNumOfArguments};
+    }
+
+    std::string subcommand = util::ToLower(args_[1]);
+    if (subcommand == "histogram") {
+      return getHistogram(srv, conn, output);
+    } else if (subcommand == "reset") {
+      *output = redis::Integer(0);
+      return Status::OK();
+    } else if (subcommand == "help") {
+      std::vector<std::string> help = {
+          "HELP",
+          "    Print this help message.",
+          "HISTOGRAM [command ...]",
+          "    Return a cumulative distribution of latencies in the format of a histogram for the specified "
+          "command(s).",
+          "    If no commands are specified, all commands with latency statistics are returned.",
+          "RESET [event ...]",
+          "    Return the number of reset event classes (Kvrocks has no spike-sampling infrastructure, always returns "
+          "0)."};
+      *output = ArrayOfBulkStrings(help);
+      return Status::OK();
+    }
+
+    return {Status::RedisParseErr, "Unknown LATENCY subcommand or wrong number of arguments"};
+  }
+
+ private:
+  Status getHistogram(Server *srv, Connection *conn, std::string *output) {
+    if (srv->stats.bucket_boundaries.empty()) {
+      *output = conn->HeaderOfMap(0);
+      return Status::OK();
+    }
+
+    std::vector<const std::pair<const std::string, CommandHistogram> *> target_histograms;
+    if (args_.size() > 2) {
+      for (size_t i = 2; i < args_.size(); i++) {
+        auto it = srv->stats.commands_histogram.find(util::ToLower(args_[i]));
+        if (it != srv->stats.commands_histogram.end() && it->second.calls > 0) {
+          target_histograms.push_back(&(*it));
+        }
+      }
+    } else {
+      for (const auto &iter : srv->stats.commands_histogram) {
+        if (iter.second.calls > 0) {
+          target_histograms.push_back(&iter);
+        }
+      }
+    }
+
+    *output = conn->HeaderOfMap(target_histograms.size());
+    for (const auto *pair_ptr : target_histograms) {
+      const auto &cmd_name = pair_ptr->first;
+      const auto &hist = pair_ptr->second;
+
+      std::vector<std::pair<int64_t, uint64_t>> cumulative_buckets;
+      uint64_t cumulative = 0;
+      for (size_t i = 0; i < hist.buckets.size(); i++) {
+        cumulative += hist.buckets[i]->load(std::memory_order_relaxed);
+        if (cumulative == 0) continue;
+
+        int64_t boundary = 0;
+        if (i < srv->stats.bucket_boundaries.size()) {
+          boundary = static_cast<int64_t>(srv->stats.bucket_boundaries[i]);
+        } else {
+          boundary = -1;
+        }
+        cumulative_buckets.emplace_back(boundary, cumulative);
+      }
+
+      *output += redis::BulkString(cmd_name);
+      *output += conn->HeaderOfMap(2);
+
+      *output += redis::BulkString("calls");
+      *output += redis::Integer(hist.calls.load(std::memory_order_relaxed));
+
+      *output += redis::BulkString("histogram_usec");
+      *output += conn->HeaderOfMap(cumulative_buckets.size());
+      for (const auto &[boundary, count] : cumulative_buckets) {
+        if (boundary < 0) {
+          *output += redis::BulkString("inf");
+        } else {
+          *output += redis::Integer(boundary);
+        }
+        *output += redis::Integer(count);
+      }
+    }
+
+    return Status::OK();
+  }
+};
+
 REDIS_REGISTER_COMMANDS(
     Server, MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loading auth", NO_KEY),
     MakeCmdAttr<CommandPing>("ping", -1, "read-only", NO_KEY),
@@ -1670,5 +1766,6 @@ REDIS_REGISTER_COMMANDS(
     MakeCmdAttr<CommandPollUpdates>("pollupdates", -2, "read-only admin", NO_KEY),
     MakeCmdAttr<CommandSST>("sst", -3, "write exclusive admin", 1, 1, 1),
     MakeCmdAttr<CommandFlushMemTable>("flushmemtable", -1, "exclusive write", NO_KEY),
-    MakeCmdAttr<CommandFlushBlockCache>("flushblockcache", 1, "exclusive write", NO_KEY), )
+    MakeCmdAttr<CommandFlushBlockCache>("flushblockcache", 1, "exclusive write", NO_KEY),
+    MakeCmdAttr<CommandLatency>("latency", -2, "read-only admin", NO_KEY), )
 }  // namespace redis

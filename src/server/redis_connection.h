@@ -137,6 +137,10 @@ class Connection : public EvbufCallbackBase<Connection> {
   void SetID(uint64_t id) { id_ = id; }
   std::string GetName() const { return name_; }
   void SetName(std::string name) { name_ = std::move(name); }
+  std::string GetLibName() const { return lib_name_; }
+  void SetLibName(std::string lib_name) { lib_name_ = std::move(lib_name); }
+  std::string GetLibVer() const { return lib_ver_; }
+  void SetLibVer(std::string lib_ver) { lib_ver_ = std::move(lib_ver); }
   std::string GetAddr() const { return addr_; }
   void SetAddr(std::string ip, uint32_t port);
   void SetLastCmd(std::string cmd) { last_cmd_ = std::move(cmd); }
@@ -203,6 +207,8 @@ class Connection : public EvbufCallbackBase<Connection> {
   std::atomic<int> flags_ = 0;
   std::string ns_;
   std::string name_;
+  std::string lib_name_;
+  std::string lib_ver_;
   std::string ip_;
   std::string announce_ip_;
   uint32_t port_ = 0;

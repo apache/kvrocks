@@ -504,6 +504,28 @@ class CommandClient : public Commander {
       return Status::OK();
     }
 
+    if (subcommand_ == "setinfo" && args.size() == 4) {
+      auto attr = util::ToLower(args[2]);
+      if (attr != "lib-name" && attr != "lib-ver") {
+        return {Status::RedisInvalidCmd, "Unrecognized option '" + args[2] + "'"};
+      }
+
+      for (auto ch : args[3]) {
+        if (ch < '!' || ch > '~') {
+          return {Status::RedisInvalidCmd,
+                  "lib-name and lib-ver cannot contain spaces, newlines or special characters"};
+        }
+      }
+
+      setinfo_attr_ = attr;
+      setinfo_value_ = args[3];
+      return Status::OK();
+    }
+
+    if (subcommand_ == "setinfo" && args.size() != 4) {
+      return {Status::RedisParseErr, errInvalidSyntax};
+    }
+
     if (subcommand_ == "reply") {
       if (args.size() != 3) {
         return {Status::RedisParseErr, errInvalidSyntax};
@@ -602,7 +624,7 @@ class CommandClient : public Commander {
       return Status::OK();
     }
     return {Status::RedisInvalidCmd,
-            "Syntax error, try CLIENT LIST|INFO|KILL ip:port|GETNAME|SETNAME|REPLY|"
+            "Syntax error, try CLIENT LIST|INFO|KILL ip:port|GETNAME|SETNAME|SETINFO|REPLY|"
             "PAUSE|UNPAUSE"};
   }
 
@@ -659,10 +681,18 @@ class CommandClient : public Commander {
       srv->UnpauseConns();
       *output = redis::RESP_OK;
       return Status::OK();
+    } else if (subcommand_ == "setinfo") {
+      if (setinfo_attr_ == "lib-name") {
+        conn->SetLibName(setinfo_value_);
+      } else {
+        conn->SetLibVer(setinfo_value_);
+      }
+      *output = redis::RESP_OK;
+      return Status::OK();
     }
 
     return {Status::RedisInvalidCmd,
-            "Syntax error, try CLIENT LIST|INFO|KILL ip:port|GETNAME|SETNAME|REPLY|"
+            "Syntax error, try CLIENT LIST|INFO|KILL ip:port|GETNAME|SETNAME|SETINFO|REPLY|"
             "PAUSE|UNPAUSE"};
   }
 
@@ -670,6 +700,8 @@ class CommandClient : public Commander {
   std::string addr_;
   std::string conn_name_;
   std::string subcommand_;
+  std::string setinfo_attr_;
+  std::string setinfo_value_;
   redis::Connection::ReplyMode reply_mode_ = redis::Connection::ReplyMode::ON;
   bool skipme_ = false;
   int64_t kill_type_ = 0;

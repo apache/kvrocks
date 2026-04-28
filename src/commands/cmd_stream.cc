@@ -853,21 +853,48 @@ class CommandXPending : public Commander {
     }
 
     if (parser.Good()) {
-      std::string start_id, end_id;
-      start_id = GET_OR_RET(parser.TakeStr());
-      end_id = GET_OR_RET(parser.TakeStr());
-      if (start_id != "-") {
-        auto s = ParseStreamEntryID(start_id, &options_.start_id);
+      const std::string start_str = GET_OR_RET(parser.TakeStr());
+      const std::string end_str = GET_OR_RET(parser.TakeStr());
+
+      // Extended XPENDING uses the same ID range rules as XRANGE (see Redis documentation).
+      if (start_str == "-") {
+        options_.start_id = StreamEntryID::Minimum();
+        options_.exclude_start = false;
+      } else if (!start_str.empty() && start_str[0] == '(') {
+        options_.exclude_start = true;
+        auto s = ParseRangeStart(start_str.substr(1), &options_.start_id);
         if (!s.IsOK()) {
           return s;
         }
+      } else if (start_str == "+") {
+        options_.start_id = StreamEntryID::Maximum();
+        options_.exclude_start = false;
+      } else {
+        auto s = ParseRangeStart(start_str, &options_.start_id);
+        if (!s.IsOK()) {
+          return s;
+        }
+        options_.exclude_start = false;
       }
 
-      if (end_id != "+") {
-        auto s = ParseStreamEntryID(start_id, &options_.end_id);
+      if (end_str == "+") {
+        options_.end_id = StreamEntryID::Maximum();
+        options_.exclude_end = false;
+      } else if (!end_str.empty() && end_str[0] == '(') {
+        options_.exclude_end = true;
+        auto s = ParseRangeEnd(end_str.substr(1), &options_.end_id);
         if (!s.IsOK()) {
           return s;
         }
+      } else if (end_str == "-") {
+        options_.end_id = StreamEntryID::Minimum();
+        options_.exclude_end = false;
+      } else {
+        auto s = ParseRangeEnd(end_str, &options_.end_id);
+        if (!s.IsOK()) {
+          return s;
+        }
+        options_.exclude_end = false;
       }
 
       options_.count = GET_OR_RET(parser.TakeInt<uint64_t>());

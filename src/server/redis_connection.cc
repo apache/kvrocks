@@ -87,9 +87,10 @@ std::string Connection::ToString() {
     db_or_ns_value = ns_;
   }
 
-  return fmt::format("id={} addr={} fd={} name={} age={} idle={} flags={} {}={} qbuf={} obuf={} cmd={}\n", id_, addr_,
-                     bufferevent_getfd(bev_), name_, GetAge(), GetIdleTime(), GetFlags(), db_or_ns_field,
-                     db_or_ns_value, evbuffer_get_length(Input()), evbuffer_get_length(Output()), last_cmd_);
+  return fmt::format(
+      "id={} addr={} fd={} name={} age={} idle={} flags={} {}={} qbuf={} obuf={} cmd={} lib-name={} lib-ver={}\n", id_,
+      addr_, bufferevent_getfd(bev_), name_, GetAge(), GetIdleTime(), GetFlags(), db_or_ns_field, db_or_ns_value,
+      evbuffer_get_length(Input()), evbuffer_get_length(Output()), last_cmd_, set_info_.lib_name, set_info_.lib_ver);
 }
 
 void Connection::Close() {

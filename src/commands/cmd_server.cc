@@ -504,6 +504,31 @@ class CommandClient : public Commander {
       return Status::OK();
     }
 
+    if (subcommand_ == "setinfo") {
+      if (args.size() != 4) {
+        return {Status::RedisParseErr, errInvalidSyntax};
+      }
+
+      auto attr = util::ToLower(args[2]);
+
+      for (auto ch : args[3]) {
+        if (ch < '!' || ch > '~') {
+          return {Status::RedisInvalidCmd,
+                  "lib-name and lib-ver cannot contain spaces, newlines or special characters"};
+        }
+      }
+
+      if (attr == "lib-name") {
+        setinfo_lib_name_ = args[3];
+      } else if (attr == "lib-ver") {
+        setinfo_lib_ver_ = args[3];
+      } else {
+        return {Status::RedisInvalidCmd, "Unrecognized option '" + args[2] + "'"};
+      }
+
+      return Status::OK();
+    }
+
     if (subcommand_ == "reply") {
       if (args.size() != 3) {
         return {Status::RedisParseErr, errInvalidSyntax};
@@ -602,7 +627,7 @@ class CommandClient : public Commander {
       return Status::OK();
     }
     return {Status::RedisInvalidCmd,
-            "Syntax error, try CLIENT LIST|INFO|KILL ip:port|GETNAME|SETNAME|REPLY|"
+            "Syntax error, try CLIENT LIST|INFO|KILL ip:port|GETNAME|SETNAME|SETINFO|REPLY|"
             "PAUSE|UNPAUSE"};
   }
 
@@ -659,10 +684,19 @@ class CommandClient : public Commander {
       srv->UnpauseConns();
       *output = redis::RESP_OK;
       return Status::OK();
+    } else if (subcommand_ == "setinfo") {
+      if (setinfo_lib_name_) {
+        conn->SetLibName(*setinfo_lib_name_);
+      }
+      if (setinfo_lib_ver_) {
+        conn->SetLibVer(*setinfo_lib_ver_);
+      }
+      *output = redis::RESP_OK;
+      return Status::OK();
     }
 
     return {Status::RedisInvalidCmd,
-            "Syntax error, try CLIENT LIST|INFO|KILL ip:port|GETNAME|SETNAME|REPLY|"
+            "Syntax error, try CLIENT LIST|INFO|KILL ip:port|GETNAME|SETNAME|SETINFO|REPLY|"
             "PAUSE|UNPAUSE"};
   }
 
@@ -670,6 +704,8 @@ class CommandClient : public Commander {
   std::string addr_;
   std::string conn_name_;
   std::string subcommand_;
+  std::optional<std::string> setinfo_lib_name_;
+  std::optional<std::string> setinfo_lib_ver_;
   redis::Connection::ReplyMode reply_mode_ = redis::Connection::ReplyMode::ON;
   bool skipme_ = false;
   int64_t kill_type_ = 0;

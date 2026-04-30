@@ -302,8 +302,14 @@ class CommandBitfield : public Commander {
       }
       cmd.encoding = encoding.GetValue();
 
-      // parse offset
-      if (!GetBitOffsetFromArgument(group[2], &cmd.offset).IsOK()) {
+      // parse offset — support Redis '#N' positional syntax: #N means N * bit_width
+      if (!group[2].empty() && group[2][0] == '#') {
+        auto pos_parse = ParseInt<uint32_t>(group[2].substr(1), 10);
+        if (!pos_parse) {
+          return {Status::RedisParseErr, "bit offset is not an integer or out of range"};
+        }
+        cmd.offset = *pos_parse * cmd.encoding.Bits();
+      } else if (!GetBitOffsetFromArgument(group[2], &cmd.offset).IsOK()) {
         return {Status::RedisParseErr, "bit offset is not an integer or out of range"};
       }
 

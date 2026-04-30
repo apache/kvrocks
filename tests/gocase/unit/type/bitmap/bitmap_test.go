@@ -379,6 +379,40 @@ func TestBitmap(t *testing.T) {
 		require.ErrorContains(t, rdb.Do(ctx, "BITFIELD_RO", "str", "INCRBY", "u8", "32", 2).Err(), "BITFIELD_RO only supports the GET subcommand")
 	})
 
+	t.Run("BITFIELD positional offset #N syntax", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "bf_pos").Err())
+
+		// #0 with u16 = offset 0, #1 = offset 16, #2 = offset 32
+		res := rdb.Do(ctx, "BITFIELD", "bf_pos", "SET", "u16", "#0", 100)
+		require.NoError(t, res.Err())
+		require.EqualValues(t, []interface{}{int64(0)}, res.Val())
+
+		res = rdb.Do(ctx, "BITFIELD", "bf_pos", "SET", "u16", "#1", 200)
+		require.NoError(t, res.Err())
+		require.EqualValues(t, []interface{}{int64(0)}, res.Val())
+
+		res = rdb.Do(ctx, "BITFIELD", "bf_pos", "GET", "u16", "#0", "GET", "u16", "#1")
+		require.NoError(t, res.Err())
+		require.EqualValues(t, []interface{}{int64(100), int64(200)}, res.Val())
+
+		// INCRBY with #N
+		res = rdb.Do(ctx, "BITFIELD", "bf_pos", "INCRBY", "u16", "#0", 1)
+		require.NoError(t, res.Err())
+		require.EqualValues(t, []interface{}{int64(101)}, res.Val())
+
+		// OVERFLOW SAT with #N
+		res = rdb.Do(ctx, "BITFIELD", "bf_pos", "OVERFLOW", "SAT", "INCRBY", "u16", "#1", 65535)
+		require.NoError(t, res.Err())
+		require.EqualValues(t, []interface{}{int64(65535)}, res.Val())
+
+		// BITFIELD_RO GET with #N
+		for _, command := range []string{"BITFIELD", "BITFIELD_RO"} {
+			res = rdb.Do(ctx, command, "bf_pos", "GET", "u16", "#0")
+			require.NoError(t, res.Err())
+			require.EqualValues(t, []interface{}{int64(101)}, res.Val())
+		}
+	})
+
 	t.Run("BITPOS BIT option check", func(t *testing.T) {
 		require.NoError(t, rdb.Set(ctx, "mykey", "\x00\xff\xf0", 0).Err())
 		cmd := rdb.BitPosSpan(ctx, "mykey", 1, 7, 15, "bit")

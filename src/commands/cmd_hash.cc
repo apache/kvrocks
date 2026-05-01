@@ -29,6 +29,31 @@
 #include "types/redis_hash.h"
 
 namespace redis {
+namespace {
+
+template <typename Parser>
+Status ParseHashFieldListTail(Parser &parser, std::vector<std::string> *fields) {
+  if (!parser.Good()) {
+    return {Status::RedisParseErr, errWrongNumOfArguments};
+  }
+
+  auto num_fields = parser.template TakeInt<int64_t>(NumericRange<int64_t>{1, std::numeric_limits<int64_t>::max()}, 10);
+  if (!num_fields) {
+    return {Status::RedisParseErr, errValueNotInteger};
+  }
+  if (static_cast<size_t>(*num_fields) != parser.Remains()) {
+    return {Status::RedisParseErr, errWrongNumOfArguments};
+  }
+
+  fields->clear();
+  fields->reserve(static_cast<size_t>(*num_fields));
+  while (parser.Good()) {
+    fields->emplace_back(GET_OR_RET(parser.TakeStr()));
+  }
+  return Status::OK();
+}
+
+}  // namespace
 
 class CommandHGet : public Commander {
  public:
@@ -486,22 +511,29 @@ class CommandHRandField : public Commander {
 class CommandHExpire : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    auto seconds = ParseInt<int64_t>(args[2], 10);
+    CommandParser parser(args, 2);
+
+    auto seconds = parser.TakeInt<int64_t>();
     if (!seconds) {
       return {Status::RedisParseErr, errValueNotInteger};
     }
     seconds_ = *seconds;
+    condition_ = HashFieldExpireCondition::kNone;
 
-    size_t pos = 3;
-    while (pos < args.size() && !util::EqualICase(args[pos], "FIELDS")) {
+    while (parser.Good()) {
+      if (parser.EatEqICase("FIELDS")) {
+        GET_OR_RET(ParseHashFieldListTail(parser, &fields_));
+        return Commander::Parse(args);
+      }
+
       HashFieldExpireCondition parsed_condition = HashFieldExpireCondition::kNone;
-      if (util::EqualICase(args[pos], "NX")) {
+      if (parser.EatEqICase("NX")) {
         parsed_condition = HashFieldExpireCondition::kNX;
-      } else if (util::EqualICase(args[pos], "XX")) {
+      } else if (parser.EatEqICase("XX")) {
         parsed_condition = HashFieldExpireCondition::kXX;
-      } else if (util::EqualICase(args[pos], "GT")) {
+      } else if (parser.EatEqICase("GT")) {
         parsed_condition = HashFieldExpireCondition::kGT;
-      } else if (util::EqualICase(args[pos], "LT")) {
+      } else if (parser.EatEqICase("LT")) {
         parsed_condition = HashFieldExpireCondition::kLT;
       } else {
         return {Status::RedisParseErr, errInvalidSyntax};
@@ -510,30 +542,8 @@ class CommandHExpire : public Commander {
         return {Status::RedisParseErr, errInvalidSyntax};
       }
       condition_ = parsed_condition;
-      pos++;
     }
-
-    if (pos >= args.size() || !util::EqualICase(args[pos], "FIELDS")) {
-      return {Status::RedisParseErr, errInvalidSyntax};
-    }
-    pos++;
-    if (pos >= args.size()) {
-      return {Status::RedisParseErr, errWrongNumOfArguments};
-    }
-    auto num_fields = ParseInt<int64_t>(args[pos], NumericRange<int64_t>{1, std::numeric_limits<int64_t>::max()}, 10);
-    if (!num_fields) {
-      return {Status::RedisParseErr, errValueNotInteger};
-    }
-    pos++;
-    if (static_cast<size_t>(*num_fields) != args.size() - pos) {
-      return {Status::RedisParseErr, errWrongNumOfArguments};
-    }
-    fields_.clear();
-    fields_.reserve(static_cast<size_t>(*num_fields));
-    for (; pos < args.size(); pos++) {
-      fields_.emplace_back(args[pos]);
-    }
-    return Commander::Parse(args);
+    return {Status::RedisParseErr, errInvalidSyntax};
   }
 
   Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
@@ -583,21 +593,11 @@ class CommandHExpire : public Commander {
 class CommandHPersist : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    if (!util::EqualICase(args[2], "FIELDS")) {
+    CommandParser parser(args, 2);
+    if (!parser.EatEqICase("FIELDS")) {
       return {Status::RedisParseErr, errInvalidSyntax};
     }
-    auto num_fields = ParseInt<int64_t>(args[3], NumericRange<int64_t>{1, std::numeric_limits<int64_t>::max()}, 10);
-    if (!num_fields) {
-      return {Status::RedisParseErr, errValueNotInteger};
-    }
-    if (static_cast<size_t>(*num_fields) != args.size() - 4) {
-      return {Status::RedisParseErr, errWrongNumOfArguments};
-    }
-    fields_.clear();
-    fields_.reserve(static_cast<size_t>(*num_fields));
-    for (size_t i = 4; i < args.size(); i++) {
-      fields_.emplace_back(args[i]);
-    }
+    GET_OR_RET(ParseHashFieldListTail(parser, &fields_));
     return Commander::Parse(args);
   }
 

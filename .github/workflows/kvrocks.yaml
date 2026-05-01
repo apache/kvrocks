@@ -61,7 +61,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Check typos
-        uses: crate-ci/typos@v1.45.0
+        uses: crate-ci/typos@v1.46.0
         with:
           config: .github/config/typos.toml
       - uses: apache/skywalking-eyes/header@v0.8.0

@@ -100,6 +100,14 @@ class RedisHashFieldExpirationEncodingTest : public ::testing::Test {
     return raw_value;
   }
 
+  HashMetadata hashMetadata(const std::string &key) {
+    HashMetadata metadata(false);
+    std::string ns_key = db_->AppendNamespacePrefix(key);
+    auto s = db_->GetMetadata(*ctx_, {kRedisHash}, ns_key, &metadata);
+    assert(s.ok());
+    return metadata;
+  }
+
   Config config_;
   std::unique_ptr<engine::Storage> storage_;
   std::unique_ptr<engine::Context> ctx_;
@@ -251,7 +259,8 @@ TEST_F(RedisHashFieldExpirationEncodingTest, StoreAndScanValuesWithModeOneEncodi
   HashMetadata metadata(false);
   std::string raw_value = rawHashValue(key.ToString(), field.ToString(), &metadata);
   EXPECT_EQ(metadata.mode, HashSubkeyEncodingMode::kFieldExpiration);
-  EXPECT_EQ(metadata.expsz, 0);
+  EXPECT_EQ(metadata.size, 1);
+  EXPECT_EQ(metadata.persist, 1);
   EXPECT_EQ(raw_value.size(), HashMetadata::kFieldExpirationPrefixSize + value.size());
 
   Slice decoded_value(raw_value);
@@ -278,6 +287,50 @@ TEST_F(RedisHashFieldExpirationEncodingTest, StoreAndScanValuesWithModeOneEncodi
   ASSERT_EQ(field_values.size(), 1);
   EXPECT_EQ(field_values[0].field, "field-1");
   EXPECT_EQ(field_values[0].value, "value-1");
+}
+
+TEST_F(RedisHashFieldExpirationEncodingTest, PersistentCountTracksPersistentFieldWrites) {
+  const Slice key = "mode-one-persist-count";
+
+  uint64_t ret = 0;
+  auto s = hash_->MSet(*ctx_, key, {{"field-1", "1"}, {"field-2", "2"}}, false, &ret);
+  ASSERT_TRUE(s.ok());
+  EXPECT_EQ(ret, 2);
+
+  HashMetadata metadata = hashMetadata(key.ToString());
+  EXPECT_EQ(metadata.mode, HashSubkeyEncodingMode::kFieldExpiration);
+  EXPECT_EQ(metadata.size, 2);
+  EXPECT_EQ(metadata.persist, 2);
+  EXPECT_EQ(metadata.lower, 0);
+  EXPECT_EQ(metadata.upper, 0);
+
+  int64_t new_int = 0;
+  s = hash_->IncrBy(*ctx_, key, "field-3", 3, &new_int);
+  ASSERT_TRUE(s.ok());
+  EXPECT_EQ(new_int, 3);
+
+  metadata = hashMetadata(key.ToString());
+  EXPECT_EQ(metadata.size, 3);
+  EXPECT_EQ(metadata.persist, 3);
+
+  double new_float = 0;
+  s = hash_->IncrByFloat(*ctx_, key, "field-4", 1.5, &new_float);
+  ASSERT_TRUE(s.ok());
+  EXPECT_DOUBLE_EQ(new_float, 1.5);
+
+  metadata = hashMetadata(key.ToString());
+  EXPECT_EQ(metadata.size, 4);
+  EXPECT_EQ(metadata.persist, 4);
+
+  s = hash_->Delete(*ctx_, key, {"field-1", "field-2"}, &ret);
+  ASSERT_TRUE(s.ok());
+  EXPECT_EQ(ret, 2);
+
+  metadata = hashMetadata(key.ToString());
+  EXPECT_EQ(metadata.size, 2);
+  EXPECT_EQ(metadata.persist, 2);
+  EXPECT_EQ(metadata.lower, 0);
+  EXPECT_EQ(metadata.upper, 0);
 }
 
 TEST_F(RedisHashTest, HIncr) {

@@ -224,7 +224,7 @@ class HashMetadata : public Metadata {
   static constexpr size_t kFieldExpirationPrefixSize = sizeof(uint64_t);
 
   HashSubkeyEncodingMode mode = HashSubkeyEncodingMode::kLegacy;
-  uint64_t expsz = 0;
+  uint64_t persist = 0;
   uint64_t lower = 0;
   uint64_t upper = 0;
 

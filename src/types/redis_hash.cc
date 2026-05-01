@@ -82,6 +82,7 @@ rocksdb::Status Hash::IncrBy(engine::Context &ctx, const Slice &user_key, const 
                              int64_t *new_value) {
   bool exists = false;
   int64_t old_value = 0;
+  uint64_t field_expire = 0;
 
   std::string ns_key = AppendNamespacePrefix(user_key);
 
@@ -97,7 +98,7 @@ rocksdb::Status Hash::IncrBy(engine::Context &ctx, const Slice &user_key, const 
     if (!s.ok() && !s.IsNotFound()) return s;
     if (s.ok()) {
       value_bytes = Slice(raw_value);
-      s = decodeValue(metadata, &value_bytes);
+      s = decodeValue(metadata, &value_bytes, &field_expire);
       if (!s.ok()) return s;
       auto parse_result = ParseInt<int64_t>(value_bytes.ToStringView(), 10);
       if (!parse_result) {
@@ -125,6 +126,19 @@ rocksdb::Status Hash::IncrBy(engine::Context &ctx, const Slice &user_key, const 
   if (!s.ok()) return s;
   if (!exists) {
     metadata.size += 1;
+    if (metadata.IsFieldExpirationEncoding()) {
+      metadata.persist += 1;
+    }
+    std::string bytes;
+    metadata.Encode(&bytes);
+    s = batch->Put(metadata_cf_handle_, ns_key, bytes);
+    if (!s.ok()) return s;
+  } else if (metadata.IsFieldExpirationEncoding() && field_expire != 0) {
+    metadata.persist += 1;
+    if (metadata.size == metadata.persist) {
+      metadata.lower = 0;
+      metadata.upper = 0;
+    }
     std::string bytes;
     metadata.Encode(&bytes);
     s = batch->Put(metadata_cf_handle_, ns_key, bytes);
@@ -137,6 +151,7 @@ rocksdb::Status Hash::IncrByFloat(engine::Context &ctx, const Slice &user_key, c
                                   double *new_value) {
   bool exists = false;
   double old_value = 0;
+  uint64_t field_expire = 0;
 
   std::string ns_key = AppendNamespacePrefix(user_key);
 
@@ -152,7 +167,7 @@ rocksdb::Status Hash::IncrByFloat(engine::Context &ctx, const Slice &user_key, c
     if (!s.ok() && !s.IsNotFound()) return s;
     if (s.ok()) {
       value_bytes = Slice(raw_value);
-      s = decodeValue(metadata, &value_bytes);
+      s = decodeValue(metadata, &value_bytes, &field_expire);
       if (!s.ok()) return s;
       auto value_stat = ParseFloat(value_bytes.ToStringView());
       if (!value_stat || isspace(value_bytes[0])) {
@@ -177,6 +192,19 @@ rocksdb::Status Hash::IncrByFloat(engine::Context &ctx, const Slice &user_key, c
   if (!s.ok()) return s;
   if (!exists) {
     metadata.size += 1;
+    if (metadata.IsFieldExpirationEncoding()) {
+      metadata.persist += 1;
+    }
+    std::string bytes;
+    metadata.Encode(&bytes);
+    s = batch->Put(metadata_cf_handle_, ns_key, bytes);
+    if (!s.ok()) return s;
+  } else if (metadata.IsFieldExpirationEncoding() && field_expire != 0) {
+    metadata.persist += 1;
+    if (metadata.size == metadata.persist) {
+      metadata.lower = 0;
+      metadata.upper = 0;
+    }
     std::string bytes;
     metadata.Encode(&bytes);
     s = batch->Put(metadata_cf_handle_, ns_key, bytes);
@@ -250,6 +278,7 @@ rocksdb::Status Hash::Delete(engine::Context &ctx, const Slice &user_key, const 
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
   std::string value;
+  uint64_t persistent_removed = 0;
   std::unordered_set<std::string_view> field_set;
   for (const auto &field : fields) {
     if (!field_set.emplace(field.ToStringView()).second) {
@@ -258,6 +287,15 @@ rocksdb::Status Hash::Delete(engine::Context &ctx, const Slice &user_key, const 
     std::string sub_key = InternalKey(ns_key, field, metadata.version, storage_->IsSlotIdEncoded()).Encode();
     s = storage_->Get(ctx, ctx.GetReadOptions(), sub_key, &value);
     if (s.ok()) {
+      if (metadata.IsFieldExpirationEncoding()) {
+        Slice payload(value);
+        uint64_t field_expire = 0;
+        s = decodeValue(metadata, &payload, &field_expire);
+        if (!s.ok()) return s;
+        if (field_expire == 0) {
+          persistent_removed += 1;
+        }
+      }
       *deleted_cnt += 1;
       s = batch->Delete(sub_key);
       if (!s.ok()) return s;
@@ -266,7 +304,14 @@ rocksdb::Status Hash::Delete(engine::Context &ctx, const Slice &user_key, const 
   if (*deleted_cnt == 0) {
     return rocksdb::Status::OK();
   }
-  metadata.size -= *deleted_cnt;
+  metadata.size = *deleted_cnt > metadata.size ? 0 : metadata.size - *deleted_cnt;
+  if (metadata.IsFieldExpirationEncoding()) {
+    metadata.persist = persistent_removed > metadata.persist ? 0 : metadata.persist - persistent_removed;
+    if (metadata.size == metadata.persist) {
+      metadata.lower = 0;
+      metadata.upper = 0;
+    }
+  }
   std::string bytes;
   metadata.Encode(&bytes);
   s = batch->Put(metadata_cf_handle_, ns_key, bytes);
@@ -288,6 +333,7 @@ rocksdb::Status Hash::MSet(engine::Context &ctx, const Slice &user_key, const st
     ttl_updated = true;
   }
   int added = 0;
+  uint64_t persistent_added = 0;
   auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisHash);
   s = batch->PutLogData(log_data.Encode());
@@ -298,6 +344,7 @@ rocksdb::Status Hash::MSet(engine::Context &ctx, const Slice &user_key, const st
   std::vector<std::string> keys_encoded;
   std::vector<std::string_view> values;
   keys.reserve(field_values.size());
+  keys_encoded.reserve(field_values.size());
   values.reserve(field_values.size());
   for (auto it = field_values.rbegin(); it != field_values.rend(); it++) {
     if (!field_set.insert(it->field).second) {
@@ -331,10 +378,14 @@ rocksdb::Status Hash::MSet(engine::Context &ctx, const Slice &user_key, const st
           continue;
         }
         Slice existing_value(values_vector[field_index]);
-        s = decodeValue(metadata, &existing_value);
+        uint64_t field_expire = 0;
+        s = decodeValue(metadata, &existing_value, &field_expire);
         if (!s.ok()) return s;
-        if (existing_value.ToStringView() == values[field_index]) {
+        if (existing_value.ToStringView() == values[field_index] && field_expire == 0) {
           continue;
+        }
+        if (metadata.IsFieldExpirationEncoding() && field_expire != 0) {
+          persistent_added += 1;
         }
         exists = true;
       }
@@ -349,9 +400,16 @@ rocksdb::Status Hash::MSet(engine::Context &ctx, const Slice &user_key, const st
     if (!s.ok()) return s;
   }
 
-  if (added > 0 || ttl_updated) {
+  if (added > 0 || persistent_added > 0 || ttl_updated) {
     *added_cnt = added;
     metadata.size += added;
+    if (metadata.IsFieldExpirationEncoding()) {
+      metadata.persist += added + persistent_added;
+      if (metadata.size == metadata.persist) {
+        metadata.lower = 0;
+        metadata.upper = 0;
+      }
+    }
     std::string bytes;
     metadata.Encode(&bytes);
     s = batch->Put(metadata_cf_handle_, ns_key, bytes);

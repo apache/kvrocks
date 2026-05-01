@@ -347,7 +347,7 @@ void HashMetadata::Encode(std::string *dst) const {
   }
 
   PutFixed8(dst, static_cast<uint8_t>(mode));
-  PutFixed64(dst, expsz);
+  PutFixed64(dst, persist);
   PutFixed64(dst, lower);
   PutFixed64(dst, upper);
 }
@@ -359,7 +359,7 @@ rocksdb::Status HashMetadata::Decode(Slice *input) {
 
   if (input->empty()) {
     mode = HashSubkeyEncodingMode::kLegacy;
-    expsz = 0;
+    persist = 0;
     lower = 0;
     upper = 0;
     return rocksdb::Status::OK();
@@ -376,7 +376,7 @@ rocksdb::Status HashMetadata::Decode(Slice *input) {
   }
 
   mode = static_cast<HashSubkeyEncodingMode>(encoded_mode);
-  GetFixed64(input, &expsz);
+  GetFixed64(input, &persist);
   GetFixed64(input, &lower);
   GetFixed64(input, &upper);
   return rocksdb::Status::OK();

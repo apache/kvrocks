@@ -601,17 +601,204 @@ func TestHashFieldExpirationParseErrors(t *testing.T) {
 	runWithFieldExpirationHash(t, func(t *testing.T, rdb *redis.Client, ctx context.Context) {
 		key := "hfe-parse"
 		require.Equal(t, int64(1), rdb.HSet(ctx, key, "a", "1").Val())
-		for _, args := range [][]interface{}{
-			{"hexpire", key, 10, "FIELDS", 0},
-			{"hexpire", key, 10, "FIELDS", 2, "a"},
-			{"hexpire", key, 10, "NX", "XX", "FIELDS", 1, "a"},
-			{"hexpire", key, 10, "FIELDS", 1, "a", "NX"},
-			{"hexpire", key, "not-int", "FIELDS", 1, "a"},
-			{"hpersist", key, "FIELDS", 0},
-			{"hpersist", key, "FIELDS", 2, "a"},
+
+		for _, test := range []struct {
+			name        string
+			args        []interface{}
+			errContains string
+		}{
+			{
+				name:        "hexpire missing fields clause",
+				args:        []interface{}{"hexpire", key, 10},
+				errContains: "wrong number of arguments",
+			},
+			{
+				name:        "hexpire missing fields clause after option",
+				args:        []interface{}{"hexpire", key, 10, "NX"},
+				errContains: "wrong number of arguments",
+			},
+			{
+				name:        "hexpire missing numfields",
+				args:        []interface{}{"hexpire", key, 10, "FIELDS"},
+				errContains: "wrong number of arguments",
+			},
+			{
+				name:        "hexpire numfields is zero",
+				args:        []interface{}{"hexpire", key, 10, "FIELDS", 0, "a"},
+				errContains: "integer",
+			},
+			{
+				name:        "hexpire numfields is negative",
+				args:        []interface{}{"hexpire", key, 10, "FIELDS", -1, "a"},
+				errContains: "integer",
+			},
+			{
+				name:        "hexpire numfields is not an integer",
+				args:        []interface{}{"hexpire", key, 10, "FIELDS", "not-int", "a"},
+				errContains: "integer",
+			},
+			{
+				name:        "hexpire numfields is out of range",
+				args:        []interface{}{"hexpire", key, 10, "FIELDS", "9223372036854775808", "a"},
+				errContains: "integer",
+			},
+			{
+				name:        "hexpire has too few fields",
+				args:        []interface{}{"hexpire", key, 10, "FIELDS", 2, "a"},
+				errContains: "wrong number of arguments",
+			},
+			{
+				name:        "hexpire has too many fields",
+				args:        []interface{}{"hexpire", key, 10, "FIELDS", 1, "a", "b"},
+				errContains: "wrong number of arguments",
+			},
+			{
+				name:        "hexpire option after fields",
+				args:        []interface{}{"hexpire", key, 10, "FIELDS", 1, "a", "NX"},
+				errContains: "wrong number of arguments",
+			},
+			{
+				name:        "hexpire unknown option",
+				args:        []interface{}{"hexpire", key, 10, "UNKNOWN", "FIELDS", 1, "a"},
+				errContains: "syntax",
+			},
+			{
+				name:        "hexpire duplicate option",
+				args:        []interface{}{"hexpire", key, 10, "NX", "NX", "FIELDS", 1, "a"},
+				errContains: "syntax",
+			},
+			{
+				name:        "hexpire mutually exclusive options",
+				args:        []interface{}{"hexpire", key, 10, "NX", "XX", "FIELDS", 1, "a"},
+				errContains: "syntax",
+			},
+			{
+				name:        "hexpire ttl is not an integer",
+				args:        []interface{}{"hexpire", key, "not-int", "FIELDS", 1, "a"},
+				errContains: "integer",
+			},
+			{
+				name:        "hexpire ttl has trailing characters",
+				args:        []interface{}{"hexpire", key, "10ms", "FIELDS", 1, "a"},
+				errContains: "integer",
+			},
+			{
+				name:        "hexpire ttl is out of int64 range",
+				args:        []interface{}{"hexpire", key, "9223372036854775808", "FIELDS", 1, "a"},
+				errContains: "integer",
+			},
+			{
+				name:        "hpersist missing fields clause",
+				args:        []interface{}{"hpersist", key},
+				errContains: "wrong number of arguments",
+			},
+			{
+				name:        "hpersist wrong fields keyword",
+				args:        []interface{}{"hpersist", key, "FIELD", 1, "a"},
+				errContains: "syntax",
+			},
+			{
+				name:        "hpersist missing numfields",
+				args:        []interface{}{"hpersist", key, "FIELDS"},
+				errContains: "wrong number of arguments",
+			},
+			{
+				name:        "hpersist numfields is zero",
+				args:        []interface{}{"hpersist", key, "FIELDS", 0, "a"},
+				errContains: "integer",
+			},
+			{
+				name:        "hpersist numfields is negative",
+				args:        []interface{}{"hpersist", key, "FIELDS", -1, "a"},
+				errContains: "integer",
+			},
+			{
+				name:        "hpersist numfields is not an integer",
+				args:        []interface{}{"hpersist", key, "FIELDS", "not-int", "a"},
+				errContains: "integer",
+			},
+			{
+				name:        "hpersist numfields is out of range",
+				args:        []interface{}{"hpersist", key, "FIELDS", "9223372036854775808", "a"},
+				errContains: "integer",
+			},
+			{
+				name:        "hpersist has too few fields",
+				args:        []interface{}{"hpersist", key, "FIELDS", 2, "a"},
+				errContains: "wrong number of arguments",
+			},
+			{
+				name:        "hpersist has too many fields",
+				args:        []interface{}{"hpersist", key, "FIELDS", 1, "a", "b"},
+				errContains: "wrong number of arguments",
+			},
 		} {
-			require.Error(t, rdb.Do(ctx, args...).Err(), args)
+			t.Run(test.name, func(t *testing.T) {
+				require.ErrorContains(t, rdb.Do(ctx, test.args...).Err(), test.errContains)
+			})
 		}
+	})
+}
+
+func TestHashFieldExpirationInputCornerCases(t *testing.T) {
+	runWithFieldExpirationHash(t, func(t *testing.T, rdb *redis.Client, ctx context.Context) {
+		t.Run("hexpire negative ttl deletes immediately", func(t *testing.T) {
+			key := "hfe-negative-ttl"
+			require.Equal(t, int64(3), rdb.HSet(ctx, key, "a", "1", "b", "2", "keeper", "3").Val())
+			requireIntArray(t, rdb.Do(ctx, "hexpire", key, -1, "FIELDS", 3, "a", "b", "missing").Val(),
+				[]int64{2, 2, -2})
+			requireHashMetadata(t, util.GetKMetadata(t, rdb, ctx, key), 1, 1)
+			require.Equal(t, map[string]string{"keeper": "3"}, rdb.HGetAll(ctx, key).Val())
+			require.ErrorIs(t, rdb.HGet(ctx, key, "a").Err(), redis.Nil)
+			require.ErrorIs(t, rdb.HGet(ctx, key, "b").Err(), redis.Nil)
+		})
+
+		t.Run("hexpire and hpersist return missing for missing key", func(t *testing.T) {
+			key := "hfe-missing-key"
+			require.Equal(t, int64(0), rdb.Exists(ctx, key).Val())
+			requireIntArray(t, rdb.Do(ctx, "hexpire", key, -1, "FIELDS", 2, "a", "b").Val(), []int64{-2, -2})
+			requireIntArray(t, rdb.Do(ctx, "hpersist", key, "FIELDS", 2, "a", "b").Val(), []int64{-2, -2})
+			require.Equal(t, int64(0), rdb.Exists(ctx, key).Val())
+		})
+
+		t.Run("hexpire ttl overflow leaves field and metadata unchanged", func(t *testing.T) {
+			key := "hfe-ttl-overflow"
+			require.Equal(t, int64(1), rdb.HSet(ctx, key, "a", "1").Val())
+			before := util.GetKMetadata(t, rdb, ctx, key)
+			require.ErrorContains(t, rdb.Do(ctx, "hexpire", key, "9223372036854775807", "FIELDS", 1, "a").Err(),
+				"overflow")
+			require.Equal(t, before, util.GetKMetadata(t, rdb, ctx, key))
+			require.Equal(t, "1", rdb.HGet(ctx, key, "a").Val())
+		})
+
+		t.Run("hexpire and hpersist reject wrong type", func(t *testing.T) {
+			key := "hfe-wrong-type"
+			require.NoError(t, rdb.Set(ctx, key, "value", 0).Err())
+			require.ErrorContains(t, rdb.Do(ctx, "hexpire", key, 10, "FIELDS", 1, "a").Err(), "WRONGTYPE")
+			require.ErrorContains(t, rdb.Do(ctx, "hpersist", key, "FIELDS", 1, "a").Err(), "WRONGTYPE")
+			require.Equal(t, "value", rdb.Get(ctx, key).Val())
+		})
+
+		t.Run("keywords and command name are case insensitive", func(t *testing.T) {
+			key := "hfe-case-insensitive"
+			require.Equal(t, int64(2), rdb.HSet(ctx, key, "a", "1", "b", "2").Val())
+			requireIntArray(t, rdb.Do(ctx, "hExPiRe", key, 60, "nX", "fIeLdS", 1, "a").Val(), []int64{1})
+			requireHashMetadata(t, util.GetKMetadata(t, rdb, ctx, key), 2, 1)
+			requireIntArray(t, rdb.Do(ctx, "hPeRsIsT", key, "fIeLdS", 1, "a").Val(), []int64{1})
+			requireHashMetadata(t, util.GetKMetadata(t, rdb, ctx, key), 2, 2)
+		})
+
+		t.Run("empty field name is valid", func(t *testing.T) {
+			key := "hfe-empty-field"
+			require.Equal(t, int64(2), rdb.HSet(ctx, key, "", "empty", "normal", "value").Val())
+			requireIntArray(t, rdb.Do(ctx, "hexpire", key, 60, "FIELDS", 1, "").Val(), []int64{1})
+			requireHashMetadata(t, util.GetKMetadata(t, rdb, ctx, key), 2, 1)
+			requireIntArray(t, rdb.Do(ctx, "hpersist", key, "FIELDS", 1, "").Val(), []int64{1})
+			requireHashMetadata(t, util.GetKMetadata(t, rdb, ctx, key), 2, 2)
+			requireIntArray(t, rdb.Do(ctx, "hexpire", key, 0, "FIELDS", 1, "").Val(), []int64{2})
+			requireHashMetadata(t, util.GetKMetadata(t, rdb, ctx, key), 1, 1)
+			require.Equal(t, map[string]string{"normal": "value"}, rdb.HGetAll(ctx, key).Val())
+		})
 	})
 }
 

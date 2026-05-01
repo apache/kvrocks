@@ -32,6 +32,15 @@ import (
 	"github.com/apache/kvrocks/tests/gocase/util"
 )
 
+const (
+	hfePersistentField = "a-persistent"
+	hfeLiveField       = "b-live"
+	hfeExpiredField    = "c-expired"
+	hfeMissingField    = "d-missing"
+	hfeKeeperField     = "z-keeper"
+	hfeLiveTTLSeconds  = 300
+)
+
 func runWithFieldExpirationHash(t *testing.T, fn func(t *testing.T, rdb *redis.Client, ctx context.Context)) {
 	t.Helper()
 
@@ -81,6 +90,39 @@ func requireIntArray(t *testing.T, got interface{}, want []int64) {
 	require.Len(t, items, len(want))
 	for i, item := range items {
 		require.Equal(t, want[i], item)
+	}
+}
+
+func createHashFieldStates(t *testing.T, rdb *redis.Client, ctx context.Context, key string) {
+	t.Helper()
+
+	require.Equal(t, int64(4), rdb.HSet(ctx, key,
+		hfePersistentField, "10",
+		hfeLiveField, "20",
+		hfeExpiredField, "30",
+		hfeKeeperField, "40").Val())
+	requireIntArray(t, rdb.Do(ctx, "hexpire", key, hfeLiveTTLSeconds, "FIELDS", 1, hfeLiveField).Val(), []int64{1})
+	requireIntArray(t, rdb.Do(ctx, "hexpire", key, 1, "FIELDS", 1, hfeExpiredField).Val(), []int64{1})
+	waitHashFieldExpired(t, rdb, ctx, key, hfeExpiredField)
+	requireHashMetadata(t, util.GetKMetadata(t, rdb, ctx, key), 4, 2)
+}
+
+func scanPairsToMap(t *testing.T, pairs []string) map[string]string {
+	t.Helper()
+
+	require.Equal(t, 0, len(pairs)%2)
+	result := make(map[string]string, len(pairs)/2)
+	for i := 0; i < len(pairs); i += 2 {
+		result[pairs[i]] = pairs[i+1]
+	}
+	return result
+}
+
+func requireHashValues(t *testing.T, rdb *redis.Client, ctx context.Context, key string, want map[string]string) {
+	t.Helper()
+
+	for field, value := range want {
+		require.Equal(t, value, rdb.HGet(ctx, key, field).Val(), field)
 	}
 }
 
@@ -145,7 +187,7 @@ func TestHashFieldExpirationFiltersReadsWithoutMutatingMetadata(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, []string{"b", "2"}, scanned)
 		require.NotZero(t, cursor)
-		rangeByLex := rdb.Do(ctx, "hrangebylex", key, "[a", "[z").Val()
+		rangeByLex := rdb.Do(ctx, "hrangebylex", key, "[a", "[zz", "LIMIT", 0, 10).Val()
 		require.NotContains(t, rangeByLex, "a")
 		randField := rdb.HRandField(ctx, key, 10).Val()
 		require.NotContains(t, randField, "a")
@@ -213,6 +255,296 @@ func TestHashFieldExpirationWriteCleanupMetadata(t *testing.T) {
 			makeExpired(t, key, "bad")
 			require.Equal(t, 1.5, rdb.HIncrByFloat(ctx, key, "a", 1.5).Val())
 			requireHashMetadata(t, util.GetKMetadata(t, rdb, ctx, key), 2, 2)
+		})
+	})
+}
+
+func TestHashFieldExpirationReadCommandsAcrossFieldStates(t *testing.T) {
+	runWithFieldExpirationHash(t, func(t *testing.T, rdb *redis.Client, ctx context.Context) {
+		key := "hfe-read-state-matrix"
+		createHashFieldStates(t, rdb, ctx, key)
+		before := util.GetKMetadata(t, rdb, ctx, key)
+
+		require.Equal(t, "10", rdb.HGet(ctx, key, hfePersistentField).Val())
+		require.Equal(t, "20", rdb.HGet(ctx, key, hfeLiveField).Val())
+		require.ErrorIs(t, rdb.HGet(ctx, key, hfeExpiredField).Err(), redis.Nil)
+		require.ErrorIs(t, rdb.HGet(ctx, key, hfeMissingField).Err(), redis.Nil)
+
+		require.True(t, rdb.HExists(ctx, key, hfePersistentField).Val())
+		require.True(t, rdb.HExists(ctx, key, hfeLiveField).Val())
+		require.False(t, rdb.HExists(ctx, key, hfeExpiredField).Val())
+		require.False(t, rdb.HExists(ctx, key, hfeMissingField).Val())
+
+		require.Equal(t, int64(2), rdb.HStrLen(ctx, key, hfePersistentField).Val())
+		require.Equal(t, int64(2), rdb.HStrLen(ctx, key, hfeLiveField).Val())
+		require.Equal(t, int64(0), rdb.HStrLen(ctx, key, hfeExpiredField).Val())
+		require.Equal(t, int64(0), rdb.HStrLen(ctx, key, hfeMissingField).Val())
+
+		require.Equal(t, []interface{}{"10", "20", nil, nil},
+			rdb.HMGet(ctx, key, hfePersistentField, hfeLiveField, hfeExpiredField, hfeMissingField).Val())
+		require.Equal(t, int64(4), rdb.HLen(ctx, key).Val())
+
+		require.Equal(t, map[string]string{
+			hfePersistentField: "10",
+			hfeLiveField:       "20",
+			hfeKeeperField:     "40",
+		}, rdb.HGetAll(ctx, key).Val())
+		require.ElementsMatch(t, []string{hfePersistentField, hfeLiveField, hfeKeeperField}, rdb.HKeys(ctx, key).Val())
+		require.ElementsMatch(t, []string{"10", "20", "40"}, rdb.HVals(ctx, key).Val())
+
+		scanned, cursor, err := rdb.HScan(ctx, key, 0, "", 100).Result()
+		require.NoError(t, err)
+		require.Zero(t, cursor)
+		require.Equal(t, map[string]string{
+			hfePersistentField: "10",
+			hfeLiveField:       "20",
+			hfeKeeperField:     "40",
+		}, scanPairsToMap(t, scanned))
+
+		scannedKeys, cursor, err := rdb.HScanNoValues(ctx, key, 0, "", 100).Result()
+		require.NoError(t, err)
+		require.Zero(t, cursor)
+		require.ElementsMatch(t, []string{hfePersistentField, hfeLiveField, hfeKeeperField}, scannedKeys)
+
+		rangeByLex := rdb.Do(ctx, "hrangebylex", key, "[a", "[zz", "LIMIT", 0, 10).Val()
+		require.Equal(t, []interface{}{
+			hfePersistentField, "10",
+			hfeLiveField, "20",
+			hfeKeeperField, "40",
+		}, rangeByLex)
+		require.Equal(t, []interface{}{hfeLiveField, "20"},
+			rdb.Do(ctx, "hrangebylex", key, "[a", "[zz", "LIMIT", 1, 1).Val())
+		require.Equal(t, []interface{}{
+			hfeKeeperField, "40",
+			hfeLiveField, "20",
+			hfePersistentField, "10",
+		}, rdb.Do(ctx, "hrangebylex", key, "[zz", "[a", "REV", "LIMIT", 0, 10).Val())
+
+		randFields := rdb.HRandField(ctx, key, 20).Val()
+		require.ElementsMatch(t, []string{hfePersistentField, hfeLiveField, hfeKeeperField}, randFields)
+		randFields = rdb.HRandField(ctx, key, -20).Val()
+		require.NotContains(t, randFields, hfeExpiredField)
+		require.NotContains(t, randFields, hfeMissingField)
+		for _, field := range randFields {
+			require.Contains(t, []string{hfePersistentField, hfeLiveField, hfeKeeperField}, field)
+		}
+		randWithValues := rdb.HRandFieldWithValues(ctx, key, 20).Val()
+		gotRandValues := map[string]string{}
+		for _, kv := range randWithValues {
+			gotRandValues[kv.Key] = kv.Value
+		}
+		require.Equal(t, map[string]string{
+			hfePersistentField: "10",
+			hfeLiveField:       "20",
+			hfeKeeperField:     "40",
+		}, gotRandValues)
+
+		after := util.GetKMetadata(t, rdb, ctx, key)
+		require.Equal(t, before, after)
+	})
+}
+
+func TestHashFieldExpirationWriteCommandsAcrossFieldStates(t *testing.T) {
+	runWithFieldExpirationHash(t, func(t *testing.T, rdb *redis.Client, ctx context.Context) {
+		t.Run("hdel mixed fields", func(t *testing.T) {
+			key := "hfe-write-hdel-mixed"
+			createHashFieldStates(t, rdb, ctx, key)
+			require.Equal(t, int64(2),
+				rdb.HDel(ctx, key, hfePersistentField, hfeLiveField, hfeExpiredField, hfeMissingField, hfePersistentField).Val())
+			requireHashMetadata(t, util.GetKMetadata(t, rdb, ctx, key), 1, 1)
+			require.Equal(t, map[string]string{hfeKeeperField: "40"}, rdb.HGetAll(ctx, key).Val())
+		})
+
+		t.Run("hset clears ttl and treats expired as new", func(t *testing.T) {
+			key := "hfe-write-hset-mixed"
+			createHashFieldStates(t, rdb, ctx, key)
+			require.Equal(t, int64(2), rdb.HSet(ctx, key,
+				hfePersistentField, "11",
+				hfeLiveField, "21",
+				hfeExpiredField, "31",
+				hfeMissingField, "41").Val())
+			requireHashMetadata(t, util.GetKMetadata(t, rdb, ctx, key), 5, 5)
+			requireHashValues(t, rdb, ctx, key, map[string]string{
+				hfePersistentField: "11",
+				hfeLiveField:       "21",
+				hfeExpiredField:    "31",
+				hfeMissingField:    "41",
+				hfeKeeperField:     "40",
+			})
+			requireIntArray(t, rdb.Do(ctx, "hpersist", key, "FIELDS", 4,
+				hfePersistentField, hfeLiveField, hfeExpiredField, hfeMissingField).Val(), []int64{-1, -1, -1, -1})
+			requireHashMetadata(t, util.GetKMetadata(t, rdb, ctx, key), 5, 5)
+		})
+
+		t.Run("hmset clears ttl and returns ok", func(t *testing.T) {
+			key := "hfe-write-hmset-mixed"
+			createHashFieldStates(t, rdb, ctx, key)
+			require.True(t, rdb.HMSet(ctx, key,
+				hfePersistentField, "11",
+				hfeLiveField, "21",
+				hfeExpiredField, "31",
+				hfeMissingField, "41").Val())
+			requireHashMetadata(t, util.GetKMetadata(t, rdb, ctx, key), 5, 5)
+			requireHashValues(t, rdb, ctx, key, map[string]string{
+				hfePersistentField: "11",
+				hfeLiveField:       "21",
+				hfeExpiredField:    "31",
+				hfeMissingField:    "41",
+				hfeKeeperField:     "40",
+			})
+		})
+
+		t.Run("hsetnx writes only missing and expired fields", func(t *testing.T) {
+			key := "hfe-write-hsetnx-mixed"
+			createHashFieldStates(t, rdb, ctx, key)
+			require.Equal(t, int64(2), rdb.Do(ctx, "hsetnx", key,
+				hfePersistentField, "11",
+				hfeLiveField, "21",
+				hfeExpiredField, "31",
+				hfeMissingField, "41").Val())
+			requireHashMetadata(t, util.GetKMetadata(t, rdb, ctx, key), 5, 4)
+			require.Equal(t, "10", rdb.HGet(ctx, key, hfePersistentField).Val())
+			require.Equal(t, "20", rdb.HGet(ctx, key, hfeLiveField).Val())
+			require.Equal(t, "31", rdb.HGet(ctx, key, hfeExpiredField).Val())
+			require.Equal(t, "41", rdb.HGet(ctx, key, hfeMissingField).Val())
+			requireIntArray(t, rdb.Do(ctx, "hpersist", key, "FIELDS", 1, hfeLiveField).Val(), []int64{1})
+			requireHashMetadata(t, util.GetKMetadata(t, rdb, ctx, key), 5, 5)
+		})
+
+		t.Run("hincrby resets ttl state and ignores expired value", func(t *testing.T) {
+			key := "hfe-write-hincrby-mixed"
+			createHashFieldStates(t, rdb, ctx, key)
+			require.Equal(t, int64(15), rdb.HIncrBy(ctx, key, hfePersistentField, 5).Val())
+			requireHashMetadata(t, util.GetKMetadata(t, rdb, ctx, key), 4, 2)
+			require.Equal(t, int64(25), rdb.HIncrBy(ctx, key, hfeLiveField, 5).Val())
+			requireHashMetadata(t, util.GetKMetadata(t, rdb, ctx, key), 4, 3)
+			require.Equal(t, int64(5), rdb.HIncrBy(ctx, key, hfeExpiredField, 5).Val())
+			requireHashMetadata(t, util.GetKMetadata(t, rdb, ctx, key), 4, 4)
+			require.Equal(t, int64(5), rdb.HIncrBy(ctx, key, hfeMissingField, 5).Val())
+			requireHashMetadata(t, util.GetKMetadata(t, rdb, ctx, key), 5, 5)
+		})
+
+		t.Run("hincrbyfloat resets ttl state and ignores expired value", func(t *testing.T) {
+			key := "hfe-write-hincrbyfloat-mixed"
+			createHashFieldStates(t, rdb, ctx, key)
+			require.Equal(t, 10.5, rdb.HIncrByFloat(ctx, key, hfePersistentField, 0.5).Val())
+			requireHashMetadata(t, util.GetKMetadata(t, rdb, ctx, key), 4, 2)
+			require.Equal(t, 20.5, rdb.HIncrByFloat(ctx, key, hfeLiveField, 0.5).Val())
+			requireHashMetadata(t, util.GetKMetadata(t, rdb, ctx, key), 4, 3)
+			require.Equal(t, 0.5, rdb.HIncrByFloat(ctx, key, hfeExpiredField, 0.5).Val())
+			requireHashMetadata(t, util.GetKMetadata(t, rdb, ctx, key), 4, 4)
+			require.Equal(t, 0.5, rdb.HIncrByFloat(ctx, key, hfeMissingField, 0.5).Val())
+			requireHashMetadata(t, util.GetKMetadata(t, rdb, ctx, key), 5, 5)
+		})
+	})
+}
+
+func TestHashFieldExpirationSetExpireAcrossFieldStates(t *testing.T) {
+	runWithFieldExpirationHash(t, func(t *testing.T, rdb *redis.Client, ctx context.Context) {
+		key := "hfe-hsetexpire-mixed"
+		createHashFieldStates(t, rdb, ctx, key)
+
+		require.Equal(t, "OK", rdb.Do(ctx, "hsetexpire", key, 60,
+			hfePersistentField, "11",
+			hfeLiveField, "21",
+			hfeExpiredField, "31",
+			hfeMissingField, "41").Val())
+		requireHashMetadata(t, util.GetKMetadata(t, rdb, ctx, key), 5, 5)
+		requireHashValues(t, rdb, ctx, key, map[string]string{
+			hfePersistentField: "11",
+			hfeLiveField:       "21",
+			hfeExpiredField:    "31",
+			hfeMissingField:    "41",
+			hfeKeeperField:     "40",
+		})
+		require.Greater(t, rdb.TTL(ctx, key).Val(), time.Duration(0))
+		requireIntArray(t, rdb.Do(ctx, "hpersist", key, "FIELDS", 4,
+			hfePersistentField, hfeLiveField, hfeExpiredField, hfeMissingField).Val(), []int64{-1, -1, -1, -1})
+		requireHashMetadata(t, util.GetKMetadata(t, rdb, ctx, key), 5, 5)
+	})
+}
+
+func TestHashFieldExpirationExpireAndPersistAcrossFieldStates(t *testing.T) {
+	runWithFieldExpirationHash(t, func(t *testing.T, rdb *redis.Client, ctx context.Context) {
+		t.Run("hexpire mixed field states", func(t *testing.T) {
+			key := "hfe-hexpire-mixed"
+			createHashFieldStates(t, rdb, ctx, key)
+
+			requireIntArray(t, rdb.Do(ctx, "hexpire", key, 600, "FIELDS", 4,
+				hfePersistentField, hfeLiveField, hfeExpiredField, hfeMissingField).Val(), []int64{1, 1, -2, -2})
+			requireHashMetadata(t, util.GetKMetadata(t, rdb, ctx, key), 3, 1)
+			require.Equal(t, map[string]string{
+				hfePersistentField: "10",
+				hfeLiveField:       "20",
+				hfeKeeperField:     "40",
+			}, rdb.HGetAll(ctx, key).Val())
+		})
+
+		t.Run("hexpire nx only persistent", func(t *testing.T) {
+			key := "hfe-hexpire-nx"
+			createHashFieldStates(t, rdb, ctx, key)
+
+			requireIntArray(t, rdb.Do(ctx, "hexpire", key, 600, "NX", "FIELDS", 4,
+				hfePersistentField, hfeLiveField, hfeExpiredField, hfeMissingField).Val(), []int64{1, 0, -2, -2})
+			requireHashMetadata(t, util.GetKMetadata(t, rdb, ctx, key), 3, 1)
+			requireIntArray(t, rdb.Do(ctx, "hpersist", key, "FIELDS", 3,
+				hfePersistentField, hfeLiveField, hfeKeeperField).Val(), []int64{1, 1, -1})
+			requireHashMetadata(t, util.GetKMetadata(t, rdb, ctx, key), 3, 3)
+		})
+
+		t.Run("hexpire xx only live ttl", func(t *testing.T) {
+			key := "hfe-hexpire-xx"
+			createHashFieldStates(t, rdb, ctx, key)
+
+			requireIntArray(t, rdb.Do(ctx, "hexpire", key, 600, "XX", "FIELDS", 4,
+				hfePersistentField, hfeLiveField, hfeExpiredField, hfeMissingField).Val(), []int64{0, 1, -2, -2})
+			requireHashMetadata(t, util.GetKMetadata(t, rdb, ctx, key), 3, 2)
+			requireIntArray(t, rdb.Do(ctx, "hpersist", key, "FIELDS", 1, hfeLiveField).Val(), []int64{1})
+			requireHashMetadata(t, util.GetKMetadata(t, rdb, ctx, key), 3, 3)
+		})
+
+		t.Run("hexpire gt and lt compare against current ttl", func(t *testing.T) {
+			key := "hfe-hexpire-gt-lt"
+			createHashFieldStates(t, rdb, ctx, key)
+
+			requireIntArray(t, rdb.Do(ctx, "hexpire", key, hfeLiveTTLSeconds-60, "GT", "FIELDS", 1, hfeLiveField).Val(),
+				[]int64{0})
+			requireHashMetadata(t, util.GetKMetadata(t, rdb, ctx, key), 4, 2)
+			requireIntArray(t, rdb.Do(ctx, "hexpire", key, hfeLiveTTLSeconds+600, "GT", "FIELDS", 1, hfeLiveField).Val(),
+				[]int64{1})
+			afterGT := util.GetKMetadata(t, rdb, ctx, key)
+			requireHashMetadata(t, afterGT, 4, 2)
+
+			requireIntArray(t, rdb.Do(ctx, "hexpire", key, hfeLiveTTLSeconds+1200, "LT", "FIELDS", 1, hfeLiveField).Val(),
+				[]int64{0})
+			require.Equal(t, afterGT, util.GetKMetadata(t, rdb, ctx, key))
+			requireIntArray(t, rdb.Do(ctx, "hexpire", key, hfeLiveTTLSeconds, "LT", "FIELDS", 1, hfeLiveField).Val(),
+				[]int64{1})
+			requireHashMetadata(t, util.GetKMetadata(t, rdb, ctx, key), 4, 2)
+		})
+
+		t.Run("hexpire immediate mixed field states", func(t *testing.T) {
+			key := "hfe-hexpire-immediate"
+			createHashFieldStates(t, rdb, ctx, key)
+
+			requireIntArray(t, rdb.Do(ctx, "hexpire", key, 0, "FIELDS", 4,
+				hfePersistentField, hfeLiveField, hfeExpiredField, hfeMissingField).Val(), []int64{2, 2, -2, -2})
+			requireHashMetadata(t, util.GetKMetadata(t, rdb, ctx, key), 1, 1)
+			require.Equal(t, map[string]string{hfeKeeperField: "40"}, rdb.HGetAll(ctx, key).Val())
+		})
+
+		t.Run("hpersist mixed field states", func(t *testing.T) {
+			key := "hfe-hpersist-mixed"
+			createHashFieldStates(t, rdb, ctx, key)
+
+			requireIntArray(t, rdb.Do(ctx, "hpersist", key, "FIELDS", 4,
+				hfePersistentField, hfeLiveField, hfeExpiredField, hfeMissingField).Val(), []int64{-1, 1, -2, -2})
+			requireHashMetadata(t, util.GetKMetadata(t, rdb, ctx, key), 3, 3)
+			require.Equal(t, map[string]string{
+				hfePersistentField: "10",
+				hfeLiveField:       "20",
+				hfeKeeperField:     "40",
+			}, rdb.HGetAll(ctx, key).Val())
 		})
 	})
 }

@@ -29,9 +29,11 @@
 #include <memory>
 #include <random>
 #include <string>
+#include <vector>
 
 #include "parse_util.h"
 #include "test_base.h"
+#include "time_util.h"
 #include "types/redis_hash.h"
 
 class RedisHashTest : public TestBase {
@@ -106,6 +108,42 @@ class RedisHashFieldExpirationEncodingTest : public ::testing::Test {
     auto s = db_->GetMetadata(*ctx_, {kRedisHash}, ns_key, &metadata);
     assert(s.ok());
     return metadata;
+  }
+
+  rocksdb::Status getHashMetadata(const std::string &key, HashMetadata *metadata) {
+    std::string ns_key = db_->AppendNamespacePrefix(key);
+    return db_->GetMetadata(*ctx_, {kRedisHash}, ns_key, metadata);
+  }
+
+  std::string hashSubKey(const std::string &key, const std::string &field, const HashMetadata &metadata) {
+    std::string ns_key = db_->AppendNamespacePrefix(key);
+    return InternalKey(ns_key, field, metadata.version, storage_->IsSlotIdEncoded()).Encode();
+  }
+
+  rocksdb::Status putRawHashValue(const std::string &key, const std::string &field, uint64_t expire,
+                                  const std::string &value) {
+    HashMetadata metadata = hashMetadata(key);
+    auto batch = storage_->GetWriteBatchBase();
+    auto s = batch->Put(hashSubKey(key, field, metadata), metadata.EncodeSubkeyValue(value, expire));
+    if (!s.ok()) return s;
+    return storage_->Write(*ctx_, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+  }
+
+  rocksdb::Status putHashMetadata(const std::string &key, const HashMetadata &metadata) {
+    std::string bytes;
+    metadata.Encode(&bytes);
+    auto batch = storage_->GetWriteBatchBase();
+    auto s = batch->Put(storage_->GetCFHandle(ColumnFamilyID::Metadata), db_->AppendNamespacePrefix(key), bytes);
+    if (!s.ok()) return s;
+    return storage_->Write(*ctx_, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+  }
+
+  rocksdb::Status deleteRawHashValue(const std::string &key, const std::string &field) {
+    HashMetadata metadata = hashMetadata(key);
+    auto batch = storage_->GetWriteBatchBase();
+    auto s = batch->Delete(hashSubKey(key, field, metadata));
+    if (!s.ok()) return s;
+    return storage_->Write(*ctx_, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
   }
 
   Config config_;
@@ -331,6 +369,246 @@ TEST_F(RedisHashFieldExpirationEncodingTest, PersistentCountTracksPersistentFiel
   EXPECT_EQ(metadata.persist, 2);
   EXPECT_EQ(metadata.lower, 0);
   EXPECT_EQ(metadata.upper, 0);
+}
+
+TEST_F(RedisHashFieldExpirationEncodingTest, ExpireFieldsMaintainsPersistentToTTLAndTTLToTTLMetadata) {
+  const Slice key = "hfe-expire-fields-metadata";
+  uint64_t ret = 0;
+  auto s = hash_->MSet(*ctx_, key, {{"a", "1"}, {"b", "2"}}, false, &ret);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  ASSERT_EQ(ret, 2);
+
+  HashMetadata metadata = hashMetadata(key.ToString());
+  ASSERT_EQ(metadata.size, 2);
+  ASSERT_EQ(metadata.persist, 2);
+  ASSERT_EQ(metadata.lower, 0);
+  ASSERT_EQ(metadata.upper, 0);
+
+  std::vector<int64_t> results;
+  uint64_t now = util::GetTimeStampMS();
+  uint64_t t10 = now + 10'000;
+  uint64_t t20 = now + 20'000;
+  uint64_t t5 = now + 5'000;
+  uint64_t t30 = now + 30'000;
+
+  s = hash_->ExpireFields(*ctx_, key, {"a"}, t10, HashFieldExpireCondition::kNone, &results);
+  ASSERT_TRUE(s.ok());
+  ASSERT_EQ(results, std::vector<int64_t>({1}));
+  metadata = hashMetadata(key.ToString());
+  EXPECT_EQ(metadata.size, 2);
+  EXPECT_EQ(metadata.persist, 1);
+  EXPECT_EQ(metadata.lower, t10);
+  EXPECT_EQ(metadata.upper, t10);
+
+  s = hash_->ExpireFields(*ctx_, key, {"b"}, t20, HashFieldExpireCondition::kNone, &results);
+  ASSERT_TRUE(s.ok());
+  ASSERT_EQ(results, std::vector<int64_t>({1}));
+  metadata = hashMetadata(key.ToString());
+  EXPECT_EQ(metadata.size, 2);
+  EXPECT_EQ(metadata.persist, 0);
+  EXPECT_EQ(metadata.lower, t10);
+  EXPECT_EQ(metadata.upper, t20);
+
+  s = hash_->ExpireFields(*ctx_, key, {"b"}, t5, HashFieldExpireCondition::kLT, &results);
+  ASSERT_TRUE(s.ok());
+  ASSERT_EQ(results, std::vector<int64_t>({1}));
+  metadata = hashMetadata(key.ToString());
+  EXPECT_EQ(metadata.size, 2);
+  EXPECT_EQ(metadata.persist, 0);
+  EXPECT_EQ(metadata.lower, t5);
+  EXPECT_EQ(metadata.upper, t20);
+
+  s = hash_->ExpireFields(*ctx_, key, {"a"}, t30, HashFieldExpireCondition::kGT, &results);
+  ASSERT_TRUE(s.ok());
+  ASSERT_EQ(results, std::vector<int64_t>({1}));
+  metadata = hashMetadata(key.ToString());
+  EXPECT_EQ(metadata.size, 2);
+  EXPECT_EQ(metadata.persist, 0);
+  EXPECT_EQ(metadata.lower, t5);
+  EXPECT_EQ(metadata.upper, t30);
+}
+
+TEST_F(RedisHashFieldExpirationEncodingTest, PersistFieldsMaintainsTTLToPersistentMetadata) {
+  const Slice key = "hfe-persist-fields-metadata";
+  uint64_t ret = 0;
+  auto s = hash_->MSet(*ctx_, key, {{"a", "1"}, {"b", "2"}}, false, &ret);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  ASSERT_EQ(ret, 2);
+
+  std::vector<int64_t> results;
+  uint64_t now = util::GetTimeStampMS();
+  uint64_t t10 = now + 10'000;
+  uint64_t t20 = now + 20'000;
+  s = hash_->ExpireFields(*ctx_, key, {"a"}, t10, HashFieldExpireCondition::kNone, &results);
+  ASSERT_TRUE(s.ok());
+  s = hash_->ExpireFields(*ctx_, key, {"b"}, t20, HashFieldExpireCondition::kNone, &results);
+  ASSERT_TRUE(s.ok());
+
+  HashMetadata metadata = hashMetadata(key.ToString());
+  ASSERT_EQ(metadata.size, 2);
+  ASSERT_EQ(metadata.persist, 0);
+  ASSERT_EQ(metadata.lower, t10);
+  ASSERT_EQ(metadata.upper, t20);
+
+  s = hash_->PersistFields(*ctx_, key, {"a"}, &results);
+  ASSERT_TRUE(s.ok());
+  ASSERT_EQ(results, std::vector<int64_t>({1}));
+  metadata = hashMetadata(key.ToString());
+  EXPECT_EQ(metadata.size, 2);
+  EXPECT_EQ(metadata.persist, 1);
+  EXPECT_EQ(metadata.lower, t10);
+  EXPECT_EQ(metadata.upper, t20);
+
+  s = hash_->PersistFields(*ctx_, key, {"b"}, &results);
+  ASSERT_TRUE(s.ok());
+  ASSERT_EQ(results, std::vector<int64_t>({1}));
+  metadata = hashMetadata(key.ToString());
+  EXPECT_EQ(metadata.size, 2);
+  EXPECT_EQ(metadata.persist, 2);
+  EXPECT_EQ(metadata.lower, 0);
+  EXPECT_EQ(metadata.upper, 0);
+
+  s = hash_->PersistFields(*ctx_, key, {"a"}, &results);
+  ASSERT_TRUE(s.ok());
+  EXPECT_EQ(results, std::vector<int64_t>({-1}));
+  metadata = hashMetadata(key.ToString());
+  EXPECT_EQ(metadata.size, 2);
+  EXPECT_EQ(metadata.persist, 2);
+  EXPECT_EQ(metadata.lower, 0);
+  EXPECT_EQ(metadata.upper, 0);
+}
+
+TEST_F(RedisHashFieldExpirationEncodingTest, ExpiredTTLPhysicalIsMissingForReadsAndDoesNotMutateMetadata) {
+  const Slice key = "hfe-expired-ttl-read";
+  uint64_t ret = 0;
+  auto s = hash_->MSet(*ctx_, key, {{"a", "1"}, {"b", "2"}, {"c", "3"}}, false, &ret);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  ASSERT_EQ(ret, 3);
+
+  HashMetadata metadata = hashMetadata(key.ToString());
+  metadata.persist = 2;
+  metadata.lower = util::GetTimeStampMS() - 1000;
+  metadata.upper = metadata.lower;
+  s = putHashMetadata(key.ToString(), metadata);
+  ASSERT_TRUE(s.ok());
+  s = putRawHashValue(key.ToString(), "a", metadata.lower, "1");
+  ASSERT_TRUE(s.ok());
+
+  HashMetadata before = hashMetadata(key.ToString());
+  std::string got;
+  s = hash_->Get(*ctx_, key, "a", &got);
+  EXPECT_TRUE(s.IsNotFound());
+
+  std::vector<std::string> values;
+  std::vector<rocksdb::Status> statuses;
+  s = hash_->MGet(*ctx_, key, {"a", "b"}, &values, &statuses);
+  ASSERT_TRUE(s.ok());
+  EXPECT_TRUE(statuses[0].IsNotFound());
+  EXPECT_EQ(values[1], "2");
+
+  std::vector<FieldValue> field_values;
+  s = hash_->GetAll(*ctx_, key, &field_values);
+  ASSERT_TRUE(s.ok());
+  EXPECT_EQ(field_values.size(), 2);
+
+  RangeLexSpec spec;
+  spec.min = "a";
+  spec.max = "z";
+  spec.count = INT_MAX;
+  s = hash_->RangeByLex(*ctx_, key, spec, &field_values);
+  ASSERT_TRUE(s.ok());
+  ASSERT_EQ(field_values.size(), 2);
+
+  std::vector<std::string> fields;
+  s = hash_->Scan(*ctx_, key, "", 10, "", &fields, &values);
+  ASSERT_TRUE(s.ok());
+  EXPECT_EQ(fields.size(), 2);
+
+  HashMetadata after = hashMetadata(key.ToString());
+  EXPECT_EQ(after.size, before.size);
+  EXPECT_EQ(after.persist, before.persist);
+  EXPECT_EQ(after.lower, before.lower);
+  EXPECT_EQ(after.upper, before.upper);
+}
+
+TEST_F(RedisHashFieldExpirationEncodingTest, DuplicateFieldsUseCommandLocalState) {
+  const Slice key = "hfe-duplicate-fields";
+  uint64_t ret = 0;
+  auto s = hash_->MSet(*ctx_, key, {{"a", "1"}, {"b", "2"}, {"c", "3"}}, false, &ret);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  ASSERT_EQ(ret, 3);
+
+  std::vector<int64_t> results;
+  uint64_t future = util::GetTimeStampMS() + 60'000;
+  s = hash_->ExpireFields(*ctx_, key, {"a", "a"}, future, HashFieldExpireCondition::kNX, &results);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  EXPECT_EQ(results, std::vector<int64_t>({1, 0}));
+  HashMetadata metadata = hashMetadata(key.ToString());
+  EXPECT_EQ(metadata.size, 3);
+  EXPECT_EQ(metadata.persist, 2);
+
+  s = hash_->PersistFields(*ctx_, key, {"a", "a"}, &results);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  EXPECT_EQ(results, std::vector<int64_t>({1, -1}));
+  metadata = hashMetadata(key.ToString());
+  EXPECT_EQ(metadata.size, 3);
+  EXPECT_EQ(metadata.persist, 3);
+  EXPECT_EQ(metadata.lower, 0);
+  EXPECT_EQ(metadata.upper, 0);
+
+  s = hash_->ExpireFields(*ctx_, key, {"b", "b"}, util::GetTimeStampMS(), HashFieldExpireCondition::kNone, &results);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  EXPECT_EQ(results, std::vector<int64_t>({2, -2}));
+  metadata = hashMetadata(key.ToString());
+  EXPECT_EQ(metadata.size, 2);
+  EXPECT_EQ(metadata.persist, 2);
+}
+
+TEST_F(RedisHashFieldExpirationEncodingTest, CompactionGhostDoesNotDecrementMetadataOnMissingSubkey) {
+  const Slice key = "hfe-compaction-ghost";
+  uint64_t ret = 0;
+  auto s = hash_->MSet(*ctx_, key, {{"field1", "1"}}, false, &ret);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  ASSERT_EQ(ret, 1);
+
+  std::vector<int64_t> results;
+  uint64_t future = util::GetTimeStampMS() + 60'000;
+  s = hash_->ExpireFields(*ctx_, key, {"field1"}, future, HashFieldExpireCondition::kNone, &results);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  ASSERT_EQ(results, std::vector<int64_t>({1}));
+
+  HashMetadata before = hashMetadata(key.ToString());
+  ASSERT_EQ(before.size, 1);
+  ASSERT_EQ(before.persist, 0);
+  s = deleteRawHashValue(key.ToString(), "field1");
+  ASSERT_TRUE(s.ok()) << s.ToString();
+
+  s = hash_->PersistFields(*ctx_, key, {"field1"}, &results);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  EXPECT_EQ(results, std::vector<int64_t>({-2}));
+  HashMetadata metadata = hashMetadata(key.ToString());
+  EXPECT_EQ(metadata.size, before.size);
+  EXPECT_EQ(metadata.persist, before.persist);
+  EXPECT_EQ(metadata.lower, before.lower);
+  EXPECT_EQ(metadata.upper, before.upper);
+
+  s = hash_->ExpireFields(*ctx_, key, {"field1"}, future + 10'000, HashFieldExpireCondition::kNone, &results);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  EXPECT_EQ(results, std::vector<int64_t>({-2}));
+  metadata = hashMetadata(key.ToString());
+  EXPECT_EQ(metadata.size, before.size);
+  EXPECT_EQ(metadata.persist, before.persist);
+  EXPECT_EQ(metadata.lower, before.lower);
+  EXPECT_EQ(metadata.upper, before.upper);
+
+  s = hash_->Set(*ctx_, key, "field1", "new", &ret);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  EXPECT_EQ(ret, 1);
+  metadata = hashMetadata(key.ToString());
+  EXPECT_EQ(metadata.size, 2);
+  EXPECT_EQ(metadata.persist, 1);
+  EXPECT_EQ(metadata.lower, before.lower);
+  EXPECT_EQ(metadata.upper, before.upper);
 }
 
 TEST_F(RedisHashTest, HIncr) {

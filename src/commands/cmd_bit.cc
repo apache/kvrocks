@@ -219,6 +219,14 @@ class CommandBitOp : public Commander {
       op_flag_ = kBitOpXor;
     else if (opname == "not")
       op_flag_ = kBitOpNot;
+    else if (opname == "diff")
+      op_flag_ = kBitOpDiff;
+    else if (opname == "diff1")
+      op_flag_ = kBitOpDiff1;
+    else if (opname == "andor")
+      op_flag_ = kBitOpAndOr;
+    else if (opname == "one")
+      op_flag_ = kBitOpOne;
     else
       return {Status::RedisInvalidCmd, errInvalidSyntax};
     if (op_flag_ == kBitOpNot && args.size() != 4) {

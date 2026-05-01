@@ -548,7 +548,8 @@ rocksdb::Status Bitmap::BitOp(engine::Context &ctx, BitOpFlags op_flag, const st
          * result in GCC compiling the code using multiple-words load/store
          * operations that are not supported even in ARM >= v6. */
 #ifndef USE_ALIGNED_ACCESS
-        if (frag_minlen >= sizeof(uint64_t) * 4 && frag_numkeys <= 16) {
+        if (frag_minlen >= sizeof(uint64_t) * 4 && frag_numkeys <= 16 &&
+            op_flag != kBitOpDiff && op_flag != kBitOpDiff1 && op_flag != kBitOpAndOr && op_flag != kBitOpOne) {
           auto *lres = reinterpret_cast<uint64_t *>(frag_res.get());
           const uint64_t *lp[16];
           for (uint64_t i = 0; i < frag_numkeys; i++) {
@@ -595,22 +596,55 @@ rocksdb::Status Bitmap::BitOp(engine::Context &ctx, BitOpFlags op_flag, const st
 
         uint8_t output = 0, byte = 0;
         for (; j < frag_maxlen; j++) {
-          output = (fragments[0].size() <= j) ? 0 : fragments[0][j];
-          if (op_flag == kBitOpNot) output = ~output;
-          for (uint64_t i = 1; i < frag_numkeys; i++) {
-            byte = (fragments[i].size() <= j) ? 0 : fragments[i][j];
-            switch (op_flag) {
-              case kBitOpAnd:
-                output &= byte;
-                break;
-              case kBitOpOr:
-                output |= byte;
-                break;
-              case kBitOpXor:
-                output ^= byte;
-                break;
-              default:
-                break;
+          output = (fragments[0].size() <= j) ? 0 : static_cast<uint8_t>(fragments[0][j]);
+          if (op_flag == kBitOpNot) {
+            output = ~output;
+          } else if (op_flag == kBitOpDiff1) {
+            // DIFF1: bits set in any Y but not in X (X = fragments[0])
+            uint8_t or_rest = 0;
+            for (uint64_t i = 1; i < frag_numkeys; i++) {
+              byte = (fragments[i].size() <= j) ? 0 : static_cast<uint8_t>(fragments[i][j]);
+              or_rest |= byte;
+            }
+            output = or_rest & ~output;
+          } else if (op_flag == kBitOpAndOr) {
+            // ANDOR: bits set in X AND in at least one Y
+            uint8_t or_rest = 0;
+            for (uint64_t i = 1; i < frag_numkeys; i++) {
+              byte = (fragments[i].size() <= j) ? 0 : static_cast<uint8_t>(fragments[i][j]);
+              or_rest |= byte;
+            }
+            output = output & or_rest;
+          } else if (op_flag == kBitOpOne) {
+            // ONE: bits set in exactly one key across all inputs
+            // xor_acc tracks odd parity, and_acc tracks bits set in 2+ keys
+            uint8_t xor_acc = output, and_acc = 0;
+            for (uint64_t i = 1; i < frag_numkeys; i++) {
+              byte = (fragments[i].size() <= j) ? 0 : static_cast<uint8_t>(fragments[i][j]);
+              and_acc |= (xor_acc & byte);
+              xor_acc ^= byte;
+            }
+            output = xor_acc & ~and_acc;
+          } else {
+            for (uint64_t i = 1; i < frag_numkeys; i++) {
+              byte = (fragments[i].size() <= j) ? 0 : static_cast<uint8_t>(fragments[i][j]);
+              switch (op_flag) {
+                case kBitOpAnd:
+                  output &= byte;
+                  break;
+                case kBitOpOr:
+                  output |= byte;
+                  break;
+                case kBitOpXor:
+                  output ^= byte;
+                  break;
+                case kBitOpDiff:
+                  // DIFF: bits set in X but not in any Y
+                  output &= ~byte;
+                  break;
+                default:
+                  break;
+              }
             }
           }
           frag_res[j] = output;

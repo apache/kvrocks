@@ -15,7 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
-FROM debian:stable-slim AS build
+FROM debian:trixie-slim AS build
 
 ARG MORE_BUILD_ARGS
 ENV DEBIAN_FRONTEND=noninteractive
@@ -27,7 +27,7 @@ WORKDIR /kvrocks
 COPY . .
 RUN ./x.py build --compiler=clang -DCMAKE_EXE_LINKER_FLAGS="-latomic" -DENABLE_OPENSSL=ON -DPORTABLE=1 -DCMAKE_BUILD_TYPE=Release -j $(nproc) $MORE_BUILD_ARGS
 
-FROM debian:stable-slim
+FROM debian:trixie-slim
 
 RUN apt-get update && apt-get upgrade -y && apt-get -y install openssl ca-certificates redis-tools binutils && apt-get clean
 

@@ -413,6 +413,27 @@ func TestBitmap(t *testing.T) {
 		}
 	})
 
+	t.Run("BITFIELD positional offset #N invalid and boundary cases", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "bf_pos").Err())
+
+		// bare '#' with no number
+		util.ErrorRegexp(t, rdb.Do(ctx, "BITFIELD", "bf_pos", "SET", "u16", "#", 1).Err(), ".*out of range.*")
+
+		// non-numeric after '#'
+		util.ErrorRegexp(t, rdb.Do(ctx, "BITFIELD", "bf_pos", "SET", "u16", "#abc", 1).Err(), ".*out of range.*")
+
+		// negative index
+		util.ErrorRegexp(t, rdb.Do(ctx, "BITFIELD", "bf_pos", "SET", "u16", "#-1", 1).Err(), ".*out of range.*")
+
+		// overflow: #268435456 * 16 bits = 4294967296 > UINT32_MAX
+		util.ErrorRegexp(t, rdb.Do(ctx, "BITFIELD", "bf_pos", "SET", "u16", "#268435456", 1).Err(), ".*out of range.*")
+
+		// largest valid offset with u8: #(UINT32_MAX/8) = offset UINT32_MAX - 7
+		// just verify boundary below overflow doesn't error
+		res := rdb.Do(ctx, "BITFIELD", "bf_pos", "SET", "u8", "#0", 255)
+		require.NoError(t, res.Err())
+	})
+
 	t.Run("BITPOS BIT option check", func(t *testing.T) {
 		require.NoError(t, rdb.Set(ctx, "mykey", "\x00\xff\xf0", 0).Err())
 		cmd := rdb.BitPosSpan(ctx, "mykey", 1, 7, 15, "bit")

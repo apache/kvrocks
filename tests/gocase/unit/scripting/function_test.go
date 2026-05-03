@@ -100,14 +100,12 @@ func decodeListLibResult(t *testing.T, v interface{}) ListLibResult {
 func TestFunctions(t *testing.T) {
 	configOptions := []util.ConfigOptions{
 		{
-			Name:       "txn-context-enabled",
-			Options:    []string{"yes", "no"},
-			ConfigType: util.YesNo,
+			Name:    "txn-context-enabled",
+			Options: []string{"yes", "no"},
 		},
 		{
-			Name:       "resp3-enabled",
-			Options:    []string{"yes", "no"},
-			ConfigType: util.YesNo,
+			Name:    "resp3-enabled",
+			Options: []string{"yes", "no"},
 		},
 	}
 
@@ -136,6 +134,11 @@ var testFunctions = func(t *testing.T, config util.KvrocksServerConfigs) {
 
 		code2 = "#!lua name=$$$\n" + code
 		require.Error(t, rdb.Do(ctx, "FUNCTION", "LOAD", code2).Err(), "ERR Library names can only contain letters, numbers, or underscores(_) and must be at least one character long")
+	})
+
+	t.Run("FCALL - numkeys can't be negative", func(t *testing.T) {
+		util.ErrorRegexp(t, rdb.Do(ctx, "FCALL", "inc", -1).Err(), ".*can't be negative.*")
+		util.ErrorRegexp(t, rdb.Do(ctx, "FCALL_RO", "inc", -1).Err(), ".*can't be negative.*")
 	})
 
 	t.Run("FUNCTION LOAD and FCALL mylib1", func(t *testing.T) {

@@ -124,6 +124,22 @@ class TDigest : public SubKeyScanner {
                                          const TDigestMetadata& metadata, std::vector<Centroid>* centroids,
                                          std::vector<double>* buffer,
                                          ObserverOrUniquePtr<rocksdb::WriteBatchBase>* clean_after_dump_batch);
+
+  /**
+   * @brief Get centroids for merge operation.
+   *
+   * If the tdigest has unmerged buffer, merge it first and update metadata to batch.
+   * Otherwise, just dump existing centroids.
+   * @param ctx The context of the operation.
+   * @param ns_key The namespace key of the t-digest.
+   * @param batch The write batch to store metadata updates.
+   * @param metadata The metadata of the t-digest (may be updated if buffer is merged).
+   * @param centroids The output vector to store the centroids.
+   */
+  rocksdb::Status getCentroidsForMerge(engine::Context& ctx, const std::string& ns_key,
+                                       ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch, TDigestMetadata* metadata,
+                                       std::vector<Centroid>* centroids);
+
   rocksdb::Status applyNewCentroids(ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch, const std::string& ns_key,
                                     const TDigestMetadata& metadata, const std::vector<Centroid>& centroids);
 

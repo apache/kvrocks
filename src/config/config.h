@@ -180,6 +180,8 @@ struct Config {
   int redis_databases = 0;
   bool resp3_enabled = false;
   int log_retention_days;
+  HashSubkeyEncodingMode hash_encoding_mode = HashSubkeyEncodingMode::kLegacy;
+  HashLengthMode hash_length_mode = HashLengthMode::kAccurate;
 
   // load_tokens is used to buffer the tokens when loading,
   // don't use it to authenticate or rewrite the configuration file.
@@ -236,6 +238,8 @@ struct Config {
     rocksdb::CompressionType compression;
     int compression_start_level;
     int compression_level;
+    uint32_t compression_max_dict_bytes;
+    uint32_t compression_zstd_max_train_bytes;
     bool disable_auto_compactions;
     bool enable_blob_files;
     int min_blob_size;

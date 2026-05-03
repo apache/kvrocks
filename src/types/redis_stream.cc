@@ -27,6 +27,7 @@
 #include <vector>
 
 #include "db_util.h"
+#include "string_util.h"
 #include "time_util.h"
 
 namespace redis {
@@ -684,9 +685,6 @@ rocksdb::Status Stream::AutoClaim(engine::Context &ctx, const Slice &stream_name
 }
 rocksdb::Status Stream::CreateGroup(engine::Context &ctx, const Slice &stream_name,
                                     const StreamXGroupCreateOptions &options, const std::string &group_name) {
-  if (std::isdigit(group_name[0])) {
-    return rocksdb::Status::InvalidArgument("group name cannot start with number");
-  }
   std::string ns_key = AppendNamespacePrefix(stream_name);
 
   StreamMetadata metadata;
@@ -737,8 +735,8 @@ rocksdb::Status Stream::CreateGroup(engine::Context &ctx, const Slice &stream_na
 }
 
 rocksdb::Status Stream::DestroyGroup(engine::Context &ctx, const Slice &stream_name, const std::string &group_name,
-                                     uint64_t *delete_cnt) {
-  *delete_cnt = 0;
+                                     bool *destroyed) {
+  *destroyed = false;
   std::string ns_key = AppendNamespacePrefix(stream_name);
 
   StreamMetadata metadata;
@@ -751,42 +749,44 @@ rocksdb::Status Stream::DestroyGroup(engine::Context &ctx, const Slice &stream_n
     return rocksdb::Status::InvalidArgument(errXGroupSubcommandRequiresKeyExist);
   }
 
+  std::string group_key = internalKeyFromGroupName(ns_key, metadata, group_name);
+  std::string val;
+  s = storage_->Get(ctx, ctx.GetReadOptions(), stream_cf_handle_, group_key, &val);
+  if (s.IsNotFound()) {
+    return rocksdb::Status::OK();
+  }
+  if (!s.ok()) return s;
+
   auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisStream);
   s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) return s;
 
-  std::string sub_key_prefix;
-  PutFixed64(&sub_key_prefix, group_name.size());
-  sub_key_prefix += group_name;
-  std::string next_version_prefix_key =
-      InternalKey(ns_key, sub_key_prefix, metadata.version + 1, storage_->IsSlotIdEncoded()).Encode();
-  std::string prefix_key = InternalKey(ns_key, sub_key_prefix, metadata.version, storage_->IsSlotIdEncoded()).Encode();
+  for (auto type : {StreamSubkeyType::StreamConsumerGroupMetadata, StreamSubkeyType::StreamConsumerMetadata,
+                    StreamSubkeyType::StreamPelEntry}) {
+    std::string sub_key_prefix;
+    PutFixed64(&sub_key_prefix, UINT64_MAX);
+    PutFixed8(&sub_key_prefix, static_cast<uint8_t>(type));
+    PutFixed64(&sub_key_prefix, group_name.size());
+    sub_key_prefix += group_name;
 
-  rocksdb::ReadOptions read_options = ctx.DefaultScanOptions();
-  rocksdb::Slice upper_bound(next_version_prefix_key);
-  read_options.iterate_upper_bound = &upper_bound;
-  rocksdb::Slice lower_bound(prefix_key);
-  read_options.iterate_lower_bound = &lower_bound;
+    std::string prefix_key =
+        InternalKey(ns_key, sub_key_prefix, metadata.version, storage_->IsSlotIdEncoded()).Encode();
+    std::string end_key =
+        InternalKey(ns_key, util::StringNext(sub_key_prefix), metadata.version, storage_->IsSlotIdEncoded()).Encode();
 
-  auto iter = util::UniqueIterator(ctx, read_options, stream_cf_handle_);
-  for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
-    s = batch->Delete(stream_cf_handle_, iter->key());
+    s = batch->DeleteRange(stream_cf_handle_, prefix_key, end_key);
     if (!s.ok()) return s;
-    *delete_cnt += 1;
   }
 
-  if (auto s = iter->status(); !s.ok()) {
-    return s;
-  }
-
-  if (*delete_cnt != 0) {
+  *destroyed = true;
+  if (metadata.group_number > 0) {
     metadata.group_number -= 1;
-    std::string metadata_bytes;
-    metadata.Encode(&metadata_bytes);
-    s = batch->Put(metadata_cf_handle_, ns_key, metadata_bytes);
-    if (!s.ok()) return s;
   }
+  std::string metadata_bytes;
+  metadata.Encode(&metadata_bytes);
+  s = batch->Put(metadata_cf_handle_, ns_key, metadata_bytes);
+  if (!s.ok()) return s;
 
   return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
@@ -794,9 +794,6 @@ rocksdb::Status Stream::DestroyGroup(engine::Context &ctx, const Slice &stream_n
 rocksdb::Status Stream::createConsumerWithoutLock(engine::Context &ctx, const Slice &stream_name,
                                                   const std::string &group_name, const std::string &consumer_name,
                                                   int *created_number) {
-  if (std::isdigit(consumer_name[0])) {
-    return rocksdb::Status::InvalidArgument("consumer name cannot start with number");
-  }
   std::string ns_key = AppendNamespacePrefix(stream_name);
   StreamMetadata metadata;
   rocksdb::Status s = GetMetadata(ctx, ns_key, &metadata);
@@ -1754,11 +1751,40 @@ rocksdb::Status Stream::GetPendingEntries(engine::Context &ctx, StreamPendingOpt
     return s.IsNotFound() ? rocksdb::Status::OK() : s;
   }
 
-  std::string prefix_key = internalPelKeyFromGroupAndEntryId(ns_key, metadata, group_name, options.start_id);
-  std::string end_key = internalPelKeyFromGroupAndEntryId(ns_key, metadata, group_name, options.end_id);
+  StreamEntryID scan_start_id = options.start_id;
+  if (options.exclude_start) {
+    Status inc_st = IncrementStreamEntryID(&scan_start_id);
+    if (!inc_st.IsOK()) {
+      pending_infos.pending_number = 0;
+      pending_infos.first_entry_id = StreamEntryID::Maximum();
+      pending_infos.last_entry_id = StreamEntryID::Minimum();
+      return rocksdb::Status::OK();
+    }
+  }
+  std::string prefix_key = internalPelKeyFromGroupAndEntryId(ns_key, metadata, group_name, scan_start_id);
+  // XPENDING extended form follows XRANGE-style ranges (closed interval by default; '(' excludes an endpoint).
+  // RocksDB iterate_upper_bound is exclusive.
+  std::string end_key_exclusive;
+  if (options.end_id == StreamEntryID::Maximum()) {
+    // "+" means no upper ID limit; place the bound after all keys in this stream metadata version
+    // (same pattern as Stream::trim). A PEL-specific key cannot be "past" maximum ID.
+    end_key_exclusive = InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode();
+  } else if (options.exclude_end) {
+    // Exclusive end: iterator keys must be strictly before end_id.
+    end_key_exclusive = internalPelKeyFromGroupAndEntryId(ns_key, metadata, group_name, options.end_id);
+  } else {
+    StreamEntryID end_next = options.end_id;
+    Status inc_st = IncrementStreamEntryID(&end_next);
+    if (!inc_st.IsOK()) {
+      end_key_exclusive = InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode();
+    } else {
+      // Next ID after end_id in PEL key space — exclusive iterator upper bound (XRANGE closed end).
+      end_key_exclusive = internalPelKeyFromGroupAndEntryId(ns_key, metadata, group_name, end_next);
+    }
+  }
 
   rocksdb::ReadOptions read_options = ctx.DefaultScanOptions();
-  rocksdb::Slice upper_bound(end_key);
+  rocksdb::Slice upper_bound(end_key_exclusive);
   read_options.iterate_upper_bound = &upper_bound;
   rocksdb::Slice lower_bound(prefix_key);
   read_options.iterate_lower_bound = &lower_bound;

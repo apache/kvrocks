@@ -18,8 +18,9 @@
 FROM debian:bookworm-slim AS build
 
 ARG MORE_BUILD_ARGS
+ENV DEBIAN_FRONTEND=noninteractive
 
-RUN DEBIAN_FRONTEND=noninteractive && apt-get update && apt-get upgrade -y && apt-get -y --no-install-recommends install git build-essential autoconf cmake libtool python3 libssl-dev clang && apt-get autoremove && apt-get clean
+RUN apt-get update && apt-get upgrade -y && apt-get -y --no-install-recommends install git build-essential autoconf cmake libtool python3 libssl-dev clang && apt-get autoremove && apt-get clean
 
 WORKDIR /kvrocks
 
@@ -28,7 +29,7 @@ RUN ./x.py build --compiler=clang -DENABLE_OPENSSL=ON -DPORTABLE=1 -DCMAKE_BUILD
 
 FROM debian:bookworm-slim
 
-RUN DEBIAN_FRONTEND=noninteractive && apt-get update && apt-get upgrade -y && apt-get -y install openssl ca-certificates redis-tools binutils && apt-get clean
+RUN apt-get update && apt-get upgrade -y && apt-get -y install openssl ca-certificates redis-tools binutils && apt-get clean
 
 # Create a dedicated non-root user and group
 RUN groupadd --gid=999 -r kvrocks && useradd --uid=999 -r -g kvrocks kvrocks

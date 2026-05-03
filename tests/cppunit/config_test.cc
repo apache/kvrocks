@@ -61,6 +61,8 @@ TEST(Config, GetAndSet) {
       {"profiling-sample-record-threshold-ms", "50"},
       {"profiling-sample-commands", "get,set"},
       {"backup-dir", "test_dir/backup"},
+      {"hash-encoding-mode", "field-expiration"},
+      {"hash-length-mode", "approximate"},
 
       {"rocksdb.compression", "no"},
       {"rocksdb.max_open_files", "1234"},
@@ -134,6 +136,8 @@ TEST(Config, GetAndSet) {
       {"rocksdb.row_cache_size", "100"},
       {"rocksdb.rate_limiter_auto_tuned", "yes"},
       {"rocksdb.compression_level", "32767"},
+      {"rocksdb.compression_max_dict_bytes", "16384"},
+      {"rocksdb.compression_zstd_max_train_bytes", "262144"},
       {"rocksdb.wal_compression", "no"},
       {"histogram-bucket-boundaries", "10,100,1000,10000"},
 
@@ -186,6 +190,32 @@ TEST(Config, Rewrite) {
   redis::CommandTable::Reset();
   Config new_config;
   ASSERT_TRUE(new_config.Load(CLIOptions(path)).IsOK());
+  unlink(path);
+}
+
+TEST(Config, LoadRocksDBDictionaryCompressionOptions) {
+  const char *path = "test.conf";
+  unlink(path);
+
+  std::ofstream output_file(path, std::ios::out);
+  output_file << "rocksdb.compression_max_dict_bytes 16384"
+              << "\n";
+  output_file << "rocksdb.compression_zstd_max_train_bytes 262144"
+              << "\n";
+  output_file.close();
+
+  Config config;
+  ASSERT_TRUE(config.Load(CLIOptions(path)).IsOK());
+  ASSERT_EQ(config.rocks_db.compression_max_dict_bytes, 16384U);
+  ASSERT_EQ(config.rocks_db.compression_zstd_max_train_bytes, 262144U);
+
+  ASSERT_TRUE(config.Rewrite({}).IsOK());
+
+  Config rewritten_config;
+  ASSERT_TRUE(rewritten_config.Load(CLIOptions(path)).IsOK());
+  ASSERT_EQ(rewritten_config.rocks_db.compression_max_dict_bytes, 16384U);
+  ASSERT_EQ(rewritten_config.rocks_db.compression_zstd_max_train_bytes, 262144U);
+
   unlink(path);
 }
 

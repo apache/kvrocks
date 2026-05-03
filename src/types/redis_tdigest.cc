@@ -437,9 +437,8 @@ rocksdb::Status TDigest::Merge(engine::Context& ctx, const Slice& dest_digest,
     return status;
   } else if (status.ok()) {
     dest_digest_existed = true;
-    if (!options.override_flag) {
-      return rocksdb::Status::InvalidArgument(fmt::format("{}: {}", errKeyAlreadyExists, dest_digest.ToString()));
-    }
+    // When dest exists without OVERRIDE flag, we should merge dest's data with sources
+    // (Redis behavior: merge into existing sketch instead of returning error)
   }
 
   auto batch = storage_->GetWriteBatchBase();
@@ -473,21 +472,8 @@ rocksdb::Status TDigest::Merge(engine::Context& ctx, const Slice& dest_digest,
       return status;
     }
 
-    if (metadata.unmerged_nodes > 0) {
-      if (auto status = mergeCurrentBuffer(ctx, source_ns_key, batch, &metadata, nullptr, &source_centroids);
-          !status.ok()) {
-        return status;
-      }
-
-      std::string metadata_bytes;
-      metadata.Encode(&metadata_bytes);
-      if (auto status = batch->Put(metadata_cf_handle_, source_ns_key, metadata_bytes); !status.ok()) {
-        return status;
-      }
-    } else if (metadata.merged_nodes > 0) {
-      if (auto status = dumpCentroids(ctx, source_ns_key, metadata, &source_centroids); !status.ok()) {
-        return status;
-      }
+    if (auto status = getCentroidsForMerge(ctx, source_ns_key, batch, &metadata, &source_centroids); !status.ok()) {
+      return status;
     }
 
     if (!source_centroids.empty()) {
@@ -506,6 +492,40 @@ rocksdb::Status TDigest::Merge(engine::Context& ctx, const Slice& dest_digest,
     compression = std::max(compression, metadata.compression);
   }
 
+  // Merge dest's existing data if dest exists without OVERRIDE flag
+  // (Redis behavior: dest is merged first, then source list is merged,
+  // so if dest is in source list, it gets merged twice)
+  bool should_merge_dest = dest_digest_existed && !options.override_flag;
+
+  if (should_merge_dest) {
+    std::vector<Centroid> dest_centroids;
+
+    if (auto status = getCentroidsForMerge(ctx, dest_ns_key, batch, &dest_metadata, &dest_centroids); !status.ok()) {
+      return status;
+    }
+
+    if (!dest_centroids.empty()) {
+      source_centroids_data.emplace_back(CentroidsWithDelta{
+          .centroids = std::move(dest_centroids),
+          .delta = dest_metadata.compression,
+          .min = dest_metadata.minimum,
+          .max = dest_metadata.maximum,
+          .total_weight = static_cast<double>(dest_metadata.merged_weight),
+      });
+      total_observations += dest_metadata.total_observations;
+    }
+    // Redis behavior: when merging into existing dest without OVERRIDE,
+    // keep dest's compression value (ignore sources' compression)
+    compression = dest_metadata.compression;
+  }
+
+  /*
+   * refer to: https://redis.io/docs/latest/commands/tdigest.merge/
+   * When COMPRESSION is not specified:
+   * - If destination-key does not exist or if OVERRIDE is specified, the compression is set to the maximum value among
+   * all source sketches.
+   * - If destination-key already exists and OVERRIDE is not specified, its compression is not changed.
+   */
   if (options.compression != 0) {
     compression = options.compression;
   }
@@ -744,6 +764,26 @@ rocksdb::Status TDigest::dumpCentroidsAndBuffer(engine::Context& ctx, const std:
   return rocksdb::Status::OK();
 }
 
+rocksdb::Status TDigest::getCentroidsForMerge(engine::Context& ctx, const std::string& ns_key,
+                                              ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch,
+                                              TDigestMetadata* metadata, std::vector<Centroid>* centroids) {
+  if (metadata->unmerged_nodes > 0) {
+    if (auto status = mergeCurrentBuffer(ctx, ns_key, batch, metadata, nullptr, centroids); !status.ok()) {
+      return status;
+    }
+    std::string metadata_bytes;
+    metadata->Encode(&metadata_bytes);
+    if (auto status = batch->Put(metadata_cf_handle_, ns_key, metadata_bytes); !status.ok()) {
+      return status;
+    }
+  } else if (metadata->merged_nodes > 0) {
+    if (auto status = dumpCentroids(ctx, ns_key, *metadata, centroids); !status.ok()) {
+      return status;
+    }
+  }
+  return rocksdb::Status::OK();
+}
+
 rocksdb::Status TDigest::applyNewCentroids(ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch,
                                            const std::string& ns_key, const TDigestMetadata& metadata,
                                            const std::vector<Centroid>& centroids) {
@@ -756,6 +796,42 @@ rocksdb::Status TDigest::applyNewCentroids(ObserverOrUniquePtr<rocksdb::WriteBat
     }
   }
 
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status TDigest::TrimmedMean(engine::Context& ctx, const Slice& digest_name, double low_cut_quantile,
+                                     double high_cut_quantile, TDigestTrimmedMeanResult* result) {
+  auto ns_key = AppendNamespacePrefix(digest_name);
+  TDigestMetadata metadata;
+
+  {
+    LockGuard guard(storage_->GetLockManager(), ns_key);
+    if (auto status = getMetaDataByNsKey(ctx, ns_key, &metadata); !status.ok()) {
+      return status;
+    }
+
+    if (metadata.total_observations == 0) {
+      result->mean.reset();
+      return rocksdb::Status::OK();
+    }
+
+    if (auto status = mergeNodes(ctx, ns_key, &metadata); !status.ok()) {
+      return status;
+    }
+  }
+
+  // Dump centroids and create DummyCentroids wrapper for TDigest algorithm
+  std::vector<Centroid> centroids;
+  if (auto status = dumpCentroids(ctx, ns_key, metadata, &centroids); !status.ok()) {
+    return status;
+  }
+  auto dump_centroids = DummyCentroids<false>(metadata, centroids);
+  auto trimmed_mean_result = TDigestTrimmedMean(dump_centroids, low_cut_quantile, high_cut_quantile);
+  if (!trimmed_mean_result) {
+    return rocksdb::Status::InvalidArgument(trimmed_mean_result.Msg());
+  }
+
+  result->mean = *trimmed_mean_result;
   return rocksdb::Status::OK();
 }
 

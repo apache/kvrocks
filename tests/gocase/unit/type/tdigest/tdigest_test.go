@@ -40,6 +40,11 @@ const (
 	errMsgKeyNotExist                     = "key does not exist"
 	errNumkeysMustBePositive              = "numkeys need to be a positive integer"
 	errCompressionParameterMustBePositive = "compression parameter needs to be a positive integer"
+	errMsgParseLowCutQuantile             = "error parsing low_cut_percentile"
+	errMsgParseHighCutQuantile            = "error parsing high_cut_percentile"
+	errMsgLowCutQuantileRange             = "low_cut_percentile and high_cut_percentile should be in [0,1]"
+	errMsgHighCutQuantileRange            = "low_cut_percentile and high_cut_percentile should be in [0,1]"
+	errMsgLowCutQuantileLess              = "low_cut_percentile should be lower than high_cut_percentile"
 )
 
 type tdigestInfo struct {
@@ -72,9 +77,8 @@ func toTdigestInfo(t *testing.T, value interface{}) tdigestInfo {
 func TestTDigest(t *testing.T) {
 	configOptions := []util.ConfigOptions{
 		{
-			Name:       "txn-context-enabled",
-			Options:    []string{"yes", "no"},
-			ConfigType: util.YesNo,
+			Name:    "txn-context-enabled",
+			Options: []string{"yes", "no"},
 		},
 	}
 
@@ -458,15 +462,133 @@ func tdigestTests(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", sourceKey2, "compression", "30").Err())
 		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", sourceKey2, "4.0", "5.0", "6.0", "100", "-200").Err())
 
-		// create a destination digest
+		// create a destination digest and add some data (for testing merge into existing dest)
 		destKey := keyPrefix + "dest"
 		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", destKey, "compression", "100").Err())
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", destKey, "7.0", "8.0", "9.0").Err())
 
-		// merge the source into the destination without override
-		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.MERGE", destKey, 2, sourceKey1, sourceKey2).Err(), errMsgKeyAlreadyExists)
+		// merge the source into the existing destination without override
+		// should merge dest + sources together (not return error)
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.MERGE", destKey, 2, sourceKey1, sourceKey2).Err())
 
-		// merge the source into the destination with override
+		// verify the merged result contains data from both dest and sources
+		rsp := rdb.Do(ctx, "TDIGEST.INFO", destKey)
+		require.NoError(t, rsp.Err())
+		info := toTdigestInfo(t, rsp.Val())
+		// dest(3) + source1(3) + source2(5) = 11 observations
+		require.EqualValues(t, 11, info.Observations)
+		// dest compression (100) should be preserved when merging without OVERRIDE
+		// (sourceKey1 has compression 101, sourceKey2 has compression 30)
+		require.EqualValues(t, 100, info.Compression)
+
+		rsp = rdb.Do(ctx, "TDIGEST.MIN", destKey)
+		require.NoError(t, rsp.Err())
+		minVal, err := rsp.Float64()
+		require.NoError(t, err)
+		require.InEpsilon(t, -200, minVal, 0.001)
+
+		rsp = rdb.Do(ctx, "TDIGEST.MAX", destKey)
+		require.NoError(t, rsp.Err())
+		maxVal, err := rsp.Float64()
+		require.NoError(t, err)
+		require.InEpsilon(t, 100, maxVal, 0.001)
+
+		// merge the source into the destination with override (should overwrite existing dest data)
 		require.NoError(t, rdb.Do(ctx, "TDIGEST.MERGE", destKey, 2, sourceKey1, sourceKey2, "override").Err())
+
+		// verify override result: should only contain source data (not previous dest data)
+		rsp = rdb.Do(ctx, "TDIGEST.INFO", destKey)
+		require.NoError(t, rsp.Err())
+		infoOverride := toTdigestInfo(t, rsp.Val())
+		// source1(3) + source2(5) = 8 observations (dest data was overwritten)
+		require.EqualValues(t, 8, infoOverride.Observations)
+		// with OVERRIDE, compression should be max of sources (101 from sourceKey1)
+		require.EqualValues(t, 101, infoOverride.Compression)
+
+		// Test: dest in source list without OVERRIDE - dest data is merged twice (Redis behavior)
+		// When dest is both destination and in source list without OVERRIDE:
+		// Redis merges dest's existing data first, then merges the source list (including dest)
+		t.Run("dest in source list without OVERRIDE double-counts dest (Redis behavior)", func(t *testing.T) {
+			destKey := keyPrefix + "dest_in_source"
+			srcKey := keyPrefix + "src_for_dest_in_source"
+
+			// Create dest with 3 values: 1, 2, 3
+			require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", destKey, "compression", "100").Err())
+			require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", destKey, "1", "2", "3").Err())
+
+			// Create source with 2 values: 10, 20
+			require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", srcKey, "compression", "100").Err())
+			require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", srcKey, "10", "20").Err())
+
+			// Record observations before merge
+			rsp := rdb.Do(ctx, "TDIGEST.INFO", destKey)
+			require.NoError(t, rsp.Err())
+			infoBefore := toTdigestInfo(t, rsp.Val())
+			require.EqualValues(t, 3, infoBefore.Observations)
+
+			// Merge: TDIGEST.MERGE dest 2 dest src
+			// dest is both the destination AND in the source list
+			// Redis behavior: dest's existing data + dest(in source) + src = 3+3+2 = 8
+			require.NoError(t, rdb.Do(ctx, "TDIGEST.MERGE", destKey, 2, destKey, srcKey).Err())
+
+			// Verify: should have dest(3) + dest(3) + src(2) = 8 observations
+			rsp = rdb.Do(ctx, "TDIGEST.INFO", destKey)
+			require.NoError(t, rsp.Err())
+			infoAfter := toTdigestInfo(t, rsp.Val())
+			require.EqualValues(t, 8, infoAfter.Observations, "dest is double-counted when in source list without OVERRIDE (Redis behavior)")
+
+			// Verify min/max: min should be 1 (from dest), max should be 20 (from src)
+			rsp = rdb.Do(ctx, "TDIGEST.MIN", destKey)
+			require.NoError(t, rsp.Err())
+			minVal, err := rsp.Float64()
+			require.NoError(t, err)
+			require.InEpsilon(t, 1.0, minVal, 0.001)
+
+			rsp = rdb.Do(ctx, "TDIGEST.MAX", destKey)
+			require.NoError(t, rsp.Err())
+			maxVal, err := rsp.Float64()
+			require.NoError(t, err)
+			require.InEpsilon(t, 20.0, maxVal, 0.001)
+		})
+
+		// Test: dest in source list WITH OVERRIDE
+		t.Run("dest in source list WITH OVERRIDE should replace dest", func(t *testing.T) {
+			destKey := keyPrefix + "dest_in_source_override"
+			srcKey := keyPrefix + "src_for_override"
+
+			// Create dest with 3 values: 1, 2, 3
+			require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", destKey, "compression", "100").Err())
+			require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", destKey, "1", "2", "3").Err())
+
+			// Create source with 2 values: 10, 20
+			require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", srcKey, "compression", "100").Err())
+			require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", srcKey, "10", "20").Err())
+
+			// Merge with OVERRIDE: TDIGEST.MERGE dest 2 dest src OVERRIDE
+			// With OVERRIDE, dest's existing data should be replaced
+			// dest in source list should still be included once
+			require.NoError(t, rdb.Do(ctx, "TDIGEST.MERGE", destKey, 2, destKey, srcKey, "OVERRIDE").Err())
+
+			// Verify: should have dest(3) + src(2) = 5 observations
+			// (dest is included from source list, plus src)
+			rsp := rdb.Do(ctx, "TDIGEST.INFO", destKey)
+			require.NoError(t, rsp.Err())
+			info := toTdigestInfo(t, rsp.Val())
+			require.EqualValues(t, 5, info.Observations, "with OVERRIDE, dest in source should be counted once")
+
+			// Verify min/max
+			rsp = rdb.Do(ctx, "TDIGEST.MIN", destKey)
+			require.NoError(t, rsp.Err())
+			minVal, err := rsp.Float64()
+			require.NoError(t, err)
+			require.InEpsilon(t, 1.0, minVal, 0.001)
+
+			rsp = rdb.Do(ctx, "TDIGEST.MAX", destKey)
+			require.NoError(t, rsp.Err())
+			maxVal, err := rsp.Float64()
+			require.NoError(t, err)
+			require.InEpsilon(t, 20.0, maxVal, 0.001)
+		})
 
 		// merge to a new destination key
 		newDestKey1 := keyPrefix + "new_dest"
@@ -518,6 +640,109 @@ func tdigestTests(t *testing.T, configs util.KvrocksServerConfigs) {
 		validation(destKey)
 		validation(newDestKey1)
 		validation(newDestKey2)
+	})
+
+	// https://github.com/apache/kvrocks/issues/3447
+	t.Run("tdigest.merge with COMPRESSION parameter (issue #3447)", func(t *testing.T) {
+		keyPrefix := "tdigest_merge_compression_"
+
+		srcKey := keyPrefix + "src"
+		destKey := keyPrefix + "dest"
+
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", srcKey, "compression", "100").Err())
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", srcKey, "1", "2", "3", "4", "5").Err())
+
+		// This should succeed, not return "ERR wrong keyword"
+		// Issue #3447: TDIGEST.MERGE dest 1 src COMPRESSION 100 fails with "ERR wrong keyword"
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.MERGE", destKey, 1, srcKey, "COMPRESSION", "100").Err())
+
+		// Verify the merge worked
+		rsp := rdb.Do(ctx, "TDIGEST.INFO", destKey)
+		require.NoError(t, rsp.Err())
+		info := toTdigestInfo(t, rsp.Val())
+		require.EqualValues(t, 100, info.Compression)
+		require.EqualValues(t, 5, info.Observations)
+	})
+
+	// Test COMPRESSION + OVERRIDE combination
+	t.Run("tdigest.merge with COMPRESSION and OVERRIDE together", func(t *testing.T) {
+		keyPrefix := "tdigest_merge_compression_override_"
+
+		srcKey := keyPrefix + "src"
+		destKey := keyPrefix + "dest"
+
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", srcKey, "compression", "100").Err())
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", srcKey, "1", "2", "3", "4", "5").Err())
+
+		// Create destination key first to test OVERRIDE
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", destKey, "compression", "50").Err())
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", destKey, "10", "20").Err())
+
+		// COMPRESSION + OVERRIDE should work together
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.MERGE", destKey, 1, srcKey, "COMPRESSION", "101", "OVERRIDE").Err())
+
+		// Verify the merge worked with new compression
+		rsp := rdb.Do(ctx, "TDIGEST.INFO", destKey)
+		require.NoError(t, rsp.Err())
+		info := toTdigestInfo(t, rsp.Val())
+		require.EqualValues(t, 101, info.Compression)
+		require.EqualValues(t, 5, info.Observations) // src data replaced dest data due to OVERRIDE
+	})
+
+	// Regression test for empty merge: min/max should be correctly initialized
+	// Before fix: merging empty sources initialized min/max to 0, corrupting subsequent add
+	t.Run("tdigest.merge empty sources then add samples", func(t *testing.T) {
+		keyPrefix := "tdigest_merge_empty_"
+
+		srcKey1 := keyPrefix + "src1"
+		srcKey2 := keyPrefix + "src2"
+		destKey := keyPrefix + "dest"
+
+		// Create empty sources (no observations added)
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", srcKey1, "compression", "100").Err())
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", srcKey2, "compression", "100").Err())
+
+		// Merge empty sources into new destination
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.MERGE", destKey, 2, srcKey1, srcKey2).Err())
+
+		// Verify dest is empty
+		rsp := rdb.Do(ctx, "TDIGEST.INFO", destKey)
+		require.NoError(t, rsp.Err())
+		info := toTdigestInfo(t, rsp.Val())
+		require.EqualValues(t, 0, info.Observations)
+
+		// Add positive samples and verify min/max
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", destKey, "10", "20", "30").Err())
+
+		rsp = rdb.Do(ctx, "TDIGEST.MIN", destKey)
+		require.NoError(t, rsp.Err())
+		minVal, err := rsp.Float64()
+		require.NoError(t, err)
+		require.InEpsilon(t, 10.0, minVal, 0.1, "min should be 10, not 0")
+
+		rsp = rdb.Do(ctx, "TDIGEST.MAX", destKey)
+		require.NoError(t, rsp.Err())
+		maxVal, err := rsp.Float64()
+		require.NoError(t, err)
+		require.InEpsilon(t, 30.0, maxVal, 0.1, "max should be 30")
+
+		// Test with negative samples
+		destKey2 := keyPrefix + "dest2"
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.MERGE", destKey2, 2, srcKey1, srcKey2).Err())
+
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", destKey2, "-10", "-20", "-30").Err())
+
+		rsp = rdb.Do(ctx, "TDIGEST.MIN", destKey2)
+		require.NoError(t, rsp.Err())
+		minVal, err = rsp.Float64()
+		require.NoError(t, err)
+		require.InEpsilon(t, -30.0, minVal, 0.1, "min should be -30")
+
+		rsp = rdb.Do(ctx, "TDIGEST.MAX", destKey2)
+		require.NoError(t, rsp.Err())
+		maxVal, err = rsp.Float64()
+		require.NoError(t, err)
+		require.InEpsilon(t, -10.0, maxVal, 0.1, "max should be -10, not 0")
 	})
 
 	t.Run("tdigest.revrank with different arguments", func(t *testing.T) {
@@ -717,19 +942,129 @@ func tdigestTests(t *testing.T, configs util.KvrocksServerConfigs) {
 			require.EqualValues(t, expected[i], rank, "REVRANK mismatch at index %d", i)
 		}
 	})
+
+	t.Run("TDIGEST.TRIMMED_MEAN with non-existent key", func(t *testing.T) {
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN", "nonexistent", "0.1", "0.9").Err(), errMsgKeyNotExist)
+	})
+
+	t.Run("TDIGEST.TRIMMED_MEAN with empty tdigest", func(t *testing.T) {
+		emptyKey := "tdigest_empty"
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", emptyKey, "compression", "100").Err())
+
+		result := rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN", emptyKey, "0.1", "0.9")
+		require.NoError(t, result.Err())
+		require.Equal(t, "nan", result.Val())
+	})
+
+	t.Run("TDIGEST.TRIMMED_MEAN with basic data set", func(t *testing.T) {
+		key := "tdigest_basic"
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", key, "compression", "100").Err())
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", key, "1", "2", "3", "4", "5", "6", "7", "8", "9", "10").Err())
+
+		result := rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN", key, "0.1", "0.9")
+		require.NoError(t, result.Err())
+		mean, err := strconv.ParseFloat(result.Val().(string), 64)
+		require.NoError(t, err)
+		require.InDelta(t, 5.5, mean, 0.01)
+	})
+
+	t.Run("TDIGEST.TRIMMED_MEAN with no trimming", func(t *testing.T) {
+		key := "tdigest_no_trim"
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", key, "compression", "100").Err())
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", key, "1", "2", "3", "4", "5", "6", "7", "8", "9", "10").Err())
+
+		result := rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN", key, "0", "1")
+		require.NoError(t, result.Err())
+		mean, err := strconv.ParseFloat(result.Val().(string), 64)
+		require.NoError(t, err)
+		require.InDelta(t, 5.5, mean, 0.01)
+	})
+
+	t.Run("TDIGEST.TRIMMED_MEAN with skewed data", func(t *testing.T) {
+		key := "tdigest_skewed"
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", key, "compression", "100").Err())
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", key, "1", "1", "1", "1", "1", "10", "100").Err())
+
+		result := rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN", key, "0.2", "0.8")
+		require.NoError(t, result.Err())
+		mean, err := strconv.ParseFloat(result.Val().(string), 64)
+		require.NoError(t, err)
+		require.InDelta(t, 2.8, mean, 0.01)
+	})
+
+	t.Run("TDIGEST.TRIMMED_MEAN wrong number of arguments", func(t *testing.T) {
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN").Err(), errMsgWrongNumberArg)
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN", "key").Err(), errMsgWrongNumberArg)
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN", "key", "0.1").Err(), errMsgWrongNumberArg)
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN", "key", "0.1", "0.9", "extra").Err(), errMsgWrongNumberArg)
+	})
+
+	t.Run("TDIGEST.TRIMMED_MEAN invalid quantile ranges", func(t *testing.T) {
+		key := "tdigest_invalid"
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", key, "compression", "100").Err())
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", key, "1", "2", "3", "4", "5").Err())
+
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN", key, "-0.1", "0.9").Err(), errMsgLowCutQuantileRange)
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN", key, "0.1", "1.1").Err(), errMsgHighCutQuantileRange)
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN", key, "0.9", "0.1").Err(), errMsgLowCutQuantileLess)
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN", key, "0.5", "0.5").Err(), errMsgLowCutQuantileLess)
+	})
+
+	t.Run("TDIGEST.TRIMMED_MEAN invalid quantile parsing", func(t *testing.T) {
+		key := "tdigest_invalid_parse"
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", key, "compression", "100").Err())
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", key, "1", "2", "3", "4", "5").Err())
+
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN", key, "abc", "0.9").Err(), errMsgParseLowCutQuantile)
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN", key, "nan", "0.9").Err(), errMsgParseLowCutQuantile)
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN", key, "0.1", "abc").Err(), errMsgParseHighCutQuantile)
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN", key, "0.1", "nan").Err(), errMsgParseHighCutQuantile)
+	})
+
+	t.Run("TDIGEST.TRIMMED_MEAN with single value", func(t *testing.T) {
+		key := "tdigest_single"
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", key, "compression", "100").Err())
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", key, "42", "42").Err())
+
+		result := rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN", key, "0.1", "0.9")
+		require.NoError(t, result.Err())
+		mean, err := strconv.ParseFloat(result.Val().(string), 64)
+		require.NoError(t, err)
+		require.InDelta(t, 42.0, mean, 0.01)
+	})
+
+	t.Run("TDIGEST.TRIMMED_MEAN with extreme trimming", func(t *testing.T) {
+		key := "tdigest_extreme"
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", key, "compression", "100").Err())
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", key, "1", "2", "3", "4", "5", "6", "7", "8", "9", "10").Err())
+
+		result := rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN", key, "0.4", "0.6")
+		require.NoError(t, result.Err())
+		mean, err := strconv.ParseFloat(result.Val().(string), 64)
+		require.NoError(t, err)
+		require.InDelta(t, 5.5, mean, 0.01)
+	})
+
+	t.Run("TDIGEST.TRIMMED_MEAN with nearly equal quantiles", func(t *testing.T) {
+		key := "tdigest_nearly_equal"
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", key, "compression", "1000").Err())
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", key, "1", "2", "3", "4", "5", "6", "7", "8", "9", "10").Err())
+
+		result := rdb.Do(ctx, "TDIGEST.TRIMMED_MEAN", key, "0.5", "0.5000000001")
+		require.NoError(t, result.Err())
+		require.Equal(t, "6", result.Val())
+	})
 }
 
 func TestTDigestByRankAndByRevRank(t *testing.T) {
 	configOptions := []util.ConfigOptions{
 		{
-			Name:       "txn-context-enabled",
-			Options:    []string{"yes", "no"},
-			ConfigType: util.YesNo,
+			Name:    "txn-context-enabled",
+			Options: []string{"yes", "no"},
 		},
 		{
-			Name:       "resp3-enabled",
-			Options:    []string{"yes", "no"},
-			ConfigType: util.YesNo,
+			Name:    "resp3-enabled",
+			Options: []string{"yes", "no"},
 		},
 	}
 

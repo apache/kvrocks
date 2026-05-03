@@ -93,6 +93,16 @@ const std::vector<ConfigEnum<BlockCacheType>> cache_types{[] {
 const std::vector<ConfigEnum<MigrationType>> migration_types{{"redis-command", MigrationType::kRedisCommand},
                                                              {"raw-key-value", MigrationType::kRawKeyValue}};
 
+const std::vector<ConfigEnum<HashSubkeyEncodingMode>> hash_subkey_encoding_modes{
+    {"legacy", HashSubkeyEncodingMode::kLegacy},
+    {"field-expiration", HashSubkeyEncodingMode::kFieldExpiration},
+};
+
+const std::vector<ConfigEnum<HashLengthMode>> hash_length_modes{
+    {"accurate", HashLengthMode::kAccurate},
+    {"approximate", HashLengthMode::kApproximate},
+};
+
 std::string TrimRocksDbPrefix(std::string s) {
   constexpr std::string_view prefix = "rocksdb.";
   if (!util::StartsWithICase(s, prefix)) return s;
@@ -237,9 +247,15 @@ Config::Config() {
       {"redis-cursor-compatible", false, new YesNoField(&redis_cursor_compatible, true)},
       {"redis-databases", true, new IntField(&redis_databases, 0, 0, INT_MAX)},
       {"resp3-enabled", false, new YesNoField(&resp3_enabled, true)},
+      {"hash-encoding-mode", false,
+       new EnumField<HashSubkeyEncodingMode>(&hash_encoding_mode, hash_subkey_encoding_modes,
+                                             HashSubkeyEncodingMode::kLegacy)},
+      {"hash-length-mode", false,
+       new EnumField<HashLengthMode>(&hash_length_mode, hash_length_modes, HashLengthMode::kAccurate)},
       {"repl-namespace-enabled", false, new YesNoField(&repl_namespace_enabled, false)},
       {"proto-max-bulk-len", false,
-       new IntWithUnitField<uint64_t>(&proto_max_bulk_len, std::to_string(512 * MiB), 1 * MiB, UINT64_MAX)},
+       new IntWithUnitField<uint64_t>(&proto_max_bulk_len, std::to_string(512 * MiB), 1 * MiB,
+                                      4ULL * 1024 * 1024 * 1024)},
       {"json-max-nesting-depth", false, new IntField(&json_max_nesting_depth, 1024, 0, INT_MAX)},
       {"json-storage-format", false,
        new EnumField<JsonStorageFormat>(&json_storage_format, json_storage_formats, JsonStorageFormat::JSON)},
@@ -253,6 +269,10 @@ Config::Config() {
        new EnumField<rocksdb::CompressionType>(&rocks_db.compression, compression_types,
                                                rocksdb::CompressionType::kNoCompression)},
       {"rocksdb.compression_level", true, new IntField(&rocks_db.compression_level, 32767, INT_MIN, INT_MAX)},
+      {"rocksdb.compression_max_dict_bytes", true,
+       new UInt32Field(&rocks_db.compression_max_dict_bytes, 0, 0, UINT32_MAX)},
+      {"rocksdb.compression_zstd_max_train_bytes", true,
+       new UInt32Field(&rocks_db.compression_zstd_max_train_bytes, 0, 0, UINT32_MAX)},
       {"rocksdb.compression_start_level", false,
        new IntField(&rocks_db.compression_start_level, 2, 0, KVROCKS_MAX_LSM_LEVEL - 1)},
       {"rocksdb.block_size", true, new IntField(&rocks_db.block_size, 16384, 0, INT_MAX)},
@@ -262,8 +282,8 @@ Config::Config() {
       {"rocksdb.min_write_buffer_number_to_merge", false,
        new IntField(&rocks_db.min_write_buffer_number_to_merge, 1, 1, 256)},
       {"rocksdb.target_file_size_base", false, new IntField(&rocks_db.target_file_size_base, 128, 1, 1024)},
-      {"rocksdb.max_background_compactions", false, new IntField(&rocks_db.max_background_compactions, 2, -1, 32)},
-      {"rocksdb.max_background_flushes", true, new IntField(&rocks_db.max_background_flushes, 2, -1, 32)},
+      {"rocksdb.max_background_compactions", false, new IntField(&rocks_db.max_background_compactions, -1, -1, 32)},
+      {"rocksdb.max_background_flushes", true, new IntField(&rocks_db.max_background_flushes, -1, -1, 32)},
       {"rocksdb.max_subcompactions", false, new IntField(&rocks_db.max_subcompactions, 2, 0, 16)},
       {"rocksdb.delayed_write_rate", false, new Int64Field(&rocks_db.delayed_write_rate, 0, 0, INT64_MAX)},
       {"rocksdb.wal_compression", true,

@@ -66,6 +66,63 @@ TEST(Metadata, EncodeAndDecode) {
   ASSERT_EQ(list_md, list_md1);
 }
 
+TEST(HashMetadata, DecodeLegacyMetadataWithoutExtensions) {
+  Metadata legacy_md(kRedisHash, false);
+  legacy_md.expire = 123000;
+  legacy_md.version = 99;
+  legacy_md.size = 7;
+
+  std::string encoded_bytes;
+  legacy_md.Encode(&encoded_bytes);
+
+  HashMetadata decoded(false, HashSubkeyEncodingMode::kFieldExpiration);
+  ASSERT_TRUE(decoded.Decode(encoded_bytes).ok());
+  EXPECT_EQ(decoded.expire, legacy_md.expire);
+  EXPECT_EQ(decoded.version, legacy_md.version);
+  EXPECT_EQ(decoded.size, legacy_md.size);
+  EXPECT_EQ(decoded.mode, HashSubkeyEncodingMode::kLegacy);
+  EXPECT_EQ(decoded.expsz, 0);
+  EXPECT_EQ(decoded.lower, 0);
+  EXPECT_EQ(decoded.upper, 0);
+}
+
+TEST(HashMetadata, EncodeAndDecodeWithExtensions) {
+  HashMetadata metadata(false, HashSubkeyEncodingMode::kFieldExpiration);
+  metadata.expire = 123000;
+  metadata.version = 9;
+  metadata.size = 11;
+  metadata.expsz = 3;
+  metadata.lower = 1000;
+  metadata.upper = 2000;
+
+  std::string encoded_bytes;
+  metadata.Encode(&encoded_bytes);
+
+  HashMetadata decoded(false);
+  ASSERT_TRUE(decoded.Decode(encoded_bytes).ok());
+  EXPECT_EQ(decoded.expire, metadata.expire);
+  EXPECT_EQ(decoded.version, metadata.version);
+  EXPECT_EQ(decoded.size, metadata.size);
+  EXPECT_EQ(decoded.mode, HashSubkeyEncodingMode::kFieldExpiration);
+  EXPECT_EQ(decoded.expsz, metadata.expsz);
+  EXPECT_EQ(decoded.lower, metadata.lower);
+  EXPECT_EQ(decoded.upper, metadata.upper);
+}
+
+TEST(HashMetadata, EncodeAndDecodeSubkeyValueWithFieldExpirationMode) {
+  HashMetadata metadata(false, HashSubkeyEncodingMode::kFieldExpiration);
+  constexpr uint64_t expire = 123456789;
+
+  std::string encoded = metadata.EncodeSubkeyValue("value", expire);
+  EXPECT_EQ(encoded.size(), HashMetadata::kFieldExpirationPrefixSize + std::string("value").size());
+
+  Slice decoded_value(encoded);
+  uint64_t decoded_expire = 0;
+  ASSERT_TRUE(metadata.DecodeSubkeyValue(&decoded_value, &decoded_expire).ok());
+  EXPECT_EQ(decoded_value.ToStringView(), "value");
+  EXPECT_EQ(decoded_expire, expire);
+}
+
 class RedisTypeTest : public TestBase {
  public:
   RedisTypeTest() {

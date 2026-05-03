@@ -8,12 +8,17 @@ While working on Apache Kvrocks, please remember:
 - Only add meaningful comments when the code's behavior is difficult to understand.
 - Add or update tests to cover externally observable behavior and regressions when you change or add functionality.
 - Always run the formatter before submitting changes.
+- For non-trivial behavior, storage format, replication, or cluster changes, first look for an existing issue, discussion, or mailing list context before implementing.
 
 ## Build and Development Commands
 
 ### Building
 
 ```bash
+# Configure with Ninja when you want faster incremental builds.
+# The default generator is Makefiles unless --ninja is specified.
+./x.py build --ninja
+
 # Build kvrocks and utilities
 ./x.py build                    # Build to ./build directory
 ./x.py build -j N               # Build with N parallel jobs
@@ -30,6 +35,8 @@ While working on Apache Kvrocks, please remember:
 ./x.py fetch-deps               # Fetch dependency archives
 ```
 
+If the build directory was configured with Ninja, prefer incremental rebuilds like `cd build && ninja -j16 kvrocks` instead of re-running CMake.
+
 ### Testing
 
 ```bash
@@ -40,8 +47,9 @@ While working on Apache Kvrocks, please remember:
 # Run Go integration tests
 ./x.py test go
 
-# Run specific Go test by path
-./x.py test go tests/gocase/unit/...
+# Re-run a specific Go test name.
+# x.py test go currently forwards extra flags to "go test" but still runs "./...".
+./x.py test go build -run TestKMetadata
 ```
 
 ### Lint
@@ -159,7 +167,10 @@ Common scopes: `server`, `storage`, `commands`, `cluster`, `search`, `types`, `r
 ## Important Notes
 
 - Kvrocks aims for Redis protocol compatibility; always verify behavior against Redis when implementing or fixing commands.
-- All changes must pass `./x.py check format` and `./x.py check tidy`.
+- All changes must pass `./x.py check format`, and you should run `./x.py check tidy`, `./x.py check golangci-lint`, and the relevant tests when the touched code requires them.
 - Don't change public command behavior unless requested.
 - RocksDB is the core storage dependency; be cautious with storage-layer changes.
 - Adding a new column family breaks forward compatibility; avoid this if possible and prefer using existing column families.
+- Prefer focused patches over broad refactors when contributing.
+- Some website or documentation tasks may belong in the separate website repository rather than this repository.
+- If AI assistance is used, keep the generated changes reviewable and be able to explain and defend the final patch.

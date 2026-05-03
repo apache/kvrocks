@@ -377,6 +377,78 @@ TEST_F(ClusterTest, ClusterParseSlotRanges) {
   }
 }
 
+TEST_F(ClusterTest, ClusterSetNodesWithFailFlag) {
+  auto config = storage_->GetConfig();
+  config->workers = 0;
+  Server server(storage_.get(), config);
+  server.Stop();
+  server.Join();
+
+  Cluster cluster(&server, {"127.0.0.1"}, 30002);
+
+  // "slave,fail" must be accepted as a valid role (same 5-field format as plain "slave")
+  const std::string nodes_fail_slave =
+      "07c37dfeb235213a872192d90877d0cd55635b91 127.0.0.1 30004 "
+      "slave,fail e7d1eecce10fd6bb5eb35b9f99a514335d9ba9ca\n"
+      "67ed2db8d677e59ec4a4cefb06858cf2a1a89fa1 127.0.0.1 30002 "
+      "master - 5461-10922";
+  Status s = cluster.SetClusterNodes(nodes_fail_slave, 1, false);
+  ASSERT_TRUE(s.IsOK());
+  ASSERT_EQ(1, cluster.GetVersion());
+
+  // CLUSTER NODES output must expose the "fail" flag for the failed slave
+  std::string output_nodes;
+  s = cluster.GetClusterNodes(&output_nodes);
+  ASSERT_TRUE(s.IsOK());
+
+  bool found_slave = false;
+  for (const auto &vnode : util::Split(output_nodes, "\n")) {
+    std::vector<std::string> f = util::Split(vnode, " ");
+    if (f[0] == "07c37dfeb235213a872192d90877d0cd55635b91") {
+      found_slave = true;
+      ASSERT_EQ(8u, f.size());
+      ASSERT_EQ("slave,fail", f[2]);
+      ASSERT_EQ("e7d1eecce10fd6bb5eb35b9f99a514335d9ba9ca", f[3]);
+      ASSERT_EQ("disconnected", f[7]);
+    }
+  }
+  ASSERT_TRUE(found_slave);
+}
+
+TEST_F(ClusterTest, ClusterGetNodesOnlineSlaveHasNoFailFlag) {
+  auto config = storage_->GetConfig();
+  config->workers = 0;
+  Server server(storage_.get(), config);
+  server.Stop();
+  server.Join();
+
+  // Plain "slave" (no fail flag) must not produce a "fail" flag in CLUSTER NODES output
+  const std::string nodes =
+      "07c37dfeb235213a872192d90877d0cd55635b91 127.0.0.1 30004 "
+      "slave e7d1eecce10fd6bb5eb35b9f99a514335d9ba9ca\n"
+      "67ed2db8d677e59ec4a4cefb06858cf2a1a89fa1 127.0.0.1 30002 "
+      "master - 5461-10922";
+
+  Cluster cluster(&server, {"127.0.0.1"}, 30002);
+  Status s = cluster.SetClusterNodes(nodes, 1, false);
+  ASSERT_TRUE(s.IsOK());
+
+  std::string output_nodes;
+  s = cluster.GetClusterNodes(&output_nodes);
+  ASSERT_TRUE(s.IsOK());
+
+  bool found_slave = false;
+  for (const auto &vnode : util::Split(output_nodes, "\n")) {
+    std::vector<std::string> f = util::Split(vnode, " ");
+    if (f[0] == "07c37dfeb235213a872192d90877d0cd55635b91") {
+      found_slave = true;
+      ASSERT_EQ(8u, f.size());
+      ASSERT_EQ("slave", f[2]);
+    }
+  }
+  ASSERT_TRUE(found_slave);
+}
+
 TEST_F(ClusterTest, GetReplicas) {
   auto config = storage_->GetConfig();
   // don't start workers

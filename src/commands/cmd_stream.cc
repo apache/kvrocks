@@ -115,10 +115,10 @@ class CommandXAdd : public Commander {
         }
 
         size_t max_len_idx = 0;
-        bool eq_sign_found = false;
-        if (args[i + 1] == "=") {
+        bool modifier_found = false;
+        if (args[i + 1] == "=" || args[i + 1] == "~") {
           max_len_idx = i + 2;
-          eq_sign_found = true;
+          modifier_found = true;
         } else {
           max_len_idx = i + 1;
         }
@@ -135,7 +135,7 @@ class CommandXAdd : public Commander {
         max_len_ = *parse_result;
         with_max_len_ = true;
 
-        i += eq_sign_found ? 3 : 2;
+        i += modifier_found ? 3 : 2;
         continue;
       }
 
@@ -145,10 +145,10 @@ class CommandXAdd : public Commander {
         }
 
         size_t min_id_idx = 0;
-        bool eq_sign_found = false;
-        if (args[i + 1] == "=") {
+        bool modifier_found = false;
+        if (args[i + 1] == "=" || args[i + 1] == "~") {
           min_id_idx = i + 2;
-          eq_sign_found = true;
+          modifier_found = true;
         } else {
           min_id_idx = i + 1;
         }
@@ -161,7 +161,7 @@ class CommandXAdd : public Commander {
         if (!s.IsOK()) return s;
 
         with_min_id_ = true;
-        i += eq_sign_found ? 3 : 2;
+        i += modifier_found ? 3 : 2;
         continue;
       }
 
@@ -566,17 +566,13 @@ class CommandXGroup : public Commander {
     }
 
     if (subcommand_ == "destroy") {
-      uint64_t delete_cnt = 0;
-      auto s = stream_db.DestroyGroup(ctx, stream_name_, group_name_, &delete_cnt);
+      bool destroyed = false;
+      auto s = stream_db.DestroyGroup(ctx, stream_name_, group_name_, &destroyed);
       if (!s.ok()) {
         return {Status::RedisExecErr, s.ToString()};
       }
 
-      if (delete_cnt > 0) {
-        *output = redis::Integer(1);
-      } else {
-        *output = redis::Integer(0);
-      }
+      *output = redis::Integer(destroyed ? 1 : 0);
     }
 
     if (subcommand_ == "createconsumer") {
@@ -857,21 +853,48 @@ class CommandXPending : public Commander {
     }
 
     if (parser.Good()) {
-      std::string start_id, end_id;
-      start_id = GET_OR_RET(parser.TakeStr());
-      end_id = GET_OR_RET(parser.TakeStr());
-      if (start_id != "-") {
-        auto s = ParseStreamEntryID(start_id, &options_.start_id);
+      const std::string start_str = GET_OR_RET(parser.TakeStr());
+      const std::string end_str = GET_OR_RET(parser.TakeStr());
+
+      // Extended XPENDING uses the same ID range rules as XRANGE (see Redis documentation).
+      if (start_str == "-") {
+        options_.start_id = StreamEntryID::Minimum();
+        options_.exclude_start = false;
+      } else if (!start_str.empty() && start_str[0] == '(') {
+        options_.exclude_start = true;
+        auto s = ParseRangeStart(start_str.substr(1), &options_.start_id);
         if (!s.IsOK()) {
           return s;
         }
+      } else if (start_str == "+") {
+        options_.start_id = StreamEntryID::Maximum();
+        options_.exclude_start = false;
+      } else {
+        auto s = ParseRangeStart(start_str, &options_.start_id);
+        if (!s.IsOK()) {
+          return s;
+        }
+        options_.exclude_start = false;
       }
 
-      if (end_id != "+") {
-        auto s = ParseStreamEntryID(start_id, &options_.end_id);
+      if (end_str == "+") {
+        options_.end_id = StreamEntryID::Maximum();
+        options_.exclude_end = false;
+      } else if (!end_str.empty() && end_str[0] == '(') {
+        options_.exclude_end = true;
+        auto s = ParseRangeEnd(end_str.substr(1), &options_.end_id);
         if (!s.IsOK()) {
           return s;
         }
+      } else if (end_str == "-") {
+        options_.end_id = StreamEntryID::Minimum();
+        options_.exclude_end = false;
+      } else {
+        auto s = ParseRangeEnd(end_str, &options_.end_id);
+        if (!s.IsOK()) {
+          return s;
+        }
+        options_.exclude_end = false;
       }
 
       options_.count = GET_OR_RET(parser.TakeInt<uint64_t>());
@@ -1734,18 +1757,18 @@ class CommandXReadGroup : public Commander,
 class CommandXTrim : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    bool eq_sign_found = false;
+    bool modifier_found = false;
 
     auto trim_strategy = util::ToLower(args[2]);
     if (trim_strategy == "maxlen") {
       strategy_ = StreamTrimStrategy::MaxLen;
 
       size_t max_len_idx = 0;
-      if (args[3] != "=") {
+      if (args[3] != "=" && args[3] != "~") {
         max_len_idx = 3;
       } else {
         max_len_idx = 4;
-        eq_sign_found = true;
+        modifier_found = true;
       }
 
       if (max_len_idx >= args.size()) {
@@ -1762,11 +1785,11 @@ class CommandXTrim : public Commander {
       strategy_ = StreamTrimStrategy::MinID;
 
       size_t min_id_idx = 0;
-      if (args[3] != "=") {
+      if (args[3] != "=" && args[3] != "~") {
         min_id_idx = 3;
       } else {
         min_id_idx = 4;
-        eq_sign_found = true;
+        modifier_found = true;
       }
 
       if (min_id_idx >= args.size()) {
@@ -1782,7 +1805,7 @@ class CommandXTrim : public Commander {
     }
 
     bool limit_option_found = false;
-    if (eq_sign_found) {
+    if (modifier_found) {
       if (args.size() > 6 && util::ToLower(args[5]) == "limit") {
         limit_option_found = true;
       }
@@ -1891,7 +1914,7 @@ REDIS_REGISTER_COMMANDS(Stream, MakeCmdAttr<CommandXAck>("xack", -4, "write no-d
                         MakeCmdAttr<CommandXInfo>("xinfo", -2, "read-only", NO_KEY),
                         MakeCmdAttr<CommandXPending>("xpending", -3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandXRange>("xrange", -4, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandXRevRange>("xrevrange", -2, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandXRevRange>("xrevrange", -4, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandXRead>("xread", -4, "read-only blocking", CommandXRead::keyRangeGen),
                         MakeCmdAttr<CommandXReadGroup>("xreadgroup", -7, "write blocking",
                                                        CommandXReadGroup::keyRangeGen),

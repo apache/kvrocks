@@ -28,6 +28,7 @@ refer to https://github.com/apache/arrow/blob/27bbd593625122a4a25d9471c8aaf5df54
 #include <fmt/format.h>
 
 #include <algorithm>
+#include <initializer_list>
 #include <iterator>
 #include <queue>
 
@@ -355,6 +356,8 @@ class TDigest {
   void Merge(const std::vector<TDigest>& others);
   void Add(const std::vector<double>& items);
   void Reset(const CentroidsWithDelta& centroid_list);
+  // Callers must explicitly specify the initial state to reset to; implicit initialization like Reset({}) is forbidden.
+  void Reset(std::initializer_list<CentroidsWithDelta>) = delete;
   void Reset();
   CentroidsWithDelta DumpCentroids() const;
 
@@ -362,7 +365,7 @@ class TDigest {
   TDigestImpl impl_;
 };
 
-TDigest::TDigest(uint64_t delta) : impl_(TDigestImpl(delta)) { Reset({}); }
+TDigest::TDigest(uint64_t delta) : impl_(TDigestImpl(delta)) { Reset(); }
 
 void TDigest::Merge(const std::vector<TDigest>& others) {
   if (others.empty()) {

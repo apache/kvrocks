@@ -22,8 +22,10 @@
 #include <gtest/gtest.h>
 #include <status.h>
 #include <storage/storage.h>
+#include <unistd.h>
 
 #include <filesystem>
+#include <fstream>
 
 TEST(Storage, CreateBackup) {
   std::error_code ec;
@@ -102,4 +104,28 @@ TEST(Storage, ReadOnlyTransactions) {
 
   std::filesystem::remove_all(config.db_dir, ec);
   ASSERT_TRUE(!ec);
+}
+
+TEST(Storage, RocksDBDictionaryCompressionOptions) {
+  const char *path = "test_storage_options.conf";
+  unlink(path);
+
+  std::ofstream output_file(path, std::ios::out);
+  output_file << "rocksdb.compression_max_dict_bytes 16384\n";
+  output_file << "rocksdb.compression_zstd_max_train_bytes 262144\n";
+  output_file.close();
+
+  Config config;
+  ASSERT_TRUE(config.Load(CLIOptions(path)).IsOK());
+  config.db_dir = "test_storage_options_dir";
+
+  auto storage = std::make_unique<engine::Storage>(&config);
+  auto s = storage->Open();
+  ASSERT_TRUE(s.IsOK());
+
+  const auto options = storage->GetDB()->GetOptions();
+  EXPECT_EQ(options.compression_opts.max_dict_bytes, 16384U);
+  EXPECT_EQ(options.compression_opts.zstd_max_train_bytes, 262144U);
+
+  unlink(path);
 }

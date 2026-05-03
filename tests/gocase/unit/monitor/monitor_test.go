@@ -34,7 +34,7 @@ func TestMonitor(t *testing.T) {
 	defer srv.Close()
 
 	ctx := context.Background()
-	rdb := srv.NewClient()
+	rdb := srv.NewClientWithOption(&redis.Options{DisableIdentity: true})
 	defer func() { require.NoError(t, rdb.Close()) }()
 
 	t.Run("MONITOR can log executed commands", func(t *testing.T) {
@@ -85,7 +85,8 @@ func TestMonitorRedactPassword(t *testing.T) {
 	c.MustRead(t, "+OK")
 
 	rdb := srv.NewClientWithOption(&redis.Options{
-		Password: "testpass",
+		Password:        "testpass",
+		DisableIdentity: true,
 	})
 	defer func() { require.NoError(t, rdb.Close()) }()
 

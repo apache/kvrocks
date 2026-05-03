@@ -197,10 +197,10 @@ rocksdb::Status String::DelEX(engine::Context &ctx, const std::string &user_key,
       matched = true;
       break;
     case DelExOption::IFDEQ:
-      matched = option.value == util::StringDigest(val);
+      matched = util::EqualICase(option.value, util::StringDigest(val));
       break;
     case DelExOption::IFDNE:
-      matched = option.value != util::StringDigest(val);
+      matched = !util::EqualICase(option.value, util::StringDigest(val));
       break;
     case DelExOption::IFEQ:
       matched = option.value == val;
@@ -430,7 +430,7 @@ rocksdb::Status String::IncrByFloat(engine::Context &ctx, const std::string &use
   *new_value = n;
 
   raw_value = raw_value.substr(0, offset);
-  raw_value.append(std::to_string(n));
+  raw_value.append(util::Float2String(n));
   return updateRawValue(ctx, ns_key, raw_value);
 }
 

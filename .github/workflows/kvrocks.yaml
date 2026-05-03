@@ -32,6 +32,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.number || github.run_id }}
   cancel-in-progress: true
 
+env:
+  KVROCKS_DEPS_CACHE_DIR: build-deps
+
 jobs:
   precondition:
     name: Precondition
@@ -39,8 +42,8 @@ jobs:
     outputs:
       docs_only: ${{ steps.result.outputs.docs_only }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36
+      - uses: actions/checkout@v6
+      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d
         id: changes
         with:
           filters: .github/config/changes.yml
@@ -56,12 +59,12 @@ jobs:
     env:
       FORCE_COLOR: 1
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Check typos
-        uses: crate-ci/typos@v1.43.1
+        uses: crate-ci/typos@v1.46.0
         with:
           config: .github/config/typos.toml
-      - uses: apache/skywalking-eyes/header@v0.7.0
+      - uses: apache/skywalking-eyes/header@v0.8.0
         with:
           config: .github/config/licenserc.yml
 
@@ -71,13 +74,27 @@ jobs:
     if: ${{ needs.precondition.outputs.docs_only != 'true' }}
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v6
+      - name: Restore Kvrocks dependency cache
+        id: cache-kvrocks-deps
+        uses: actions/cache@v5
+        with:
+          path: ${{ env.KVROCKS_DEPS_CACHE_DIR }}
+          key: kvrocks-full-deps-${{ hashFiles('x.py', 'CMakeLists.txt', 'cmake/**/*.cmake') }}
+          enableCrossOsArchive: true
+      - name: Fetch Kvrocks dependencies
+        if: ${{ steps.cache-kvrocks-deps.outputs.cache-hit != 'true' }}
+        run: |
+          ./x.py fetch-deps ${{ env.KVROCKS_DEPS_CACHE_DIR }}
+          ./x.py fetch-deps ${{ env.KVROCKS_DEPS_CACHE_DIR }} -D ENABLE_LUAJIT=OFF
+      - uses: actions/setup-go@v6
         with:
           go-version-file: 'tests/gocase/go.mod'
           cache: false
       - name: Prepare Dependencies
         run: |
+          wget --max-redirect=0 -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
+          echo "deb https://apt.llvm.org/$(lsb_release -cs)/ llvm-toolchain-$(lsb_release -cs)-18 main" | sudo tee /etc/apt/sources.list.d/llvm.list
           sudo apt update
           sudo apt install -y clang-format-18 clang-tidy-18
       - name: Check with clang-format
@@ -85,7 +102,7 @@ jobs:
         run: ./x.py check format --clang-format-path clang-format-18
       - name: Check with clang-tidy
         run: |
-          ./x.py build --skip-build
+          ./x.py build --skip-build --dep-dir ${{ env.KVROCKS_DEPS_CACHE_DIR }}
           ./x.py check tidy -j $(nproc) --clang-tidy-path clang-tidy-18 --run-clang-tidy-path run-clang-tidy-18
       - name: Lint with golangci-lint
         run: ./x.py check golangci-lint
@@ -96,7 +113,7 @@ jobs:
           git diff -p > clang-format.patch
           cat clang-format.patch
       - name: Upload format patch
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always() && steps.check-format.outcome != 'success'
         with:
           path: clang-format.patch
@@ -261,7 +278,7 @@ jobs:
         # Cmake 4.0 has the compatibility issue, just pin it to 3.31.
         # See https://github.com/actions/runner-images/issues/11926.
         run: |
-          pipx install --force cmake==3.31
+          pipx install --force 'cmake>=3.31,<4'
 
       - name: Setup Linux
         if: ${{ startsWith(matrix.os, 'ubuntu') || matrix.arm_linux }}
@@ -291,18 +308,18 @@ jobs:
 
       - name: Cache redis
         id: cache-redis
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/local/bin/redis-cli
-          key: ${{ runner.os }}-${{ runner.arch }}-redis-cli
+          key: ${{ matrix.os }}-redis-cli
       - name: Cache redis server
         id: cache-redis-server
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/local/bin/redis-server
-          key: ${{ runner.os }}-${{ runner.arch }}-redis-server
+          key: ${{ matrix.os }}-redis-server
       - name: Install redis
         if: ${{ steps.cache-redis.outputs.cache-hit != 'true' || steps.cache-redis-server.outputs.cache-hit != 'true' }}
         run: |
@@ -312,14 +329,20 @@ jobs:
           pushd redis-6.2.14 && BUILD_TLS=yes make -j$NPROC redis-cli && mv src/redis-cli $HOME/local/bin/ && popd
           pushd redis-6.2.14 && BUILD_TLS=yes make -j$NPROC redis-server && mv src/redis-server $HOME/local/bin/ && popd
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - uses: actions/setup-python@v5
+      - name: Restore Kvrocks dependency cache
+        uses: actions/cache@v5
+        with:
+          path: ${{ env.KVROCKS_DEPS_CACHE_DIR }}
+          key: kvrocks-full-deps-${{ hashFiles('x.py', 'CMakeLists.txt', 'cmake/**/*.cmake') }}
+          enableCrossOsArchive: true
+      - uses: actions/setup-python@v6
         if: ${{ !matrix.arm_linux }}
         with:
           python-version: 3.x
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: 'tests/gocase/go.mod'
           cache: false
@@ -329,7 +352,7 @@ jobs:
         if: ${{ matrix.sonarcloud }}
 
       - name: Install Build Wrapper
-        uses: SonarSource/sonarqube-scan-action/install-build-wrapper@v6.0.0
+        uses: SonarSource/sonarqube-scan-action/install-build-wrapper@a31c9398be7ace6bbfaf30c0bd5d415f843d45e9
         if: ${{ matrix.sonarcloud }}
 
       - name: Build Kvrocks
@@ -337,19 +360,19 @@ jobs:
         run: |
           ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.without_jemalloc }} \
             ${{ matrix.without_luajit }} ${{ matrix.with_ninja }} ${{ matrix.with_sanitizer }} ${{ matrix.with_openssl }} \
-            ${{ matrix.new_encoding }} ${{ env.CMAKE_EXTRA_DEFS }}
+            ${{ matrix.new_encoding }} ${{ env.CMAKE_EXTRA_DEFS }} --dep-dir ${{ env.KVROCKS_DEPS_CACHE_DIR }}
 
       - name: Build Kvrocks (SonarCloud)
         if: ${{ matrix.sonarcloud }}
         run: |
-          build-wrapper-linux-x86-64 --out-dir ${{ env.SONARCLOUD_OUTPUT_DIR }} ./x.py build -j$NPROC --compiler ${{ matrix.compiler }}  --skip-build
+          build-wrapper-linux-x86-64 --out-dir ${{ env.SONARCLOUD_OUTPUT_DIR }} ./x.py build -j$NPROC --compiler ${{ matrix.compiler }} --skip-build --dep-dir ${{ env.KVROCKS_DEPS_CACHE_DIR }}
           cp -r build _build
-          build-wrapper-linux-x86-64 --out-dir ${{ env.SONARCLOUD_OUTPUT_DIR }} ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.sonarcloud }}
+          build-wrapper-linux-x86-64 --out-dir ${{ env.SONARCLOUD_OUTPUT_DIR }} ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.sonarcloud }} --dep-dir ${{ env.KVROCKS_DEPS_CACHE_DIR }}
 
       - name: Build Kvrocks (RISC-V)
         if: ${{ matrix.riscv_toolchain }}
         run: |
-          ./x.py build -j$NPROC --unittest --toolchain ${{ matrix.toolchain_file }}
+          ./x.py build -j$NPROC --unittest --toolchain ${{ matrix.toolchain_file }} --dep-dir ${{ env.KVROCKS_DEPS_CACHE_DIR }}
 
       - name: Setup Coredump
         if: ${{ startsWith(matrix.os, 'ubuntu') }}
@@ -425,7 +448,7 @@ jobs:
             exit 1
           fi
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: ${{ failure() && startsWith(matrix.os, 'ubuntu') }}
         with:
           name: kvrocks-coredumps-${{ matrix.name }}
@@ -447,7 +470,7 @@ jobs:
       
       - name: Upload SonarCloud data
         if: ${{ matrix.sonarcloud }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: sonarcloud-data
           path: |
@@ -463,10 +486,10 @@ jobs:
       matrix:
         os: [ubuntu-24.04, ubuntu-24.04-arm]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Get core numbers
         run: echo "NPROC=$(nproc)" >> $GITHUB_ENV
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294
         with:
           context: .
           build-args: MORE_BUILD_ARGS=-j${{ env.NPROC }}
@@ -502,6 +525,8 @@ jobs:
           - name: ArchLinux
             image: archlinux:base
             compiler: gcc
+            # FIXME: enable this when https://github.com/jemalloc/jemalloc/pull/2900 is released
+            disable_jemalloc: -DDISABLE_JEMALLOC=ON
           - name: Rocky Linux 8
             image: rockylinux:8
             compiler: gcc
@@ -591,7 +616,7 @@ jobs:
 
       - name: Cache redis
         id: cache-redis
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/local/bin/redis-cli
@@ -599,7 +624,7 @@ jobs:
 
       - name: Cache redis server
         id: cache-redis-server
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/local/bin/redis-server
@@ -615,8 +640,14 @@ jobs:
           pushd redis-6.2.14 && USE_JEMALLOC=no make -j$NPROC redis-cli && mv src/redis-cli $HOME/local/bin/ && popd
           pushd redis-6.2.14 && USE_JEMALLOC=no make -j$NPROC redis-server && mv src/redis-server $HOME/local/bin/ && popd
 
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v6
+      - name: Restore Kvrocks dependency cache
+        uses: actions/cache@v5
+        with:
+          path: ${{ env.KVROCKS_DEPS_CACHE_DIR }}
+          key: kvrocks-full-deps-${{ hashFiles('x.py', 'CMakeLists.txt', 'cmake/**/*.cmake') }}
+          enableCrossOsArchive: true
+      - uses: actions/setup-go@v6
         if: ${{ !startsWith(matrix.image, 'opensuse') }}
         with:
           go-version-file: 'tests/gocase/go.mod'
@@ -624,7 +655,7 @@ jobs:
 
       - name: Build Kvrocks
         run: |
-          ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.disable_jemalloc }}
+          ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.disable_jemalloc }} --dep-dir ${{ env.KVROCKS_DEPS_CACHE_DIR }}
 
       - name: Run Unit Test
         run: |
@@ -676,7 +707,8 @@ jobs:
         if: ${{ needs.precondition.outputs.docs_only != 'true' }}
         run: |
           if [[ ! ( \
-                   "${{ needs.build-and-test.result }}" == "success" \
+                   "${{ needs.check-and-lint.result }}" == "success" \
+                && "${{ needs.build-and-test.result }}" == "success" \
                 && "${{ needs.build-and-test-in-container.result }}" == "success" \
                 && "${{ needs.check-docker.result }}" == "success" \
                ) ]]; then

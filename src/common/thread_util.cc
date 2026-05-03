@@ -23,6 +23,11 @@
 #include <fmt/std.h>
 #include <pthread.h>
 
+#ifdef __APPLE__
+#include <mach/mach.h>
+#include <mach/thread_act.h>
+#endif
+
 namespace util {
 
 void ThreadSetName(const char *name) {
@@ -32,6 +37,43 @@ void ThreadSetName(const char *name) {
   pthread_setname_np(pthread_self(), name);
 #endif
 }
+
+#ifdef __APPLE__
+double ThreadGetCPUTime(std::thread::native_handle_type thread_id) {
+  if (!thread_id) {
+    return 0.0;
+  }
+
+  mach_port_t mach_thread = pthread_mach_thread_np(thread_id);
+
+  thread_basic_info_data_t info;
+  mach_msg_type_number_t count = THREAD_BASIC_INFO_COUNT;
+
+  if (thread_info(mach_thread, THREAD_BASIC_INFO, (thread_info_t)&info, &count) != KERN_SUCCESS) {
+    return 0.0;
+  }
+
+  return (static_cast<double>(info.user_time.seconds) + static_cast<double>(info.user_time.microseconds) / 1e6) +
+         (static_cast<double>(info.system_time.seconds) + static_cast<double>(info.system_time.microseconds) / 1e6);
+}
+#else
+double ThreadGetCPUTime(std::thread::native_handle_type thread_id) {
+  if (!thread_id) {
+    return 0.0;
+  }
+
+  clockid_t clock_id = 0;
+  if (pthread_getcpuclockid(thread_id, &clock_id) != 0) {
+    return 0.0;
+  }
+
+  timespec ts;
+  if (clock_gettime(clock_id, &ts) != 0) {
+    return 0.0;
+  }
+  return static_cast<double>(ts.tv_sec) + static_cast<double>(ts.tv_nsec) / 1e9;
+}
+#endif
 
 template <void (std::thread::*F)(), typename... Args>
 Status ThreadOperationImpl(std::thread &t, const char *op, Args &&...args) {

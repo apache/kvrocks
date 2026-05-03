@@ -19,19 +19,13 @@ include_guard()
 
 include(cmake/utils.cmake)
 
-FetchContent_DeclareGitHubWithMirror(tbb
-  uxlfoundation/oneTBB v2023.0.0
-  MD5=e2e82997a27a60743cdfd9bde8d613d4
+FetchContent_DeclareGitHubWithMirror(fast_float
+  fastfloat/fast_float v8.2.5
+  MD5=bccfd5f1338be8a02a2ffc553aecce98
 )
 
-FetchContent_MakeAvailableWithArgs(tbb
-  TBB_STRICT=OFF
-  TBB_TEST=OFF
-  TBB_EXAMPLES=OFF
-  TBBMALLOC_BUILD=OFF
-  BUILD_SHARED_LIBS=OFF
+FetchContent_MakeAvailableWithArgs(fast_float
+  FASTFLOAT_TEST=OFF
+  FASTFLOAT_BENCHMARKS=OFF
+  FASTFLOAT_INSTALL=OFF
 )
-
-if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 12)
-    target_compile_options(tbb PRIVATE "-Wno-error=stringop-overflow")
-endif()

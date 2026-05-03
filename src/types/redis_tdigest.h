@@ -53,6 +53,10 @@ struct TDigestQuantitleResult {
   std::optional<std::vector<double>> quantiles;
 };
 
+struct TDigestTrimmedMeanResult {
+  std::optional<double> mean;
+};
+
 class TDigest : public SubKeyScanner {
  public:
   using Slice = rocksdb::Slice;
@@ -85,6 +89,8 @@ class TDigest : public SubKeyScanner {
                             std::vector<double>* result);
   rocksdb::Status ByRank(engine::Context& ctx, const Slice& digest_name, const std::vector<int>& inputs,
                          std::vector<double>* result);
+  rocksdb::Status TrimmedMean(engine::Context& ctx, const Slice& digest_name, double low_cut_quantile,
+                              double high_cut_quantile, TDigestTrimmedMeanResult* result);
   rocksdb::Status GetMetaData(engine::Context& context, const Slice& digest_name, TDigestMetadata* metadata);
 
  private:
@@ -118,6 +124,22 @@ class TDigest : public SubKeyScanner {
                                          const TDigestMetadata& metadata, std::vector<Centroid>* centroids,
                                          std::vector<double>* buffer,
                                          ObserverOrUniquePtr<rocksdb::WriteBatchBase>* clean_after_dump_batch);
+
+  /**
+   * @brief Get centroids for merge operation.
+   *
+   * If the tdigest has unmerged buffer, merge it first and update metadata to batch.
+   * Otherwise, just dump existing centroids.
+   * @param ctx The context of the operation.
+   * @param ns_key The namespace key of the t-digest.
+   * @param batch The write batch to store metadata updates.
+   * @param metadata The metadata of the t-digest (may be updated if buffer is merged).
+   * @param centroids The output vector to store the centroids.
+   */
+  rocksdb::Status getCentroidsForMerge(engine::Context& ctx, const std::string& ns_key,
+                                       ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch, TDigestMetadata* metadata,
+                                       std::vector<Centroid>* centroids);
+
   rocksdb::Status applyNewCentroids(ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch, const std::string& ns_key,
                                     const TDigestMetadata& metadata, const std::vector<Centroid>& centroids);
 

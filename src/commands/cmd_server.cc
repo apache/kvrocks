@@ -26,6 +26,7 @@
 #include "commander.h"
 #include "commands/scan_base.h"
 #include "common/io_util.h"
+#include "common/logging.h"
 #include "common/rdb_stream.h"
 #include "common/string_util.h"
 #include "common/time_util.h"
@@ -503,6 +504,31 @@ class CommandClient : public Commander {
       return Status::OK();
     }
 
+    if (subcommand_ == "setinfo") {
+      if (args.size() != 4) {
+        return {Status::RedisParseErr, errInvalidSyntax};
+      }
+
+      auto attr = util::ToLower(args[2]);
+
+      for (auto ch : args[3]) {
+        if (ch < '!' || ch > '~') {
+          return {Status::RedisInvalidCmd,
+                  "lib-name and lib-ver cannot contain spaces, newlines or special characters"};
+        }
+      }
+
+      if (attr == "lib-name") {
+        setinfo_lib_name_ = args[3];
+      } else if (attr == "lib-ver") {
+        setinfo_lib_ver_ = args[3];
+      } else {
+        return {Status::RedisInvalidCmd, "Unrecognized option '" + args[2] + "'"};
+      }
+
+      return Status::OK();
+    }
+
     if (subcommand_ == "reply") {
       if (args.size() != 3) {
         return {Status::RedisParseErr, errInvalidSyntax};
@@ -516,6 +542,34 @@ class CommandClient : public Commander {
         reply_mode_ = redis::Connection::ReplyMode::SKIP;
       } else {
         return {Status::RedisParseErr, errInvalidSyntax};
+      }
+      return Status::OK();
+    }
+
+    if (subcommand_ == "unpause") {
+      if (args.size() != 2) {
+        return {Status::RedisParseErr, errInvalidSyntax};
+      }
+      return Status::OK();
+    }
+
+    if (subcommand_ == "pause") {
+      if (args.size() < 3 || args.size() > 4) {
+        return {Status::RedisParseErr, errInvalidSyntax};
+      }
+      auto parse_result = ParseInt<uint64_t>(args[2], 10);
+      if (!parse_result) {
+        return {Status::RedisParseErr, errValueNotInteger};
+      }
+      pause_timeout_ms_ = *parse_result;
+      pause_mode_ = PauseMode::kAll;
+      if (args.size() == 4) {
+        std::string mode = util::ToLower(args[3]);
+        if (mode == "write") {
+          pause_mode_ = PauseMode::kWrite;
+        } else if (mode != "all") {
+          return {Status::RedisParseErr, errInvalidSyntax};
+        }
       }
       return Status::OK();
     }
@@ -572,7 +626,9 @@ class CommandClient : public Commander {
       }
       return Status::OK();
     }
-    return {Status::RedisInvalidCmd, "Syntax error, try CLIENT LIST|INFO|KILL ip:port|GETNAME|SETNAME|REPLY"};
+    return {Status::RedisInvalidCmd,
+            "Syntax error, try CLIENT LIST|INFO|KILL ip:port|GETNAME|SETNAME|SETINFO|REPLY|"
+            "PAUSE|UNPAUSE"};
   }
 
   Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
@@ -611,20 +667,52 @@ class CommandClient : public Commander {
         *output = redis::RESP_OK;
       }
       return Status::OK();
+    } else if (subcommand_ == "pause") {
+      if (!conn->IsAdmin()) {
+        return {Status::RedisExecErr, errAdminPermissionRequired};
+      }
+      uint64_t now_ms = util::GetTimeStampMS();
+      srv->PauseConns(now_ms + pause_timeout_ms_, pause_mode_);
+      WARN("CLIENT PAUSE executed, timeout={}ms, mode={}, addr: {}", pause_timeout_ms_,
+           pause_mode_ == PauseMode::kWrite ? "write" : "all", conn->GetAddr());
+      *output = redis::RESP_OK;
+      return Status::OK();
+    } else if (subcommand_ == "unpause") {
+      if (!conn->IsAdmin()) {
+        return {Status::RedisExecErr, errAdminPermissionRequired};
+      }
+      srv->UnpauseConns();
+      *output = redis::RESP_OK;
+      return Status::OK();
+    } else if (subcommand_ == "setinfo") {
+      if (setinfo_lib_name_) {
+        conn->SetLibName(*setinfo_lib_name_);
+      }
+      if (setinfo_lib_ver_) {
+        conn->SetLibVer(*setinfo_lib_ver_);
+      }
+      *output = redis::RESP_OK;
+      return Status::OK();
     }
 
-    return {Status::RedisInvalidCmd, "Syntax error, try CLIENT LIST|INFO|KILL ip:port|GETNAME|SETNAME|REPLY"};
+    return {Status::RedisInvalidCmd,
+            "Syntax error, try CLIENT LIST|INFO|KILL ip:port|GETNAME|SETNAME|SETINFO|REPLY|"
+            "PAUSE|UNPAUSE"};
   }
 
  private:
   std::string addr_;
   std::string conn_name_;
   std::string subcommand_;
+  std::optional<std::string> setinfo_lib_name_;
+  std::optional<std::string> setinfo_lib_ver_;
   redis::Connection::ReplyMode reply_mode_ = redis::Connection::ReplyMode::ON;
   bool skipme_ = false;
   int64_t kill_type_ = 0;
   uint64_t id_ = 0;
   bool new_format_ = true;
+  uint64_t pause_timeout_ms_ = 0;
+  PauseMode pause_mode_ = PauseMode::kAll;
 };
 
 class CommandMonitor : public Commander {
@@ -1575,6 +1663,102 @@ class CommandFlushBlockCache : public Commander {
   }
 };
 
+class CommandLatency : public Commander {
+ public:
+  Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    if (args_.size() < 2) {
+      return {Status::RedisParseErr, errWrongNumOfArguments};
+    }
+
+    std::string subcommand = util::ToLower(args_[1]);
+    if (subcommand == "histogram") {
+      return getHistogram(srv, conn, output);
+    } else if (subcommand == "reset") {
+      *output = redis::Integer(0);
+      return Status::OK();
+    } else if (subcommand == "help") {
+      std::vector<std::string> help = {
+          "HELP",
+          "    Print this help message.",
+          "HISTOGRAM [command ...]",
+          "    Return a cumulative distribution of latencies in the format of a histogram for the specified "
+          "command(s).",
+          "    If no commands are specified, all commands with latency statistics are returned.",
+          "RESET [event ...]",
+          "    Return the number of reset event classes (Kvrocks has no spike-sampling infrastructure, always returns "
+          "0)."};
+      *output = ArrayOfBulkStrings(help);
+      return Status::OK();
+    }
+
+    return {Status::RedisParseErr, "Unknown LATENCY subcommand or wrong number of arguments"};
+  }
+
+ private:
+  Status getHistogram(Server *srv, Connection *conn, std::string *output) {
+    if (srv->stats.bucket_boundaries.empty()) {
+      *output = conn->HeaderOfMap(0);
+      return Status::OK();
+    }
+
+    std::vector<const std::pair<const std::string, CommandHistogram> *> target_histograms;
+    if (args_.size() > 2) {
+      for (size_t i = 2; i < args_.size(); i++) {
+        auto it = srv->stats.commands_histogram.find(util::ToLower(args_[i]));
+        if (it != srv->stats.commands_histogram.end() && it->second.calls > 0) {
+          target_histograms.push_back(&(*it));
+        }
+      }
+    } else {
+      for (const auto &iter : srv->stats.commands_histogram) {
+        if (iter.second.calls > 0) {
+          target_histograms.push_back(&iter);
+        }
+      }
+    }
+
+    *output = conn->HeaderOfMap(target_histograms.size());
+    for (const auto *pair_ptr : target_histograms) {
+      const auto &cmd_name = pair_ptr->first;
+      const auto &hist = pair_ptr->second;
+
+      std::vector<std::pair<int64_t, uint64_t>> cumulative_buckets;
+      uint64_t cumulative = 0;
+      for (size_t i = 0; i < hist.buckets.size(); i++) {
+        cumulative += hist.buckets[i]->load(std::memory_order_relaxed);
+        if (cumulative == 0) continue;
+
+        int64_t boundary = 0;
+        if (i < srv->stats.bucket_boundaries.size()) {
+          boundary = static_cast<int64_t>(srv->stats.bucket_boundaries[i]);
+        } else {
+          boundary = -1;
+        }
+        cumulative_buckets.emplace_back(boundary, cumulative);
+      }
+
+      *output += redis::BulkString(cmd_name);
+      *output += conn->HeaderOfMap(2);
+
+      *output += redis::BulkString("calls");
+      *output += redis::Integer(hist.calls.load(std::memory_order_relaxed));
+
+      *output += redis::BulkString("histogram_usec");
+      *output += conn->HeaderOfMap(cumulative_buckets.size());
+      for (const auto &[boundary, count] : cumulative_buckets) {
+        if (boundary < 0) {
+          *output += redis::BulkString("inf");
+        } else {
+          *output += redis::Integer(boundary);
+        }
+        *output += redis::Integer(count);
+      }
+    }
+
+    return Status::OK();
+  }
+};
+
 REDIS_REGISTER_COMMANDS(
     Server, MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loading auth", NO_KEY),
     MakeCmdAttr<CommandPing>("ping", -1, "read-only", NO_KEY),
@@ -1613,10 +1797,11 @@ REDIS_REGISTER_COMMANDS(
     MakeCmdAttr<CommandStats>("stats", 1, "read-only", NO_KEY),
     MakeCmdAttr<CommandRdb>("rdb", -3, "write exclusive admin", NO_KEY),
     MakeCmdAttr<CommandReset>("reset", 1, "ok-loading bypass-multi no-script admin", NO_KEY),
-    MakeCmdAttr<CommandApplyBatch>("applybatch", -2, "write no-multi", NO_KEY),
+    MakeCmdAttr<CommandApplyBatch>("applybatch", -2, "write no-multi admin", NO_KEY),
     MakeCmdAttr<CommandDump>("dump", 2, "read-only", 1, 1, 1),
     MakeCmdAttr<CommandPollUpdates>("pollupdates", -2, "read-only admin", NO_KEY),
     MakeCmdAttr<CommandSST>("sst", -3, "write exclusive admin", 1, 1, 1),
     MakeCmdAttr<CommandFlushMemTable>("flushmemtable", -1, "exclusive write", NO_KEY),
-    MakeCmdAttr<CommandFlushBlockCache>("flushblockcache", 1, "exclusive write", NO_KEY), )
+    MakeCmdAttr<CommandFlushBlockCache>("flushblockcache", 1, "exclusive write", NO_KEY),
+    MakeCmdAttr<CommandLatency>("latency", -2, "read-only admin", NO_KEY), )
 }  // namespace redis

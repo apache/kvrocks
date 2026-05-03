@@ -137,6 +137,14 @@ class Connection : public EvbufCallbackBase<Connection> {
   void SetID(uint64_t id) { id_ = id; }
   std::string GetName() const { return name_; }
   void SetName(std::string name) { name_ = std::move(name); }
+  struct SetInfo {
+    std::string lib_name;
+    std::string lib_ver;
+  };
+
+  const SetInfo &GetSetInfo() const { return set_info_; }
+  void SetLibName(std::string lib_name) { set_info_.lib_name = std::move(lib_name); }
+  void SetLibVer(std::string lib_ver) { set_info_.lib_ver = std::move(lib_ver); }
   std::string GetAddr() const { return addr_; }
   void SetAddr(std::string ip, uint32_t port);
   void SetLastCmd(std::string cmd) { last_cmd_ = std::move(cmd); }
@@ -176,6 +184,11 @@ class Connection : public EvbufCallbackBase<Connection> {
   bool IsImporting() const { return importing_; }
   bool CanMigrate() const;
 
+  // CLIENT PAUSE async suspend/resume
+  void Pause();
+  void Unpause();
+  bool IsPaused() const { return is_paused_; }
+
   // Multi exec
   void SetInExec() { in_exec_ = true; }
   bool IsInExec() const { return in_exec_; }
@@ -198,6 +211,7 @@ class Connection : public EvbufCallbackBase<Connection> {
   std::atomic<int> flags_ = 0;
   std::string ns_;
   std::string name_;
+  SetInfo set_info_;
   std::string ip_;
   std::string announce_ip_;
   uint32_t port_ = 0;
@@ -230,6 +244,8 @@ class Connection : public EvbufCallbackBase<Connection> {
 
   ReplyMode reply_mode_ = ReplyMode::ON;
   std::vector<std::string> queued_replies_;
+
+  bool is_paused_ = false;
 };
 
 }  // namespace redis

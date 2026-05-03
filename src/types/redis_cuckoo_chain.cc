@@ -20,7 +20,6 @@
 
 #include "redis_cuckoo_chain.h"
 
-#include <cmath>
 #include <unordered_map>
 
 #include "cuckoo_filter.h"
@@ -119,7 +118,7 @@ rocksdb::Status CuckooChain::Reserve(engine::Context &ctx, const Slice &user_key
 }
 
 // Helper function: calculate integer power (avoid std::pow for integers)
-static uint64_t intPow(uint64_t base, uint16_t exp) {
+static uint64_t IntPow(uint64_t base, uint16_t exp) {
   uint64_t result = 1;
   for (uint16_t i = 0; i < exp; ++i) {
     result *= base;
@@ -128,10 +127,10 @@ static uint64_t intPow(uint64_t base, uint16_t exp) {
 }
 
 // Helper function: try to find empty slot in a bucket and insert fingerprint
-static bool tryInsertInBucket(std::string &bucket_data, uint8_t bucket_size, uint8_t fingerprint, size_t *slot_idx) {
+static bool TryInsertInBucket(std::string &bucket_data, uint8_t bucket_size, uint8_t fingerprint, size_t *slot_idx) {
   for (size_t i = 0; i < bucket_size; ++i) {
     if (static_cast<uint8_t>(bucket_data[i]) == 0) {
-      bucket_data[i] = fingerprint;
+      bucket_data[i] = static_cast<char>(fingerprint);
       *slot_idx = i;
       return true;
     }
@@ -140,7 +139,7 @@ static bool tryInsertInBucket(std::string &bucket_data, uint8_t bucket_size, uin
 }
 
 // Helper function: read bucket from storage and ensure correct size
-static rocksdb::Status readBucket(engine::Storage *storage, engine::Context &ctx, const std::string &bucket_key,
+static rocksdb::Status ReadBucket(engine::Storage *storage, engine::Context &ctx, const std::string &bucket_key,
                                   uint8_t bucket_size, std::string *bucket_data) {
   rocksdb::ReadOptions read_opts = ctx.DefaultScanOptions();
   auto s = storage->Get(ctx, read_opts, bucket_key, bucket_data);
@@ -191,7 +190,7 @@ rocksdb::Status CuckooChain::Add(engine::Context &ctx, const Slice &user_key, co
   // This follows RedisBloom's behavior and is more efficient
   for (uint16_t filter_idx = 0; filter_idx < metadata.n_filters; ++filter_idx) {
     // Calculate capacity for this filter using integer power
-    uint64_t filter_capacity = metadata.base_capacity * intPow(metadata.expansion, filter_idx);
+    uint64_t filter_capacity = metadata.base_capacity * IntPow(metadata.expansion, filter_idx);
     uint32_t num_buckets = CuckooFilter::OptimalNumBuckets(filter_capacity, metadata.bucket_size);
 
     // Calculate bucket indices
@@ -204,21 +203,21 @@ rocksdb::Status CuckooChain::Add(engine::Context &ctx, const Slice &user_key, co
     std::string bucket2_key = getBucketKey(ns_key, metadata, filter_idx, bucket2_idx);
 
     std::string bucket1_data, bucket2_data;
-    s = readBucket(storage_, ctx, bucket1_key, metadata.bucket_size, &bucket1_data);
+    s = ReadBucket(storage_, ctx, bucket1_key, metadata.bucket_size, &bucket1_data);
     if (!s.ok()) return s;
 
-    s = readBucket(storage_, ctx, bucket2_key, metadata.bucket_size, &bucket2_data);
+    s = ReadBucket(storage_, ctx, bucket2_key, metadata.bucket_size, &bucket2_data);
     if (!s.ok()) return s;
 
     // Try simple insertion in bucket1 or bucket2
-    size_t slot_idx;
+    size_t slot_idx = 0;
     std::string *target_bucket_data = nullptr;
     std::string target_bucket_key;
 
-    if (tryInsertInBucket(bucket1_data, metadata.bucket_size, fingerprint, &slot_idx)) {
+    if (TryInsertInBucket(bucket1_data, metadata.bucket_size, fingerprint, &slot_idx)) {
       target_bucket_data = &bucket1_data;
       target_bucket_key = bucket1_key;
-    } else if (tryInsertInBucket(bucket2_data, metadata.bucket_size, fingerprint, &slot_idx)) {
+    } else if (TryInsertInBucket(bucket2_data, metadata.bucket_size, fingerprint, &slot_idx)) {
       target_bucket_data = &bucket2_data;
       target_bucket_key = bucket2_key;
     }
@@ -245,7 +244,7 @@ rocksdb::Status CuckooChain::Add(engine::Context &ctx, const Slice &user_key, co
 
   // No space found in any filter, try kick-out on the last filter
   uint16_t last_filter_idx = metadata.n_filters - 1;
-  uint64_t filter_capacity = metadata.base_capacity * intPow(metadata.expansion, last_filter_idx);
+  uint64_t filter_capacity = metadata.base_capacity * IntPow(metadata.expansion, last_filter_idx);
   uint32_t num_buckets = CuckooFilter::OptimalNumBuckets(filter_capacity, metadata.bucket_size);
 
   bool inserted = false;
@@ -277,7 +276,7 @@ rocksdb::Status CuckooChain::Add(engine::Context &ctx, const Slice &user_key, co
 
     // Retry insertion in the new expanded filter
     uint16_t new_filter_idx = metadata.n_filters - 1;
-    uint64_t new_filter_capacity = metadata.base_capacity * intPow(metadata.expansion, new_filter_idx);
+    uint64_t new_filter_capacity = metadata.base_capacity * IntPow(metadata.expansion, new_filter_idx);
     uint32_t new_num_buckets = CuckooFilter::OptimalNumBuckets(new_filter_capacity, metadata.bucket_size);
 
     uint32_t bucket1_idx = hash % new_num_buckets;
@@ -285,7 +284,7 @@ rocksdb::Status CuckooChain::Add(engine::Context &ctx, const Slice &user_key, co
 
     // Insert into first slot of the new filter's first bucket
     std::string bucket1_data(metadata.bucket_size, 0);
-    bucket1_data[0] = fingerprint;
+    bucket1_data[0] = static_cast<char>(fingerprint);
 
     auto batch = storage_->GetWriteBatchBase();
     WriteBatchLogData log_data(kRedisCuckooFilter, std::vector<std::string>{"CF.ADD", user_key.ToString()});
@@ -332,13 +331,13 @@ rocksdb::Status CuckooChain::kickOutInsert(engine::Context &ctx, const Slice &us
     if (cached != modified_buckets.end()) {
       bucket_data = cached->second;
     } else {
-      auto s = readBucket(storage_, ctx, bucket_key, metadata.bucket_size, &bucket_data);
+      auto s = ReadBucket(storage_, ctx, bucket_key, metadata.bucket_size, &bucket_data);
       if (!s.ok()) return s;
     }
 
     // Swap fingerprint with victim slot
-    uint8_t old_fp = static_cast<uint8_t>(bucket_data[victim_slot]);
-    bucket_data[victim_slot] = current_fp;
+    auto old_fp = static_cast<uint8_t>(bucket_data[victim_slot]);
+    bucket_data[victim_slot] = static_cast<char>(current_fp);
     modified_buckets[bucket_key] = bucket_data;  // Cache modification
     current_fp = old_fp;
 
@@ -365,12 +364,12 @@ rocksdb::Status CuckooChain::kickOutInsert(engine::Context &ctx, const Slice &us
     if (cached != modified_buckets.end()) {
       alt_bucket_data = cached->second;
     } else {
-      auto s = readBucket(storage_, ctx, alt_bucket_key, metadata.bucket_size, &alt_bucket_data);
+      auto s = ReadBucket(storage_, ctx, alt_bucket_key, metadata.bucket_size, &alt_bucket_data);
       if (!s.ok()) return s;
     }
 
-    size_t empty_slot;
-    if (tryInsertInBucket(alt_bucket_data, metadata.bucket_size, current_fp, &empty_slot)) {
+    size_t empty_slot = 0;
+    if (TryInsertInBucket(alt_bucket_data, metadata.bucket_size, current_fp, &empty_slot)) {
       // Found empty slot! Cache this modification
       modified_buckets[alt_bucket_key] = alt_bucket_data;
       *inserted = true;

@@ -32,6 +32,10 @@ class RedisCuckooFilterTest : public TestBase {
   explicit RedisCuckooFilterTest() : TestBase() {
     cuckoo_ = std::make_unique<redis::CuckooChain>(storage_.get(), "cuckoo_ns");
   }
+  RedisCuckooFilterTest(const RedisCuckooFilterTest &) = delete;
+  RedisCuckooFilterTest &operator=(const RedisCuckooFilterTest &) = delete;
+  RedisCuckooFilterTest(RedisCuckooFilterTest &&) = delete;
+  RedisCuckooFilterTest &operator=(RedisCuckooFilterTest &&) = delete;
   ~RedisCuckooFilterTest() override {
     // Ensure cuckoo_ is destroyed before storage_
     cuckoo_.reset();
@@ -40,7 +44,7 @@ class RedisCuckooFilterTest : public TestBase {
   void SetUp() override {
     // Use a unique key for each test to avoid conflicts
     // Include test name to make debugging easier
-    const ::testing::TestInfo* const test_info = ::testing::UnitTest::GetInstance()->current_test_info();
+    const ::testing::TestInfo *const test_info = ::testing::UnitTest::GetInstance()->current_test_info();
     key_ = std::string("cf_test_") + test_info->name();
   }
 
@@ -121,7 +125,7 @@ TEST_F(RedisCuckooFilterTest, OptimalNumBucketsCalculation) {
   ASSERT_EQ(num_buckets & (num_buckets - 1), 0) << "Number of buckets should be power of 2";
 
   // Should be able to hold the capacity with 95.5% load factor
-  uint32_t expected_min = static_cast<uint32_t>(capacity / bucket_size / 0.955);
+  auto expected_min = static_cast<uint32_t>(static_cast<long double>(capacity) / bucket_size / 0.955L);
   ASSERT_GE(num_buckets, expected_min) << "Number of buckets too small for capacity";
 }
 
@@ -337,7 +341,7 @@ TEST_F(RedisCuckooFilterTest, ReserveParameterCombinations) {
   };
 
   for (size_t i = 0; i < test_cases.size(); ++i) {
-    const auto& tc = test_cases[i];
+    const auto &tc = test_cases[i];
     std::string test_key = "combo_" + std::to_string(i);
     auto s = cuckoo_->Reserve(*ctx_, test_key, tc.capacity, tc.bucket_size, tc.max_iterations, tc.expansion);
 
@@ -368,7 +372,7 @@ TEST_F(RedisCuckooFilterTest, AddMultipleItems) {
 
   // Add multiple items
   std::vector<std::string> items = {"apple", "banana", "cherry", "date", "elderberry"};
-  for (const auto& item : items) {
+  for (const auto &item : items) {
     bool added = false;
     s = cuckoo_->Add(*ctx_, key_, item, &added);
     ASSERT_TRUE(s.ok()) << "Failed to add item: " << item;
@@ -552,7 +556,7 @@ TEST_F(RedisCuckooFilterTest, AddDifferentItemsProduceDifferentHashes) {
   std::vector<std::string> items = {"item1", "item2", "item3", "different", "another"};
   std::set<uint64_t> hashes;
 
-  for (const auto& item : items) {
+  for (const auto &item : items) {
     uint64_t hash = redis::CuckooFilter::Hash(item);
     hashes.insert(hash);
   }

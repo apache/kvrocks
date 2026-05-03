@@ -682,8 +682,10 @@ uint64_t CuckooChainMetadata::GetTotalCapacity() const {
 
   // Calculate total capacity across all filters
   uint64_t total = 0;
+  uint64_t filter_capacity = base_capacity;
   for (uint16_t i = 0; i < n_filters; i++) {
-    total += base_capacity * std::pow(expansion, i);
+    total += filter_capacity;
+    filter_capacity *= expansion;
   }
   return total;
 }

@@ -44,7 +44,7 @@ class CuckooFilter {
   // Calculate the optimal number of buckets for the filter
   static uint32_t OptimalNumBuckets(uint64_t capacity, uint8_t bucket_size) {
     // A load factor of 95.5% is chosen for the cuckoo filter
-    uint32_t num_buckets = static_cast<uint32_t>(capacity / bucket_size / 0.955);
+    auto num_buckets = static_cast<uint32_t>(static_cast<long double>(capacity) / bucket_size / 0.955L);
     // Round up to next power of 2 for better hash distribution
     if (num_buckets == 0) num_buckets = 1;
     uint32_t power = 1;

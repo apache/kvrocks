@@ -561,9 +561,6 @@ jobs:
 
           # FIXME: Workaround for gcc 15 issue for rocksdb https://github.com/apache/kvrocks/issues/2927
           echo "CXXFLAGS=$CXXFLAGS -include cstdint" >> $GITHUB_ENV
-          
-          # FIXME: Workaround for jemalloc 5.3.1 + GCC 16
-          echo "CXXFLAGS=$CXXFLAGS -D__throw_bad_alloc=throw_std_bad_alloc" >> $GITHUB_ENV
 
       - name: Setup openSUSE
         if: ${{ startsWith(matrix.image, 'opensuse') }}

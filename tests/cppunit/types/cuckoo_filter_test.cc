@@ -28,14 +28,16 @@
 #include "types/redis_cuckoo_chain.h"
 
 class RedisCuckooFilterTest : public TestBase {
- protected:
-  explicit RedisCuckooFilterTest() : TestBase() {
-    cuckoo_ = std::make_unique<redis::CuckooChain>(storage_.get(), "cuckoo_ns");
-  }
+ public:
   RedisCuckooFilterTest(const RedisCuckooFilterTest &) = delete;
   RedisCuckooFilterTest &operator=(const RedisCuckooFilterTest &) = delete;
   RedisCuckooFilterTest(RedisCuckooFilterTest &&) = delete;
   RedisCuckooFilterTest &operator=(RedisCuckooFilterTest &&) = delete;
+
+ protected:
+  explicit RedisCuckooFilterTest() : TestBase() {
+    cuckoo_ = std::make_unique<redis::CuckooChain>(storage_.get(), "cuckoo_ns");
+  }
   ~RedisCuckooFilterTest() override {
     // Ensure cuckoo_ is destroyed before storage_
     cuckoo_.reset();

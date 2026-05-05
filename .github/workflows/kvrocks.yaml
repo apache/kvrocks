@@ -525,6 +525,8 @@ jobs:
           - name: ArchLinux
             image: archlinux:base
             compiler: gcc
+            # FIXME: enable this when https://github.com/jemalloc/jemalloc/pull/2900 is released
+            disable_jemalloc: -DDISABLE_JEMALLOC=ON
           - name: Rocky Linux 8
             image: rockylinux:8
             compiler: gcc

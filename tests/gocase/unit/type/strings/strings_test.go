@@ -1252,3 +1252,345 @@ func testString(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.Equal(t, value, rdb.Get(ctx, key).Val())
 	})
 }
+
+func TestSetConditional(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{})
+	defer srv.Close()
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	// ── 6.1 Syntax / parse error cases ──────────────────────────────────────
+
+	t.Run("IFEQ missing cmp_value returns error", func(t *testing.T) {
+		err := rdb.Do(ctx, "SET", "k", "v", "IFEQ").Err()
+		require.Error(t, err)
+	})
+
+	t.Run("IFNE missing cmp_value returns error", func(t *testing.T) {
+		err := rdb.Do(ctx, "SET", "k", "v", "IFNE").Err()
+		require.Error(t, err)
+	})
+
+	t.Run("IFDEQ missing cmp_value returns error", func(t *testing.T) {
+		err := rdb.Do(ctx, "SET", "k", "v", "IFDEQ").Err()
+		require.Error(t, err)
+	})
+
+	t.Run("IFDNE missing cmp_value returns error", func(t *testing.T) {
+		err := rdb.Do(ctx, "SET", "k", "v", "IFDNE").Err()
+		require.Error(t, err)
+	})
+
+	t.Run("NX and IFEQ together returns syntax error", func(t *testing.T) {
+		err := rdb.Do(ctx, "SET", "k", "v", "NX", "IFEQ", "x").Err()
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "syntax")
+	})
+
+	t.Run("XX and IFNE together returns syntax error", func(t *testing.T) {
+		err := rdb.Do(ctx, "SET", "k", "v", "XX", "IFNE", "x").Err()
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "syntax")
+	})
+
+	t.Run("IFEQ and IFDEQ together returns syntax error", func(t *testing.T) {
+		err := rdb.Do(ctx, "SET", "k", "v", "IFEQ", "x", "IFDEQ", "y").Err()
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "syntax")
+	})
+
+	t.Run("WRONGTYPE error when key is not a string", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "listkey").Err())
+		require.NoError(t, rdb.RPush(ctx, "listkey", "a").Err())
+		err := rdb.Do(ctx, "SET", "listkey", "v", "IFEQ", "a").Err()
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "WRONGTYPE")
+		require.NoError(t, rdb.Del(ctx, "listkey").Err())
+	})
+
+	// ── 6.2 Basic conditional behaviour ─────────────────────────────────────
+
+	t.Run("IFEQ: key not found returns nil", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "ifeq1").Err())
+		res := rdb.Do(ctx, "SET", "ifeq1", "new", "IFEQ", "anything").Val()
+		require.Nil(t, res)
+	})
+
+	t.Run("IFEQ: value matches writes and returns OK", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "ifeq2", "hello", 0).Err())
+		res := rdb.Do(ctx, "SET", "ifeq2", "world", "IFEQ", "hello").Val()
+		require.Equal(t, "OK", res)
+		require.Equal(t, "world", rdb.Get(ctx, "ifeq2").Val())
+	})
+
+	t.Run("IFEQ: value mismatches returns nil and no write", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "ifeq3", "hello", 0).Err())
+		res := rdb.Do(ctx, "SET", "ifeq3", "world", "IFEQ", "wrong").Val()
+		require.Nil(t, res)
+		require.Equal(t, "hello", rdb.Get(ctx, "ifeq3").Val())
+	})
+
+	t.Run("IFNE: key not found writes and returns OK", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "ifne1").Err())
+		res := rdb.Do(ctx, "SET", "ifne1", "created", "IFNE", "anything").Val()
+		require.Equal(t, "OK", res)
+		require.Equal(t, "created", rdb.Get(ctx, "ifne1").Val())
+	})
+
+	t.Run("IFNE: value matches returns nil and no write", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "ifne2", "hello", 0).Err())
+		res := rdb.Do(ctx, "SET", "ifne2", "world", "IFNE", "hello").Val()
+		require.Nil(t, res)
+		require.Equal(t, "hello", rdb.Get(ctx, "ifne2").Val())
+	})
+
+	t.Run("IFNE: value mismatches writes and returns OK", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "ifne3", "hello", 0).Err())
+		res := rdb.Do(ctx, "SET", "ifne3", "world", "IFNE", "wrong").Val()
+		require.Equal(t, "OK", res)
+		require.Equal(t, "world", rdb.Get(ctx, "ifne3").Val())
+	})
+
+	t.Run("IFDEQ: key not found returns nil", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "ifdeq1").Err())
+		res := rdb.Do(ctx, "SET", "ifdeq1", "new", "IFDEQ", "xxxxxxxxxxxxxxxx").Val()
+		require.Nil(t, res)
+	})
+
+	t.Run("IFDEQ: digest matches writes and returns OK", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "ifdeq2", "hello", 0).Err())
+		digest, err := rdb.Do(ctx, "DIGEST", "ifdeq2").Result()
+		require.NoError(t, err)
+		res := rdb.Do(ctx, "SET", "ifdeq2", "world", "IFDEQ", digest).Val()
+		require.Equal(t, "OK", res)
+		require.Equal(t, "world", rdb.Get(ctx, "ifdeq2").Val())
+	})
+
+	t.Run("IFDEQ: digest mismatches returns nil and no write", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "ifdeq3", "hello", 0).Err())
+		res := rdb.Do(ctx, "SET", "ifdeq3", "world", "IFDEQ", "xxxxxxxxxxxxxxxx").Val()
+		require.Nil(t, res)
+		require.Equal(t, "hello", rdb.Get(ctx, "ifdeq3").Val())
+	})
+
+	t.Run("IFDNE: key not found writes and returns OK", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "ifdne1").Err())
+		res := rdb.Do(ctx, "SET", "ifdne1", "created", "IFDNE", "xxxxxxxxxxxxxxxx").Val()
+		require.Equal(t, "OK", res)
+		require.Equal(t, "created", rdb.Get(ctx, "ifdne1").Val())
+	})
+
+	t.Run("IFDNE: digest matches returns nil and no write", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "ifdne2", "hello", 0).Err())
+		digest, err := rdb.Do(ctx, "DIGEST", "ifdne2").Result()
+		require.NoError(t, err)
+		res := rdb.Do(ctx, "SET", "ifdne2", "world", "IFDNE", digest).Val()
+		require.Nil(t, res)
+		require.Equal(t, "hello", rdb.Get(ctx, "ifdne2").Val())
+	})
+
+	t.Run("IFDNE: digest mismatches writes and returns OK", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "ifdne3", "hello", 0).Err())
+		res := rdb.Do(ctx, "SET", "ifdne3", "world", "IFDNE", "xxxxxxxxxxxxxxxx").Val()
+		require.Equal(t, "OK", res)
+		require.Equal(t, "world", rdb.Get(ctx, "ifdne3").Val())
+	})
+
+	t.Run("IFEQ with GET: condition met returns old value", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "ifeq-get1", "old", 0).Err())
+		res, err := rdb.Do(ctx, "SET", "ifeq-get1", "new", "IFEQ", "old", "GET").Result()
+		require.NoError(t, err)
+		require.Equal(t, "old", res)
+		require.Equal(t, "new", rdb.Get(ctx, "ifeq-get1").Val())
+	})
+
+	t.Run("IFEQ with GET: condition not met returns old value", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "ifeq-get2", "hello", 0).Err())
+		res, err := rdb.Do(ctx, "SET", "ifeq-get2", "new", "IFEQ", "wrong", "GET").Result()
+		require.NoError(t, err)
+		require.Equal(t, "hello", res)
+		require.Equal(t, "hello", rdb.Get(ctx, "ifeq-get2").Val())
+	})
+
+	t.Run("IFEQ with EX: condition met sets TTL", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "ifeq-ex1", "hello", 0).Err())
+		res, err := rdb.Do(ctx, "SET", "ifeq-ex1", "world", "IFEQ", "hello", "EX", "10").Result()
+		require.NoError(t, err)
+		require.Equal(t, "OK", res)
+		ttl := rdb.TTL(ctx, "ifeq-ex1").Val()
+		require.Greater(t, ttl, 8*time.Second)
+		require.LessOrEqual(t, ttl, 10*time.Second)
+	})
+
+	t.Run("IFEQ with EX: condition not met leaves TTL unchanged", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "ifeq-ex2", "hello", 5*time.Second).Err())
+		res := rdb.Do(ctx, "SET", "ifeq-ex2", "world", "IFEQ", "wrong", "EX", "100").Val()
+		require.Nil(t, res)
+		ttl := rdb.TTL(ctx, "ifeq-ex2").Val()
+		require.Greater(t, ttl, time.Duration(0))
+		require.LessOrEqual(t, ttl, 5*time.Second)
+	})
+
+	t.Run("IFDEQ consistent with DIGEST command output", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "digest-check", "somevalue", 0).Err())
+		digest, err := rdb.Do(ctx, "DIGEST", "digest-check").Result()
+		require.NoError(t, err)
+		res, err := rdb.Do(ctx, "SET", "digest-check", "newvalue", "IFDEQ", digest).Result()
+		require.NoError(t, err)
+		require.Equal(t, "OK", res)
+	})
+
+	// ── Property tests (using testing/quick via subtests) ───────────────────
+
+	// Feature: set-ifeq-ifne-ifdeq-ifdne, Property 1: IFEQ writes when value matches
+	t.Run("Property 1: IFEQ writes when value matches", func(t *testing.T) {
+		for i := 0; i < 100; i++ {
+			key := "prop1-" + strconv.Itoa(i)
+			val := util.RandString(1, 20, util.Alpha)
+			newVal := util.RandString(1, 20, util.Alpha)
+			require.NoError(t, rdb.Set(ctx, key, val, 0).Err())
+			res, err := rdb.Do(ctx, "SET", key, newVal, "IFEQ", val).Result()
+			require.NoError(t, err)
+			require.Equal(t, "OK", res, "IFEQ should write when cmp_value matches current value")
+			require.Equal(t, newVal, rdb.Get(ctx, key).Val())
+			require.NoError(t, rdb.Del(ctx, key).Err())
+		}
+	})
+
+	// Feature: set-ifeq-ifne-ifdeq-ifdne, Property 2: IFEQ does not write when value mismatches
+	t.Run("Property 2: IFEQ does not write when value mismatches", func(t *testing.T) {
+		for i := 0; i < 100; i++ {
+			key := "prop2-" + strconv.Itoa(i)
+			val := "value-" + strconv.Itoa(i)
+			wrong := "wrong-" + strconv.Itoa(i)
+			require.NoError(t, rdb.Set(ctx, key, val, 0).Err())
+			res := rdb.Do(ctx, "SET", key, "new", "IFEQ", wrong).Val()
+			require.Nil(t, res, "IFEQ should return nil when cmp_value does not match")
+			require.Equal(t, val, rdb.Get(ctx, key).Val())
+			require.NoError(t, rdb.Del(ctx, key).Err())
+		}
+	})
+
+	// Feature: set-ifeq-ifne-ifdeq-ifdne, Property 3: IFNE writes when value mismatches
+	t.Run("Property 3: IFNE writes when value mismatches", func(t *testing.T) {
+		for i := 0; i < 100; i++ {
+			key := "prop3-" + strconv.Itoa(i)
+			val := "value-" + strconv.Itoa(i)
+			wrong := "wrong-" + strconv.Itoa(i)
+			newVal := "new-" + strconv.Itoa(i)
+			require.NoError(t, rdb.Set(ctx, key, val, 0).Err())
+			res, err := rdb.Do(ctx, "SET", key, newVal, "IFNE", wrong).Result()
+			require.NoError(t, err)
+			require.Equal(t, "OK", res, "IFNE should write when cmp_value does not match current value")
+			require.Equal(t, newVal, rdb.Get(ctx, key).Val())
+			require.NoError(t, rdb.Del(ctx, key).Err())
+		}
+	})
+
+	// Feature: set-ifeq-ifne-ifdeq-ifdne, Property 4: IFNE does not write when value matches
+	t.Run("Property 4: IFNE does not write when value matches", func(t *testing.T) {
+		for i := 0; i < 100; i++ {
+			key := "prop4-" + strconv.Itoa(i)
+			val := util.RandString(1, 20, util.Alpha)
+			require.NoError(t, rdb.Set(ctx, key, val, 0).Err())
+			res := rdb.Do(ctx, "SET", key, "new", "IFNE", val).Val()
+			require.Nil(t, res, "IFNE should return nil when cmp_value matches current value")
+			require.Equal(t, val, rdb.Get(ctx, key).Val())
+			require.NoError(t, rdb.Del(ctx, key).Err())
+		}
+	})
+
+	// Feature: set-ifeq-ifne-ifdeq-ifdne, Property 5: IFDEQ writes when digest matches
+	t.Run("Property 5: IFDEQ writes when digest matches", func(t *testing.T) {
+		for i := 0; i < 100; i++ {
+			key := "prop5-" + strconv.Itoa(i)
+			val := util.RandString(1, 20, util.Alpha)
+			newVal := util.RandString(1, 20, util.Alpha)
+			require.NoError(t, rdb.Set(ctx, key, val, 0).Err())
+			digest, err := rdb.Do(ctx, "DIGEST", key).Result()
+			require.NoError(t, err)
+			res, err := rdb.Do(ctx, "SET", key, newVal, "IFDEQ", digest).Result()
+			require.NoError(t, err)
+			require.Equal(t, "OK", res, "IFDEQ should write when digest matches")
+			require.Equal(t, newVal, rdb.Get(ctx, key).Val())
+			require.NoError(t, rdb.Del(ctx, key).Err())
+		}
+	})
+
+	// Feature: set-ifeq-ifne-ifdeq-ifdne, Property 6: IFDEQ does not write when digest mismatches
+	t.Run("Property 6: IFDEQ does not write when digest mismatches", func(t *testing.T) {
+		for i := 0; i < 100; i++ {
+			key := "prop6-" + strconv.Itoa(i)
+			val := util.RandString(1, 20, util.Alpha)
+			require.NoError(t, rdb.Set(ctx, key, val, 0).Err())
+			res := rdb.Do(ctx, "SET", key, "new", "IFDEQ", "xxxxxxxxxxxxxxxx").Val()
+			require.Nil(t, res, "IFDEQ should return nil when digest does not match")
+			require.Equal(t, val, rdb.Get(ctx, key).Val())
+			require.NoError(t, rdb.Del(ctx, key).Err())
+		}
+	})
+
+	// Feature: set-ifeq-ifne-ifdeq-ifdne, Property 7: IFDNE writes when digest mismatches
+	t.Run("Property 7: IFDNE writes when digest mismatches", func(t *testing.T) {
+		for i := 0; i < 100; i++ {
+			key := "prop7-" + strconv.Itoa(i)
+			val := util.RandString(1, 20, util.Alpha)
+			newVal := util.RandString(1, 20, util.Alpha)
+			require.NoError(t, rdb.Set(ctx, key, val, 0).Err())
+			res, err := rdb.Do(ctx, "SET", key, newVal, "IFDNE", "xxxxxxxxxxxxxxxx").Result()
+			require.NoError(t, err)
+			require.Equal(t, "OK", res, "IFDNE should write when digest does not match")
+			require.Equal(t, newVal, rdb.Get(ctx, key).Val())
+			require.NoError(t, rdb.Del(ctx, key).Err())
+		}
+	})
+
+	// Feature: set-ifeq-ifne-ifdeq-ifdne, Property 8: IFDNE does not write when digest matches
+	t.Run("Property 8: IFDNE does not write when digest matches", func(t *testing.T) {
+		for i := 0; i < 100; i++ {
+			key := "prop8-" + strconv.Itoa(i)
+			val := util.RandString(1, 20, util.Alpha)
+			require.NoError(t, rdb.Set(ctx, key, val, 0).Err())
+			digest, err := rdb.Do(ctx, "DIGEST", key).Result()
+			require.NoError(t, err)
+			res := rdb.Do(ctx, "SET", key, "new", "IFDNE", digest).Val()
+			require.Nil(t, res, "IFDNE should return nil when digest matches")
+			require.Equal(t, val, rdb.Get(ctx, key).Val())
+			require.NoError(t, rdb.Del(ctx, key).Err())
+		}
+	})
+
+	// Feature: set-ifeq-ifne-ifdeq-ifdne, Property 9: TTL unchanged when condition not met
+	t.Run("Property 9: TTL unchanged when condition not met", func(t *testing.T) {
+		for i := 0; i < 100; i++ {
+			key := "prop9-" + strconv.Itoa(i)
+			val := "value-" + strconv.Itoa(i)
+			require.NoError(t, rdb.Set(ctx, key, val, 10*time.Second).Err())
+			// IFEQ with wrong value: condition not met
+			res := rdb.Do(ctx, "SET", key, "new", "IFEQ", "wrong", "EX", "9999").Val()
+			require.Nil(t, res)
+			ttl := rdb.TTL(ctx, key).Val()
+			require.Greater(t, ttl, time.Duration(0), "TTL should remain positive after failed conditional SET")
+			require.LessOrEqual(t, ttl, 10*time.Second)
+			require.NoError(t, rdb.Del(ctx, key).Err())
+		}
+	})
+
+	// Feature: set-ifeq-ifne-ifdeq-ifdne, Property 10: TTL correctly set when condition met
+	t.Run("Property 10: TTL correctly set when condition met", func(t *testing.T) {
+		for i := 0; i < 100; i++ {
+			key := "prop10-" + strconv.Itoa(i)
+			val := "value-" + strconv.Itoa(i)
+			require.NoError(t, rdb.Set(ctx, key, val, 0).Err())
+			// IFEQ with correct value + EX
+			res, err := rdb.Do(ctx, "SET", key, "new", "IFEQ", val, "EX", "30").Result()
+			require.NoError(t, err)
+			require.Equal(t, "OK", res)
+			ttl := rdb.TTL(ctx, key).Val()
+			require.Greater(t, ttl, 28*time.Second)
+			require.LessOrEqual(t, ttl, 30*time.Second)
+			require.NoError(t, rdb.Del(ctx, key).Err())
+		}
+	})
+}

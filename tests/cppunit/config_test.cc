@@ -198,10 +198,8 @@ TEST(Config, LoadRocksDBDictionaryCompressionOptions) {
   unlink(path);
 
   std::ofstream output_file(path, std::ios::out);
-  output_file << "rocksdb.compression_max_dict_bytes 16384"
-              << "\n";
-  output_file << "rocksdb.compression_zstd_max_train_bytes 262144"
-              << "\n";
+  output_file << "rocksdb.compression_max_dict_bytes 16384" << "\n";
+  output_file << "rocksdb.compression_zstd_max_train_bytes 262144" << "\n";
   output_file.close();
 
   Config config;

@@ -613,3 +613,46 @@ TEST_F(RedisStringTest, LCS) {
                     4},
                    std::get<StringLCSIdxResult>(rst));
 }
+
+TEST_F(RedisStringTest, SetIFDEQ) {
+  std::string key = "ifdeq-key";
+  std::string value = "hello";
+  std::optional<std::string> ret;
+
+  // key not found → condition not met, no write
+  auto s = string_->Set(*ctx_, key, "new", {0, StringSetType::IFDEQ, false, false, util::StringDigest(value)}, ret);
+  EXPECT_TRUE(s.ok());
+  EXPECT_FALSE(ret.has_value());
+  std::string got;
+  EXPECT_TRUE(string_->Get(*ctx_, key, &got).IsNotFound());
+
+  // set up the key
+  string_->Set(*ctx_, key, value);
+
+  // digest matches → write succeeds
+  ret = std::nullopt;
+  s = string_->Set(*ctx_, key, "new", {0, StringSetType::IFDEQ, false, false, util::StringDigest(value)}, ret);
+  EXPECT_TRUE(s.ok());
+  EXPECT_TRUE(ret.has_value());
+  string_->Get(*ctx_, key, &got);
+  EXPECT_EQ("new", got);
+
+  // digest mismatches → no write
+  ret = std::nullopt;
+  s = string_->Set(*ctx_, key, "newer", {0, StringSetType::IFDEQ, false, false, "xxxxxxxxxxxxxxxx"}, ret);
+  EXPECT_TRUE(s.ok());
+  EXPECT_FALSE(ret.has_value());
+  string_->Get(*ctx_, key, &got);
+  EXPECT_EQ("new", got);
+
+  // empty string edge case: digest of "" is well-defined
+  string_->Set(*ctx_, key, "");
+  ret = std::nullopt;
+  s = string_->Set(*ctx_, key, "nonempty", {0, StringSetType::IFDEQ, false, false, util::StringDigest("")}, ret);
+  EXPECT_TRUE(s.ok());
+  EXPECT_TRUE(ret.has_value());
+  string_->Get(*ctx_, key, &got);
+  EXPECT_EQ("nonempty", got);
+
+  EXPECT_TRUE(string_->Del(*ctx_, key).ok());
+}

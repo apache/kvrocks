@@ -158,39 +158,31 @@ class CommandBitPos : public Commander {
   using Commander::Parse;
 
   Status Parse(const std::vector<std::string> &args) override {
-    if (args.size() >= 4) {
-      auto parse_start = ParseInt<int64_t>(args[3], 10);
-      if (!parse_start) {
-        return {Status::RedisParseErr, errValueNotInteger};
-      }
+    auto parse_bit = ParseInt<int>(args[2], 10);
+    if (!parse_bit || (*parse_bit != 0 && *parse_bit != 1)) {
+      return {Status::RedisParseErr, "The bit argument must be 1 or 0."};
+    }
+    bit_ = (*parse_bit == 1);
 
-      start_ = *parse_start;
+    if (args.size() >= 4) {
+      start_ = GET_OR_RET(ParseInt<int64_t>(args[3], 10));
     }
 
     if (args.size() >= 5) {
-      auto parse_stop = ParseInt<int64_t>(args[4], 10);
-      if (!parse_stop) {
-        return {Status::RedisParseErr, errValueNotInteger};
-      }
-
+      stop_ = GET_OR_RET(ParseInt<int64_t>(args[4], 10));
       stop_given_ = true;
-      stop_ = *parse_stop;
     }
 
-    if (args.size() >= 6 && util::EqualICase(args[5], "BIT")) {
-      is_bit_index_ = true;
-    }
-
-    auto parse_arg = ParseInt<int64_t>(args[2], 10);
-    if (!parse_arg) {
-      return {Status::RedisParseErr, errValueNotInteger};
-    }
-    if (*parse_arg == 0) {
-      bit_ = false;
-    } else if (*parse_arg == 1) {
-      bit_ = true;
-    } else {
-      return {Status::RedisParseErr, "The bit argument must be 1 or 0."};
+    if (args.size() == 6) {
+      if (util::EqualICase(args[5], "BIT")) {
+        is_bit_index_ = true;
+      } else if (util::EqualICase(args[5], "BYTE")) {
+        is_bit_index_ = false;
+      } else {
+        return {Status::RedisParseErr, errInvalidSyntax};
+      }
+    } else if (args.size() > 6) {
+      return {Status::RedisParseErr, errInvalidSyntax};
     }
 
     return Commander::Parse(args);

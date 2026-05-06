@@ -541,6 +541,223 @@ func TestBitmap(t *testing.T) {
 		require.EqualValues(t, 2, cmd.Val())
 	})
 
+	t.Run("BITPOS BYTE option produces same result as default byte-indexed mode", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "mykey", "\x00\xff\xf0", 0).Err())
+		byteResult := rdb.BitPos(ctx, "mykey", 1, 1)
+		require.NoError(t, byteResult.Err())
+		explicitByte := rdb.BitPosSpan(ctx, "mykey", 1, 1, -1, "byte")
+		require.NoError(t, explicitByte.Err())
+		require.EqualValues(t, byteResult.Val(), explicitByte.Val())
+	})
+
+	t.Run("BITPOS BYTE option is case-insensitive", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "mykey", "\x00\xff\xf0", 0).Err())
+		lower, err := rdb.Do(ctx, "BITPOS", "mykey", 1, 0, -1, "byte").Int64()
+		require.NoError(t, err)
+		upper, err := rdb.Do(ctx, "BITPOS", "mykey", 1, 0, -1, "BYTE").Int64()
+		require.NoError(t, err)
+		require.EqualValues(t, lower, upper)
+	})
+
+	t.Run("BITPOS BIT vs BYTE gives different results for same range", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "mykey", "\x00\xff\xf0", 0).Err())
+		bitResult := rdb.BitPosSpan(ctx, "mykey", 1, 0, 15, "bit")
+		require.NoError(t, bitResult.Err())
+		require.EqualValues(t, 8, bitResult.Val())
+		byteResult := rdb.BitPosSpan(ctx, "mykey", 1, 0, 15, "byte")
+		require.NoError(t, byteResult.Err())
+		require.EqualValues(t, 8, byteResult.Val())
+		bitResult2 := rdb.BitPosSpan(ctx, "mykey", 1, 0, 7, "bit")
+		require.NoError(t, bitResult2.Err())
+		require.EqualValues(t, -1, bitResult2.Val())
+		byteResult2 := rdb.BitPosSpan(ctx, "mykey", 1, 0, 7, "byte")
+		require.NoError(t, byteResult2.Err())
+		require.EqualValues(t, 8, byteResult2.Val())
+	})
+
+	t.Run("BITPOS rejects invalid option", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "mykey", "\xff", 0).Err())
+		err := rdb.Do(ctx, "BITPOS", "mykey", 1, 0, -1, "INVALID").Err()
+		require.Error(t, err)
+	})
+
+	t.Run("BITPOS rejects extra arguments after BYTE/BIT", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "mykey", "\xff", 0).Err())
+		err := rdb.Do(ctx, "BITPOS", "mykey", 1, 0, -1, "BIT", "extra").Err()
+		require.Error(t, err)
+	})
+
+	t.Run("BITPOS rejects BIT unit without end offset", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "mykey", "\x80", 0).Err())
+		err := rdb.Do(ctx, "BITPOS", "mykey", 1, 0, "BIT").Err()
+		require.ErrorContains(t, err, "not started as an integer")
+	})
+
+	t.Run("BITPOS rejects BYTE unit without end offset", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "mykey", "\x80", 0).Err())
+		err := rdb.Do(ctx, "BITPOS", "mykey", 1, 0, "BYTE").Err()
+		require.ErrorContains(t, err, "not started as an integer")
+	})
+
+	t.Run("BITPOS rejects non-integer bit argument", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "mykey", "\x80", 0).Err())
+		err := rdb.Do(ctx, "BITPOS", "mykey", "x").Err()
+		require.ErrorContains(t, err, "The bit argument must be 1 or 0")
+	})
+
+	t.Run("BITPOS rejects non-integer bit argument with BIT unit", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "mykey", "\x80", 0).Err())
+		err := rdb.Do(ctx, "BITPOS", "mykey", "x", 0, 0, "BIT").Err()
+		require.ErrorContains(t, err, "The bit argument must be 1 or 0")
+	})
+
+	t.Run("BITPOS rejects bit argument of 2", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "mykey", "\xff", 0).Err())
+		err := rdb.Do(ctx, "BITPOS", "mykey", 2).Err()
+		require.ErrorContains(t, err, "The bit argument must be 1 or 0")
+	})
+
+	t.Run("BITPOS rejects bit argument of -1", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "mykey", "\xff", 0).Err())
+		err := rdb.Do(ctx, "BITPOS", "mykey", -1).Err()
+		require.ErrorContains(t, err, "The bit argument must be 1 or 0")
+	})
+
+	t.Run("BITPOS rejects non-integer start offset", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "mykey", "\xff", 0).Err())
+		err := rdb.Do(ctx, "BITPOS", "mykey", 1, "abc").Err()
+		require.ErrorContains(t, err, "not started as an integer")
+	})
+
+	t.Run("BITPOS rejects non-integer end offset", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "mykey", "\xff", 0).Err())
+		err := rdb.Do(ctx, "BITPOS", "mykey", 1, 0, "abc").Err()
+		require.ErrorContains(t, err, "not started as an integer")
+	})
+
+	t.Run("BITPOS bit=1 with nonexistent key returns -1", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "nosuchkey").Err())
+		val, err := rdb.Do(ctx, "BITPOS", "nosuchkey", 1).Int64()
+		require.NoError(t, err)
+		require.EqualValues(t, -1, val)
+	})
+
+	t.Run("BITPOS bit=0 with nonexistent key returns 0", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "nosuchkey").Err())
+		val, err := rdb.Do(ctx, "BITPOS", "nosuchkey", 0).Int64()
+		require.NoError(t, err)
+		require.EqualValues(t, 0, val)
+	})
+
+	t.Run("BITPOS BYTE with negative start", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "mykey", "\xff\x00\xff", 0).Err())
+		val, err := rdb.Do(ctx, "BITPOS", "mykey", 0, -2, -1, "BYTE").Int64()
+		require.NoError(t, err)
+		require.EqualValues(t, 8, val)
+	})
+
+	t.Run("BITPOS BIT with negative start and end", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "mykey", "\xff\x00\xff", 0).Err())
+		val, err := rdb.Do(ctx, "BITPOS", "mykey", 0, -16, -9, "BIT").Int64()
+		require.NoError(t, err)
+		require.EqualValues(t, 8, val)
+	})
+
+	t.Run("BITPOS returns -1 when start > end after normalization", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "mykey", "\xff\x00\xff", 0).Err())
+		val, err := rdb.Do(ctx, "BITPOS", "mykey", 1, 2, 1, "BYTE").Int64()
+		require.NoError(t, err)
+		require.EqualValues(t, -1, val)
+	})
+
+	t.Run("BITPOS BIT returns -1 when start > end after normalization", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "mykey", "\xff\x00\xff", 0).Err())
+		val, err := rdb.Do(ctx, "BITPOS", "mykey", 1, 16, 8, "BIT").Int64()
+		require.NoError(t, err)
+		require.EqualValues(t, -1, val)
+	})
+
+	t.Run("BITPOS BYTE bit=0 with all-ones string and explicit end returns -1", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "mykey", "\xff\xff\xff", 0).Err())
+		val, err := rdb.Do(ctx, "BITPOS", "mykey", 0, 0, 2, "BYTE").Int64()
+		require.NoError(t, err)
+		require.EqualValues(t, -1, val)
+	})
+
+	t.Run("BITPOS BIT bit=0 with all-ones string and explicit end returns -1", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "mykey", "\xff\xff\xff", 0).Err())
+		val, err := rdb.Do(ctx, "BITPOS", "mykey", 0, 0, 23, "BIT").Int64()
+		require.NoError(t, err)
+		require.EqualValues(t, -1, val)
+	})
+
+	t.Run("BITPOS BYTE bit=0 without end extends past string (finds trailing zero)", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "mykey", "\xff\xff\xff", 0).Err())
+		val, err := rdb.Do(ctx, "BITPOS", "mykey", 0).Int64()
+		require.NoError(t, err)
+		require.EqualValues(t, 24, val)
+	})
+
+	t.Run("BITPOS BYTE with end beyond string length clamps correctly", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "mykey", "\x00\xff\x00", 0).Err())
+		val, err := rdb.Do(ctx, "BITPOS", "mykey", 1, 0, 100, "BYTE").Int64()
+		require.NoError(t, err)
+		require.EqualValues(t, 8, val)
+	})
+
+	t.Run("BITPOS BIT with end beyond string length clamps correctly", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "mykey", "\x00\xff\x00", 0).Err())
+		val, err := rdb.Do(ctx, "BITPOS", "mykey", 1, 0, 999, "BIT").Int64()
+		require.NoError(t, err)
+		require.EqualValues(t, 8, val)
+	})
+
+	t.Run("BITPOS BYTE with only start argument", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "mykey", "\x00\x00\xff", 0).Err())
+		val, err := rdb.Do(ctx, "BITPOS", "mykey", 1, 2).Int64()
+		require.NoError(t, err)
+		require.EqualValues(t, 16, val)
+	})
+
+	t.Run("BITPOS BYTE with start past string returns -1 for bit=1", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "mykey", "\xff", 0).Err())
+		val, err := rdb.Do(ctx, "BITPOS", "mykey", 1, 5).Int64()
+		require.NoError(t, err)
+		require.EqualValues(t, -1, val)
+	})
+
+	t.Run("BITPOS on wrong type returns WRONGTYPE error", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "mylist").Err())
+		require.NoError(t, rdb.LPush(ctx, "mylist", "a").Err())
+		err := rdb.Do(ctx, "BITPOS", "mylist", 1).Err()
+		require.ErrorContains(t, err, "WRONGTYPE")
+	})
+
+	t.Run("BITPOS BYTE bit=0 finds first zero in middle byte", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "mykey", "\xff\x0f\xff", 0).Err())
+		val, err := rdb.Do(ctx, "BITPOS", "mykey", 0, 0, 2, "BYTE").Int64()
+		require.NoError(t, err)
+		require.EqualValues(t, 8, val)
+	})
+
+	t.Run("BITPOS BIT bit=0 finds first zero within bit range", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "mykey", "\xff\x0f\xff", 0).Err())
+		val, err := rdb.Do(ctx, "BITPOS", "mykey", 0, 8, 15, "BIT").Int64()
+		require.NoError(t, err)
+		require.EqualValues(t, 8, val)
+	})
+
+	t.Run("BITPOS BIT single bit precision check", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "mykey", "\x00\x80", 0).Err())
+		val, err := rdb.Do(ctx, "BITPOS", "mykey", 1, 8, 8, "BIT").Int64()
+		require.NoError(t, err)
+		require.EqualValues(t, 8, val)
+
+		val, err = rdb.Do(ctx, "BITPOS", "mykey", 1, 9, 15, "BIT").Int64()
+		require.NoError(t, err)
+		require.EqualValues(t, -1, val)
+	})
+
 	/* Test cases adapted from redis test cases : https://github.com/redis/redis/blob/unstable/tests/unit/bitops.tcl
 	 */
 	t.Run("BITPOS bit=0 with empty key returns 0", func(t *testing.T) {

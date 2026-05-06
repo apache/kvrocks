@@ -379,6 +379,147 @@ func TestBitmap(t *testing.T) {
 		require.ErrorContains(t, rdb.Do(ctx, "BITFIELD_RO", "str", "INCRBY", "u8", "32", 2).Err(), "BITFIELD_RO only supports the GET subcommand")
 	})
 
+	t.Run("BITFIELD positional offset #N syntax", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "bf_pos").Err())
+
+		// #0 with u16 = offset 0, #1 = offset 16, #2 = offset 32
+		res := rdb.Do(ctx, "BITFIELD", "bf_pos", "SET", "u16", "#0", 100)
+		require.NoError(t, res.Err())
+		require.EqualValues(t, []interface{}{int64(0)}, res.Val())
+
+		res = rdb.Do(ctx, "BITFIELD", "bf_pos", "SET", "u16", "#1", 200)
+		require.NoError(t, res.Err())
+		require.EqualValues(t, []interface{}{int64(0)}, res.Val())
+
+		res = rdb.Do(ctx, "BITFIELD", "bf_pos", "GET", "u16", "#0", "GET", "u16", "#1")
+		require.NoError(t, res.Err())
+		require.EqualValues(t, []interface{}{int64(100), int64(200)}, res.Val())
+
+		// INCRBY with #N
+		res = rdb.Do(ctx, "BITFIELD", "bf_pos", "INCRBY", "u16", "#0", 1)
+		require.NoError(t, res.Err())
+		require.EqualValues(t, []interface{}{int64(101)}, res.Val())
+
+		// OVERFLOW SAT with #N
+		res = rdb.Do(ctx, "BITFIELD", "bf_pos", "OVERFLOW", "SAT", "INCRBY", "u16", "#1", 65535)
+		require.NoError(t, res.Err())
+		require.EqualValues(t, []interface{}{int64(65535)}, res.Val())
+
+		// BITFIELD_RO GET with #N
+		for _, command := range []string{"BITFIELD", "BITFIELD_RO"} {
+			res = rdb.Do(ctx, command, "bf_pos", "GET", "u16", "#0")
+			require.NoError(t, res.Err())
+			require.EqualValues(t, []interface{}{int64(101)}, res.Val())
+		}
+	})
+
+	t.Run("BITFIELD positional offset #N invalid and boundary cases", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "bf_pos").Err())
+
+		// bare '#' with no number
+		util.ErrorRegexp(t, rdb.Do(ctx, "BITFIELD", "bf_pos", "SET", "u16", "#", 1).Err(), ".*out of range.*")
+
+		// non-numeric after '#'
+		util.ErrorRegexp(t, rdb.Do(ctx, "BITFIELD", "bf_pos", "SET", "u16", "#abc", 1).Err(), ".*out of range.*")
+
+		// negative index
+		util.ErrorRegexp(t, rdb.Do(ctx, "BITFIELD", "bf_pos", "SET", "u16", "#-1", 1).Err(), ".*out of range.*")
+
+		// overflow: #268435456 * 16 bits = 4294967296 > UINT32_MAX
+		util.ErrorRegexp(t, rdb.Do(ctx, "BITFIELD", "bf_pos", "SET", "u16", "#268435456", 1).Err(), ".*out of range.*")
+
+		// overflow with u8: #536870912 * 8 = 4294967296 > UINT32_MAX
+		util.ErrorRegexp(t, rdb.Do(ctx, "BITFIELD", "bf_pos", "SET", "u8", "#536870912", 1).Err(), ".*out of range.*")
+
+		// overflow with u32: #134217728 * 32 = 4294967296 > UINT32_MAX
+		util.ErrorRegexp(t, rdb.Do(ctx, "BITFIELD", "bf_pos", "SET", "u32", "#134217728", 1).Err(), ".*out of range.*")
+
+		// overflow with i64: #67108864 * 64 = 4294967296 > UINT32_MAX
+		util.ErrorRegexp(t, rdb.Do(ctx, "BITFIELD", "bf_pos", "SET", "i64", "#67108864", 1).Err(), ".*out of range.*")
+
+		// just below overflow with u8: #536870911 * 8 = 4294967288 <= UINT32_MAX — must not error
+		res := rdb.Do(ctx, "BITFIELD", "bf_pos", "SET", "u8", "#0", 255)
+		require.NoError(t, res.Err())
+	})
+
+	t.Run("BITFIELD positional offset #N with signed types", func(t *testing.T) {
+		// i8: #0 = offset 0, #1 = offset 8
+		require.NoError(t, rdb.Del(ctx, "bf_i8").Err())
+		res := rdb.Do(ctx, "BITFIELD", "bf_i8", "SET", "i8", "#0", -10)
+		require.NoError(t, res.Err())
+		require.EqualValues(t, []interface{}{int64(0)}, res.Val())
+
+		res = rdb.Do(ctx, "BITFIELD", "bf_i8", "SET", "i8", "#1", 42)
+		require.NoError(t, res.Err())
+		require.EqualValues(t, []interface{}{int64(0)}, res.Val())
+
+		res = rdb.Do(ctx, "BITFIELD", "bf_i8", "GET", "i8", "#0", "GET", "i8", "#1")
+		require.NoError(t, res.Err())
+		require.EqualValues(t, []interface{}{int64(-10), int64(42)}, res.Val())
+
+		// INCRBY with signed i8 and #N
+		res = rdb.Do(ctx, "BITFIELD", "bf_i8", "INCRBY", "i8", "#1", -2)
+		require.NoError(t, res.Err())
+		require.EqualValues(t, []interface{}{int64(40)}, res.Val())
+
+		// i32: #0 = offset 0, #1 = offset 32
+		require.NoError(t, rdb.Del(ctx, "bf_i32").Err())
+		res = rdb.Do(ctx, "BITFIELD", "bf_i32", "SET", "i32", "#0", -100000)
+		require.NoError(t, res.Err())
+		res = rdb.Do(ctx, "BITFIELD", "bf_i32", "SET", "i32", "#1", 999999)
+		require.NoError(t, res.Err())
+		res = rdb.Do(ctx, "BITFIELD", "bf_i32", "GET", "i32", "#0", "GET", "i32", "#1")
+		require.NoError(t, res.Err())
+		require.EqualValues(t, []interface{}{int64(-100000), int64(999999)}, res.Val())
+	})
+
+	t.Run("BITFIELD positional offset #N with various unsigned widths", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "bf_widths").Err())
+
+		// u8: #N * 8
+		res := rdb.Do(ctx, "BITFIELD", "bf_widths", "SET", "u8", "#0", 255)
+		require.NoError(t, res.Err())
+		res = rdb.Do(ctx, "BITFIELD", "bf_widths", "SET", "u8", "#1", 128)
+		require.NoError(t, res.Err())
+		res = rdb.Do(ctx, "BITFIELD", "bf_widths", "GET", "u8", "#0", "GET", "u8", "#1")
+		require.NoError(t, res.Err())
+		require.EqualValues(t, []interface{}{int64(255), int64(128)}, res.Val())
+
+		// u32: #N * 32
+		require.NoError(t, rdb.Del(ctx, "bf_widths").Err())
+		res = rdb.Do(ctx, "BITFIELD", "bf_widths", "SET", "u32", "#0", 1000000)
+		require.NoError(t, res.Err())
+		res = rdb.Do(ctx, "BITFIELD", "bf_widths", "SET", "u32", "#1", 2000000)
+		require.NoError(t, res.Err())
+		res = rdb.Do(ctx, "BITFIELD", "bf_widths", "GET", "u32", "#0", "GET", "u32", "#1")
+		require.NoError(t, res.Err())
+		require.EqualValues(t, []interface{}{int64(1000000), int64(2000000)}, res.Val())
+
+		// u1: #N * 1 — single bit fields
+		require.NoError(t, rdb.Del(ctx, "bf_widths").Err())
+		res = rdb.Do(ctx, "BITFIELD", "bf_widths", "SET", "u1", "#0", 1)
+		require.NoError(t, res.Err())
+		res = rdb.Do(ctx, "BITFIELD", "bf_widths", "SET", "u1", "#1", 1)
+		require.NoError(t, res.Err())
+		res = rdb.Do(ctx, "BITFIELD", "bf_widths", "GET", "u1", "#0", "GET", "u1", "#1")
+		require.NoError(t, res.Err())
+		require.EqualValues(t, []interface{}{int64(1), int64(1)}, res.Val())
+	})
+
+	t.Run("BITFIELD positional offset #N mixed with absolute offset", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "bf_mix").Err())
+
+		// mix #N positional and absolute offset in same command
+		res := rdb.Do(ctx, "BITFIELD", "bf_mix", "SET", "u8", "#0", 10, "SET", "u8", "8", 20)
+		require.NoError(t, res.Err())
+		require.EqualValues(t, []interface{}{int64(0), int64(0)}, res.Val())
+
+		// #0 = offset 0, absolute 8 = offset 8 — should be same as #1
+		res = rdb.Do(ctx, "BITFIELD", "bf_mix", "GET", "u8", "#0", "GET", "u8", "#1")
+		require.NoError(t, res.Err())
+		require.EqualValues(t, []interface{}{int64(10), int64(20)}, res.Val())
+	})
+
 	t.Run("BITPOS BIT option check", func(t *testing.T) {
 		require.NoError(t, rdb.Set(ctx, "mykey", "\x00\xff\xf0", 0).Err())
 		cmd := rdb.BitPosSpan(ctx, "mykey", 1, 7, 15, "bit")

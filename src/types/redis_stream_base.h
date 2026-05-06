@@ -245,6 +245,8 @@ struct StreamPendingOptions {
 
   StreamEntryID start_id{StreamEntryID::Minimum()};
   StreamEntryID end_id{StreamEntryID::Maximum()};
+  bool exclude_start = false;
+  bool exclude_end = false;
 
   uint64_t count;
   bool with_count = false;

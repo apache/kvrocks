@@ -61,7 +61,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Check typos
-        uses: crate-ci/typos@v1.45.0
+        uses: crate-ci/typos@v1.46.0
         with:
           config: .github/config/typos.toml
       - uses: apache/skywalking-eyes/header@v0.8.0
@@ -525,6 +525,8 @@ jobs:
           - name: ArchLinux
             image: archlinux:base
             compiler: gcc
+            # FIXME: enable this when https://github.com/jemalloc/jemalloc/pull/2900 is released
+            disable_jemalloc: -DDISABLE_JEMALLOC=ON
           - name: Rocky Linux 8
             image: rockylinux:8
             compiler: gcc

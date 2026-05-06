@@ -18,6 +18,8 @@
  *
  */
 
+#include <limits>
+
 #include "commander.h"
 #include "commands/command_parser.h"
 #include "error_constants.h"
@@ -302,8 +304,18 @@ class CommandBitfield : public Commander {
       }
       cmd.encoding = encoding.GetValue();
 
-      // parse offset
-      if (!GetBitOffsetFromArgument(group[2], &cmd.offset).IsOK()) {
+      // parse offset — support Redis '#N' positional syntax: #N means N * bit_width
+      if (!group[2].empty() && group[2][0] == '#') {
+        auto pos_parse = ParseInt<uint64_t>(group[2].substr(1), 10);
+        if (!pos_parse) {
+          return {Status::RedisParseErr, "bit offset is not an integer or out of range"};
+        }
+        uint64_t offset64 = *pos_parse * static_cast<uint64_t>(cmd.encoding.Bits());
+        if (offset64 > std::numeric_limits<uint32_t>::max()) {
+          return {Status::RedisParseErr, "bit offset is not an integer or out of range"};
+        }
+        cmd.offset = static_cast<uint32_t>(offset64);
+      } else if (!GetBitOffsetFromArgument(group[2], &cmd.offset).IsOK()) {
         return {Status::RedisParseErr, "bit offset is not an integer or out of range"};
       }
 

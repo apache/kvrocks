@@ -335,7 +335,7 @@ bool Metadata::IsSingleKVType() const { return Type() == kRedisString || Type() 
 
 bool Metadata::IsEmptyableType() const {
   return IsSingleKVType() || Type() == kRedisStream || Type() == kRedisBloomFilter || Type() == kRedisHyperLogLog ||
-         Type() == kRedisTDigest || Type() == kRedisTimeSeries;
+         Type() == kRedisTDigest || Type() == kRedisTimeSeries || Type() == kRedisCuckooFilter;
 }
 
 bool Metadata::Expired() const { return ExpireAt(util::GetTimeStampMS()); }
@@ -661,7 +661,7 @@ rocksdb::Status CuckooChainMetadata::Decode(Slice *input) {
     return s;
   }
 
-  if (input->size() < 21) {
+  if (input->size() < sizeof(uint16_t) * 3 + sizeof(uint64_t) * 2 + sizeof(uint8_t)) {
     return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
   }
 

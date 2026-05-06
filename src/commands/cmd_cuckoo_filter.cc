@@ -31,7 +31,7 @@ class CommandCFReserve : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     // CF.RESERVE key capacity [BUCKETSIZE bs] [MAXITERATIONS mi] [EXPANSION ex]
     if (args.size() < 3) {
-      return {Status::RedisParseErr, "wrong number of arguments"};
+      return {Status::RedisParseErr, errWrongNumOfArguments};
     }
 
     // Parse capacity (required)
@@ -107,7 +107,7 @@ class CommandCFAdd : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     // CF.ADD key item
     if (args.size() != 3) {
-      return {Status::RedisParseErr, "wrong number of arguments"};
+      return {Status::RedisParseErr, errWrongNumOfArguments};
     }
     return Commander::Parse(args);
   }
@@ -128,7 +128,7 @@ class CommandCFAdd : public Commander {
       return {Status::RedisExecErr, "failed to add item to cuckoo filter"};
     }
 
-    // Return 1 if added, 0 if already exists (though we don't check for duplicates in this version)
+    // Duplicate items are allowed, so successful insertions return 1.
     *output = redis::Integer(added ? 1 : 0);
     return Status::OK();
   }

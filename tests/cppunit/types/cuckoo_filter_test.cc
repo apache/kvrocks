@@ -20,6 +20,7 @@
 
 #include <gtest/gtest.h>
 
+#include <limits>
 #include <memory>
 
 #include "storage/redis_db.h"
@@ -287,6 +288,13 @@ TEST_F(RedisCuckooFilterTest, ReserveLargeCapacity) {
 
   num_buckets = redis::CuckooFilter::OptimalNumBuckets(huge_capacity, 4);
   ASSERT_GT(num_buckets, 0) << "Should not overflow with 100M capacity";
+}
+
+TEST_F(RedisCuckooFilterTest, ReserveRejectsCapacityOverflow) {
+  auto s = cuckoo_->Reserve(*ctx_, key_, std::numeric_limits<uint64_t>::max(), 1, 500, 2);
+  ASSERT_FALSE(s.ok());
+  ASSERT_TRUE(s.IsInvalidArgument());
+  ASSERT_NE(s.ToString().find("capacity is too large"), std::string::npos);
 }
 
 TEST_F(RedisCuckooFilterTest, ReserveMaxIterationsBoundary) {

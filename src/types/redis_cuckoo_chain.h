@@ -20,6 +20,8 @@
 
 #pragma once
 
+#include <unordered_map>
+
 #include "cuckoo_filter.h"
 #include "storage/redis_db.h"
 #include "storage/redis_metadata.h"
@@ -40,13 +42,15 @@ class CuckooChain : public Database {
   rocksdb::Status Reserve(engine::Context &ctx, const Slice &user_key, uint64_t capacity, uint8_t bucket_size,
                           uint16_t max_iterations, uint8_t expansion);
 
-  // CF.ADD command - adds an item to the cuckoo filter
-  // Returns true if item was added, false if item already exists (probably)
+  // CF.ADD command - adds an item to the cuckoo filter.
+  // Duplicate items are allowed, so added is true whenever insertion succeeds.
   rocksdb::Status Add(engine::Context &ctx, const Slice &user_key, const Slice &item, bool *added);
 
  private:
   // Get metadata for the cuckoo filter
   rocksdb::Status getCuckooChainMetadata(engine::Context &ctx, const Slice &ns_key, CuckooChainMetadata *metadata);
+
+  static rocksdb::Status ValidateMetadata(const CuckooChainMetadata &metadata);
 
   // Generate key for a specific bucket in bucket-based storage
   // Format: cf:{namespace}:{user_key}:{filter_index}:{bucket_index}
@@ -54,12 +58,9 @@ class CuckooChain : public Database {
                            uint32_t bucket_index);
 
   // Kick-out insertion: try to insert fingerprint by evicting existing ones
-  rocksdb::Status kickOutInsert(engine::Context &ctx, const Slice &user_key, const Slice &ns_key,
-                                const CuckooChainMetadata &metadata, uint16_t filter_index, uint32_t num_buckets,
-                                uint8_t fingerprint, uint64_t hash, bool *inserted);
-
-  // Create a new sub-filter for expansion
-  rocksdb::Status expandFilter(engine::Context &ctx, const Slice &ns_key, CuckooChainMetadata *metadata);
+  rocksdb::Status kickOutInsert(engine::Context &ctx, const Slice &ns_key, const CuckooChainMetadata &metadata,
+                                uint16_t filter_index, uint32_t num_buckets, uint8_t fingerprint, uint64_t hash,
+                                bool *inserted, std::unordered_map<std::string, std::string> *modified_buckets);
 };
 
 }  // namespace redis

@@ -21,6 +21,7 @@
 #pragma once
 
 #include <cstdint>
+#include <limits>
 #include <string>
 #include <utility>
 #include <vector>
@@ -41,6 +42,12 @@ namespace redis {
 // - bucket_index = hash % num_buckets (only apply modulo when indexing)
 class CuckooFilter {
  public:
+  static bool IsCapacitySupported(uint64_t capacity, uint8_t bucket_size) {
+    if (bucket_size == 0) return false;
+    auto num_buckets = static_cast<long double>(capacity) / bucket_size / 0.955L;
+    return num_buckets <= static_cast<long double>(std::numeric_limits<uint32_t>::max() / 2 + 1ULL);
+  }
+
   // Calculate the optimal number of buckets for the filter
   static uint32_t OptimalNumBuckets(uint64_t capacity, uint8_t bucket_size) {
     // A load factor of 95.5% is chosen for the cuckoo filter

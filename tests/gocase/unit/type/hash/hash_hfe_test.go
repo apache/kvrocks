@@ -411,29 +411,33 @@ func TestHashFieldExpirationWriteCommandsAcrossFieldStates(t *testing.T) {
 			requireHashMetadata(t, util.GetKMetadata(t, rdb, ctx, key), 5, 5)
 		})
 
-		t.Run("hincrby resets ttl state and ignores expired value", func(t *testing.T) {
+		t.Run("hincrby keeps live ttl and ignores expired value", func(t *testing.T) {
 			key := "hfe-write-hincrby-mixed"
 			createHashFieldStates(t, rdb, ctx, key)
 			require.Equal(t, int64(15), rdb.HIncrBy(ctx, key, hfePersistentField, 5).Val())
 			requireHashMetadata(t, util.GetKMetadata(t, rdb, ctx, key), 4, 2)
 			require.Equal(t, int64(25), rdb.HIncrBy(ctx, key, hfeLiveField, 5).Val())
-			requireHashMetadata(t, util.GetKMetadata(t, rdb, ctx, key), 4, 3)
+			requireHashMetadata(t, util.GetKMetadata(t, rdb, ctx, key), 4, 2)
 			require.Equal(t, int64(5), rdb.HIncrBy(ctx, key, hfeExpiredField, 5).Val())
-			requireHashMetadata(t, util.GetKMetadata(t, rdb, ctx, key), 4, 4)
+			requireHashMetadata(t, util.GetKMetadata(t, rdb, ctx, key), 4, 3)
 			require.Equal(t, int64(5), rdb.HIncrBy(ctx, key, hfeMissingField, 5).Val())
+			requireHashMetadata(t, util.GetKMetadata(t, rdb, ctx, key), 5, 4)
+			requireIntArray(t, rdb.Do(ctx, "hpersist", key, "FIELDS", 1, hfeLiveField).Val(), []int64{1})
 			requireHashMetadata(t, util.GetKMetadata(t, rdb, ctx, key), 5, 5)
 		})
 
-		t.Run("hincrbyfloat resets ttl state and ignores expired value", func(t *testing.T) {
+		t.Run("hincrbyfloat keeps live ttl and ignores expired value", func(t *testing.T) {
 			key := "hfe-write-hincrbyfloat-mixed"
 			createHashFieldStates(t, rdb, ctx, key)
 			require.Equal(t, 10.5, rdb.HIncrByFloat(ctx, key, hfePersistentField, 0.5).Val())
 			requireHashMetadata(t, util.GetKMetadata(t, rdb, ctx, key), 4, 2)
 			require.Equal(t, 20.5, rdb.HIncrByFloat(ctx, key, hfeLiveField, 0.5).Val())
-			requireHashMetadata(t, util.GetKMetadata(t, rdb, ctx, key), 4, 3)
+			requireHashMetadata(t, util.GetKMetadata(t, rdb, ctx, key), 4, 2)
 			require.Equal(t, 0.5, rdb.HIncrByFloat(ctx, key, hfeExpiredField, 0.5).Val())
-			requireHashMetadata(t, util.GetKMetadata(t, rdb, ctx, key), 4, 4)
+			requireHashMetadata(t, util.GetKMetadata(t, rdb, ctx, key), 4, 3)
 			require.Equal(t, 0.5, rdb.HIncrByFloat(ctx, key, hfeMissingField, 0.5).Val())
+			requireHashMetadata(t, util.GetKMetadata(t, rdb, ctx, key), 5, 4)
+			requireIntArray(t, rdb.Do(ctx, "hpersist", key, "FIELDS", 1, hfeLiveField).Val(), []int64{1})
 			requireHashMetadata(t, util.GetKMetadata(t, rdb, ctx, key), 5, 5)
 		})
 	})

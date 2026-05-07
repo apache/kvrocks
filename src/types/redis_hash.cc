@@ -221,7 +221,8 @@ rocksdb::Status Hash::Get(engine::Context &ctx, const Slice &user_key, const Sli
 rocksdb::Status Hash::IncrBy(engine::Context &ctx, const Slice &user_key, const Slice &field, int64_t increment,
                              int64_t *new_value) {
   bool exists = false;
-  bool ttl_to_persistent = false;
+  bool expired_ttl_to_persistent = false;
+  uint64_t keep_expire = 0;
   int64_t old_value = 0;
 
   std::string ns_key = AppendNamespacePrefix(user_key);
@@ -245,10 +246,10 @@ rocksdb::Status Hash::IncrBy(engine::Context &ctx, const Slice &user_key, const 
       }
       old_value = *parse_result;
       exists = true;
-      ttl_to_persistent = state.kind == HashFieldStateKind::kLiveTTL;
+      keep_expire = state.expire;
     } else if (state.kind == HashFieldStateKind::kExpiredTTLPhysical) {
       exists = true;
-      ttl_to_persistent = true;
+      expired_ttl_to_persistent = true;
     }
   }
   if ((increment < 0 && old_value < 0 && increment < (LLONG_MIN - old_value)) ||
@@ -261,7 +262,7 @@ rocksdb::Status Hash::IncrBy(engine::Context &ctx, const Slice &user_key, const 
   WriteBatchLogData log_data(kRedisHash);
   s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) return s;
-  std::string encoded_value = metadata.EncodeSubkeyValue(std::to_string(*new_value));
+  std::string encoded_value = metadata.EncodeSubkeyValue(std::to_string(*new_value), keep_expire);
   s = batch->Put(sub_key, encoded_value);
   if (!s.ok()) return s;
   if (!exists) {
@@ -270,7 +271,7 @@ rocksdb::Status Hash::IncrBy(engine::Context &ctx, const Slice &user_key, const 
     metadata.Encode(&bytes);
     s = batch->Put(metadata_cf_handle_, ns_key, bytes);
     if (!s.ok()) return s;
-  } else if (metadata.IsFieldExpirationEncoding() && ttl_to_persistent) {
+  } else if (metadata.IsFieldExpirationEncoding() && expired_ttl_to_persistent) {
     ApplyTTLToPersistent(&metadata);
     std::string bytes;
     metadata.Encode(&bytes);
@@ -283,7 +284,8 @@ rocksdb::Status Hash::IncrBy(engine::Context &ctx, const Slice &user_key, const 
 rocksdb::Status Hash::IncrByFloat(engine::Context &ctx, const Slice &user_key, const Slice &field, double increment,
                                   double *new_value) {
   bool exists = false;
-  bool ttl_to_persistent = false;
+  bool expired_ttl_to_persistent = false;
+  uint64_t keep_expire = 0;
   double old_value = 0;
 
   std::string ns_key = AppendNamespacePrefix(user_key);
@@ -304,10 +306,10 @@ rocksdb::Status Hash::IncrByFloat(engine::Context &ctx, const Slice &user_key, c
       }
       old_value = *value_stat;
       exists = true;
-      ttl_to_persistent = state.kind == HashFieldStateKind::kLiveTTL;
+      keep_expire = state.expire;
     } else if (state.kind == HashFieldStateKind::kExpiredTTLPhysical) {
       exists = true;
-      ttl_to_persistent = true;
+      expired_ttl_to_persistent = true;
     }
   }
   double n = old_value + increment;
@@ -320,7 +322,7 @@ rocksdb::Status Hash::IncrByFloat(engine::Context &ctx, const Slice &user_key, c
   WriteBatchLogData log_data(kRedisHash);
   s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) return s;
-  std::string encoded_value = metadata.EncodeSubkeyValue(util::Float2String(*new_value));
+  std::string encoded_value = metadata.EncodeSubkeyValue(util::Float2String(*new_value), keep_expire);
   s = batch->Put(sub_key, encoded_value);
   if (!s.ok()) return s;
   if (!exists) {
@@ -329,7 +331,7 @@ rocksdb::Status Hash::IncrByFloat(engine::Context &ctx, const Slice &user_key, c
     metadata.Encode(&bytes);
     s = batch->Put(metadata_cf_handle_, ns_key, bytes);
     if (!s.ok()) return s;
-  } else if (metadata.IsFieldExpirationEncoding() && ttl_to_persistent) {
+  } else if (metadata.IsFieldExpirationEncoding() && expired_ttl_to_persistent) {
     ApplyTTLToPersistent(&metadata);
     std::string bytes;
     metadata.Encode(&bytes);

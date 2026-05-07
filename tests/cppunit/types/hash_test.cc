@@ -778,7 +778,7 @@ TEST_F(RedisHashFieldExpirationEncodingTest, SetNXHandlesPersistentLiveExpiredAn
   EXPECT_EQ(value, "55");
 }
 
-TEST_F(RedisHashFieldExpirationEncodingTest, IncrementsTreatExpiredPhysicalAndGhostAsZero) {
+TEST_F(RedisHashFieldExpirationEncodingTest, IncrementsKeepLiveTTLAndTreatExpiredPhysicalAndGhostAsZero) {
   const Slice key = "hfe-incr-state-matrix";
   uint64_t ret = 0;
   auto s =
@@ -813,6 +813,13 @@ TEST_F(RedisHashFieldExpirationEncodingTest, IncrementsTreatExpiredPhysicalAndGh
   s = hash_->IncrBy(*ctx_, key, "live", 1, &int_value);
   ASSERT_TRUE(s.ok());
   EXPECT_EQ(int_value, 21);
+  metadata = hashMetadata(key.ToString());
+  std::string raw_value = rawHashValue(key.ToString(), "live", &metadata);
+  Slice decoded_value(raw_value);
+  uint64_t live_expire = 0;
+  ASSERT_TRUE(metadata.DecodeSubkeyValue(&decoded_value, &live_expire).ok());
+  EXPECT_EQ(decoded_value.ToStringView(), "21");
+  EXPECT_EQ(live_expire, now + 60'000);
   s = hash_->IncrBy(*ctx_, key, "expired", 1, &int_value);
   ASSERT_TRUE(s.ok());
   EXPECT_EQ(int_value, 1);
@@ -825,7 +832,23 @@ TEST_F(RedisHashFieldExpirationEncodingTest, IncrementsTreatExpiredPhysicalAndGh
 
   metadata = hashMetadata(key.ToString());
   EXPECT_EQ(metadata.size, 6);
-  EXPECT_EQ(metadata.persist, 5);
+  EXPECT_EQ(metadata.persist, 4);
+  EXPECT_EQ(metadata.lower, now - 1);
+  EXPECT_EQ(metadata.upper, now + 120'000);
+
+  double float_value = 0;
+  s = hash_->IncrByFloat(*ctx_, key, "live", 0.5, &float_value);
+  ASSERT_TRUE(s.ok());
+  EXPECT_DOUBLE_EQ(float_value, 21.5);
+  metadata = hashMetadata(key.ToString());
+  raw_value = rawHashValue(key.ToString(), "live", &metadata);
+  decoded_value = Slice(raw_value);
+  live_expire = 0;
+  ASSERT_TRUE(metadata.DecodeSubkeyValue(&decoded_value, &live_expire).ok());
+  EXPECT_EQ(decoded_value.ToStringView(), "21.5");
+  EXPECT_EQ(live_expire, now + 60'000);
+  EXPECT_EQ(metadata.size, 6);
+  EXPECT_EQ(metadata.persist, 4);
   EXPECT_EQ(metadata.lower, now - 1);
   EXPECT_EQ(metadata.upper, now + 120'000);
 }

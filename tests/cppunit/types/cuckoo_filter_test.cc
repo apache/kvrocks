@@ -22,6 +22,7 @@
 
 #include <limits>
 #include <memory>
+#include <vector>
 
 #include "storage/redis_db.h"
 #include "storage/redis_metadata.h"
@@ -38,32 +39,126 @@ class RedisCuckooFilterTest : public TestBase {
  protected:
   explicit RedisCuckooFilterTest() : TestBase() {
     cuckoo_ = std::make_unique<redis::CuckooChain>(storage_.get(), "cuckoo_ns");
+    db_ = std::make_unique<redis::Database>(storage_.get(), "cuckoo_ns");
   }
   ~RedisCuckooFilterTest() override {
     // Ensure cuckoo_ is destroyed before storage_
     cuckoo_.reset();
+    db_.reset();
   }
 
   void SetUp() override {
-    // Use a unique key for each test to avoid conflicts
-    // Include test name to make debugging easier
     const ::testing::TestInfo *const test_info = ::testing::UnitTest::GetInstance()->current_test_info();
     key_ = std::string("cf_test_") + test_info->name();
   }
 
+  void VerifyMetadata(const std::string &key, uint64_t capacity, uint8_t bucket_size, uint16_t max_iterations,
+                      uint16_t expansion, uint64_t size, uint16_t n_filters, uint64_t num_deleted_items = 0) {
+    std::string ns_key = db_->AppendNamespacePrefix(key);
+    CuckooChainMetadata metadata(false);
+    auto s = db_->GetMetadata(*ctx_, {kRedisCuckooFilter}, ns_key, &metadata);
+    ASSERT_TRUE(s.ok()) << key << ": metadata not found";
+    EXPECT_EQ(metadata.Type(), kRedisCuckooFilter) << key;
+    EXPECT_EQ(metadata.base_capacity, capacity) << key;
+    EXPECT_EQ(metadata.bucket_size, bucket_size) << key;
+    EXPECT_EQ(metadata.max_iterations, max_iterations) << key;
+    EXPECT_EQ(metadata.expansion, expansion) << key;
+    EXPECT_EQ(metadata.size, size) << key;
+    EXPECT_EQ(metadata.n_filters, n_filters) << key;
+    EXPECT_EQ(metadata.num_deleted_items, num_deleted_items) << key;
+  }
+
+  void ReserveAndVerify(const std::string &key, uint64_t capacity, uint8_t bucket_size, uint16_t max_iterations,
+                        uint16_t expansion) {
+    auto s = cuckoo_->Reserve(*ctx_, key, capacity, bucket_size, max_iterations, expansion);
+    ASSERT_TRUE(s.ok()) << key << ": " << s.ToString();
+    VerifyMetadata(key, capacity, bucket_size, max_iterations, expansion, 0, 1, 0);
+  }
+
+  void AddAndVerify(const std::string &key, const std::string &item, uint64_t capacity, uint8_t bucket_size,
+                    uint16_t max_iterations, uint16_t expansion, uint64_t expected_size, uint16_t n_filters = 1) {
+    bool added = false;
+    auto s = cuckoo_->Add(*ctx_, key, item, &added);
+    ASSERT_TRUE(s.ok()) << key << ": add '" << item << "' failed: " << s.ToString();
+    ASSERT_TRUE(added) << key << ": item '" << item << "' should have been added";
+    VerifyMetadata(key, capacity, bucket_size, max_iterations, expansion, expected_size, n_filters, 0);
+  }
+
   std::unique_ptr<redis::CuckooChain> cuckoo_;
+  std::unique_ptr<redis::Database> db_;
   std::string key_;
 };
 
-TEST_F(RedisCuckooFilterTest, ReserveBasic) {
-  // Test basic reserve operation
-  uint64_t capacity = 1000;
-  uint8_t bucket_size = 4;
-  uint16_t max_iterations = 500;
-  uint8_t expansion = 2;
+TEST_F(RedisCuckooFilterTest, ReserveInvalidParams) {
+  struct InvalidTestCase {
+    std::string key;
+    uint64_t capacity;
+    uint8_t bucket_size;
+    uint16_t max_iterations;
+    uint16_t expansion;
+    std::string err;
+  };
 
-  auto s = cuckoo_->Reserve(*ctx_, key_, capacity, bucket_size, max_iterations, expansion);
-  ASSERT_TRUE(s.ok()) << "Failed to reserve cuckoo filter: " << s.ToString();
+  std::vector<InvalidTestCase> invalid_test_cases = {
+      {"zero_capacity", 0, 4, 500, 2, "capacity must be larger than 0"},
+      {"capacity_too_small", 1, 4, 500, 2, "capacity must be at least 2"},
+      {"zero_bucket_size", 1000, 0, 500, 2, "bucket_size must be between 1 and 255"},
+      {"zero_max_iterations", 1000, 4, 0, 2, "max_iterations must be larger than 0"},
+      {"capacity_too_large", std::numeric_limits<uint64_t>::max(), 4, 500, 2, "capacity is too large"},
+      {"expansion_too_large", 1000, 4, 500, redis::kCFMaxExpansion + 1, "expansion must be between 0 and 32768"},
+  };
+
+  for (const auto &test_case : invalid_test_cases) {
+    auto s = cuckoo_->Reserve(*ctx_, test_case.key, test_case.capacity, test_case.bucket_size, test_case.max_iterations,
+                              test_case.expansion);
+    ASSERT_FALSE(s.ok()) << test_case.key;
+    ASSERT_TRUE(s.IsInvalidArgument()) << test_case.key << ": " << s.ToString();
+    ASSERT_NE(s.ToString().find(test_case.err), std::string::npos) << test_case.key << ": " << s.ToString();
+  }
+}
+
+TEST_F(RedisCuckooFilterTest, ReserveValidParams) {
+  struct TestCase {
+    std::string key;
+    uint64_t capacity;
+    uint8_t bucket_size;
+    uint16_t max_iterations;
+    uint16_t expansion;
+  };
+
+  std::vector<TestCase> test_cases = {
+      {"min_capacity", 2, 4, 500, 2},
+      {"min_bucket_size", 1000, 1, 500, 2},
+      {"max_bucket_size", 1000, 255, 500, 2},
+      {"min_max_iterations", 1000, 4, 1, 2},
+      {"max_max_iterations", 1000, 4, 65535, 2},
+      // RedisBloom allows expansion=0; it disables creating additional sub-filters.
+      {"no_auto_expansion", 2, 1, 1, 0},
+      {"capacity_3", 3, 4, 500, 2},
+      {"capacity_10", 10, 4, 500, 2},
+      {"capacity_100", 100, 4, 500, 2},
+      {"capacity_10000", 10000, 4, 500, 2},
+      {"capacity_100000", 100000, 4, 500, 2},
+      {"bucket_size_2", 1000, 2, 500, 2},
+      {"bucket_size_8", 1000, 8, 500, 2},
+      {"bucket_size_16", 1000, 16, 500, 2},
+      {"bucket_size_128", 1000, 128, 500, 2},
+      {"no_auto_expansion_regular", 1000, 4, 500, 0},
+      // expansion=1 is valid and creates additional sub-filters with the same capacity.
+      {"expansion_1", 1000, 4, 500, 1},
+      {"expansion_8", 1000, 4, 500, 8},
+      {"expansion_256", 1000, 4, 500, 256},
+      {"max_expansion", 1000, 4, 500, redis::kCFMaxExpansion},
+      {"capacity_10M", 10000000, 4, 500, 2},
+      {"capacity_100M", 100000000, 4, 500, 2},
+      {"max_params", 100000, 255, 65535, redis::kCFMaxExpansion},
+      {"mixed_params", 50000, 8, 1000, 4},
+  };
+
+  for (const auto &test_case : test_cases) {
+    ReserveAndVerify(test_case.key, test_case.capacity, test_case.bucket_size, test_case.max_iterations,
+                     test_case.expansion);
+  }
 }
 
 TEST_F(RedisCuckooFilterTest, ReserveDuplicate) {
@@ -78,60 +173,31 @@ TEST_F(RedisCuckooFilterTest, ReserveDuplicate) {
   ASSERT_NE(s.ToString().find("already exists"), std::string::npos);
 }
 
-TEST_F(RedisCuckooFilterTest, ReserveInvalidParams) {
-  // Test with zero capacity
-  auto s = cuckoo_->Reserve(*ctx_, key_, 0, 4, 500, 2);
-  ASSERT_FALSE(s.ok());
-  ASSERT_TRUE(s.IsInvalidArgument());
-
-  // Test with zero bucket size
-  s = cuckoo_->Reserve(*ctx_, "key2", 1000, 0, 500, 2);
-  ASSERT_FALSE(s.ok());
-  ASSERT_TRUE(s.IsInvalidArgument());
-
-  // Test with zero max iterations
-  s = cuckoo_->Reserve(*ctx_, "key3", 1000, 4, 0, 2);
-  ASSERT_FALSE(s.ok());
-  ASSERT_TRUE(s.IsInvalidArgument());
-}
-
-TEST_F(RedisCuckooFilterTest, ReserveVariousCapacities) {
-  // Test with different capacities
-  std::vector<uint64_t> capacities = {100, 1000, 10000, 100000};
-
-  for (size_t i = 0; i < capacities.size(); ++i) {
-    std::string test_key = key_ + "_" + std::to_string(i);
-    auto s = cuckoo_->Reserve(*ctx_, test_key, capacities[i], 4, 500, 2);
-    ASSERT_TRUE(s.ok()) << "Failed for capacity " << capacities[i];
-  }
-}
-
-TEST_F(RedisCuckooFilterTest, ReserveWithDifferentBucketSizes) {
-  // Test with different valid bucket sizes
-  std::vector<uint8_t> bucket_sizes = {1, 2, 4, 8, 16};
-
-  for (size_t i = 0; i < bucket_sizes.size(); ++i) {
-    std::string test_key = key_ + "_bucket_" + std::to_string(i);
-    auto s = cuckoo_->Reserve(*ctx_, test_key, 1000, bucket_sizes[i], 500, 2);
-    ASSERT_TRUE(s.ok()) << "Failed for bucket size " << static_cast<int>(bucket_sizes[i]);
-  }
-}
-
 TEST_F(RedisCuckooFilterTest, OptimalNumBucketsCalculation) {
-  // Test the static helper function
-  uint64_t capacity = 1000;
-  uint8_t bucket_size = 4;
+  struct TestCase {
+    uint64_t capacity;
+    uint8_t bucket_size;
+    uint32_t expected_num_buckets;
+  };
 
-  uint32_t num_buckets = 0;
-  auto s = redis::CuckooFilter::OptimalNumBuckets(capacity, bucket_size, &num_buckets);
-  ASSERT_TRUE(s.ok()) << s.ToString();
+  std::vector<TestCase> test_cases = {
+      {0, 4, 1},     {1, 4, 1},     {2, 1, 4},      {4, 4, 2},      {488, 4, 128},   {489, 4, 256},
+      {977, 4, 256}, {978, 4, 512}, {1000, 4, 512}, {1024, 4, 512}, {1000, 1, 2048}, {1000, 16, 128},
+  };
 
-  // Should be a power of 2
-  ASSERT_EQ(num_buckets & (num_buckets - 1), 0) << "Number of buckets should be power of 2";
+  for (const auto &test_case : test_cases) {
+    uint32_t num_buckets = 0;
+    auto s = redis::CuckooFilter::OptimalNumBuckets(test_case.capacity, test_case.bucket_size, &num_buckets);
+    ASSERT_TRUE(s.ok()) << "capacity=" << test_case.capacity
+                        << ", bucket_size=" << static_cast<int>(test_case.bucket_size) << ": " << s.ToString();
+    ASSERT_EQ(num_buckets, test_case.expected_num_buckets)
+        << "capacity=" << test_case.capacity << ", bucket_size=" << static_cast<int>(test_case.bucket_size);
+    ASSERT_EQ(num_buckets & (num_buckets - 1), 0) << "Number of buckets should be power of 2";
 
-  // Should be able to hold the capacity with 95.5% load factor
-  auto expected_min = static_cast<uint32_t>(static_cast<long double>(capacity) / bucket_size / 0.955L);
-  ASSERT_GE(num_buckets, expected_min) << "Number of buckets too small for capacity";
+    auto expected_min =
+        static_cast<uint32_t>(static_cast<long double>(test_case.capacity) / test_case.bucket_size / 0.955L);
+    ASSERT_GE(num_buckets, expected_min) << "Number of buckets too small for capacity";
+  }
 }
 
 TEST_F(RedisCuckooFilterTest, FingerprintGeneration) {
@@ -151,24 +217,27 @@ TEST_F(RedisCuckooFilterTest, FingerprintGeneration) {
 }
 
 TEST_F(RedisCuckooFilterTest, AlternateBucketCalculation) {
-  uint32_t num_buckets = 1024;
+  std::vector<uint32_t> num_buckets_cases = {1, 2, 128, 256, 512, 1024, 2048};
 
   // Test GetAltHash symmetry at hash level (following RedisBloom design)
   // h2 = GetAltHash(fp, h1)
   // h1 = GetAltHash(fp, h2)  <- this is the symmetry property
-  for (uint64_t hash = 0; hash < 100; ++hash) {
-    for (uint8_t fp = 1; fp < 10; ++fp) {
-      uint64_t alt_hash = redis::CuckooFilter::GetAltHash(fp, hash);
+  for (auto num_buckets : num_buckets_cases) {
+    for (uint64_t hash = 0; hash < 100; ++hash) {
+      for (uint16_t fp = 1; fp <= 255; ++fp) {
+        auto fingerprint = static_cast<uint8_t>(fp);
+        uint64_t alt_hash = redis::CuckooFilter::GetAltHash(fingerprint, hash);
 
-      // Applying GetAltHash twice should return original hash
-      uint64_t double_alt_hash = redis::CuckooFilter::GetAltHash(fp, alt_hash);
-      ASSERT_EQ(double_alt_hash, hash) << "Double alternate hash should give original hash";
+        // Applying GetAltHash twice should return original hash
+        uint64_t double_alt_hash = redis::CuckooFilter::GetAltHash(fingerprint, alt_hash);
+        ASSERT_EQ(double_alt_hash, hash) << "Double alternate hash should give original hash";
 
-      // Both hashes should map to valid bucket indices
-      uint32_t bucket1 = hash % num_buckets;
-      uint32_t bucket2 = alt_hash % num_buckets;
-      ASSERT_LT(bucket1, num_buckets) << "Bucket 1 out of range";
-      ASSERT_LT(bucket2, num_buckets) << "Bucket 2 out of range";
+        // Both hashes should map to valid bucket indices
+        uint32_t bucket1 = hash % num_buckets;
+        uint32_t bucket2 = alt_hash % num_buckets;
+        ASSERT_LT(bucket1, num_buckets) << "Bucket 1 out of range";
+        ASSERT_LT(bucket2, num_buckets) << "Bucket 2 out of range";
+      }
     }
   }
 }
@@ -204,38 +273,11 @@ TEST_F(RedisCuckooFilterTest, HashFunction) {
   ASSERT_LE(fp, 255) << "Fingerprint should be at most 255";
 }
 
-TEST_F(RedisCuckooFilterTest, ReserveTooSmallCapacity) {
-  // Test capacity = 1 (too small, following RedisBloom behavior)
-  // With load factor 0.955 and bucket_size=4, this would result in 0 buckets
-  auto s = cuckoo_->Reserve(*ctx_, key_, 1, 4, 500, 2);
-  ASSERT_FALSE(s.ok()) << "Should reject capacity = 1";
-  ASSERT_TRUE(s.IsInvalidArgument());
-  ASSERT_NE(s.ToString().find("at least 2"), std::string::npos) << "Error message should mention minimum capacity";
-}
-
-TEST_F(RedisCuckooFilterTest, ReserveBucketSizeBoundary) {
-  // Test valid upper boundary (bucket_size is uint8_t, max = 255)
-  auto s = cuckoo_->Reserve(*ctx_, key_, 1000, 255, 500, 2);
-  ASSERT_TRUE(s.ok()) << "bucket_size=255 should be valid";
-
-  // Test bucket_size = 1 (minimum valid value)
-  s = cuckoo_->Reserve(*ctx_, "key_bs1", 1000, 1, 500, 2);
-  ASSERT_TRUE(s.ok()) << "bucket_size=1 should be valid";
-
-  // Test common power-of-2 bucket sizes
-  std::vector<uint8_t> valid_sizes = {2, 4, 8, 16, 32, 64, 128};
-  for (size_t i = 0; i < valid_sizes.size(); ++i) {
-    std::string test_key = "key_bs_" + std::to_string(valid_sizes[i]);
-    s = cuckoo_->Reserve(*ctx_, test_key, 1000, valid_sizes[i], 500, 2);
-    ASSERT_TRUE(s.ok()) << "bucket_size=" << static_cast<int>(valid_sizes[i]) << " should be valid";
-  }
-}
-
 TEST_F(RedisCuckooFilterTest, ReserveVerifyMetadata) {
   uint64_t capacity = 1000;
   uint8_t bucket_size = 4;
   uint16_t max_iterations = 500;
-  uint8_t expansion = 2;
+  uint16_t expansion = 2;
 
   // Create the filter
   auto s = cuckoo_->Reserve(*ctx_, key_, capacity, bucket_size, max_iterations, expansion);
@@ -258,217 +300,58 @@ TEST_F(RedisCuckooFilterTest, ReserveVerifyMetadata) {
   ASSERT_NE(s.ToString().find("already exists"), std::string::npos);
 }
 
-TEST_F(RedisCuckooFilterTest, ReserveNoExpansion) {
-  // expansion=0 means no auto-expansion when filter is full
-  auto s = cuckoo_->Reserve(*ctx_, key_, 1000, 4, 500, 0);
-  ASSERT_TRUE(s.ok()) << "expansion=0 should be valid (no auto-growth)";
-
-  // Verify different expansion values
-  std::vector<uint8_t> expansions = {0, 1, 2, 4, 8};
-  for (size_t i = 0; i < expansions.size(); ++i) {
-    std::string test_key = "key_exp_" + std::to_string(expansions[i]);
-    s = cuckoo_->Reserve(*ctx_, test_key, 1000, 4, 500, expansions[i]);
-    ASSERT_TRUE(s.ok()) << "expansion=" << static_cast<int>(expansions[i]) << " should be valid";
-  }
-}
-
-TEST_F(RedisCuckooFilterTest, ReserveLargeCapacity) {
-  // Test with very large capacity
-  uint64_t large_capacity = 10000000;  // 10 million
-  auto s = cuckoo_->Reserve(*ctx_, key_, large_capacity, 4, 500, 2);
-  ASSERT_TRUE(s.ok()) << "Should handle large capacity";
-
-  // Verify num_buckets calculation doesn't overflow
-  uint32_t num_buckets = 0;
-  s = redis::CuckooFilter::OptimalNumBuckets(large_capacity, 4, &num_buckets);
-  ASSERT_TRUE(s.ok()) << s.ToString();
-  ASSERT_GT(num_buckets, 0) << "Should not overflow to 0";
-  ASSERT_EQ(num_buckets & (num_buckets - 1), 0) << "Should be power of 2";
-
-  // Test even larger capacity (100 million)
-  uint64_t huge_capacity = 100000000;
-  s = cuckoo_->Reserve(*ctx_, "huge_key", huge_capacity, 4, 500, 2);
-  ASSERT_TRUE(s.ok()) << "Should handle 100M capacity";
-
-  s = redis::CuckooFilter::OptimalNumBuckets(huge_capacity, 4, &num_buckets);
-  ASSERT_TRUE(s.ok()) << s.ToString();
-  ASSERT_GT(num_buckets, 0) << "Should not overflow with 100M capacity";
-}
-
-TEST_F(RedisCuckooFilterTest, ReserveRejectsCapacityOverflow) {
-  auto s = cuckoo_->Reserve(*ctx_, key_, std::numeric_limits<uint64_t>::max(), 1, 500, 2);
-  ASSERT_FALSE(s.ok());
-  ASSERT_TRUE(s.IsInvalidArgument());
-  ASSERT_NE(s.ToString().find("capacity is too large"), std::string::npos);
-}
-
-TEST_F(RedisCuckooFilterTest, ReserveMaxIterationsBoundary) {
-  // Test different max_iterations values
-  std::vector<uint16_t> iterations = {1, 10, 100, 500, 1000, 5000, 65535};
-
-  for (size_t i = 0; i < iterations.size(); ++i) {
-    std::string test_key = "key_iter_" + std::to_string(iterations[i]);
-    auto s = cuckoo_->Reserve(*ctx_, test_key, 1000, 4, iterations[i], 2);
-    ASSERT_TRUE(s.ok()) << "max_iterations=" << iterations[i] << " should be valid";
-  }
-
-  // Test max_iterations = 0 (should fail)
-  auto s = cuckoo_->Reserve(*ctx_, "iter_zero", 1000, 4, 0, 2);
-  ASSERT_FALSE(s.ok()) << "max_iterations=0 should fail";
-}
-
-TEST_F(RedisCuckooFilterTest, ReserveEdgeCaseCapacities) {
-  // Test minimum valid capacity
-  auto s = cuckoo_->Reserve(*ctx_, "min_cap", 2, 4, 500, 2);
-  ASSERT_TRUE(s.ok()) << "capacity=2 should be valid (minimum)";
-
-  // Test small but valid capacities
-  std::vector<uint64_t> small_capacities = {2, 3, 4, 5, 10, 50, 100};
-  for (size_t i = 0; i < small_capacities.size(); ++i) {
-    std::string test_key = "small_" + std::to_string(small_capacities[i]);
-    s = cuckoo_->Reserve(*ctx_, test_key, small_capacities[i], 4, 500, 2);
-    ASSERT_TRUE(s.ok()) << "capacity=" << small_capacities[i] << " should be valid";
-
-    // Verify at least one bucket is created
-    uint32_t num_buckets = 0;
-    s = redis::CuckooFilter::OptimalNumBuckets(small_capacities[i], 4, &num_buckets);
-    ASSERT_TRUE(s.ok()) << s.ToString();
-    ASSERT_GE(num_buckets, 1) << "Should have at least 1 bucket for capacity=" << small_capacities[i];
-  }
-}
-
-TEST_F(RedisCuckooFilterTest, ReserveParameterCombinations) {
-  // Test various parameter combinations to ensure robustness
-  struct TestCase {
-    uint64_t capacity;
-    uint8_t bucket_size;
-    uint16_t max_iterations;
-    uint8_t expansion;
-    bool should_succeed;
-    std::string description;
-  };
-
-  std::vector<TestCase> test_cases = {
-      {1000, 4, 500, 2, true, "Standard parameters"},
-      {2, 1, 1, 0, true, "Minimum all parameters"},
-      {100000, 255, 65535, 255, true, "Maximum all parameters"},
-      {1000, 2, 100, 1, true, "Small bucket, moderate iterations"},
-      {50000, 8, 1000, 4, true, "Large capacity, large bucket"},
-      {10, 16, 50, 0, true, "Small capacity, large bucket, no expansion"},
-  };
-
-  for (size_t i = 0; i < test_cases.size(); ++i) {
-    const auto &tc = test_cases[i];
-    std::string test_key = "combo_" + std::to_string(i);
-    auto s = cuckoo_->Reserve(*ctx_, test_key, tc.capacity, tc.bucket_size, tc.max_iterations, tc.expansion);
-
-    if (tc.should_succeed) {
-      ASSERT_TRUE(s.ok()) << "Test case failed: " << tc.description;
-    } else {
-      ASSERT_FALSE(s.ok()) << "Test case should have failed: " << tc.description;
-    }
-  }
-}
-
 TEST_F(RedisCuckooFilterTest, AddBasic) {
-  // First reserve a filter
-  auto s = cuckoo_->Reserve(*ctx_, key_, 1000, 4, 500, 2);
-  ASSERT_TRUE(s.ok()) << "Failed to reserve: " << s.ToString();
-
-  // Add an item
-  bool added = false;
-  s = cuckoo_->Add(*ctx_, key_, "item1", &added);
-  ASSERT_TRUE(s.ok()) << "Failed to add item: " << s.ToString();
-  ASSERT_TRUE(added) << "Item should have been added";
-}
-
-TEST_F(RedisCuckooFilterTest, AddMultipleItems) {
-  // Reserve a filter
-  auto s = cuckoo_->Reserve(*ctx_, key_, 1000, 4, 500, 2);
-  ASSERT_TRUE(s.ok());
-
-  // Add multiple items
-  std::vector<std::string> items = {"apple", "banana", "cherry", "date", "elderberry"};
-  for (const auto &item : items) {
-    bool added = false;
-    s = cuckoo_->Add(*ctx_, key_, item, &added);
-    ASSERT_TRUE(s.ok()) << "Failed to add item: " << item;
-    ASSERT_TRUE(added) << "Item should have been added: " << item;
-  }
+  ReserveAndVerify(key_, 1000, 4, 500, 2);
+  AddAndVerify(key_, "item1", 1000, 4, 500, 2, 1);
 }
 
 TEST_F(RedisCuckooFilterTest, AddToNonExistentFilter) {
+  std::string key = "nonexistent_key";
   bool added = false;
-  auto s = cuckoo_->Add(*ctx_, "nonexistent_key", "item1", &added);
+  auto s = cuckoo_->Add(*ctx_, key, "item1", &added);
   ASSERT_TRUE(s.ok()) << s.ToString();
   ASSERT_TRUE(added) << "CF.ADD should create the filter when the key does not exist";
+  VerifyMetadata(key, redis::kCFDefaultCapacity, redis::kCFDefaultBucketSize, redis::kCFDefaultMaxIterations,
+                 redis::kCFDefaultExpansion, 1, 1, 0);
 
-  s = cuckoo_->Reserve(*ctx_, "nonexistent_key", 1000, 4, 500, 2);
+  s = cuckoo_->Reserve(*ctx_, key, 1000, 4, 500, 2);
   ASSERT_FALSE(s.ok());
   ASSERT_TRUE(s.IsInvalidArgument());
   ASSERT_NE(s.ToString().find("already exists"), std::string::npos);
 }
 
 TEST_F(RedisCuckooFilterTest, AddWithDifferentBucketSizes) {
-  // Test with different bucket sizes
   std::vector<uint8_t> bucket_sizes = {1, 2, 4, 8, 16};
 
-  for (size_t i = 0; i < bucket_sizes.size(); ++i) {
-    std::string test_key = key_ + "_bucket_" + std::to_string(bucket_sizes[i]);
-    auto s = cuckoo_->Reserve(*ctx_, test_key, 100, bucket_sizes[i], 500, 2);
-    ASSERT_TRUE(s.ok()) << "Failed to reserve with bucket_size=" << static_cast<int>(bucket_sizes[i]);
-
-    // Add some items
+  for (auto bs : bucket_sizes) {
+    std::string test_key = key_ + "_bucket_" + std::to_string(bs);
+    ReserveAndVerify(test_key, 100, bs, 500, 2);
     for (int j = 0; j < 10; ++j) {
-      std::string item = "item_" + std::to_string(j);
-      bool added = false;
-      s = cuckoo_->Add(*ctx_, test_key, item, &added);
-      ASSERT_TRUE(s.ok()) << "Failed to add item with bucket_size=" << static_cast<int>(bucket_sizes[i]);
-      ASSERT_TRUE(added);
+      AddAndVerify(test_key, "item_" + std::to_string(j), 100, bs, 500, 2, j + 1);
     }
   }
 }
 
 TEST_F(RedisCuckooFilterTest, AddDuplicateItems) {
-  // Reserve a filter
-  auto s = cuckoo_->Reserve(*ctx_, key_, 1000, 4, 500, 2);
-  ASSERT_TRUE(s.ok());
-
-  // Add the same item multiple times (Cuckoo Filter allows duplicates)
-  std::string item = "duplicate_item";
+  ReserveAndVerify(key_, 1000, 4, 500, 2);
   for (int i = 0; i < 5; ++i) {
-    bool added = false;
-    s = cuckoo_->Add(*ctx_, key_, item, &added);
-    ASSERT_TRUE(s.ok()) << "Iteration " << i;
-    ASSERT_TRUE(added) << "Should allow duplicate items";
+    AddAndVerify(key_, "duplicate_item", 1000, 4, 500, 2, i + 1);
   }
 }
 
 TEST_F(RedisCuckooFilterTest, AddManyItems) {
-  // Reserve a filter with moderate capacity
-  uint64_t capacity = 1000;
-  auto s = cuckoo_->Reserve(*ctx_, key_, capacity, 4, 500, 2);
-  ASSERT_TRUE(s.ok());
-
-  // Add many items (should succeed without hitting limits)
-  int num_items = 100;
-  for (int i = 0; i < num_items; ++i) {
-    std::string item = "item_" + std::to_string(i);
-    bool added = false;
-    s = cuckoo_->Add(*ctx_, key_, item, &added);
-    ASSERT_TRUE(s.ok()) << "Failed at item " << i;
-    ASSERT_TRUE(added);
+  ReserveAndVerify(key_, 1000, 4, 500, 2);
+  for (int i = 0; i < 100; ++i) {
+    AddAndVerify(key_, "item_" + std::to_string(i), 1000, 4, 500, 2, i + 1);
   }
 }
 
 TEST_F(RedisCuckooFilterTest, AddSmallFilterCapacity) {
-  // Test with very small capacity to trigger potential full filter scenario
   uint64_t small_capacity = 10;
-  auto s = cuckoo_->Reserve(*ctx_, key_, small_capacity, 2, 500, 0);  // expansion=0 means no auto-growth
+  auto s = cuckoo_->Reserve(*ctx_, key_, small_capacity, 2, 500, 0);
   ASSERT_TRUE(s.ok());
 
-  // Add items up to capacity
-  // With bucket_size=2 and capacity=10, we should have very limited space
+  uint64_t added_count = 0;
   bool full = false;
   for (int i = 0; i < 100; ++i) {
     std::string item = "item_" + std::to_string(i);
@@ -476,112 +359,27 @@ TEST_F(RedisCuckooFilterTest, AddSmallFilterCapacity) {
     s = cuckoo_->Add(*ctx_, key_, item, &added);
 
     if (!s.ok()) {
-      // Filter is full
       ASSERT_TRUE(s.IsAborted()) << "Should be Aborted status when full";
       full = true;
       break;
     }
+
+    ASSERT_TRUE(added) << "Item should have been added before the filter is full";
+    ++added_count;
   }
 
-  // We expect the filter to become full at some point
   ASSERT_TRUE(full) << "Small filter should eventually become full";
+  VerifyMetadata(key_, small_capacity, 2, 500, 0, added_count, 1, 0);
 }
 
-TEST_F(RedisCuckooFilterTest, AddEmptyItem) {
-  // Reserve a filter
-  auto s = cuckoo_->Reserve(*ctx_, key_, 1000, 4, 500, 2);
-  ASSERT_TRUE(s.ok());
-
-  // Add empty string
-  bool added = false;
-  s = cuckoo_->Add(*ctx_, key_, "", &added);
-  ASSERT_TRUE(s.ok()) << "Should be able to add empty string";
-  ASSERT_TRUE(added);
-}
-
-TEST_F(RedisCuckooFilterTest, AddLongItem) {
-  // Reserve a filter
-  auto s = cuckoo_->Reserve(*ctx_, key_, 1000, 4, 500, 2);
-  ASSERT_TRUE(s.ok());
-
-  // Add a very long string
-  std::string long_item(10000, 'x');
-  bool added = false;
-  s = cuckoo_->Add(*ctx_, key_, long_item, &added);
-  ASSERT_TRUE(s.ok()) << "Should be able to add long string";
-  ASSERT_TRUE(added);
-}
-
-TEST_F(RedisCuckooFilterTest, AddBinaryData) {
-  // Reserve a filter
-  auto s = cuckoo_->Reserve(*ctx_, key_, 1000, 4, 500, 2);
-  ASSERT_TRUE(s.ok());
-
-  // Add binary data (including null bytes)
-  std::string binary_item = std::string("\x00\x01\x02\xFF\xFE", 5);
-  bool added = false;
-  s = cuckoo_->Add(*ctx_, key_, binary_item, &added);
-  ASSERT_TRUE(s.ok()) << "Should be able to add binary data";
-  ASSERT_TRUE(added);
-}
-
-TEST_F(RedisCuckooFilterTest, AddWithVariousCapacities) {
-  // Test that Add works correctly with different filter capacities
-  std::vector<uint64_t> capacities = {10, 100, 1000, 10000};
-
-  for (size_t i = 0; i < capacities.size(); ++i) {
-    std::string test_key = key_ + "_cap_" + std::to_string(capacities[i]);
-    auto s = cuckoo_->Reserve(*ctx_, test_key, capacities[i], 4, 500, 2);
-    ASSERT_TRUE(s.ok());
-
-    // Add a reasonable number of items relative to capacity
-    int num_items = std::min(static_cast<int>(capacities[i] / 10), 50);
-    for (int j = 0; j < num_items; ++j) {
-      std::string item = "item_" + std::to_string(j);
-      bool added = false;
-      s = cuckoo_->Add(*ctx_, test_key, item, &added);
-      ASSERT_TRUE(s.ok()) << "Failed for capacity=" << capacities[i] << ", item=" << j;
-      ASSERT_TRUE(added);
-    }
+TEST_F(RedisCuckooFilterTest, AddEdgeCaseItems) {
+  ReserveAndVerify(key_, 1000, 4, 500, 2);
+  std::vector<std::string> items = {
+      "",
+      std::string(10000, 'x'),
+      std::string("\x00\x01\x02\xFF\xFE", 5),
+  };
+  for (size_t i = 0; i < items.size(); ++i) {
+    AddAndVerify(key_, items[i], 1000, 4, 500, 2, i + 1);
   }
-}
-
-TEST_F(RedisCuckooFilterTest, AddConsistentHashing) {
-  // Verify that the same item always hashes to the same buckets
-  auto s = cuckoo_->Reserve(*ctx_, key_, 1000, 4, 500, 2);
-  ASSERT_TRUE(s.ok());
-
-  std::string item = "test_item";
-
-  // Calculate hash for the item
-  uint64_t hash1 = redis::CuckooFilter::Hash(item);
-  uint64_t hash2 = redis::CuckooFilter::Hash(item);
-
-  // Hashing should be deterministic
-  ASSERT_EQ(hash1, hash2) << "Hash should be consistent for the same item";
-
-  // Fingerprint should be consistent
-  uint8_t fp1 = redis::CuckooFilter::GenerateFingerprint(hash1);
-  uint8_t fp2 = redis::CuckooFilter::GenerateFingerprint(hash2);
-  ASSERT_EQ(fp1, fp2) << "Fingerprint should be consistent";
-
-  // Add the item
-  bool added = false;
-  s = cuckoo_->Add(*ctx_, key_, item, &added);
-  ASSERT_TRUE(s.ok());
-  ASSERT_TRUE(added);
-}
-
-TEST_F(RedisCuckooFilterTest, AddDifferentItemsProduceDifferentHashes) {
-  // Verify that different items produce different hashes
-  std::vector<std::string> items = {"item1", "item2", "item3", "different", "another"};
-  std::set<uint64_t> hashes;
-
-  for (const auto &item : items) {
-    uint64_t hash = redis::CuckooFilter::Hash(item);
-    hashes.insert(hash);
-  }
-
-  // All items should have unique hashes (with very high probability)
-  ASSERT_EQ(hashes.size(), items.size()) << "Different items should produce different hashes";
 }

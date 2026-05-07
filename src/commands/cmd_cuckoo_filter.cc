@@ -66,11 +66,14 @@ class CommandCFReserve : public Commander {
           return {Status::RedisParseErr, "max iterations must be larger than 0"};
         }
       } else if (parser.EatEqICase("EXPANSION")) {
-        auto parse_expansion = parser.TakeInt<uint8_t>();
+        auto parse_expansion = parser.TakeInt<uint16_t>();
         if (!parse_expansion.IsOK()) {
           return {Status::RedisParseErr, "invalid expansion factor"};
         }
         expansion_ = parse_expansion.GetValue();
+        if (expansion_ > kCFMaxExpansion) {
+          return {Status::RedisParseErr, "expansion must be between 0 and 32768"};
+        }
       } else {
         return {Status::RedisParseErr, errInvalidSyntax};
       }
@@ -99,7 +102,7 @@ class CommandCFReserve : public Commander {
   uint64_t capacity_ = kCFDefaultCapacity;
   uint8_t bucket_size_ = kCFDefaultBucketSize;
   uint16_t max_iterations_ = kCFDefaultMaxIterations;
-  uint8_t expansion_ = kCFDefaultExpansion;
+  uint16_t expansion_ = kCFDefaultExpansion;
 };
 
 class CommandCFAdd : public Commander {

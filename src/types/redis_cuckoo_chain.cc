@@ -65,7 +65,7 @@ std::string CuckooChain::getBucketKey(const Slice &ns_key, const CuckooChainMeta
 }
 
 rocksdb::Status CuckooChain::Reserve(engine::Context &ctx, const Slice &user_key, uint64_t capacity,
-                                     uint8_t bucket_size, uint16_t max_iterations, uint8_t expansion) {
+                                     uint8_t bucket_size, uint16_t max_iterations, uint16_t expansion) {
   if (capacity == 0) {
     return rocksdb::Status::InvalidArgument("capacity must be larger than 0");
   }
@@ -82,6 +82,9 @@ rocksdb::Status CuckooChain::Reserve(engine::Context &ctx, const Slice &user_key
 
   if (max_iterations == 0) {
     return rocksdb::Status::InvalidArgument("max_iterations must be larger than 0");
+  }
+  if (expansion > kCFMaxExpansion) {
+    return rocksdb::Status::InvalidArgument("expansion must be between 0 and 32768");
   }
   if (!CuckooFilter::IsCapacitySupported(capacity, bucket_size)) {
     return rocksdb::Status::InvalidArgument("capacity is too large");
@@ -135,7 +138,7 @@ rocksdb::Status CuckooChain::Reserve(engine::Context &ctx, const Slice &user_key
   return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
-static bool CalculateFilterCapacity(uint64_t base_capacity, uint8_t expansion, uint16_t filter_index,
+static bool CalculateFilterCapacity(uint64_t base_capacity, uint16_t expansion, uint16_t filter_index,
                                     uint64_t *filter_capacity) {
   uint64_t capacity = base_capacity;
   for (uint16_t i = 0; i < filter_index; ++i) {

@@ -32,7 +32,8 @@ namespace redis {
 const uint32_t kCFDefaultCapacity = 1024;
 const uint8_t kCFDefaultBucketSize = 4;  // 4 fingerprints per bucket
 const uint16_t kCFDefaultMaxIterations = 500;
-const uint8_t kCFDefaultExpansion = 2;
+const uint16_t kCFDefaultExpansion = 2;
+const uint16_t kCFMaxExpansion = 32768;
 
 class CuckooChain : public Database {
  public:
@@ -40,7 +41,7 @@ class CuckooChain : public Database {
 
   // CF.RESERVE command - creates a new cuckoo filter with specified capacity
   rocksdb::Status Reserve(engine::Context &ctx, const Slice &user_key, uint64_t capacity, uint8_t bucket_size,
-                          uint16_t max_iterations, uint8_t expansion);
+                          uint16_t max_iterations, uint16_t expansion);
 
   // CF.ADD command - adds an item to the cuckoo filter.
   // Duplicate items are allowed, so added is true whenever insertion succeeds.

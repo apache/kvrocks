@@ -122,7 +122,9 @@ TEST_F(RedisCuckooFilterTest, OptimalNumBucketsCalculation) {
   uint64_t capacity = 1000;
   uint8_t bucket_size = 4;
 
-  uint32_t num_buckets = redis::CuckooFilter::OptimalNumBuckets(capacity, bucket_size);
+  uint32_t num_buckets = 0;
+  auto s = redis::CuckooFilter::OptimalNumBuckets(capacity, bucket_size, &num_buckets);
+  ASSERT_TRUE(s.ok()) << s.ToString();
 
   // Should be a power of 2
   ASSERT_EQ(num_buckets & (num_buckets - 1), 0) << "Number of buckets should be power of 2";
@@ -277,7 +279,9 @@ TEST_F(RedisCuckooFilterTest, ReserveLargeCapacity) {
   ASSERT_TRUE(s.ok()) << "Should handle large capacity";
 
   // Verify num_buckets calculation doesn't overflow
-  uint32_t num_buckets = redis::CuckooFilter::OptimalNumBuckets(large_capacity, 4);
+  uint32_t num_buckets = 0;
+  s = redis::CuckooFilter::OptimalNumBuckets(large_capacity, 4, &num_buckets);
+  ASSERT_TRUE(s.ok()) << s.ToString();
   ASSERT_GT(num_buckets, 0) << "Should not overflow to 0";
   ASSERT_EQ(num_buckets & (num_buckets - 1), 0) << "Should be power of 2";
 
@@ -286,7 +290,8 @@ TEST_F(RedisCuckooFilterTest, ReserveLargeCapacity) {
   s = cuckoo_->Reserve(*ctx_, "huge_key", huge_capacity, 4, 500, 2);
   ASSERT_TRUE(s.ok()) << "Should handle 100M capacity";
 
-  num_buckets = redis::CuckooFilter::OptimalNumBuckets(huge_capacity, 4);
+  s = redis::CuckooFilter::OptimalNumBuckets(huge_capacity, 4, &num_buckets);
+  ASSERT_TRUE(s.ok()) << s.ToString();
   ASSERT_GT(num_buckets, 0) << "Should not overflow with 100M capacity";
 }
 
@@ -325,7 +330,9 @@ TEST_F(RedisCuckooFilterTest, ReserveEdgeCaseCapacities) {
     ASSERT_TRUE(s.ok()) << "capacity=" << small_capacities[i] << " should be valid";
 
     // Verify at least one bucket is created
-    uint32_t num_buckets = redis::CuckooFilter::OptimalNumBuckets(small_capacities[i], 4);
+    uint32_t num_buckets = 0;
+    s = redis::CuckooFilter::OptimalNumBuckets(small_capacities[i], 4, &num_buckets);
+    ASSERT_TRUE(s.ok()) << s.ToString();
     ASSERT_GE(num_buckets, 1) << "Should have at least 1 bucket for capacity=" << small_capacities[i];
   }
 }
@@ -391,11 +398,15 @@ TEST_F(RedisCuckooFilterTest, AddMultipleItems) {
 }
 
 TEST_F(RedisCuckooFilterTest, AddToNonExistentFilter) {
-  // Try to add to a filter that doesn't exist
   bool added = false;
   auto s = cuckoo_->Add(*ctx_, "nonexistent_key", "item1", &added);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  ASSERT_TRUE(added) << "CF.ADD should create the filter when the key does not exist";
+
+  s = cuckoo_->Reserve(*ctx_, "nonexistent_key", 1000, 4, 500, 2);
   ASSERT_FALSE(s.ok());
-  ASSERT_TRUE(s.IsNotFound()) << "Should return NotFound error";
+  ASSERT_TRUE(s.IsInvalidArgument());
+  ASSERT_NE(s.ToString().find("already exists"), std::string::npos);
 }
 
 TEST_F(RedisCuckooFilterTest, AddWithDifferentBucketSizes) {

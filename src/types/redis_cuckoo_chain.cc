@@ -107,7 +107,9 @@ rocksdb::Status CuckooChain::Reserve(engine::Context &ctx, const Slice &user_key
   metadata.num_deleted_items = 0;
 
   // Calculate the number of buckets needed for this filter
-  uint32_t num_buckets = CuckooFilter::OptimalNumBuckets(capacity, bucket_size);
+  uint32_t num_buckets = 0;
+  s = CuckooFilter::OptimalNumBuckets(capacity, bucket_size, &num_buckets);
+  if (!s.ok()) return s;
 
   INFO("Creating cuckoo filter with capacity={}, bucket_size={}, num_buckets={}, max_iterations={}, expansion={}",
        capacity, bucket_size, num_buckets, max_iterations, static_cast<int>(expansion));
@@ -177,8 +179,19 @@ rocksdb::Status CuckooChain::Add(engine::Context &ctx, const Slice &user_key, co
 
   CuckooChainMetadata metadata(false);
   auto s = getCuckooChainMetadata(ctx, ns_key, &metadata);
-  if (s.IsNotFound()) return rocksdb::Status::NotFound("key not found");
-  if (!s.ok()) return s;
+  if (s.IsNotFound()) {
+    // RedisBloom CF.ADD auto-creates the filter when the key does not exist:
+    // https://redis.io/docs/latest/commands/cf.add/
+    metadata = CuckooChainMetadata();
+    metadata.size = 0;
+    metadata.base_capacity = kCFDefaultCapacity;
+    metadata.bucket_size = kCFDefaultBucketSize;
+    metadata.max_iterations = kCFDefaultMaxIterations;
+    metadata.expansion = kCFDefaultExpansion;
+    metadata.n_filters = 1;
+    metadata.num_deleted_items = 0;
+  }
+  if (!s.ok() && !s.IsNotFound()) return s;
 
   s = ValidateMetadata(metadata);
   if (!s.ok()) return s;
@@ -195,7 +208,9 @@ rocksdb::Status CuckooChain::Add(engine::Context &ctx, const Slice &user_key, co
         !CuckooFilter::IsCapacitySupported(filter_capacity, metadata.bucket_size)) {
       return rocksdb::Status::Corruption("invalid metadata: filter capacity is too large");
     }
-    uint32_t num_buckets = CuckooFilter::OptimalNumBuckets(filter_capacity, metadata.bucket_size);
+    uint32_t num_buckets = 0;
+    s = CuckooFilter::OptimalNumBuckets(filter_capacity, metadata.bucket_size, &num_buckets);
+    if (!s.ok()) return s;
 
     // Calculate bucket indices
     uint32_t bucket1_idx = hash % num_buckets;
@@ -256,7 +271,9 @@ rocksdb::Status CuckooChain::Add(engine::Context &ctx, const Slice &user_key, co
       !CuckooFilter::IsCapacitySupported(filter_capacity, metadata.bucket_size)) {
     return rocksdb::Status::Corruption("invalid metadata: filter capacity is too large");
   }
-  uint32_t num_buckets = CuckooFilter::OptimalNumBuckets(filter_capacity, metadata.bucket_size);
+  uint32_t num_buckets = 0;
+  s = CuckooFilter::OptimalNumBuckets(filter_capacity, metadata.bucket_size, &num_buckets);
+  if (!s.ok()) return s;
 
   bool inserted = false;
   std::unordered_map<std::string, std::string> modified_buckets;
@@ -300,7 +317,9 @@ rocksdb::Status CuckooChain::Add(engine::Context &ctx, const Slice &user_key, co
         !CuckooFilter::IsCapacitySupported(new_filter_capacity, metadata.bucket_size)) {
       return rocksdb::Status::Aborted("maximum filter capacity reached");
     }
-    uint32_t new_num_buckets = CuckooFilter::OptimalNumBuckets(new_filter_capacity, metadata.bucket_size);
+    uint32_t new_num_buckets = 0;
+    s = CuckooFilter::OptimalNumBuckets(new_filter_capacity, metadata.bucket_size, &new_num_buckets);
+    if (!s.ok()) return s;
 
     uint32_t bucket1_idx = hash % new_num_buckets;
     std::string bucket1_key = getBucketKey(ns_key, metadata, new_filter_idx, bucket1_idx);

@@ -20,6 +20,8 @@
 
 #pragma once
 
+#include <rocksdb/status.h>
+
 #include <cstdint>
 #include <limits>
 #include <string>
@@ -43,20 +45,33 @@ namespace redis {
 class CuckooFilter {
  public:
   static bool IsCapacitySupported(uint64_t capacity, uint8_t bucket_size) {
-    if (bucket_size == 0) return false;
-    auto num_buckets = static_cast<long double>(capacity) / bucket_size / 0.955L;
-    return num_buckets <= static_cast<long double>(std::numeric_limits<uint32_t>::max() / 2 + 1ULL);
+    uint32_t num_buckets = 0;
+    return OptimalNumBuckets(capacity, bucket_size, &num_buckets).ok();
   }
 
-  // Calculate the optimal number of buckets for the filter
-  static uint32_t OptimalNumBuckets(uint64_t capacity, uint8_t bucket_size) {
-    // A load factor of 95.5% is chosen for the cuckoo filter
-    auto num_buckets = static_cast<uint32_t>(static_cast<long double>(capacity) / bucket_size / 0.955L);
-    // Round up to next power of 2 for better hash distribution
-    if (num_buckets == 0) num_buckets = 1;
+  // Calculate the optimal number of buckets for the filter.
+  static rocksdb::Status OptimalNumBuckets(uint64_t capacity, uint8_t bucket_size, uint32_t* num_buckets) {
+    if (bucket_size == 0) {
+      return rocksdb::Status::InvalidArgument("bucket_size must be larger than 0");
+    }
+
+    constexpr long double kLoadFactor = 0.955L;
+    constexpr uint64_t kMaxSupportedBuckets = std::numeric_limits<uint32_t>::max() / 2 + 1ULL;
+    auto max_supported_capacity = static_cast<uint64_t>(kMaxSupportedBuckets * bucket_size * kLoadFactor);
+    if (capacity > max_supported_capacity) {
+      return rocksdb::Status::InvalidArgument("capacity is too large");
+    }
+
+    auto exact_buckets = static_cast<long double>(capacity) / bucket_size / kLoadFactor;
+    auto required_buckets = static_cast<uint64_t>(exact_buckets);
+    if (static_cast<long double>(required_buckets) < exact_buckets) required_buckets++;
+    if (required_buckets == 0) required_buckets = 1;
+
+    // Round up to next power of 2 for better hash distribution.
     uint32_t power = 1;
-    while (power < num_buckets) power <<= 1;
-    return power;
+    while (power < required_buckets) power <<= 1;
+    *num_buckets = power;
+    return rocksdb::Status::OK();
   }
 
   // Generate fingerprint from hash (8-bit fingerprint, non-zero, range: 1-255)

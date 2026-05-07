@@ -118,14 +118,7 @@ class CommandCFAdd : public Commander {
     auto s = cuckoo_db.Add(ctx, args_[1], args_[2], &added);
 
     if (!s.ok()) {
-      if (s.IsNotFound()) {
-        return {Status::RedisExecErr, "key not found"};
-      }
-      if (s.IsAborted()) {
-        // Filter is full
-        return {Status::RedisExecErr, s.ToString()};
-      }
-      return {Status::RedisExecErr, "failed to add item to cuckoo filter"};
+      return {Status::RedisExecErr, s.ToString()};
     }
 
     // Duplicate items are allowed, so successful insertions return 1.

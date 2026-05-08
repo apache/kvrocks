@@ -466,9 +466,7 @@ class CommandTDigestMerge : public Commander {
         } else {
           options_.compression = *compression;
         }
-      }
-
-      if (parser.EatEqICase(kOverrideArg)) {
+      } else if (parser.EatEqICase(kOverrideArg)) {
         if (options_.override_flag) {  // override already set
           return {Status::RedisParseErr, errWrongNumOfArguments};
         }

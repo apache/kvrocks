@@ -32,7 +32,7 @@ from tempfile import TemporaryDirectory
 CMAKE_REQUIRE_VERSION = (3, 16, 0)
 CLANG_FORMAT_REQUIRED_VERSION = (18, 0, 0)
 CLANG_TIDY_REQUIRED_VERSION = (18, 0, 0)
-GOLANGCI_LINT_REQUIRED_VERSION = (2, 9, 0)
+GOLANGCI_LINT_REQUIRED_VERSION = (2, 12, 1)
 
 SEMVER_REGEX = re.compile(
     r"""
@@ -162,10 +162,10 @@ def build(dir: str, jobs: Optional[int] = None, ninja: bool = False, unittest: b
     run(cmake, *options, verbose=True, cwd=dir)
 
 
-def fetch_deps(dir: str) -> None:
+def fetch_deps(dir: str, D: List[str] = []) -> None:
     dir = os.path.abspath(dir)
     with TemporaryDirectory(prefix="kvrocks-fetch-deps-") as build_dir:
-        build(build_dir, dep_dir=dir, skip_build=True)
+        build(build_dir, D=D, dep_dir=dir, skip_build=True)
 
 
 def get_source_files(dir: Path) -> List[str]:
@@ -253,7 +253,7 @@ def golangci_lint(golangci_lint_path: str) -> None:
         return golangci_command, version_str
 
     def download_package(bindir: str) -> None:
-        output = run_pipe('curl', '-sfL', 'https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh',
+        output = run_pipe('curl', '-sfL', 'https://golangci-lint.run/install.sh',
                             verbose=True)
         version_str = 'v' + '.'.join(map(str, GOLANGCI_LINT_REQUIRED_VERSION))
         run('sh', '-s', '--', '-b', bindir, version_str, verbose=True, stdin=output)
@@ -418,6 +418,8 @@ if __name__ == '__main__':
     )
     parser_fetch_deps.add_argument('dir', metavar='DEP_DIR', nargs='?', default='build-deps',
                               help="directory to store fetched archives of dependencies")
+    parser_fetch_deps.add_argument('-D', action='append', metavar='key=value',
+                              help='extra CMake definitions used to determine fetched dependencies')
     parser_fetch_deps.set_defaults(func=fetch_deps)
 
     parser_package = subparsers.add_parser(

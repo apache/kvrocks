@@ -52,7 +52,7 @@ class RedisCuckooFilterTest : public TestBase {
     key_ = std::string("cf_test_") + test_info->name();
   }
 
-  void VerifyMetadata(const std::string &key, uint64_t capacity, uint8_t bucket_size, uint16_t max_iterations,
+  void verifyMetadata(const std::string &key, uint64_t capacity, uint8_t bucket_size, uint16_t max_iterations,
                       uint16_t expansion, uint64_t size, uint16_t n_filters, uint64_t num_deleted_items = 0) {
     std::string ns_key = db_->AppendNamespacePrefix(key);
     CuckooChainMetadata metadata(false);
@@ -68,20 +68,20 @@ class RedisCuckooFilterTest : public TestBase {
     EXPECT_EQ(metadata.num_deleted_items, num_deleted_items) << key;
   }
 
-  void ReserveAndVerify(const std::string &key, uint64_t capacity, uint8_t bucket_size, uint16_t max_iterations,
+  void reserveAndVerify(const std::string &key, uint64_t capacity, uint8_t bucket_size, uint16_t max_iterations,
                         uint16_t expansion) {
     auto s = cuckoo_->Reserve(*ctx_, key, capacity, bucket_size, max_iterations, expansion);
     ASSERT_TRUE(s.ok()) << key << ": " << s.ToString();
-    VerifyMetadata(key, capacity, bucket_size, max_iterations, expansion, 0, 1, 0);
+    verifyMetadata(key, capacity, bucket_size, max_iterations, expansion, 0, 1, 0);
   }
 
-  void AddAndVerify(const std::string &key, const std::string &item, uint64_t capacity, uint8_t bucket_size,
+  void addAndVerify(const std::string &key, const std::string &item, uint64_t capacity, uint8_t bucket_size,
                     uint16_t max_iterations, uint16_t expansion, uint64_t expected_size, uint16_t n_filters = 1) {
     bool added = false;
     auto s = cuckoo_->Add(*ctx_, key, item, &added);
     ASSERT_TRUE(s.ok()) << key << ": add '" << item << "' failed: " << s.ToString();
     ASSERT_TRUE(added) << key << ": item '" << item << "' should have been added";
-    VerifyMetadata(key, capacity, bucket_size, max_iterations, expansion, expected_size, n_filters, 0);
+    verifyMetadata(key, capacity, bucket_size, max_iterations, expansion, expected_size, n_filters, 0);
   }
 
   std::unique_ptr<redis::CuckooChain> cuckoo_;
@@ -156,7 +156,7 @@ TEST_F(RedisCuckooFilterTest, ReserveValidParams) {
   };
 
   for (const auto &test_case : test_cases) {
-    ReserveAndVerify(test_case.key, test_case.capacity, test_case.bucket_size, test_case.max_iterations,
+    reserveAndVerify(test_case.key, test_case.capacity, test_case.bucket_size, test_case.max_iterations,
                      test_case.expansion);
   }
 }
@@ -301,8 +301,8 @@ TEST_F(RedisCuckooFilterTest, ReserveVerifyMetadata) {
 }
 
 TEST_F(RedisCuckooFilterTest, AddBasic) {
-  ReserveAndVerify(key_, 1000, 4, 500, 2);
-  AddAndVerify(key_, "item1", 1000, 4, 500, 2, 1);
+  reserveAndVerify(key_, 1000, 4, 500, 2);
+  addAndVerify(key_, "item1", 1000, 4, 500, 2, 1);
 }
 
 TEST_F(RedisCuckooFilterTest, AddToNonExistentFilter) {
@@ -311,7 +311,7 @@ TEST_F(RedisCuckooFilterTest, AddToNonExistentFilter) {
   auto s = cuckoo_->Add(*ctx_, key, "item1", &added);
   ASSERT_TRUE(s.ok()) << s.ToString();
   ASSERT_TRUE(added) << "CF.ADD should create the filter when the key does not exist";
-  VerifyMetadata(key, redis::kCFDefaultCapacity, redis::kCFDefaultBucketSize, redis::kCFDefaultMaxIterations,
+  verifyMetadata(key, redis::kCFDefaultCapacity, redis::kCFDefaultBucketSize, redis::kCFDefaultMaxIterations,
                  redis::kCFDefaultExpansion, 1, 1, 0);
 
   s = cuckoo_->Reserve(*ctx_, key, 1000, 4, 500, 2);
@@ -325,24 +325,24 @@ TEST_F(RedisCuckooFilterTest, AddWithDifferentBucketSizes) {
 
   for (auto bs : bucket_sizes) {
     std::string test_key = key_ + "_bucket_" + std::to_string(bs);
-    ReserveAndVerify(test_key, 100, bs, 500, 2);
+    reserveAndVerify(test_key, 100, bs, 500, 2);
     for (int j = 0; j < 10; ++j) {
-      AddAndVerify(test_key, "item_" + std::to_string(j), 100, bs, 500, 2, j + 1);
+      addAndVerify(test_key, "item_" + std::to_string(j), 100, bs, 500, 2, j + 1);
     }
   }
 }
 
 TEST_F(RedisCuckooFilterTest, AddDuplicateItems) {
-  ReserveAndVerify(key_, 1000, 4, 500, 2);
+  reserveAndVerify(key_, 1000, 4, 500, 2);
   for (int i = 0; i < 5; ++i) {
-    AddAndVerify(key_, "duplicate_item", 1000, 4, 500, 2, i + 1);
+    addAndVerify(key_, "duplicate_item", 1000, 4, 500, 2, i + 1);
   }
 }
 
 TEST_F(RedisCuckooFilterTest, AddManyItems) {
-  ReserveAndVerify(key_, 1000, 4, 500, 2);
+  reserveAndVerify(key_, 1000, 4, 500, 2);
   for (int i = 0; i < 100; ++i) {
-    AddAndVerify(key_, "item_" + std::to_string(i), 1000, 4, 500, 2, i + 1);
+    addAndVerify(key_, "item_" + std::to_string(i), 1000, 4, 500, 2, i + 1);
   }
 }
 
@@ -369,17 +369,17 @@ TEST_F(RedisCuckooFilterTest, AddSmallFilterCapacity) {
   }
 
   ASSERT_TRUE(full) << "Small filter should eventually become full";
-  VerifyMetadata(key_, small_capacity, 2, 500, 0, added_count, 1, 0);
+  verifyMetadata(key_, small_capacity, 2, 500, 0, added_count, 1, 0);
 }
 
 TEST_F(RedisCuckooFilterTest, AddEdgeCaseItems) {
-  ReserveAndVerify(key_, 1000, 4, 500, 2);
+  reserveAndVerify(key_, 1000, 4, 500, 2);
   std::vector<std::string> items = {
       "",
       std::string(10000, 'x'),
       std::string("\x00\x01\x02\xFF\xFE", 5),
   };
   for (size_t i = 0; i < items.size(); ++i) {
-    AddAndVerify(key_, items[i], 1000, 4, 500, 2, i + 1);
+    addAndVerify(key_, items[i], 1000, 4, 500, 2, i + 1);
   }
 }

@@ -723,13 +723,13 @@ func testJSON(t *testing.T, configs util.KvrocksServerConfigs) {
 		//object
 		require.Equal(t, []interface{}{resultobject1}, rdb.Do(ctx, "JSON.RESP", "item:2", "$.connection").Val())
 		//string
-		var stringvalue = make([]interface{}, 0)
+		var stringvalue = make([]interface{}, 0, 1)
 		require.Equal(t, append(stringvalue, "Wireless Bluetooth in-ear headphones"), rdb.Do(ctx, "JSON.RESP", "item:2", "$.description").Val())
 		//bool
-		var boolvalue = make([]interface{}, 0)
+		var boolvalue = make([]interface{}, 0, 1)
 		require.Equal(t, append(boolvalue, "true"), rdb.Do(ctx, "JSON.RESP", "item:2", "$.connection.wireless").Val())
 		//int
-		var intvalue = make([]interface{}, 0)
+		var intvalue = make([]interface{}, 0, 1)
 		require.Equal(t, append(intvalue, int64(17)), rdb.Do(ctx, "JSON.RESP", "item:2", "$.stock").Val())
 		require.NoError(t, rdb.Do(ctx, "JSON.SET", "item:3", "$", `{ "c1": [ { "a2": 1, "b2": "John Doe", "c2": 30, "d2": [ "Developer", "Team Lead" ] }, { "a2": 2, "b2": "Jane Smith", "c2": 25, "d2": [ "Developer" ] } ] }`).Err())
 		require.Equal(t, []interface{}{int64(1), int64(2)}, rdb.Do(ctx, "JSON.RESP", "item:3", "$..a2").Val())
@@ -739,7 +739,7 @@ func testJSON(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.ErrorIs(t, rdb.Do(ctx, "JSON.RESP", "no_exists").Err(), redis.Nil)
 
 		//have key no find
-		require.Equal(t, make([]interface{}, 0), rdb.Do(ctx, "JSON.RESP", "item:2", "$.a").Val())
+		require.Equal(t, make([]interface{}, 0, 1), rdb.Do(ctx, "JSON.RESP", "item:2", "$.a").Val())
 
 	})
 }

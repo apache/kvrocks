@@ -50,7 +50,7 @@ func TestString(t *testing.T) {
 	}
 }
 func testString(t *testing.T, configs util.KvrocksServerConfigs) {
-	srv := util.StartServer(t, map[string]string{})
+	srv := util.StartServer(t, configs)
 	defer srv.Close()
 	ctx := context.Background()
 	rdb := srv.NewClient()
@@ -1250,5 +1250,384 @@ func testString(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.ErrorContains(t, rdb.Do(ctx, "DelEX", key, "ifdne", "123456789012345").Err(),
 			"exactly 16 hexadecimal characters")
 		require.Equal(t, value, rdb.Get(ctx, key).Val())
+	})
+
+	t.Run("IFEQ missing cmp_value returns error", func(t *testing.T) {
+		err := rdb.Do(ctx, "SET", "k", "v", "IFEQ").Err()
+		require.Error(t, err)
+	})
+
+	t.Run("IFNE missing cmp_value returns error", func(t *testing.T) {
+		err := rdb.Do(ctx, "SET", "k", "v", "IFNE").Err()
+		require.Error(t, err)
+	})
+
+	t.Run("IFDEQ missing cmp_value returns error", func(t *testing.T) {
+		err := rdb.Do(ctx, "SET", "k", "v", "IFDEQ").Err()
+		require.Error(t, err)
+	})
+
+	t.Run("IFDNE missing cmp_value returns error", func(t *testing.T) {
+		err := rdb.Do(ctx, "SET", "k", "v", "IFDNE").Err()
+		require.Error(t, err)
+	})
+
+	t.Run("NX and IFEQ together returns syntax error", func(t *testing.T) {
+		err := rdb.Do(ctx, "SET", "k", "v", "NX", "IFEQ", "x").Err()
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "syntax")
+	})
+
+	t.Run("XX and IFNE together returns syntax error", func(t *testing.T) {
+		err := rdb.Do(ctx, "SET", "k", "v", "XX", "IFNE", "x").Err()
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "syntax")
+	})
+
+	t.Run("IFEQ and IFDEQ together returns syntax error", func(t *testing.T) {
+		err := rdb.Do(ctx, "SET", "k", "v", "IFEQ", "x", "IFDEQ", "y").Err()
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "syntax")
+	})
+
+	t.Run("WRONGTYPE error when key is not a string", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "listkey").Err())
+		require.NoError(t, rdb.RPush(ctx, "listkey", "a").Err())
+		err := rdb.Do(ctx, "SET", "listkey", "v", "IFEQ", "a").Err()
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "WRONGTYPE")
+		require.NoError(t, rdb.Del(ctx, "listkey").Err())
+	})
+
+	t.Run("IFEQ: key not found returns nil", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "ifeq1").Err())
+		res := rdb.Do(ctx, "SET", "ifeq1", "new", "IFEQ", "anything").Val()
+		require.Nil(t, res)
+	})
+
+	t.Run("IFEQ: value matches writes and returns OK", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "ifeq2", "hello", 0).Err())
+		res := rdb.Do(ctx, "SET", "ifeq2", "world", "IFEQ", "hello").Val()
+		require.Equal(t, "OK", res)
+		require.Equal(t, "world", rdb.Get(ctx, "ifeq2").Val())
+	})
+
+	t.Run("IFEQ: value mismatches returns nil and no write", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "ifeq3", "hello", 0).Err())
+		res := rdb.Do(ctx, "SET", "ifeq3", "world", "IFEQ", "wrong").Val()
+		require.Nil(t, res)
+		require.Equal(t, "hello", rdb.Get(ctx, "ifeq3").Val())
+	})
+
+	t.Run("IFNE: key not found writes and returns OK", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "ifne1").Err())
+		res := rdb.Do(ctx, "SET", "ifne1", "created", "IFNE", "anything").Val()
+		require.Equal(t, "OK", res)
+		require.Equal(t, "created", rdb.Get(ctx, "ifne1").Val())
+	})
+
+	t.Run("IFNE: value matches returns nil and no write", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "ifne2", "hello", 0).Err())
+		res := rdb.Do(ctx, "SET", "ifne2", "world", "IFNE", "hello").Val()
+		require.Nil(t, res)
+		require.Equal(t, "hello", rdb.Get(ctx, "ifne2").Val())
+	})
+
+	t.Run("IFNE: value mismatches writes and returns OK", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "ifne3", "hello", 0).Err())
+		res := rdb.Do(ctx, "SET", "ifne3", "world", "IFNE", "wrong").Val()
+		require.Equal(t, "OK", res)
+		require.Equal(t, "world", rdb.Get(ctx, "ifne3").Val())
+	})
+
+	t.Run("IFDEQ: key not found returns nil", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "ifdeq1").Err())
+		res := rdb.Do(ctx, "SET", "ifdeq1", "new", "IFDEQ", "xxxxxxxxxxxxxxxx").Val()
+		require.Nil(t, res)
+	})
+
+	t.Run("IFDEQ: digest matches writes and returns OK", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "ifdeq2", "hello", 0).Err())
+		digest, err := rdb.Do(ctx, "DIGEST", "ifdeq2").Result()
+		require.NoError(t, err)
+		res := rdb.Do(ctx, "SET", "ifdeq2", "world", "IFDEQ", digest).Val()
+		require.Equal(t, "OK", res)
+		require.Equal(t, "world", rdb.Get(ctx, "ifdeq2").Val())
+	})
+
+	t.Run("IFDEQ: digest mismatches returns nil and no write", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "ifdeq3", "hello", 0).Err())
+		res := rdb.Do(ctx, "SET", "ifdeq3", "world", "IFDEQ", "xxxxxxxxxxxxxxxx").Val()
+		require.Nil(t, res)
+		require.Equal(t, "hello", rdb.Get(ctx, "ifdeq3").Val())
+	})
+
+	t.Run("IFDNE: key not found writes and returns OK", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "ifdne1").Err())
+		res := rdb.Do(ctx, "SET", "ifdne1", "created", "IFDNE", "xxxxxxxxxxxxxxxx").Val()
+		require.Equal(t, "OK", res)
+		require.Equal(t, "created", rdb.Get(ctx, "ifdne1").Val())
+	})
+
+	t.Run("IFDNE: digest matches returns nil and no write", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "ifdne2", "hello", 0).Err())
+		digest, err := rdb.Do(ctx, "DIGEST", "ifdne2").Result()
+		require.NoError(t, err)
+		res := rdb.Do(ctx, "SET", "ifdne2", "world", "IFDNE", digest).Val()
+		require.Nil(t, res)
+		require.Equal(t, "hello", rdb.Get(ctx, "ifdne2").Val())
+	})
+
+	t.Run("IFDNE: digest mismatches writes and returns OK", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "ifdne3", "hello", 0).Err())
+		res := rdb.Do(ctx, "SET", "ifdne3", "world", "IFDNE", "xxxxxxxxxxxxxxxx").Val()
+		require.Equal(t, "OK", res)
+		require.Equal(t, "world", rdb.Get(ctx, "ifdne3").Val())
+	})
+
+	t.Run("IFEQ with GET: condition met returns old value", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "ifeq-get1", "old", 0).Err())
+		res, err := rdb.Do(ctx, "SET", "ifeq-get1", "new", "IFEQ", "old", "GET").Result()
+		require.NoError(t, err)
+		require.Equal(t, "old", res)
+		require.Equal(t, "new", rdb.Get(ctx, "ifeq-get1").Val())
+	})
+
+	t.Run("IFEQ with GET: condition not met returns old value", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "ifeq-get2", "hello", 0).Err())
+		res, err := rdb.Do(ctx, "SET", "ifeq-get2", "new", "IFEQ", "wrong", "GET").Result()
+		require.NoError(t, err)
+		require.Equal(t, "hello", res)
+		require.Equal(t, "hello", rdb.Get(ctx, "ifeq-get2").Val())
+	})
+
+	t.Run("IFEQ with EX: condition met sets TTL", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "ifeq-ex1", "hello", 0).Err())
+		res, err := rdb.Do(ctx, "SET", "ifeq-ex1", "world", "IFEQ", "hello", "EX", "10").Result()
+		require.NoError(t, err)
+		require.Equal(t, "OK", res)
+		ttl := rdb.TTL(ctx, "ifeq-ex1").Val()
+		require.Greater(t, ttl, 8*time.Second)
+		require.LessOrEqual(t, ttl, 10*time.Second)
+	})
+
+	t.Run("IFEQ with EX: condition not met leaves TTL unchanged", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "ifeq-ex2", "hello", 5*time.Second).Err())
+		res := rdb.Do(ctx, "SET", "ifeq-ex2", "world", "IFEQ", "wrong", "EX", "100").Val()
+		require.Nil(t, res)
+		ttl := rdb.TTL(ctx, "ifeq-ex2").Val()
+		require.Greater(t, ttl, time.Duration(0))
+		require.LessOrEqual(t, ttl, 5*time.Second)
+	})
+
+	t.Run("IFDEQ consistent with DIGEST command output", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "digest-check", "somevalue", 0).Err())
+		digest, err := rdb.Do(ctx, "DIGEST", "digest-check").Result()
+		require.NoError(t, err)
+		res, err := rdb.Do(ctx, "SET", "digest-check", "newvalue", "IFDEQ", digest).Result()
+		require.NoError(t, err)
+		require.Equal(t, "OK", res)
+	})
+
+	t.Run("IFDEQ accepts uppercase digest", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "ifdeq-upper", "hello", 0).Err())
+		digest, err := rdb.Do(ctx, "DIGEST", "ifdeq-upper").Text()
+		require.NoError(t, err)
+
+		res, err := rdb.Do(ctx, "SET", "ifdeq-upper", "world", "IFDEQ", strings.ToUpper(digest)).Result()
+		require.NoError(t, err)
+		require.Equal(t, "OK", res)
+		require.Equal(t, "world", rdb.Get(ctx, "ifdeq-upper").Val())
+	})
+
+	t.Run("IFDNE treats uppercase digest as a match", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "ifdne-upper", "hello", 0).Err())
+		digest, err := rdb.Do(ctx, "DIGEST", "ifdne-upper").Text()
+		require.NoError(t, err)
+
+		res := rdb.Do(ctx, "SET", "ifdne-upper", "world", "IFDNE", strings.ToUpper(digest)).Val()
+		require.Nil(t, res)
+		require.Equal(t, "hello", rdb.Get(ctx, "ifdne-upper").Val())
+	})
+
+	t.Run("IFDEQ and IFDNE reject malformed digest lengths", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "ifd-bad-digest", "hello", 0).Err())
+
+		testCases := []struct {
+			name   string
+			option string
+			digest string
+		}{
+			{name: "IFDEQ short digest", option: "IFDEQ", digest: "1234567890abcde"},
+			{name: "IFDNE short digest", option: "IFDNE", digest: "1234567890abcde"},
+			{name: "IFDEQ long digest", option: "IFDEQ", digest: "01234567890abcdef"},
+			{name: "IFDNE long digest", option: "IFDNE", digest: "01234567890abcdef"},
+			{name: "IFDEQ empty digest", option: "IFDEQ", digest: ""},
+			{name: "IFDNE empty digest", option: "IFDNE", digest: ""},
+		}
+
+		for _, tc := range testCases {
+			t.Run(tc.name, func(t *testing.T) {
+				err := rdb.Do(ctx, "SET", "ifd-bad-digest", "world", tc.option, tc.digest).Err()
+				require.ErrorContains(t, err, "must be exactly 16 hexadecimal characters")
+				require.Equal(t, "hello", rdb.Get(ctx, "ifd-bad-digest").Val())
+			})
+		}
+	})
+
+	t.Run("IFDEQ and IFDNE: non-hex 16-char digest treated as non-match", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "ifd-nonhex", "hello", 0).Err())
+		res := rdb.Do(ctx, "SET", "ifd-nonhex", "world", "IFDEQ", "GGGGGGGGGGGGGGGG").Val()
+		require.Nil(t, res, "IFDEQ with non-hex 16-char digest should return nil (no match)")
+		require.Equal(t, "hello", rdb.Get(ctx, "ifd-nonhex").Val())
+
+		res = rdb.Do(ctx, "SET", "ifd-nonhex", "world", "IFDNE", "GGGGGGGGGGGGGGGG").Val()
+		require.Equal(t, "OK", res, "IFDNE with non-hex 16-char digest should write (no match)")
+		require.Equal(t, "world", rdb.Get(ctx, "ifd-nonhex").Val())
+	})
+
+	t.Run("IFEQ writes when value matches (100 iterations)", func(t *testing.T) {
+		for i := 0; i < 100; i++ {
+			key := "prop1-" + strconv.Itoa(i)
+			val := util.RandString(1, 20, util.Alpha)
+			newVal := util.RandString(1, 20, util.Alpha)
+			require.NoError(t, rdb.Set(ctx, key, val, 0).Err())
+			res, err := rdb.Do(ctx, "SET", key, newVal, "IFEQ", val).Result()
+			require.NoError(t, err)
+			require.Equal(t, "OK", res, "IFEQ should write when cmp_value matches current value")
+			require.Equal(t, newVal, rdb.Get(ctx, key).Val())
+			require.NoError(t, rdb.Del(ctx, key).Err())
+		}
+	})
+
+	t.Run("IFEQ does not write when value mismatches (100 iterations)", func(t *testing.T) {
+		for i := 0; i < 100; i++ {
+			key := "prop2-" + strconv.Itoa(i)
+			val := "value-" + strconv.Itoa(i)
+			wrong := "wrong-" + strconv.Itoa(i)
+			require.NoError(t, rdb.Set(ctx, key, val, 0).Err())
+			res := rdb.Do(ctx, "SET", key, "new", "IFEQ", wrong).Val()
+			require.Nil(t, res, "IFEQ should return nil when cmp_value does not match")
+			require.Equal(t, val, rdb.Get(ctx, key).Val())
+			require.NoError(t, rdb.Del(ctx, key).Err())
+		}
+	})
+
+	t.Run("IFNE writes when value mismatches (100 iterations)", func(t *testing.T) {
+		for i := 0; i < 100; i++ {
+			key := "prop3-" + strconv.Itoa(i)
+			val := "value-" + strconv.Itoa(i)
+			wrong := "wrong-" + strconv.Itoa(i)
+			newVal := "new-" + strconv.Itoa(i)
+			require.NoError(t, rdb.Set(ctx, key, val, 0).Err())
+			res, err := rdb.Do(ctx, "SET", key, newVal, "IFNE", wrong).Result()
+			require.NoError(t, err)
+			require.Equal(t, "OK", res, "IFNE should write when cmp_value does not match current value")
+			require.Equal(t, newVal, rdb.Get(ctx, key).Val())
+			require.NoError(t, rdb.Del(ctx, key).Err())
+		}
+	})
+
+	t.Run("IFNE does not write when value matches (100 iterations)", func(t *testing.T) {
+		for i := 0; i < 100; i++ {
+			key := "prop4-" + strconv.Itoa(i)
+			val := util.RandString(1, 20, util.Alpha)
+			require.NoError(t, rdb.Set(ctx, key, val, 0).Err())
+			res := rdb.Do(ctx, "SET", key, "new", "IFNE", val).Val()
+			require.Nil(t, res, "IFNE should return nil when cmp_value matches current value")
+			require.Equal(t, val, rdb.Get(ctx, key).Val())
+			require.NoError(t, rdb.Del(ctx, key).Err())
+		}
+	})
+
+	t.Run("IFDEQ writes when digest matches (100 iterations)", func(t *testing.T) {
+		for i := 0; i < 100; i++ {
+			key := "prop5-" + strconv.Itoa(i)
+			val := util.RandString(1, 20, util.Alpha)
+			newVal := util.RandString(1, 20, util.Alpha)
+			require.NoError(t, rdb.Set(ctx, key, val, 0).Err())
+			digest, err := rdb.Do(ctx, "DIGEST", key).Result()
+			require.NoError(t, err)
+			res, err := rdb.Do(ctx, "SET", key, newVal, "IFDEQ", digest).Result()
+			require.NoError(t, err)
+			require.Equal(t, "OK", res, "IFDEQ should write when digest matches")
+			require.Equal(t, newVal, rdb.Get(ctx, key).Val())
+			require.NoError(t, rdb.Del(ctx, key).Err())
+		}
+	})
+
+	t.Run("IFDEQ does not write when digest mismatches (100 iterations)", func(t *testing.T) {
+		for i := 0; i < 100; i++ {
+			key := "prop6-" + strconv.Itoa(i)
+			val := util.RandString(1, 20, util.Alpha)
+			require.NoError(t, rdb.Set(ctx, key, val, 0).Err())
+			res := rdb.Do(ctx, "SET", key, "new", "IFDEQ", "xxxxxxxxxxxxxxxx").Val()
+			require.Nil(t, res, "IFDEQ should return nil when digest does not match")
+			require.Equal(t, val, rdb.Get(ctx, key).Val())
+			require.NoError(t, rdb.Del(ctx, key).Err())
+		}
+	})
+
+	t.Run("IFDNE writes when digest mismatches (100 iterations)", func(t *testing.T) {
+		for i := 0; i < 100; i++ {
+			key := "prop7-" + strconv.Itoa(i)
+			val := util.RandString(1, 20, util.Alpha)
+			newVal := util.RandString(1, 20, util.Alpha)
+			require.NoError(t, rdb.Set(ctx, key, val, 0).Err())
+			res, err := rdb.Do(ctx, "SET", key, newVal, "IFDNE", "xxxxxxxxxxxxxxxx").Result()
+			require.NoError(t, err)
+			require.Equal(t, "OK", res, "IFDNE should write when digest does not match")
+			require.Equal(t, newVal, rdb.Get(ctx, key).Val())
+			require.NoError(t, rdb.Del(ctx, key).Err())
+		}
+	})
+
+	t.Run("IFDNE does not write when digest matches (100 iterations)", func(t *testing.T) {
+		for i := 0; i < 100; i++ {
+			key := "prop8-" + strconv.Itoa(i)
+			val := util.RandString(1, 20, util.Alpha)
+			require.NoError(t, rdb.Set(ctx, key, val, 0).Err())
+			digest, err := rdb.Do(ctx, "DIGEST", key).Result()
+			require.NoError(t, err)
+			res := rdb.Do(ctx, "SET", key, "new", "IFDNE", digest).Val()
+			require.Nil(t, res, "IFDNE should return nil when digest matches")
+			require.Equal(t, val, rdb.Get(ctx, key).Val())
+			require.NoError(t, rdb.Del(ctx, key).Err())
+		}
+	})
+
+	t.Run("TTL unchanged when condition not met (100 iterations)", func(t *testing.T) {
+		for i := 0; i < 100; i++ {
+			key := "prop9-" + strconv.Itoa(i)
+			val := "value-" + strconv.Itoa(i)
+			require.NoError(t, rdb.Set(ctx, key, val, 10*time.Second).Err())
+			res := rdb.Do(ctx, "SET", key, "new", "IFEQ", "wrong", "EX", "9999").Val()
+			require.Nil(t, res)
+			ttl := rdb.TTL(ctx, key).Val()
+			require.Greater(t, ttl, time.Duration(0), "TTL should remain positive after failed conditional SET")
+			require.LessOrEqual(t, ttl, 10*time.Second)
+			require.NoError(t, rdb.Del(ctx, key).Err())
+		}
+	})
+
+	t.Run("TTL correctly set when condition met (100 iterations)", func(t *testing.T) {
+		for i := 0; i < 100; i++ {
+			key := "prop10-" + strconv.Itoa(i)
+			val := "value-" + strconv.Itoa(i)
+			require.NoError(t, rdb.Set(ctx, key, val, 0).Err())
+			res, err := rdb.Do(ctx, "SET", key, "new", "IFEQ", val, "EX", "30").Result()
+			require.NoError(t, err)
+			require.Equal(t, "OK", res)
+			ttl := rdb.TTL(ctx, key).Val()
+			require.Greater(t, ttl, 28*time.Second)
+			require.LessOrEqual(t, ttl, 30*time.Second)
+			require.NoError(t, rdb.Del(ctx, key).Err())
+		}
+	})
+
+	t.Run("Extended SET GET and NX option on wrong type", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "listkey").Err())
+		require.NoError(t, rdb.LPush(ctx, "listkey", "v1").Err())
+		require.ErrorContains(t, rdb.Do(ctx, "SET", "listkey", "v", "NX", "GET").Err(), "WRONGTYPE")
 	})
 }

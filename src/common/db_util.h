@@ -21,6 +21,7 @@
 #pragma once
 
 #include <memory>
+#include <utility>
 
 #include "fmt/ostream.h"
 #include "rocksdb/db.h"
@@ -42,87 +43,49 @@ struct UniqueIterator : std::unique_ptr<rocksdb::Iterator> {
       : BaseType(ctx.storage->NewIterator(ctx, options)) {}
 };
 
-namespace details {
-
-template <typename T, auto* F, Status::Code C = Status::NotOK, typename... Args>
-StatusOr<std::unique_ptr<T>> WrapOutPtrToUnique(Args&&... args) {
-  T* ptr = nullptr;
-  auto s = (*F)(std::forward<Args>(args)..., &ptr);
-
-  if (!s.ok()) {
-    return {C, s.ToString()};
-  }
-
-  return ptr;
-}
-
-[[nodiscard]] inline rocksdb::Status DBOpenForReadOnly(
-    const rocksdb::DBOptions& db_options, const std::string& dbname,
-    const std::vector<rocksdb::ColumnFamilyDescriptor>& column_families,
-    std::vector<rocksdb::ColumnFamilyHandle*>* handles, rocksdb::DB** dbptr) {
-  return rocksdb::DB::OpenForReadOnly(db_options, dbname, column_families, handles, dbptr);
-}
-
-[[nodiscard]] inline rocksdb::Status DBOpenForSecondaryInstance(
-    const rocksdb::DBOptions& db_options, const std::string& dbname, const std::string& secondary_path,
-    const std::vector<rocksdb::ColumnFamilyDescriptor>& column_families,
-    std::vector<rocksdb::ColumnFamilyHandle*>* handles, rocksdb::DB** dbptr) {
-  return rocksdb::DB::OpenAsSecondary(db_options, dbname, secondary_path, column_families, handles, dbptr);
-}
-
-}  // namespace details
-
 inline StatusOr<std::unique_ptr<rocksdb::DB>> DBOpen(const rocksdb::Options& options, const std::string& dbname) {
-  return details::WrapOutPtrToUnique<
-      rocksdb::DB,
-      static_cast<rocksdb::Status (*)(const rocksdb::Options&, const std::string&, rocksdb::DB**)>(rocksdb::DB::Open),
-      Status::DBOpenErr>(options, dbname);
+  std::unique_ptr<rocksdb::DB> db;
+  auto s = rocksdb::DB::Open(options, dbname, &db);
+  if (!s.ok()) return {Status::DBOpenErr, s.ToString()};
+  return std::move(db);
 }
 
 inline StatusOr<std::unique_ptr<rocksdb::DB>> DBOpen(
     const rocksdb::DBOptions& db_options, const std::string& dbname,
     const std::vector<rocksdb::ColumnFamilyDescriptor>& column_families,
     std::vector<rocksdb::ColumnFamilyHandle*>* handles) {
-  return details::WrapOutPtrToUnique<
-      rocksdb::DB,
-      static_cast<rocksdb::Status (*)(const rocksdb::DBOptions&, const std::string&,
-                                      const std::vector<rocksdb::ColumnFamilyDescriptor>&,
-                                      std::vector<rocksdb::ColumnFamilyHandle*>*, rocksdb::DB**)>(rocksdb::DB::Open),
-      Status::DBOpenErr>(db_options, dbname, column_families, handles);
+  std::unique_ptr<rocksdb::DB> db;
+  auto s = rocksdb::DB::Open(db_options, dbname, column_families, handles, &db);
+  if (!s.ok()) return {Status::DBOpenErr, s.ToString()};
+  return std::move(db);
 }
 
 inline StatusOr<std::unique_ptr<rocksdb::DB>> DBOpenForReadOnly(
     const rocksdb::DBOptions& db_options, const std::string& dbname,
     const std::vector<rocksdb::ColumnFamilyDescriptor>& column_families,
     std::vector<rocksdb::ColumnFamilyHandle*>* handles) {
-  return details::WrapOutPtrToUnique<
-      rocksdb::DB,
-      static_cast<rocksdb::Status (*)(
-          const rocksdb::DBOptions&, const std::string&, const std::vector<rocksdb::ColumnFamilyDescriptor>&,
-          std::vector<rocksdb::ColumnFamilyHandle*>*, rocksdb::DB**)>(details::DBOpenForReadOnly),
-      Status::DBOpenErr>(db_options, dbname, column_families, handles);
+  std::unique_ptr<rocksdb::DB> db;
+  auto s = rocksdb::DB::OpenForReadOnly(db_options, dbname, column_families, handles, &db);
+  if (!s.ok()) return {Status::DBOpenErr, s.ToString()};
+  return std::move(db);
 }
 
 inline StatusOr<std::unique_ptr<rocksdb::DB>> DBOpenAsSecondaryInstance(
     const rocksdb::DBOptions& db_options, const std::string& dbname, const std::string& secondary_path,
     const std::vector<rocksdb::ColumnFamilyDescriptor>& column_families,
     std::vector<rocksdb::ColumnFamilyHandle*>* handles) {
-  return details::WrapOutPtrToUnique<
-      rocksdb::DB,
-      static_cast<rocksdb::Status (*)(const rocksdb::DBOptions&, const std::string&, const std::string&,
-                                      const std::vector<rocksdb::ColumnFamilyDescriptor>&,
-                                      std::vector<rocksdb::ColumnFamilyHandle*>*, rocksdb::DB**)>(
-          details::DBOpenForSecondaryInstance),
-      Status::DBOpenErr>(db_options, dbname, secondary_path, column_families, handles);
+  std::unique_ptr<rocksdb::DB> db;
+  auto s = rocksdb::DB::OpenAsSecondary(db_options, dbname, secondary_path, column_families, handles, &db);
+  if (!s.ok()) return {Status::DBOpenErr, s.ToString()};
+  return std::move(db);
 }
 
 inline StatusOr<std::unique_ptr<rocksdb::BackupEngine>> BackupEngineOpen(rocksdb::Env* db_env,
                                                                          const rocksdb::BackupEngineOptions& options) {
-  return details::WrapOutPtrToUnique<
-      rocksdb::BackupEngine,
-      static_cast<rocksdb::IOStatus (*)(rocksdb::Env*, const rocksdb::BackupEngineOptions&, rocksdb::BackupEngine**)>(
-          rocksdb::BackupEngine::Open),
-      Status::DBBackupErr>(db_env, options);
+  rocksdb::BackupEngine* backup_engine = nullptr;
+  auto s = rocksdb::BackupEngine::Open(options, db_env, &backup_engine);
+  if (!s.ok()) return {Status::DBBackupErr, s.ToString()};
+  return std::unique_ptr<rocksdb::BackupEngine>(backup_engine);
 }
 
 }  // namespace util

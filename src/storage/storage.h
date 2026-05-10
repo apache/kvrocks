@@ -320,6 +320,8 @@ class Storage {
   // Full replication data files manager
   class ReplDataManager {
    public:
+    static Status ValidateReplFileName(const std::string &repl_file);
+
     // Master side
     static Status GetFullReplDataInfo(Storage *storage, std::string *files);
     static int OpenDataFile(Storage *storage, const std::string &rel_file, uint64_t *file_size);

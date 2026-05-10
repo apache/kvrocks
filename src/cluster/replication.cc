@@ -847,6 +847,10 @@ ReplicationThread::CBState ReplicationThread::fullSyncReadCB(bufferevent *bev) {
         }
         std::vector<std::string> need_files = util::Split(std::string(line.get()), ",");
         for (const auto &f : need_files) {
+          if (auto s = engine::Storage::ReplDataManager::ValidateReplFileName(f); !s.IsOK()) {
+            ERROR("[replication] Invalid fullsync file name '{}': {}", f, s.Msg());
+            return CBState::RESTART;
+          }
           meta.files.emplace_back(f, 0);
         }
 

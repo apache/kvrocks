@@ -654,6 +654,7 @@ void CuckooChainMetadata::Encode(std::string *dst) const {
   PutFixed8(dst, bucket_size);
   PutFixed16(dst, max_iterations);
   PutFixed64(dst, num_deleted_items);
+  PutFixed32(dst, page_size);
 }
 
 rocksdb::Status CuckooChainMetadata::Decode(Slice *input) {
@@ -661,7 +662,7 @@ rocksdb::Status CuckooChainMetadata::Decode(Slice *input) {
     return s;
   }
 
-  if (input->size() < sizeof(uint16_t) * 3 + sizeof(uint64_t) * 2 + sizeof(uint8_t)) {
+  if (input->size() < sizeof(uint16_t) * 3 + sizeof(uint64_t) * 2 + sizeof(uint32_t) + sizeof(uint8_t)) {
     return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
   }
 
@@ -671,6 +672,7 @@ rocksdb::Status CuckooChainMetadata::Decode(Slice *input) {
   GetFixed8(input, &bucket_size);
   GetFixed16(input, &max_iterations);
   GetFixed64(input, &num_deleted_items);
+  GetFixed32(input, &page_size);
 
   return rocksdb::Status::OK();
 }

@@ -84,7 +84,8 @@ class CommandCFReserve : public Commander {
 
   Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
     redis::CuckooChain cuckoo_db(srv->storage, conn->GetNamespace());
-    auto s = cuckoo_db.Reserve(ctx, args_[1], capacity_, bucket_size_, max_iterations_, expansion_);
+    auto s = cuckoo_db.Reserve(ctx, args_[1], capacity_, bucket_size_, max_iterations_, expansion_,
+                               kCuckooFilterDefaultPageSize);
 
     if (!s.ok()) {
       if (s.IsInvalidArgument()) {

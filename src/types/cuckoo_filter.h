@@ -34,8 +34,8 @@ namespace redis {
 
 // Cuckoo filter implementation from the paper:
 // "Cuckoo Filter: Practically Better Than Bloom" by Fan et al.
-// This is a bucket-based storage implementation where each bucket is stored
-// as an independent key-value pair in RocksDB
+// Buckets are grouped into page values in RocksDB. The Cuckoo algorithm still
+// works with logical bucket indexes, while the storage layer maps buckets to pages.
 //
 // Hash calculation follows RedisBloom's design:
 // - fp = hash % 255 + 1 (fingerprint, non-zero, range: 1-255)
@@ -85,13 +85,10 @@ class CuckooFilter {
     return hash ^ (static_cast<uint64_t>(fingerprint) * 0x5bd1e995);
   }
 
-  // Legacy function for backward compatibility with tests
-  // Converts bucket index to hash, applies GetAltHash, then converts back to bucket index
+  // Calculate an alternate bucket from a bucket index and fingerprint.
   static uint32_t GetAltBucketIndex(uint32_t bucket_idx, uint8_t fingerprint, uint32_t num_buckets) {
-    // Treat bucket_idx as a hash value for the calculation
     uint64_t hash = bucket_idx;
     uint64_t alt_hash = GetAltHash(fingerprint, hash);
-    // Convert back to bucket index
     return static_cast<uint32_t>(alt_hash % num_buckets);
   }
 

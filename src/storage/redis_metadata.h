@@ -335,6 +335,8 @@ class BloomChainMetadata : public Metadata {
   bool IsScaling() const { return expansion != 0; };
 };
 
+constexpr uint32_t kCuckooFilterDefaultPageSize = 2048;
+
 class CuckooChainMetadata : public Metadata {
  public:
   /// The number of sub-filters in the chain
@@ -356,6 +358,9 @@ class CuckooChainMetadata : public Metadata {
   /// Track number of deleted items for maintenance
   uint64_t num_deleted_items;
 
+  /// Target maximum payload size for each persisted Cuckoo Filter page
+  uint32_t page_size;
+
   explicit CuckooChainMetadata(bool generate_version = true)
       : Metadata(kRedisCuckooFilter, generate_version),
         n_filters(0),
@@ -363,7 +368,8 @@ class CuckooChainMetadata : public Metadata {
         base_capacity(0),
         bucket_size(0),
         max_iterations(0),
-        num_deleted_items(0) {}
+        num_deleted_items(0),
+        page_size(kCuckooFilterDefaultPageSize) {}
 
   void Encode(std::string *dst) const override;
   using Metadata::Decode;

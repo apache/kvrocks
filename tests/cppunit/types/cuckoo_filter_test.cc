@@ -20,13 +20,16 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <limits>
 #include <memory>
 #include <vector>
 
+#include "common/encoding.h"
 #include "storage/redis_db.h"
 #include "storage/redis_metadata.h"
 #include "test_base.h"
+#include "types/cuckoo_filter_page.h"
 #include "types/redis_cuckoo_chain.h"
 
 class RedisCuckooFilterTest : public TestBase {
@@ -53,7 +56,8 @@ class RedisCuckooFilterTest : public TestBase {
   }
 
   void verifyMetadata(const std::string &key, uint64_t capacity, uint8_t bucket_size, uint16_t max_iterations,
-                      uint16_t expansion, uint64_t size, uint16_t n_filters, uint64_t num_deleted_items = 0) {
+                      uint16_t expansion, uint64_t size, uint16_t n_filters, uint64_t num_deleted_items = 0,
+                      uint32_t page_size = kCuckooFilterDefaultPageSize) {
     std::string ns_key = db_->AppendNamespacePrefix(key);
     CuckooChainMetadata metadata(false);
     auto s = db_->GetMetadata(*ctx_, {kRedisCuckooFilter}, ns_key, &metadata);
@@ -66,13 +70,14 @@ class RedisCuckooFilterTest : public TestBase {
     EXPECT_EQ(metadata.size, size) << key;
     EXPECT_EQ(metadata.n_filters, n_filters) << key;
     EXPECT_EQ(metadata.num_deleted_items, num_deleted_items) << key;
+    EXPECT_EQ(metadata.page_size, page_size) << key;
   }
 
   void reserveAndVerify(const std::string &key, uint64_t capacity, uint8_t bucket_size, uint16_t max_iterations,
-                        uint16_t expansion) {
-    auto s = cuckoo_->Reserve(*ctx_, key, capacity, bucket_size, max_iterations, expansion);
+                        uint16_t expansion, uint32_t page_size = kCuckooFilterDefaultPageSize) {
+    auto s = cuckoo_->Reserve(*ctx_, key, capacity, bucket_size, max_iterations, expansion, page_size);
     ASSERT_TRUE(s.ok()) << key << ": " << s.ToString();
-    verifyMetadata(key, capacity, bucket_size, max_iterations, expansion, 0, 1, 0);
+    verifyMetadata(key, capacity, bucket_size, max_iterations, expansion, 0, 1, 0, page_size);
   }
 
   void addAndVerify(const std::string &key, const std::string &item, uint64_t capacity, uint8_t bucket_size,
@@ -82,6 +87,28 @@ class RedisCuckooFilterTest : public TestBase {
     ASSERT_TRUE(s.ok()) << key << ": add '" << item << "' failed: " << s.ToString();
     ASSERT_TRUE(added) << key << ": item '" << item << "' should have been added";
     verifyMetadata(key, capacity, bucket_size, max_iterations, expansion, expected_size, n_filters, 0);
+  }
+
+  CuckooChainMetadata getMetadata(const std::string &key) {
+    std::string ns_key = db_->AppendNamespacePrefix(key);
+    CuckooChainMetadata metadata(false);
+    auto s = db_->GetMetadata(*ctx_, {kRedisCuckooFilter}, ns_key, &metadata);
+    EXPECT_TRUE(s.ok()) << key << ": metadata not found";
+    return metadata;
+  }
+
+  std::string makePageKey(const std::string &key, const CuckooChainMetadata &metadata, uint16_t filter_index,
+                          uint32_t page_index) {
+    std::string sub_key;
+    PutFixed16(&sub_key, filter_index);
+    PutFixed32(&sub_key, page_index);
+    return InternalKey(db_->AppendNamespacePrefix(key), sub_key, metadata.version, storage_->IsSlotIdEncoded())
+        .Encode();
+  }
+
+  rocksdb::Status readPage(const std::string &page_key, std::string *value) {
+    return storage_->Get(*ctx_, ctx_->GetReadOptions(), storage_->GetCFHandle(ColumnFamilyID::PrimarySubkey), page_key,
+                         value);
   }
 
   std::unique_ptr<redis::CuckooChain> cuckoo_;
@@ -106,11 +133,19 @@ TEST_F(RedisCuckooFilterTest, ReserveInvalidParams) {
       {"zero_max_iterations", 1000, 4, 0, 2, "max_iterations must be larger than 0"},
       {"capacity_too_large", std::numeric_limits<uint64_t>::max(), 4, 500, 2, "capacity is too large"},
       {"expansion_too_large", 1000, 4, 500, redis::kCFMaxExpansion + 1, "expansion must be between 0 and 32768"},
+      {"zero_page_size", 1000, 4, 500, 2, "page_size must be larger than 0"},
+      {"page_size_smaller_than_bucket", 1000, 4, 500, 2, "page_size must be at least bucket_size"},
   };
 
   for (const auto &test_case : invalid_test_cases) {
+    uint32_t page_size = kCuckooFilterDefaultPageSize;
+    if (test_case.key == "zero_page_size") {
+      page_size = 0;
+    } else if (test_case.key == "page_size_smaller_than_bucket") {
+      page_size = test_case.bucket_size - 1;
+    }
     auto s = cuckoo_->Reserve(*ctx_, test_case.key, test_case.capacity, test_case.bucket_size, test_case.max_iterations,
-                              test_case.expansion);
+                              test_case.expansion, page_size);
     ASSERT_FALSE(s.ok()) << test_case.key;
     ASSERT_TRUE(s.IsInvalidArgument()) << test_case.key << ": " << s.ToString();
     ASSERT_NE(s.ToString().find(test_case.err), std::string::npos) << test_case.key << ": " << s.ToString();
@@ -163,11 +198,11 @@ TEST_F(RedisCuckooFilterTest, ReserveValidParams) {
 
 TEST_F(RedisCuckooFilterTest, ReserveDuplicate) {
   // First reserve should succeed
-  auto s = cuckoo_->Reserve(*ctx_, key_, 1000, 4, 500, 2);
+  auto s = cuckoo_->Reserve(*ctx_, key_, 1000, 4, 500, 2, kCuckooFilterDefaultPageSize);
   ASSERT_TRUE(s.ok());
 
   // Second reserve with same key should fail
-  s = cuckoo_->Reserve(*ctx_, key_, 2000, 4, 500, 2);
+  s = cuckoo_->Reserve(*ctx_, key_, 2000, 4, 500, 2, kCuckooFilterDefaultPageSize);
   ASSERT_FALSE(s.ok());
   ASSERT_TRUE(s.IsInvalidArgument());
   ASSERT_NE(s.ToString().find("already exists"), std::string::npos);
@@ -280,29 +315,82 @@ TEST_F(RedisCuckooFilterTest, ReserveVerifyMetadata) {
   uint16_t expansion = 2;
 
   // Create the filter
-  auto s = cuckoo_->Reserve(*ctx_, key_, capacity, bucket_size, max_iterations, expansion);
+  auto s =
+      cuckoo_->Reserve(*ctx_, key_, capacity, bucket_size, max_iterations, expansion, kCuckooFilterDefaultPageSize);
   ASSERT_TRUE(s.ok()) << "First reserve should succeed";
 
   // Verify metadata was stored by trying to reserve again with same key
   // This should fail with "already exists" error
-  s = cuckoo_->Reserve(*ctx_, key_, capacity * 2, bucket_size, max_iterations, expansion);
+  s = cuckoo_->Reserve(*ctx_, key_, capacity * 2, bucket_size, max_iterations, expansion, kCuckooFilterDefaultPageSize);
   ASSERT_FALSE(s.ok()) << "Second reserve with same key should fail";
   ASSERT_TRUE(s.IsInvalidArgument()) << "Should return InvalidArgument error";
   ASSERT_NE(s.ToString().find("already exists"), std::string::npos) << "Error message should mention 'already exists'";
 
   // Verify we can still create filters with different keys
-  s = cuckoo_->Reserve(*ctx_, "different_key", capacity, bucket_size, max_iterations, expansion);
+  s = cuckoo_->Reserve(*ctx_, "different_key", capacity, bucket_size, max_iterations, expansion,
+                       kCuckooFilterDefaultPageSize);
   ASSERT_TRUE(s.ok()) << "Should be able to create filter with different key";
 
   // Verify the original key still exists (can't create it again)
-  s = cuckoo_->Reserve(*ctx_, key_, capacity, bucket_size, max_iterations, expansion);
+  s = cuckoo_->Reserve(*ctx_, key_, capacity, bucket_size, max_iterations, expansion, kCuckooFilterDefaultPageSize);
   ASSERT_FALSE(s.ok()) << "Original key should still exist";
   ASSERT_NE(s.ToString().find("already exists"), std::string::npos);
+}
+
+TEST_F(RedisCuckooFilterTest, ReservePersistsPageSize) {
+  constexpr uint32_t page_size = 4096;
+  reserveAndVerify(key_, 1000, 4, 500, 2, page_size);
 }
 
 TEST_F(RedisCuckooFilterTest, AddBasic) {
   reserveAndVerify(key_, 1000, 4, 500, 2);
   addAndVerify(key_, "item1", 1000, 4, 500, 2, 1);
+}
+
+TEST_F(RedisCuckooFilterTest, ReserveDoesNotPreallocatePages) {
+  reserveAndVerify(key_, 1000, 4, 500, 2);
+
+  auto metadata = getMetadata(key_);
+  std::string page;
+  auto s = readPage(makePageKey(key_, metadata, 0, 0), &page);
+  EXPECT_TRUE(s.IsNotFound()) << s.ToString();
+}
+
+TEST_F(RedisCuckooFilterTest, AddWritesPagedLayout) {
+  constexpr uint64_t capacity = 1000;
+  constexpr uint8_t bucket_size = 4;
+  reserveAndVerify(key_, capacity, bucket_size, 500, 2);
+
+  const std::string item = "item1";
+  addAndVerify(key_, item, capacity, bucket_size, 500, 2, 1);
+
+  auto metadata = getMetadata(key_);
+  uint32_t num_buckets = 0;
+  auto s = redis::CuckooFilter::OptimalNumBuckets(capacity, bucket_size, &num_buckets);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  auto hash = redis::CuckooFilter::Hash(item);
+  auto fingerprint = redis::CuckooFilter::GenerateFingerprint(hash);
+  auto bucket1_idx = static_cast<uint32_t>(hash % num_buckets);
+  auto bucket2_idx = static_cast<uint32_t>(redis::CuckooFilter::GetAltHash(fingerprint, hash) % num_buckets);
+  auto buckets_per_page = metadata.page_size / bucket_size;
+  auto page_index = bucket1_idx / buckets_per_page;
+  auto page_size = std::min(buckets_per_page, num_buckets - page_index * buckets_per_page) * bucket_size;
+
+  std::string page;
+  s = readPage(makePageKey(key_, metadata, 0, page_index), &page);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  ASSERT_EQ(page.size(), page_size);
+
+  auto bucket1_offset = (bucket1_idx % buckets_per_page) * bucket_size;
+  auto bucket2_offset = (bucket2_idx % buckets_per_page) * bucket_size;
+  bool found = false;
+  for (uint32_t i = 0; i < bucket_size; ++i) {
+    found = found || static_cast<uint8_t>(page[bucket1_offset + i]) == fingerprint;
+    if (bucket2_idx / buckets_per_page == page_index) {
+      found = found || static_cast<uint8_t>(page[bucket2_offset + i]) == fingerprint;
+    }
+  }
+  EXPECT_TRUE(found);
 }
 
 TEST_F(RedisCuckooFilterTest, AddToNonExistentFilter) {
@@ -314,7 +402,7 @@ TEST_F(RedisCuckooFilterTest, AddToNonExistentFilter) {
   verifyMetadata(key, redis::kCFDefaultCapacity, redis::kCFDefaultBucketSize, redis::kCFDefaultMaxIterations,
                  redis::kCFDefaultExpansion, 1, 1, 0);
 
-  s = cuckoo_->Reserve(*ctx_, key, 1000, 4, 500, 2);
+  s = cuckoo_->Reserve(*ctx_, key, 1000, 4, 500, 2, kCuckooFilterDefaultPageSize);
   ASSERT_FALSE(s.ok());
   ASSERT_TRUE(s.IsInvalidArgument());
   ASSERT_NE(s.ToString().find("already exists"), std::string::npos);
@@ -348,7 +436,7 @@ TEST_F(RedisCuckooFilterTest, AddManyItems) {
 
 TEST_F(RedisCuckooFilterTest, AddSmallFilterCapacity) {
   uint64_t small_capacity = 10;
-  auto s = cuckoo_->Reserve(*ctx_, key_, small_capacity, 2, 500, 0);
+  auto s = cuckoo_->Reserve(*ctx_, key_, small_capacity, 2, 500, 0, kCuckooFilterDefaultPageSize);
   ASSERT_TRUE(s.ok());
 
   uint64_t added_count = 0;
@@ -382,4 +470,110 @@ TEST_F(RedisCuckooFilterTest, AddEdgeCaseItems) {
   for (size_t i = 0; i < items.size(); ++i) {
     addAndVerify(key_, items[i], 1000, 4, 500, 2, i + 1);
   }
+}
+
+TEST_F(RedisCuckooFilterTest, KickOutSuccessWritesDirtyPages) {
+  constexpr uint64_t capacity = 2;
+  constexpr uint8_t bucket_size = 1;
+  constexpr uint32_t num_buckets = 4;
+  reserveAndVerify(key_, capacity, bucket_size, 1, 0);
+
+  struct Candidate {
+    std::string item;
+    uint8_t fingerprint = 0;
+    uint32_t bucket1 = 0;
+    uint32_t bucket2 = 0;
+  };
+
+  std::vector<Candidate> candidates;
+  for (int i = 0; i < 10000; ++i) {
+    std::string item = "kick_item_" + std::to_string(i);
+    auto hash = redis::CuckooFilter::Hash(item);
+    auto fingerprint = redis::CuckooFilter::GenerateFingerprint(hash);
+    candidates.push_back({item, fingerprint, static_cast<uint32_t>(hash % num_buckets),
+                          static_cast<uint32_t>(redis::CuckooFilter::GetAltHash(fingerprint, hash) % num_buckets)});
+  }
+
+  Candidate first;
+  Candidate second;
+  Candidate kicked;
+  uint32_t evicted_bucket = 0;
+  bool found = false;
+  for (const auto &candidate : candidates) {
+    if (candidate.bucket1 == candidate.bucket2) continue;
+    for (const auto &first_candidate : candidates) {
+      if (first_candidate.item == candidate.item || first_candidate.bucket1 != candidate.bucket1) continue;
+      auto alt_for_victim =
+          redis::CuckooFilter::GetAltBucketIndex(candidate.bucket1, first_candidate.fingerprint, num_buckets);
+      if (alt_for_victim == candidate.bucket1 || alt_for_victim == candidate.bucket2) continue;
+
+      for (const auto &second_candidate : candidates) {
+        if (second_candidate.item == candidate.item || second_candidate.item == first_candidate.item ||
+            second_candidate.bucket1 != candidate.bucket2) {
+          continue;
+        }
+        first = first_candidate;
+        second = second_candidate;
+        kicked = candidate;
+        evicted_bucket = alt_for_victim;
+        found = true;
+        break;
+      }
+      if (found) break;
+    }
+    if (found) break;
+  }
+  ASSERT_TRUE(found);
+
+  addAndVerify(key_, first.item, capacity, bucket_size, 1, 0, 1);
+  addAndVerify(key_, second.item, capacity, bucket_size, 1, 0, 2);
+  addAndVerify(key_, kicked.item, capacity, bucket_size, 1, 0, 3);
+
+  auto metadata = getMetadata(key_);
+  ASSERT_EQ(metadata.n_filters, 1);
+  ASSERT_EQ(metadata.size, 3);
+
+  std::string page;
+  auto s = readPage(makePageKey(key_, metadata, 0, 0), &page);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  ASSERT_EQ(page.size(), num_buckets * bucket_size);
+  EXPECT_EQ(static_cast<uint8_t>(page[kicked.bucket1]), kicked.fingerprint);
+  EXPECT_EQ(static_cast<uint8_t>(page[kicked.bucket2]), second.fingerprint);
+  EXPECT_EQ(static_cast<uint8_t>(page[evicted_bucket]), first.fingerprint);
+}
+
+TEST_F(RedisCuckooFilterTest, ExpansionWritesNewFilterIndexPage) {
+  constexpr uint64_t capacity = 2;
+  constexpr uint8_t bucket_size = 1;
+  reserveAndVerify(key_, capacity, bucket_size, 1, 2);
+
+  CuckooChainMetadata metadata(false);
+  uint64_t added_count = 0;
+  for (int i = 0; i < 100; ++i) {
+    bool added = false;
+    auto s = cuckoo_->Add(*ctx_, key_, "item_" + std::to_string(i), &added);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    ASSERT_TRUE(added);
+    ++added_count;
+
+    metadata = getMetadata(key_);
+    if (metadata.n_filters > 1) break;
+  }
+
+  ASSERT_GT(metadata.n_filters, 1);
+  EXPECT_EQ(metadata.size, added_count);
+
+  uint32_t num_buckets = 0;
+  uint64_t new_filter_capacity = capacity;
+  for (uint16_t i = 0; i < metadata.n_filters - 1; ++i) {
+    new_filter_capacity *= metadata.expansion;
+  }
+  auto s = redis::CuckooFilter::OptimalNumBuckets(new_filter_capacity, bucket_size, &num_buckets);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  auto expected_page_size = std::min(metadata.page_size / bucket_size, num_buckets) * bucket_size;
+
+  std::string page;
+  s = readPage(makePageKey(key_, metadata, metadata.n_filters - 1, 0), &page);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  EXPECT_EQ(page.size(), expected_page_size);
 }

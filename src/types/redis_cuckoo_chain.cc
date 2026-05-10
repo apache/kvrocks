@@ -21,9 +21,9 @@
 #include "redis_cuckoo_chain.h"
 
 #include <limits>
-#include <unordered_map>
 
 #include "cuckoo_filter.h"
+#include "cuckoo_filter_page.h"
 #include "logging.h"
 
 namespace redis {
@@ -46,26 +46,18 @@ rocksdb::Status CuckooChain::ValidateMetadata(const CuckooChainMetadata &metadat
   if (metadata.max_iterations == 0) {
     return rocksdb::Status::Corruption("invalid metadata: max_iterations is 0");
   }
+  if (metadata.page_size < metadata.bucket_size) {
+    return rocksdb::Status::Corruption("invalid metadata: page_size is smaller than bucket_size");
+  }
   if (!CuckooFilter::IsCapacitySupported(metadata.base_capacity, metadata.bucket_size)) {
     return rocksdb::Status::Corruption("invalid metadata: base_capacity is too large");
   }
   return rocksdb::Status::OK();
 }
 
-std::string CuckooChain::getBucketKey(const Slice &ns_key, const CuckooChainMetadata &metadata, uint16_t filter_index,
-                                      uint32_t bucket_index) {
-  // Create a sub-key that includes both filter index and bucket index
-  std::string sub_key;
-  PutFixed16(&sub_key, filter_index);
-  PutFixed32(&sub_key, bucket_index);
-
-  // Create the internal key using the storage encoding
-  std::string bucket_key = InternalKey(ns_key, sub_key, metadata.version, storage_->IsSlotIdEncoded()).Encode();
-  return bucket_key;
-}
-
 rocksdb::Status CuckooChain::Reserve(engine::Context &ctx, const Slice &user_key, uint64_t capacity,
-                                     uint8_t bucket_size, uint16_t max_iterations, uint16_t expansion) {
+                                     uint8_t bucket_size, uint16_t max_iterations, uint16_t expansion,
+                                     uint32_t page_size) {
   if (capacity == 0) {
     return rocksdb::Status::InvalidArgument("capacity must be larger than 0");
   }
@@ -82,6 +74,12 @@ rocksdb::Status CuckooChain::Reserve(engine::Context &ctx, const Slice &user_key
 
   if (max_iterations == 0) {
     return rocksdb::Status::InvalidArgument("max_iterations must be larger than 0");
+  }
+  if (page_size == 0) {
+    return rocksdb::Status::InvalidArgument("page_size must be larger than 0");
+  }
+  if (page_size < bucket_size) {
+    return rocksdb::Status::InvalidArgument("page_size must be at least bucket_size");
   }
   if (expansion > kCFMaxExpansion) {
     return rocksdb::Status::InvalidArgument("expansion must be between 0 and 32768");
@@ -108,14 +106,17 @@ rocksdb::Status CuckooChain::Reserve(engine::Context &ctx, const Slice &user_key
   metadata.expansion = expansion;
   metadata.n_filters = 1;
   metadata.num_deleted_items = 0;
+  metadata.page_size = page_size;
 
   // Calculate the number of buckets needed for this filter
   uint32_t num_buckets = 0;
   s = CuckooFilter::OptimalNumBuckets(capacity, bucket_size, &num_buckets);
   if (!s.ok()) return s;
 
-  INFO("Creating cuckoo filter with capacity={}, bucket_size={}, num_buckets={}, max_iterations={}, expansion={}",
-       capacity, bucket_size, num_buckets, max_iterations, static_cast<int>(expansion));
+  INFO(
+      "Creating cuckoo filter with capacity={}, bucket_size={}, num_buckets={}, max_iterations={}, expansion={}, "
+      "page_size={}",
+      capacity, bucket_size, num_buckets, max_iterations, static_cast<int>(expansion), page_size);
 
   // Create a write batch for atomic operation
   auto batch = storage_->GetWriteBatchBase();
@@ -128,12 +129,8 @@ rocksdb::Status CuckooChain::Reserve(engine::Context &ctx, const Slice &user_key
   s = batch->Put(metadata_cf_handle_, ns_key, metadata_bytes);
   if (!s.ok()) return s;
 
-  // Note: With bucket-based storage, we don't pre-allocate all buckets
-  // Buckets will be created lazily on first write
-  // This saves memory for sparse filters
-
-  // Optionally, we could create the first few buckets to ensure the filter is ready
-  // But for now, we'll keep it fully lazy for maximum memory efficiency
+  // Pages are created lazily on first write. Reserve only persists metadata so sparse filters don't preallocate page
+  // values that may never be used.
 
   return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
@@ -147,34 +144,6 @@ static bool CalculateFilterCapacity(uint64_t base_capacity, uint16_t expansion, 
   }
   *filter_capacity = capacity;
   return true;
-}
-
-// Helper function: try to find empty slot in a bucket and insert fingerprint
-static bool TryInsertInBucket(std::string &bucket_data, uint8_t bucket_size, uint8_t fingerprint, size_t *slot_idx) {
-  for (size_t i = 0; i < bucket_size; ++i) {
-    if (static_cast<uint8_t>(bucket_data[i]) == 0) {
-      bucket_data[i] = static_cast<char>(fingerprint);
-      *slot_idx = i;
-      return true;
-    }
-  }
-  return false;
-}
-
-// Helper function: read bucket from storage and ensure correct size
-static rocksdb::Status ReadBucket(engine::Storage *storage, engine::Context &ctx, const std::string &bucket_key,
-                                  uint8_t bucket_size, std::string *bucket_data) {
-  auto s = storage->Get(ctx, ctx.GetReadOptions(), bucket_key, bucket_data);
-  if (!s.ok() && !s.IsNotFound()) {
-    return s;
-  }
-  if (s.IsNotFound()) {
-    bucket_data->clear();
-  }
-  if (bucket_data->size() < bucket_size) {
-    bucket_data->resize(bucket_size, 0);
-  }
-  return rocksdb::Status::OK();
 }
 
 rocksdb::Status CuckooChain::Add(engine::Context &ctx, const Slice &user_key, const Slice &item, bool *added) {
@@ -193,6 +162,7 @@ rocksdb::Status CuckooChain::Add(engine::Context &ctx, const Slice &user_key, co
     metadata.expansion = kCFDefaultExpansion;
     metadata.n_filters = 1;
     metadata.num_deleted_items = 0;
+    metadata.page_size = kCuckooFilterDefaultPageSize;
   }
   if (!s.ok() && !s.IsNotFound()) return s;
 
@@ -220,37 +190,18 @@ rocksdb::Status CuckooChain::Add(engine::Context &ctx, const Slice &user_key, co
     uint64_t alt_hash = CuckooFilter::GetAltHash(fingerprint, hash);
     uint32_t bucket2_idx = alt_hash % num_buckets;
 
-    // Read both buckets using helper function
-    std::string bucket1_key = getBucketKey(ns_key, metadata, filter_idx, bucket1_idx);
-    std::string bucket2_key = getBucketKey(ns_key, metadata, filter_idx, bucket2_idx);
-
-    std::string bucket1_data, bucket2_data;
-    s = ReadBucket(storage_, ctx, bucket1_key, metadata.bucket_size, &bucket1_data);
+    CuckooPageSet pages(storage_, ctx, ns_key, metadata, storage_->IsSlotIdEncoded());
+    bool inserted = false;
+    s = pages.TryInsertInCandidateBuckets(filter_idx, num_buckets, bucket1_idx, bucket2_idx, fingerprint, &inserted);
     if (!s.ok()) return s;
 
-    s = ReadBucket(storage_, ctx, bucket2_key, metadata.bucket_size, &bucket2_data);
-    if (!s.ok()) return s;
-
-    // Try simple insertion in bucket1 or bucket2
-    size_t slot_idx = 0;
-    std::string *target_bucket_data = nullptr;
-    std::string target_bucket_key;
-
-    if (TryInsertInBucket(bucket1_data, metadata.bucket_size, fingerprint, &slot_idx)) {
-      target_bucket_data = &bucket1_data;
-      target_bucket_key = bucket1_key;
-    } else if (TryInsertInBucket(bucket2_data, metadata.bucket_size, fingerprint, &slot_idx)) {
-      target_bucket_data = &bucket2_data;
-      target_bucket_key = bucket2_key;
-    }
-
-    if (target_bucket_data != nullptr) {
+    if (inserted) {
       // Successfully inserted, write to storage atomically
       auto batch = storage_->GetWriteBatchBase();
       WriteBatchLogData log_data(kRedisCuckooFilter, std::vector<std::string>{"CF.ADD", user_key.ToString()});
       s = batch->PutLogData(log_data.Encode());
       if (!s.ok()) return s;
-      s = batch->Put(target_bucket_key, *target_bucket_data);
+      s = pages.WriteBackDirtyPages(batch.Get());
       if (!s.ok()) return s;
 
       metadata.size++;
@@ -279,19 +230,12 @@ rocksdb::Status CuckooChain::Add(engine::Context &ctx, const Slice &user_key, co
   if (!s.ok()) return s;
 
   bool inserted = false;
-  std::unordered_map<std::string, std::string> modified_buckets;
-  s = kickOutInsert(ctx, ns_key, metadata, last_filter_idx, num_buckets, fingerprint, hash, &inserted,
-                    &modified_buckets);
+  auto batch = storage_->GetWriteBatchBase();
+  s = kickOutInsert(ctx, ns_key, metadata, last_filter_idx, num_buckets, fingerprint, hash, &inserted, batch.Get());
   if (s.ok() && inserted) {
-    auto batch = storage_->GetWriteBatchBase();
     WriteBatchLogData log_data(kRedisCuckooFilter, std::vector<std::string>{"CF.ADD", user_key.ToString()});
     s = batch->PutLogData(log_data.Encode());
     if (!s.ok()) return s;
-
-    for (const auto &entry : modified_buckets) {
-      s = batch->Put(entry.first, entry.second);
-      if (!s.ok()) return s;
-    }
 
     metadata.size++;
     std::string metadata_bytes;
@@ -325,17 +269,16 @@ rocksdb::Status CuckooChain::Add(engine::Context &ctx, const Slice &user_key, co
     if (!s.ok()) return s;
 
     uint32_t bucket1_idx = hash % new_num_buckets;
-    std::string bucket1_key = getBucketKey(ns_key, metadata, new_filter_idx, bucket1_idx);
-
-    // Insert into first slot of the new filter's first bucket
-    std::string bucket1_data(metadata.bucket_size, 0);
-    bucket1_data[0] = static_cast<char>(fingerprint);
+    CuckooPageSet pages(storage_, ctx, ns_key, metadata, storage_->IsSlotIdEncoded());
+    s = pages.TryInsertInBucket(new_filter_idx, new_num_buckets, bucket1_idx, fingerprint, &inserted);
+    if (!s.ok()) return s;
+    if (!inserted) return rocksdb::Status::Corruption("failed to insert into new cuckoo filter");
 
     auto batch = storage_->GetWriteBatchBase();
     WriteBatchLogData log_data(kRedisCuckooFilter, std::vector<std::string>{"CF.ADD", user_key.ToString()});
     s = batch->PutLogData(log_data.Encode());
     if (!s.ok()) return s;
-    s = batch->Put(bucket1_key, bucket1_data);
+    s = pages.WriteBackDirtyPages(batch.Get());
     if (!s.ok()) return s;
 
     metadata.size++;
@@ -359,9 +302,9 @@ rocksdb::Status CuckooChain::Add(engine::Context &ctx, const Slice &user_key, co
 rocksdb::Status CuckooChain::kickOutInsert(engine::Context &ctx, const Slice &ns_key,
                                            const CuckooChainMetadata &metadata, uint16_t filter_index,
                                            uint32_t num_buckets, uint8_t fingerprint, uint64_t hash, bool *inserted,
-                                           std::unordered_map<std::string, std::string> *modified_buckets) {
+                                           rocksdb::WriteBatchBase *batch) {
   *inserted = false;
-  modified_buckets->clear();
+  CuckooPageSet pages(storage_, ctx, ns_key, metadata, storage_->IsSlotIdEncoded());
 
   // Start from bucket1
   uint32_t current_bucket_idx = hash % num_buckets;
@@ -370,22 +313,12 @@ rocksdb::Status CuckooChain::kickOutInsert(engine::Context &ctx, const Slice &ns
 
   // Try to kick out existing fingerprints (all operations in memory)
   for (uint16_t iteration = 0; iteration < metadata.max_iterations; ++iteration) {
-    // Read current bucket (check modified_buckets cache first)
-    std::string bucket_key = getBucketKey(ns_key, metadata, filter_index, current_bucket_idx);
-    std::string bucket_data;
-
-    auto cached = modified_buckets->find(bucket_key);
-    if (cached != modified_buckets->end()) {
-      bucket_data = cached->second;
-    } else {
-      auto s = ReadBucket(storage_, ctx, bucket_key, metadata.bucket_size, &bucket_data);
-      if (!s.ok()) return s;
-    }
-
     // Swap fingerprint with victim slot
-    auto old_fp = static_cast<uint8_t>(bucket_data[victim_slot]);
-    bucket_data[victim_slot] = static_cast<char>(current_fp);
-    (*modified_buckets)[bucket_key] = bucket_data;
+    uint8_t old_fp = 0;
+    auto s = pages.GetBucketSlot(filter_index, num_buckets, current_bucket_idx, victim_slot, &old_fp);
+    if (!s.ok()) return s;
+    s = pages.SetBucketSlot(filter_index, num_buckets, current_bucket_idx, victim_slot, current_fp);
+    if (!s.ok()) return s;
     current_fp = old_fp;
 
     // If kicked-out fingerprint is 0 (empty), we successfully inserted
@@ -394,30 +327,12 @@ rocksdb::Status CuckooChain::kickOutInsert(engine::Context &ctx, const Slice &ns
       break;
     }
 
-    // Calculate alternate bucket for the kicked-out fingerprint
-    // CRITICAL FIX: Use XOR hash calculation correctly
-    // We need to reconstruct the hash for the alternate bucket
-    // Since h2 = h1 ^ (fp * 0x5bd1e995), and we know bucket_idx = h1 % num_buckets
-    // We calculate alt_hash using the fingerprint and current bucket index
-    uint64_t current_hash = current_bucket_idx;  // Approximate hash from bucket index
-    uint64_t alt_hash = CuckooFilter::GetAltHash(current_fp, current_hash);
-    uint32_t alt_bucket_idx = alt_hash % num_buckets;
+    uint32_t alt_bucket_idx = CuckooFilter::GetAltBucketIndex(current_bucket_idx, current_fp, num_buckets);
 
-    // Check if alternate bucket has empty slot
-    std::string alt_bucket_key = getBucketKey(ns_key, metadata, filter_index, alt_bucket_idx);
-    std::string alt_bucket_data;
-
-    cached = modified_buckets->find(alt_bucket_key);
-    if (cached != modified_buckets->end()) {
-      alt_bucket_data = cached->second;
-    } else {
-      auto s = ReadBucket(storage_, ctx, alt_bucket_key, metadata.bucket_size, &alt_bucket_data);
-      if (!s.ok()) return s;
-    }
-
-    size_t empty_slot = 0;
-    if (TryInsertInBucket(alt_bucket_data, metadata.bucket_size, current_fp, &empty_slot)) {
-      (*modified_buckets)[alt_bucket_key] = alt_bucket_data;
+    bool inserted_in_alt_bucket = false;
+    s = pages.TryInsertInBucket(filter_index, num_buckets, alt_bucket_idx, current_fp, &inserted_in_alt_bucket);
+    if (!s.ok()) return s;
+    if (inserted_in_alt_bucket) {
       *inserted = true;
       break;
     }
@@ -427,6 +342,7 @@ rocksdb::Status CuckooChain::kickOutInsert(engine::Context &ctx, const Slice &ns
     victim_slot = (victim_slot + 1) % metadata.bucket_size;
   }
 
+  if (*inserted) return pages.WriteBackDirtyPages(batch);
   return rocksdb::Status::OK();
 }
 

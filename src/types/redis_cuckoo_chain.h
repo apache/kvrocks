@@ -20,8 +20,6 @@
 
 #pragma once
 
-#include <unordered_map>
-
 #include "cuckoo_filter.h"
 #include "storage/redis_db.h"
 #include "storage/redis_metadata.h"
@@ -41,7 +39,7 @@ class CuckooChain : public Database {
 
   // CF.RESERVE command - creates a new cuckoo filter with specified capacity
   rocksdb::Status Reserve(engine::Context &ctx, const Slice &user_key, uint64_t capacity, uint8_t bucket_size,
-                          uint16_t max_iterations, uint16_t expansion);
+                          uint16_t max_iterations, uint16_t expansion, uint32_t page_size);
 
   // CF.ADD command - adds an item to the cuckoo filter.
   // Duplicate items are allowed, so added is true whenever insertion succeeds.
@@ -53,15 +51,10 @@ class CuckooChain : public Database {
 
   static rocksdb::Status ValidateMetadata(const CuckooChainMetadata &metadata);
 
-  // Generate key for a specific bucket in bucket-based storage
-  // Format: cf:{namespace}:{user_key}:{filter_index}:{bucket_index}
-  std::string getBucketKey(const Slice &ns_key, const CuckooChainMetadata &metadata, uint16_t filter_index,
-                           uint32_t bucket_index);
-
   // Kick-out insertion: try to insert fingerprint by evicting existing ones
   rocksdb::Status kickOutInsert(engine::Context &ctx, const Slice &ns_key, const CuckooChainMetadata &metadata,
                                 uint16_t filter_index, uint32_t num_buckets, uint8_t fingerprint, uint64_t hash,
-                                bool *inserted, std::unordered_map<std::string, std::string> *modified_buckets);
+                                bool *inserted, rocksdb::WriteBatchBase *batch);
 };
 
 }  // namespace redis

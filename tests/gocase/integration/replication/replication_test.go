@@ -117,6 +117,36 @@ func TestReplicationWithHostname(t *testing.T) {
 	})
 }
 
+func TestReplicationTransferCommandsRequireAdminPermission(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{
+		"requirepass": "admin",
+	})
+	defer srv.Close()
+
+	ctx := context.Background()
+	adminClient := srv.NewClientWithOption(&redis.Options{Password: "admin"})
+	defer func() { require.NoError(t, adminClient.Close()) }()
+
+	require.NoError(t, adminClient.Do(ctx, "NAMESPACE", "ADD", "test_ns", "test_token").Err())
+
+	userClient := srv.NewClientWithOption(&redis.Options{Password: "test_token"})
+	defer func() { require.NoError(t, userClient.Close()) }()
+
+	for _, cmd := range []struct {
+		name string
+		args []interface{}
+	}{
+		{name: "PSYNC", args: []interface{}{"1"}},
+		{name: "_FETCH_META"},
+		{name: "_FETCH_FILE", args: []interface{}{"MANIFEST-000001"}},
+	} {
+		t.Run(cmd.name, func(t *testing.T) {
+			args := append([]interface{}{cmd.name}, cmd.args...)
+			require.ErrorContains(t, userClient.Do(ctx, args...).Err(), "admin permission required to perform the command")
+		})
+	}
+}
+
 func TestReplicationLoading(t *testing.T) {
 	t.Parallel()
 	srvA := util.StartServer(t, map[string]string{})

@@ -517,6 +517,9 @@ class CommandHExpire : public Commander {
     if (!seconds) {
       return {Status::RedisParseErr, errValueNotInteger};
     }
+    if (*seconds < 0) {
+      return {Status::RedisParseErr, "invalid expire time, must be >= 0"};
+    }
     seconds_ = *seconds;
     condition_ = HashFieldExpireCondition::kNone;
 

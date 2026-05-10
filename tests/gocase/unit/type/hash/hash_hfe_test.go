@@ -682,6 +682,11 @@ func TestHashFieldExpirationParseErrors(t *testing.T) {
 				errContains: "integer",
 			},
 			{
+				name:        "hexpire ttl is negative",
+				args:        []interface{}{"hexpire", key, -1, "FIELDS", 1, "a"},
+				errContains: "invalid expire time",
+			},
+			{
 				name:        "hexpire ttl has trailing characters",
 				args:        []interface{}{"hexpire", key, "10ms", "FIELDS", 1, "a"},
 				errContains: "integer",
@@ -746,10 +751,10 @@ func TestHashFieldExpirationParseErrors(t *testing.T) {
 
 func TestHashFieldExpirationInputCornerCases(t *testing.T) {
 	runWithFieldExpirationHash(t, func(t *testing.T, rdb *redis.Client, ctx context.Context) {
-		t.Run("hexpire negative ttl deletes immediately", func(t *testing.T) {
-			key := "hfe-negative-ttl"
+		t.Run("hexpire zero ttl deletes immediately", func(t *testing.T) {
+			key := "hfe-zero-ttl"
 			require.Equal(t, int64(3), rdb.HSet(ctx, key, "a", "1", "b", "2", "keeper", "3").Val())
-			requireIntArray(t, rdb.Do(ctx, "hexpire", key, -1, "FIELDS", 3, "a", "b", "missing").Val(),
+			requireIntArray(t, rdb.Do(ctx, "hexpire", key, 0, "FIELDS", 3, "a", "b", "missing").Val(),
 				[]int64{2, 2, -2})
 			requireHashMetadata(t, util.GetKMetadata(t, rdb, ctx, key), 1, 1)
 			require.Equal(t, map[string]string{"keeper": "3"}, rdb.HGetAll(ctx, key).Val())
@@ -760,7 +765,7 @@ func TestHashFieldExpirationInputCornerCases(t *testing.T) {
 		t.Run("hexpire and hpersist return missing for missing key", func(t *testing.T) {
 			key := "hfe-missing-key"
 			require.Equal(t, int64(0), rdb.Exists(ctx, key).Val())
-			requireIntArray(t, rdb.Do(ctx, "hexpire", key, -1, "FIELDS", 2, "a", "b").Val(), []int64{-2, -2})
+			requireIntArray(t, rdb.Do(ctx, "hexpire", key, 0, "FIELDS", 2, "a", "b").Val(), []int64{-2, -2})
 			requireIntArray(t, rdb.Do(ctx, "hpersist", key, "FIELDS", 2, "a", "b").Val(), []int64{-2, -2})
 			require.Equal(t, int64(0), rdb.Exists(ctx, key).Val())
 		})

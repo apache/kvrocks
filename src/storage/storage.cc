@@ -1194,12 +1194,6 @@ Status Storage::InWALBoundary(rocksdb::SequenceNumber seq) {
 
 Status Storage::ReplDataManager::CleanInvalidFiles(Storage *storage, const std::string &dir,
                                                    std::vector<std::string> valid_files) {
-  for (const auto &file : valid_files) {
-    if (auto s = ValidateReplFileName(file); !s.IsOK()) {
-      return s;
-    }
-  }
-
   if (!storage->env_->FileExists(dir).ok()) {
     return Status::OK();
   }

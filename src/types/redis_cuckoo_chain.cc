@@ -173,11 +173,11 @@ rocksdb::Status CuckooChain::Add(engine::Context &ctx, const Slice &user_key, co
   uint64_t hash = CuckooFilter::Hash(item.data(), item.size());
   uint8_t fingerprint = CuckooFilter::GenerateFingerprint(hash);
 
-  // Try to insert in each sub-filter (starting from the first/smallest one)
-  // This follows RedisBloom's behavior and is more efficient
-  for (uint16_t filter_idx = 0; filter_idx < metadata.n_filters; ++filter_idx) {
+  // RedisBloom prioritizes the newest sub-filter to avoid repeatedly probing older, fuller filters.
+  for (int filter_idx = static_cast<int>(metadata.n_filters) - 1; filter_idx >= 0; --filter_idx) {
+    uint16_t current_filter_idx = static_cast<uint16_t>(filter_idx);
     uint64_t filter_capacity = 0;
-    if (!CalculateFilterCapacity(metadata.base_capacity, metadata.expansion, filter_idx, &filter_capacity) ||
+    if (!CalculateFilterCapacity(metadata.base_capacity, metadata.expansion, current_filter_idx, &filter_capacity) ||
         !CuckooFilter::IsCapacitySupported(filter_capacity, metadata.bucket_size)) {
       return rocksdb::Status::Corruption("invalid metadata: filter capacity is too large");
     }
@@ -192,7 +192,8 @@ rocksdb::Status CuckooChain::Add(engine::Context &ctx, const Slice &user_key, co
 
     CuckooPageSet pages(storage_, ctx, ns_key, metadata, storage_->IsSlotIdEncoded());
     bool inserted = false;
-    s = pages.TryInsertInCandidateBuckets(filter_idx, num_buckets, bucket1_idx, bucket2_idx, fingerprint, &inserted);
+    s = pages.TryInsertInCandidateBuckets(current_filter_idx, num_buckets, bucket1_idx, bucket2_idx, fingerprint,
+                                          &inserted);
     if (!s.ok()) return s;
 
     if (inserted) {

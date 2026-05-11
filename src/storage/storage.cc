@@ -1395,6 +1395,7 @@ Status Storage::ReplDataManager::SwapTmpFile(Storage *storage, const std::string
 bool Storage::ReplDataManager::FileExists(Storage *storage, const std::string &dir, const std::string &repl_file,
                                           uint32_t crc) {
   if (storage->IsClosing()) return false;
+  if (!ValidateReplFileName(repl_file).IsOK()) return false;
 
   auto file_path = dir + "/" + repl_file;
   auto s = storage->env_->FileExists(file_path);

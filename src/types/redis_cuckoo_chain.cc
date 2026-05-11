@@ -33,7 +33,7 @@ rocksdb::Status CuckooChain::getCuckooChainMetadata(engine::Context &ctx, const 
   return Database::GetMetadata(ctx, {kRedisCuckooFilter}, ns_key, metadata);
 }
 
-rocksdb::Status CuckooChain::ValidateMetadata(const CuckooChainMetadata &metadata) {
+rocksdb::Status CuckooChain::validateMetadata(const CuckooChainMetadata &metadata) {
   if (metadata.n_filters == 0) {
     return rocksdb::Status::Corruption("invalid metadata: n_filters is 0");
   }
@@ -166,7 +166,7 @@ rocksdb::Status CuckooChain::Add(engine::Context &ctx, const Slice &user_key, co
   }
   if (!s.ok() && !s.IsNotFound()) return s;
 
-  s = ValidateMetadata(metadata);
+  s = validateMetadata(metadata);
   if (!s.ok()) return s;
 
   // Calculate hash and fingerprint for the item

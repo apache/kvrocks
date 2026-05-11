@@ -49,7 +49,7 @@ class CuckooChain : public Database {
   // Get metadata for the cuckoo filter
   rocksdb::Status getCuckooChainMetadata(engine::Context &ctx, const Slice &ns_key, CuckooChainMetadata *metadata);
 
-  static rocksdb::Status ValidateMetadata(const CuckooChainMetadata &metadata);
+  static rocksdb::Status validateMetadata(const CuckooChainMetadata &metadata);
 
   // Kick-out insertion: try to insert fingerprint by evicting existing ones
   rocksdb::Status kickOutInsert(engine::Context &ctx, const Slice &ns_key, const CuckooChainMetadata &metadata,

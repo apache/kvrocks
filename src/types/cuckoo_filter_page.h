@@ -66,19 +66,19 @@ class CuckooPageSet {
     uint32_t expected_page_size = 0;
   };
 
-  rocksdb::Status ResolveBucketLocation(uint16_t filter_index, uint32_t num_buckets, uint32_t bucket_index,
+  rocksdb::Status resolveBucketLocation(uint16_t filter_index, uint32_t num_buckets, uint32_t bucket_index,
                                         BucketLocation *location) const;
-  rocksdb::Status EnsureBucketLoaded(uint16_t filter_index, uint32_t num_buckets, uint32_t bucket_index,
+  rocksdb::Status ensureBucketLoaded(uint16_t filter_index, uint32_t num_buckets, uint32_t bucket_index,
                                      BucketRef *bucket);
-  rocksdb::Status EnsureCandidateBucketsLoaded(uint16_t filter_index, uint32_t num_buckets, uint32_t bucket1_index,
+  rocksdb::Status ensureCandidateBucketsLoaded(uint16_t filter_index, uint32_t num_buckets, uint32_t bucket1_index,
                                                uint32_t bucket2_index, BucketRef *bucket1, BucketRef *bucket2);
-  rocksdb::Status LoadPage(const BucketLocation &location, PageEntry **page);
-  rocksdb::Status LoadPages(const std::vector<BucketLocation> &locations);
-  rocksdb::Status NormalizePage(const rocksdb::Status &status, uint32_t expected_size, PageEntry *page) const;
+  rocksdb::Status loadPage(const BucketLocation &location, PageEntry **page);
+  rocksdb::Status loadPages(const std::vector<BucketLocation> &locations);
+  rocksdb::Status normalizePage(const rocksdb::Status &status, uint32_t expected_size, PageEntry *page) const;
 
-  bool TryInsertInBucketRef(const BucketRef &bucket, uint8_t fingerprint, size_t *slot_idx);
-  uint8_t GetBucketRefSlot(const BucketRef &bucket, uint32_t slot_idx) const;
-  void SetBucketRefSlot(const BucketRef &bucket, uint32_t slot_idx, uint8_t fingerprint);
+  bool tryInsertInBucketRef(const BucketRef &bucket, uint8_t fingerprint, size_t *slot_idx);
+  uint8_t getBucketRefSlot(const BucketRef &bucket, uint32_t slot_idx) const;
+  void setBucketRefSlot(const BucketRef &bucket, uint32_t slot_idx, uint8_t fingerprint);
 
   engine::Storage *storage_ = nullptr;
   engine::Context &ctx_;

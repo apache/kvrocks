@@ -631,7 +631,7 @@ rocksdb::Status TimeSeriesMetadata::Decode(Slice *input) {
   if (auto s = Metadata::Decode(input); !s.ok()) {
     return s;
   }
-  if (input->size() < sizeof(uint64_t) * 3 + sizeof(uint8_t) * 2 + sizeof(uint32_t) + sizeof(double)) {
+  if (input->size() < sizeof(uint64_t) * 3 + sizeof(uint8_t) * 2 + sizeof(uint32_t)) {
     return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
   }
 
@@ -643,8 +643,12 @@ rocksdb::Status TimeSeriesMetadata::Decode(Slice *input) {
   GetSizedString(input, &source_key_slice);
   source_key = source_key_slice.ToString();
   GetFixed64(input, &last_timestamp);
-  GetFixed64(input, &ignore_max_time_diff);
-  GetDouble(input, &ignore_max_val_diff);
+  ignore_max_time_diff = 0;
+  ignore_max_val_diff = 0.0;
+  if (input->size() >= sizeof(uint64_t) + sizeof(double)) {
+    GetFixed64(input, &ignore_max_time_diff);
+    GetDouble(input, &ignore_max_val_diff);
+  }
 
   return rocksdb::Status::OK();
 }

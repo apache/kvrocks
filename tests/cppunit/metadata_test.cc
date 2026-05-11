@@ -321,3 +321,28 @@ TEST(Metadata, Metadata64bitSize) {
   EXPECT_EQ(md_decoded.Type(), kRedisHash);
   EXPECT_EQ(md_decoded.size, big_size);
 }
+
+TEST(Metadata, TimeSeriesMetadataDecodingBackwardCompatible) {
+  TimeSeriesMetadata md_src;
+  md_src.retention_time = 3600;
+  md_src.chunk_size = 1024;
+  md_src.chunk_type = TimeSeriesMetadata::ChunkType::COMPRESSED;
+  md_src.duplicate_policy = TimeSeriesMetadata::DuplicatePolicy::LAST;
+  md_src.last_timestamp = 123456789;
+
+  std::string encoded_bytes;
+  md_src.Encode(&encoded_bytes);
+  encoded_bytes.resize(encoded_bytes.size() - sizeof(uint64_t) - sizeof(double));
+
+  TimeSeriesMetadata md_decoded(false);
+  Slice input(encoded_bytes);
+  ASSERT_TRUE(md_decoded.Decode(&input).ok());
+  EXPECT_EQ(md_decoded.retention_time, md_src.retention_time);
+  EXPECT_EQ(md_decoded.chunk_size, md_src.chunk_size);
+  EXPECT_EQ(md_decoded.chunk_type, md_src.chunk_type);
+  EXPECT_EQ(md_decoded.duplicate_policy, md_src.duplicate_policy);
+  EXPECT_EQ(md_decoded.last_timestamp, md_src.last_timestamp);
+  EXPECT_EQ(md_decoded.ignore_max_time_diff, 0);
+  EXPECT_EQ(md_decoded.ignore_max_val_diff, 0.0);
+  EXPECT_TRUE(md_decoded.source_key.empty());
+}

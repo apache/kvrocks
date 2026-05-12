@@ -225,8 +225,7 @@ rocksdb::Status CuckooPageSet::loadPages(const std::vector<BucketLocation> &loca
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status CuckooPageSet::normalizePage(const rocksdb::Status &status, uint32_t expected_size,
-                                             PageEntry *page) const {
+rocksdb::Status CuckooPageSet::normalizePage(const rocksdb::Status &status, uint32_t expected_size, PageEntry *page) {
   if (!status.ok() && !status.IsNotFound()) return status;
   if (status.IsNotFound()) page->data.clear();
   if (page->data.size() > expected_size) return rocksdb::Status::Corruption("invalid cuckoo filter page size");
@@ -247,7 +246,7 @@ bool CuckooPageSet::tryInsertInBucketRef(const BucketRef &bucket, uint8_t finger
   return false;
 }
 
-uint8_t CuckooPageSet::getBucketRefSlot(const BucketRef &bucket, uint32_t slot_idx) const {
+uint8_t CuckooPageSet::getBucketRefSlot(const BucketRef &bucket, uint32_t slot_idx) {
   return static_cast<uint8_t>(bucket.page->data[bucket.offset + slot_idx]);
 }
 

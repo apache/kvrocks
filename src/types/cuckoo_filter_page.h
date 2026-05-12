@@ -74,11 +74,11 @@ class CuckooPageSet {
                                                uint32_t bucket2_index, BucketRef *bucket1, BucketRef *bucket2);
   rocksdb::Status loadPage(const BucketLocation &location, PageEntry **page);
   rocksdb::Status loadPages(const std::vector<BucketLocation> &locations);
-  rocksdb::Status normalizePage(const rocksdb::Status &status, uint32_t expected_size, PageEntry *page) const;
+  static rocksdb::Status normalizePage(const rocksdb::Status &status, uint32_t expected_size, PageEntry *page);
 
-  bool tryInsertInBucketRef(const BucketRef &bucket, uint8_t fingerprint, size_t *slot_idx);
-  uint8_t getBucketRefSlot(const BucketRef &bucket, uint32_t slot_idx) const;
-  void setBucketRefSlot(const BucketRef &bucket, uint32_t slot_idx, uint8_t fingerprint);
+  static bool tryInsertInBucketRef(const BucketRef &bucket, uint8_t fingerprint, size_t *slot_idx);
+  static uint8_t getBucketRefSlot(const BucketRef &bucket, uint32_t slot_idx);
+  static void setBucketRefSlot(const BucketRef &bucket, uint32_t slot_idx, uint8_t fingerprint);
 
   engine::Storage *storage_ = nullptr;
   engine::Context &ctx_;

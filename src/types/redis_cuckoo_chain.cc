@@ -175,7 +175,7 @@ rocksdb::Status CuckooChain::Add(engine::Context &ctx, const Slice &user_key, co
 
   // RedisBloom prioritizes the newest sub-filter to avoid repeatedly probing older, fuller filters.
   for (int filter_idx = static_cast<int>(metadata.n_filters) - 1; filter_idx >= 0; --filter_idx) {
-    uint16_t current_filter_idx = static_cast<uint16_t>(filter_idx);
+    auto current_filter_idx = static_cast<uint16_t>(filter_idx);
     uint64_t filter_capacity = 0;
     if (!CalculateFilterCapacity(metadata.base_capacity, metadata.expansion, current_filter_idx, &filter_capacity) ||
         !CuckooFilter::IsCapacitySupported(filter_capacity, metadata.bucket_size)) {

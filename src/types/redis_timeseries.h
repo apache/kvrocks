@@ -259,7 +259,8 @@ enum class TSAlterMode : uint8_t {
   RETENTION = 1,
   CHUNK_SIZE = 1 << 1,
   DUPLICATE_POLICY = 1 << 2,
-  LABELS = 1 << 3,
+  IGNORE = 1 << 3, // TSAlterMode::IGNORE is not used for now
+  LABELS = 1 << 4,
 };
 
 std::vector<TSSample> GroupSamplesAndReduce(const std::vector<std::vector<TSSample>> &all_samples,

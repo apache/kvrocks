@@ -89,16 +89,9 @@ class CommandGeoBase : public Commander {
   }
 
   static Status ParseCount(std::string_view raw_count, size_t *count) {
-    auto signed_count = ParseInt<int64_t>(raw_count, 10);
-    if (!signed_count) {
-      return {Status::RedisParseErr, errValueNotInteger};
-    }
+     auto signed_count = GET_OR_RET(ParseInt<int64_t>(raw_count, {0, INT64_MAX}, 10));
 
-    if (*signed_count <= 0) {
-      return {Status::RedisParseErr, "COUNT must be > 0"};
-    }
-
-    *count = static_cast<size_t>(*signed_count);
+    *count = static_cast<size_t>(signed_count);
     return Status::OK();
   }
 

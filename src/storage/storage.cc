@@ -34,6 +34,7 @@
 #include <iostream>
 #include <memory>
 #include <random>
+#include <string_view>
 
 #include "compact_filter.h"
 #include "db_util.h"
@@ -1226,7 +1227,40 @@ Status Storage::ReplDataManager::CleanInvalidFiles(Storage *storage, const std::
   return ret;
 }
 
+Status Storage::ReplDataManager::ValidateReplFileName(const std::string &repl_file) {
+  if (repl_file.empty()) {
+    return {Status::NotOK, "empty replication file name"};
+  }
+  if (repl_file.front() == '/') {
+    return {Status::NotOK, fmt::format("absolute replication file name '{}' is not allowed", repl_file)};
+  }
+  if (repl_file.back() == '/') {
+    return {Status::NotOK, fmt::format("unsafe replication file name '{}' is not allowed", repl_file)};
+  }
+
+  for (size_t begin = 0; begin < repl_file.size();) {
+    auto end = repl_file.find('/', begin);
+    auto component = std::string_view(repl_file).substr(begin, end - begin);
+    if (component.empty() || component == "." || component == "..") {
+      return {Status::NotOK, fmt::format("unsafe replication file name '{}' is not allowed", repl_file)};
+    }
+    if (component.find('\0') != std::string_view::npos || component.find('\\') != std::string_view::npos ||
+        component.find(':') != std::string_view::npos) {
+      return {Status::NotOK, fmt::format("unsafe replication file name '{}' is not allowed", repl_file)};
+    }
+    if (end == std::string::npos) break;
+    begin = end + 1;
+  }
+
+  return Status::OK();
+}
+
 int Storage::ReplDataManager::OpenDataFile(Storage *storage, const std::string &repl_file, uint64_t *file_size) {
+  if (auto s = ValidateReplFileName(repl_file); !s.IsOK()) {
+    ERROR("[storage] Invalid replication data file '{}': {}", repl_file, s.Msg());
+    return NullFD;
+  }
+
   std::string abs_path = storage->config_->checkpoint_dir + "/" + repl_file;
   auto s = storage->env_->FileExists(abs_path);
   if (!s.ok()) {
@@ -1282,6 +1316,9 @@ Status Storage::ReplDataManager::ParseMetaAndSave(Storage *storage, rocksdb::Bac
     }
 
     auto filename = std::string(line.get(), cptr - line.get() - 1);
+    if (auto s = ValidateReplFileName(filename); !s.IsOK()) {
+      return s;
+    }
     while (*(cptr++) != ' ') {
     }
 
@@ -1311,6 +1348,11 @@ Status MkdirRecursively(rocksdb::Env *env, const std::string &dir) {
 
 std::unique_ptr<rocksdb::WritableFile> Storage::ReplDataManager::NewTmpFile(Storage *storage, const std::string &dir,
                                                                             const std::string &repl_file) {
+  if (auto s = ValidateReplFileName(repl_file); !s.IsOK()) {
+    ERROR("[storage] Invalid replication data file '{}': {}", repl_file, s.Msg());
+    return nullptr;
+  }
+
   std::string tmp_file = dir + "/" + repl_file + ".tmp";
   auto s = storage->env_->FileExists(tmp_file);
   if (s.ok()) {
@@ -1335,6 +1377,10 @@ std::unique_ptr<rocksdb::WritableFile> Storage::ReplDataManager::NewTmpFile(Stor
 }
 
 Status Storage::ReplDataManager::SwapTmpFile(Storage *storage, const std::string &dir, const std::string &repl_file) {
+  if (auto s = ValidateReplFileName(repl_file); !s.IsOK()) {
+    return s;
+  }
+
   std::string tmp_file = dir + "/" + repl_file + ".tmp";
   std::string orig_file = dir + "/" + repl_file;
 
@@ -1349,6 +1395,7 @@ Status Storage::ReplDataManager::SwapTmpFile(Storage *storage, const std::string
 bool Storage::ReplDataManager::FileExists(Storage *storage, const std::string &dir, const std::string &repl_file,
                                           uint32_t crc) {
   if (storage->IsClosing()) return false;
+  if (!ValidateReplFileName(repl_file).IsOK()) return false;
 
   auto file_path = dir + "/" + repl_file;
   auto s = storage->env_->FileExists(file_path);

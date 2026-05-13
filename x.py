@@ -32,7 +32,7 @@ from tempfile import TemporaryDirectory
 CMAKE_REQUIRE_VERSION = (3, 16, 0)
 CLANG_FORMAT_REQUIRED_VERSION = (18, 0, 0)
 CLANG_TIDY_REQUIRED_VERSION = (18, 0, 0)
-GOLANGCI_LINT_REQUIRED_VERSION = (2, 9, 0)
+GOLANGCI_LINT_REQUIRED_VERSION = (2, 12, 1)
 
 SEMVER_REGEX = re.compile(
     r"""
@@ -253,7 +253,7 @@ def golangci_lint(golangci_lint_path: str) -> None:
         return golangci_command, version_str
 
     def download_package(bindir: str) -> None:
-        output = run_pipe('curl', '-sfL', 'https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh',
+        output = run_pipe('curl', '-sfL', 'https://golangci-lint.run/install.sh',
                             verbose=True)
         version_str = 'v' + '.'.join(map(str, GOLANGCI_LINT_REQUIRED_VERSION))
         run('sh', '-s', '--', '-b', bindir, version_str, verbose=True, stdin=output)

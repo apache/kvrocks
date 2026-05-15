@@ -371,7 +371,7 @@ rocksdb::Status HashMetadata::Decode(Slice *input) {
 
   uint8_t encoded_mode = 0;
   GetFixed8(input, &encoded_mode);
-  if (encoded_mode > static_cast<uint8_t>(HashSubkeyEncodingMode::kFieldExpiration)) {
+  if (encoded_mode != static_cast<uint8_t>(HashSubkeyEncodingMode::kFieldExpiration)) {
     return rocksdb::Status::InvalidArgument("invalid hash subkey encoding mode");
   }
 

@@ -38,7 +38,7 @@ type kMetadataResponse struct {
 	version int64  `redis:"version"`
 	mode    string `redis:"mode"`
 	format  string `redis:"format"`
-	expsz   int64  `redis:"expsz"`
+	persist int64  `redis:"persist"`
 	lower   int64  `redis:"lower"`
 	upper   int64  `redis:"upper"`
 	head    int64  `redis:"head"`
@@ -72,7 +72,7 @@ func ExtractKMetadataResponse(result interface{}) (*kMetadataResponse, error) {
 		"size":    &response.size,
 		"flags":   &response.flags,
 		"version": &response.version,
-		"expsz":   &response.expsz,
+		"persist": &response.persist,
 		"lower":   &response.lower,
 		"upper":   &response.upper,
 		"head":    &response.head,
@@ -172,14 +172,14 @@ var testKMetadata = func(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.Equal(t, int64(2), metaResponse.size)
 		require.Equal(t, configs["hash-encoding-mode"], metaResponse.mode)
 		if configs["hash-encoding-mode"] == "field-expiration" {
-			require.Equal(t, int64(0), metaResponse.expsz)
+			require.Equal(t, int64(2), metaResponse.persist)
 			require.Equal(t, int64(0), metaResponse.lower)
 			require.Equal(t, int64(0), metaResponse.upper)
-			require.Contains(t, resultMap, "expsz")
+			require.Contains(t, resultMap, "persist")
 			require.Contains(t, resultMap, "lower")
 			require.Contains(t, resultMap, "upper")
 		} else {
-			require.NotContains(t, resultMap, "expsz")
+			require.NotContains(t, resultMap, "persist")
 			require.NotContains(t, resultMap, "lower")
 			require.NotContains(t, resultMap, "upper")
 		}

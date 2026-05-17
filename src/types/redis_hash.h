@@ -39,6 +39,14 @@ struct FieldValue {
 
 enum class HashFetchType { kAll = 0, kOnlyKey = 1, kOnlyValue = 2 };
 
+enum class HashFieldExpireCondition {
+  kNone,
+  kNX,
+  kXX,
+  kGT,
+  kLT,
+};
+
 namespace redis {
 
 class Hash : public SubKeyScanner {
@@ -68,6 +76,11 @@ class Hash : public SubKeyScanner {
                        std::vector<std::string> *values = nullptr);
   rocksdb::Status RandField(engine::Context &ctx, const Slice &user_key, int64_t command_count,
                             std::vector<FieldValue> *field_values, HashFetchType type = HashFetchType::kOnlyKey);
+  rocksdb::Status ExpireFields(engine::Context &ctx, const Slice &user_key, const std::vector<Slice> &fields,
+                               uint64_t expire_at_ms, HashFieldExpireCondition condition,
+                               std::vector<int64_t> *results);
+  rocksdb::Status PersistFields(engine::Context &ctx, const Slice &user_key, const std::vector<Slice> &fields,
+                                std::vector<int64_t> *results);
 
  private:
   [[nodiscard]] HashMetadata createMetadataForWrite(bool generate_version = true) const;

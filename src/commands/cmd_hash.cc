@@ -18,6 +18,8 @@
  *
  */
 
+#include <limits>
+
 #include "commander.h"
 #include "commands/command_parser.h"
 #include "error_constants.h"
@@ -27,6 +29,31 @@
 #include "types/redis_hash.h"
 
 namespace redis {
+namespace {
+
+template <typename Parser>
+Status ParseHashFieldListTail(Parser &parser, std::vector<std::string> *fields) {
+  if (!parser.Good()) {
+    return {Status::RedisParseErr, errWrongNumOfArguments};
+  }
+
+  auto num_fields = parser.template TakeInt<int64_t>(NumericRange<int64_t>{1, std::numeric_limits<int64_t>::max()}, 10);
+  if (!num_fields) {
+    return {Status::RedisParseErr, errValueNotInteger};
+  }
+  if (static_cast<size_t>(*num_fields) != parser.Remains()) {
+    return {Status::RedisParseErr, errWrongNumOfArguments};
+  }
+
+  fields->clear();
+  fields->reserve(static_cast<size_t>(*num_fields));
+  while (parser.Good()) {
+    fields->emplace_back(GET_OR_RET(parser.TakeStr()));
+  }
+  return Status::OK();
+}
+
+}  // namespace
 
 class CommandHGet : public Commander {
  public:
@@ -481,6 +508,128 @@ class CommandHRandField : public Commander {
   bool no_parameters_ = true;
 };
 
+class CommandHExpire : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    CommandParser parser(args, 2);
+
+    auto seconds = parser.TakeInt<int64_t>();
+    if (!seconds) {
+      return {Status::RedisParseErr, errValueNotInteger};
+    }
+    if (*seconds < 0) {
+      return {Status::RedisParseErr, "invalid expire time, must be >= 0"};
+    }
+    seconds_ = *seconds;
+    condition_ = HashFieldExpireCondition::kNone;
+
+    while (parser.Good()) {
+      if (parser.EatEqICase("FIELDS")) {
+        GET_OR_RET(ParseHashFieldListTail(parser, &fields_));
+        return Commander::Parse(args);
+      }
+
+      HashFieldExpireCondition parsed_condition = HashFieldExpireCondition::kNone;
+      if (parser.EatEqICase("NX")) {
+        parsed_condition = HashFieldExpireCondition::kNX;
+      } else if (parser.EatEqICase("XX")) {
+        parsed_condition = HashFieldExpireCondition::kXX;
+      } else if (parser.EatEqICase("GT")) {
+        parsed_condition = HashFieldExpireCondition::kGT;
+      } else if (parser.EatEqICase("LT")) {
+        parsed_condition = HashFieldExpireCondition::kLT;
+      } else {
+        return {Status::RedisParseErr, errInvalidSyntax};
+      }
+      if (condition_ != HashFieldExpireCondition::kNone) {
+        return {Status::RedisParseErr, errInvalidSyntax};
+      }
+      condition_ = parsed_condition;
+    }
+    return {Status::RedisParseErr, errInvalidSyntax};
+  }
+
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    uint64_t expire_at = 0;
+    if (seconds_ > 0) {
+      auto seconds = static_cast<uint64_t>(seconds_);
+      if (seconds > std::numeric_limits<uint64_t>::max() / 1000) {
+        return {Status::RedisExecErr, "expire time overflow"};
+      }
+      uint64_t ttl_ms = seconds * 1000;
+      uint64_t now = util::GetTimeStampMS();
+      if (ttl_ms > std::numeric_limits<uint64_t>::max() - now) {
+        return {Status::RedisExecErr, "expire time overflow"};
+      }
+      expire_at = now + ttl_ms;
+    } else {
+      expire_at = util::GetTimeStampMS();
+    }
+
+    std::vector<int64_t> results;
+    std::vector<Slice> fields;
+    fields.reserve(fields_.size());
+    for (const auto &field : fields_) {
+      fields.emplace_back(field);
+    }
+    redis::Hash hash_db(srv->storage, conn->GetNamespace());
+    auto s = hash_db.ExpireFields(ctx, args_[1], fields, expire_at, condition_, &results);
+    if (!s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+
+    std::vector<std::string> entries;
+    entries.reserve(results.size());
+    for (auto result : results) {
+      entries.emplace_back(redis::Integer(result));
+    }
+    *output = redis::Array(entries);
+    return Status::OK();
+  }
+
+ private:
+  int64_t seconds_ = 0;
+  HashFieldExpireCondition condition_ = HashFieldExpireCondition::kNone;
+  std::vector<std::string> fields_;
+};
+
+class CommandHPersist : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    CommandParser parser(args, 2);
+    if (!parser.EatEqICase("FIELDS")) {
+      return {Status::RedisParseErr, errInvalidSyntax};
+    }
+    GET_OR_RET(ParseHashFieldListTail(parser, &fields_));
+    return Commander::Parse(args);
+  }
+
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    std::vector<int64_t> results;
+    std::vector<Slice> fields;
+    fields.reserve(fields_.size());
+    for (const auto &field : fields_) {
+      fields.emplace_back(field);
+    }
+    redis::Hash hash_db(srv->storage, conn->GetNamespace());
+    auto s = hash_db.PersistFields(ctx, args_[1], fields, &results);
+    if (!s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+
+    std::vector<std::string> entries;
+    entries.reserve(results.size());
+    for (auto result : results) {
+      entries.emplace_back(redis::Integer(result));
+    }
+    *output = redis::Array(entries);
+    return Status::OK();
+  }
+
+ private:
+  std::vector<std::string> fields_;
+};
+
 REDIS_REGISTER_COMMANDS(Hash, MakeCmdAttr<CommandHGet>("hget", 3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandHIncrBy>("hincrby", 4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandHIncrByFloat>("hincrbyfloat", 4, "write", 1, 1, 1),
@@ -498,6 +647,8 @@ REDIS_REGISTER_COMMANDS(Hash, MakeCmdAttr<CommandHGet>("hget", 3, "read-only", 1
                         MakeCmdAttr<CommandHGetAll>("hgetall", 2, "read-only slow", 1, 1, 1),
                         MakeCmdAttr<CommandHScan>("hscan", -3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandHRangeByLex>("hrangebylex", -4, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandHRandField>("hrandfield", -2, "read-only slow", 1, 1, 1), )
+                        MakeCmdAttr<CommandHRandField>("hrandfield", -2, "read-only slow", 1, 1, 1),
+                        MakeCmdAttr<CommandHExpire>("hexpire", -6, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandHPersist>("hpersist", -5, "write", 1, 1, 1), )
 
 }  // namespace redis

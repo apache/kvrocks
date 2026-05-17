@@ -21,6 +21,7 @@ package scripting
 
 import (
 	"context"
+	_ "embed"
 	"fmt"
 	"math/big"
 	"testing"
@@ -31,6 +32,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/slices"
 )
+
+//go:embed luajit_bytecode_dos.lua
+var luaJITBytecodeDoSPayload string
 
 func TestScripting(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{"resp3-enabled": "no"})
@@ -924,4 +928,18 @@ func TestEvalScriptInStrictMode(t *testing.T) {
 
 		require.NoError(t, rdb.Eval(ctx, "return redis.call('set', 'a', 1)", []string{}).Err())
 	})
+}
+
+func TestLuaJITBytecodeDoS(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{"resp3-enabled": "no"})
+	defer srv.Close()
+
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	r := rdb.Eval(ctx, luaJITBytecodeDoSPayload, nil)
+	require.NoError(t, r.Err())
+	require.Equal(t, []interface{}{"load_failed:attempt to load chunk with wrong mode"}, r.Val())
+	require.NoError(t, rdb.Ping(ctx).Err())
 }

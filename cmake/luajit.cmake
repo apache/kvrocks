@@ -40,8 +40,8 @@ if ((${CMAKE_SYSTEM_NAME} MATCHES "Darwin") AND (NOT CMAKE_OSX_DEPLOYMENT_TARGET
 endif ()
 
 FetchContent_DeclareGitHubWithMirror(luajit
-        RocksLabs/LuaJIT c0a8e68325ec261a77bde1c8eabad398168ffe74
-        MD5=7ff3e5ca4ddec59be2c2f97c5ff881d0)
+        RocksLabs/LuaJIT 02dfcc34e93e57ac96e566d123c66ee01e650299
+        MD5=f1dd7a1bbf120b5a3daee71d896f5d08)
 
 FetchContent_GetProperties(luajit)
 if (NOT lua_POPULATED)

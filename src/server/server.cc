@@ -1219,6 +1219,7 @@ Server::InfoEntries Server::GetServerInfo() {
 
   Server::InfoEntries entries;
   entries.emplace_back("version", VERSION);  // deprecated
+  entries.emplace_back("server_name", SERVER_NAME);
   entries.emplace_back("kvrocks_version", VERSION);
   entries.emplace_back("redis_version", REDIS_VERSION);
   entries.emplace_back("git_sha1", GIT_COMMIT);  // deprecated

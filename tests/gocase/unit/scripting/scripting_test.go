@@ -86,6 +86,17 @@ func TestScripting(t *testing.T) {
 		require.Nil(t, r.Val())
 	})
 
+	t.Run("EVAL - Lua error reply strips embedded CRLF", func(t *testing.T) {
+		c := srv.NewTCPClient()
+		defer func() { require.NoError(t, c.Close()) }()
+
+		require.NoError(t, c.WriteArgs("EVAL", "return redis.error_reply('ERR injected\\r\\n+INJECTED\\r\\n')", "0"))
+		c.MustRead(t, "-ERR injected+INJECTED")
+
+		require.NoError(t, c.WriteArgs("PING"))
+		c.MustRead(t, "+PONG")
+	})
+
 	t.Run("Script return recursive object", func(t *testing.T) {
 		c := srv.NewTCPClient()
 		defer func() { require.NoError(t, c.Close()) }()

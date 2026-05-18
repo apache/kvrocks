@@ -403,6 +403,9 @@ jobs:
             cp minica.pem tests/gocase/tls/cert/ca.crt
             GOCASE_RUN_ARGS="-tlsEnable"
           fi
+          if [[ -n "${{ matrix.without_luajit }}" ]]; then
+            GOCASE_RUN_ARGS="$GOCASE_RUN_ARGS -luaJITEnable=false"
+          fi
           ./x.py test go build -parallel 2 $GOCASE_RUN_ARGS ${{ matrix.ignore_when_tsan}} ${{ matrix.ignore_when_asan}} ${{ matrix.ignore_when_ubsan}}
 
       - name: Install redis-py

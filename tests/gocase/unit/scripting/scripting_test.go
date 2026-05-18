@@ -931,6 +931,10 @@ func TestEvalScriptInStrictMode(t *testing.T) {
 }
 
 func TestLuaJITBytecodeDoS(t *testing.T) {
+	if !util.LuaJITEnable() {
+		t.Skip("LuaJIT bytecode DoS test runs only when LuaJIT is enabled.")
+	}
+
 	srv := util.StartServer(t, map[string]string{"resp3-enabled": "no"})
 	defer srv.Close()
 

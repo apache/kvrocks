@@ -50,11 +50,6 @@ class CuckooChain : public Database {
   rocksdb::Status getCuckooChainMetadata(engine::Context &ctx, const Slice &ns_key, CuckooChainMetadata *metadata);
 
   static rocksdb::Status validateMetadata(const CuckooChainMetadata &metadata);
-
-  // Kick-out insertion: try to insert fingerprint by evicting existing ones
-  rocksdb::Status kickOutInsert(engine::Context &ctx, const Slice &ns_key, const CuckooChainMetadata &metadata,
-                                uint16_t filter_index, uint32_t num_buckets, uint8_t fingerprint, uint64_t hash,
-                                bool *inserted, rocksdb::WriteBatchBase *batch);
 };
 
 }  // namespace redis

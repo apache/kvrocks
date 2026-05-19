@@ -23,7 +23,7 @@
 #include <limits>
 
 #include "cuckoo_filter.h"
-#include "cuckoo_filter_page.h"
+#include "cuckoo_filter_sub_filter.h"
 #include "logging.h"
 
 namespace redis {
@@ -180,24 +180,18 @@ rocksdb::Status CuckooChain::Add(engine::Context &ctx, const Slice &user_key, co
     s = GetFilterNumBuckets(metadata, current_filter_idx, &num_buckets);
     if (!s.ok()) return s;
 
-    // Calculate bucket indices
-    uint32_t bucket1_idx = hash % num_buckets;
-    uint64_t alt_hash = CuckooFilterHelper::GetAltHash(fingerprint, hash);
-    uint32_t bucket2_idx = alt_hash % num_buckets;
-
-    CuckooPageSet pages(storage_, ctx, ns_key, metadata, storage_->IsSlotIdEncoded());
+    CuckooSubFilter sub_filter(storage_, ctx, ns_key, metadata, current_filter_idx, num_buckets,
+                               storage_->IsSlotIdEncoded());
     bool inserted = false;
-    s = pages.TryInsertInCandidateBuckets(current_filter_idx, num_buckets, bucket1_idx, bucket2_idx, fingerprint,
-                                          &inserted);
+    s = sub_filter.TryInsert(hash, fingerprint, &inserted);
     if (!s.ok()) return s;
 
     if (inserted) {
-      // Successfully inserted, write to storage atomically
       auto batch = storage_->GetWriteBatchBase();
       WriteBatchLogData log_data(kRedisCuckooFilter, std::vector<std::string>{"add", user_key.ToString()});
       s = batch->PutLogData(log_data.Encode());
       if (!s.ok()) return s;
-      s = pages.WriteBackDirtyPages(batch.Get());
+      s = sub_filter.WriteToBatch(batch.Get());
       if (!s.ok()) return s;
 
       metadata.size++;
@@ -222,10 +216,14 @@ rocksdb::Status CuckooChain::Add(engine::Context &ctx, const Slice &user_key, co
 
   bool inserted = false;
   auto batch = storage_->GetWriteBatchBase();
-  s = kickOutInsert(ctx, ns_key, metadata, last_filter_idx, num_buckets, fingerprint, hash, &inserted, batch.Get());
+  CuckooSubFilter last_filter(storage_, ctx, ns_key, metadata, last_filter_idx, num_buckets,
+                              storage_->IsSlotIdEncoded());
+  s = last_filter.KickOutInsert(hash, fingerprint, metadata.max_iterations, &inserted);
   if (s.ok() && inserted) {
     WriteBatchLogData log_data(kRedisCuckooFilter, std::vector<std::string>{"add", user_key.ToString()});
     s = batch->PutLogData(log_data.Encode());
+    if (!s.ok()) return s;
+    s = last_filter.WriteToBatch(batch.Get());
     if (!s.ok()) return s;
 
     metadata.size++;
@@ -257,9 +255,9 @@ rocksdb::Status CuckooChain::Add(engine::Context &ctx, const Slice &user_key, co
     }
     if (!s.ok()) return s;
 
-    uint32_t bucket1_idx = hash % new_num_buckets;
-    CuckooPageSet pages(storage_, ctx, ns_key, metadata, storage_->IsSlotIdEncoded());
-    s = pages.TryInsertInBucket(new_filter_idx, new_num_buckets, bucket1_idx, fingerprint, &inserted);
+    CuckooSubFilter new_filter(storage_, ctx, ns_key, metadata, new_filter_idx, new_num_buckets,
+                               storage_->IsSlotIdEncoded());
+    s = new_filter.TryInsertPrimaryBucket(hash, fingerprint, &inserted);
     if (!s.ok()) return s;
     if (!inserted) return rocksdb::Status::Corruption("failed to insert into new cuckoo filter");
 
@@ -267,7 +265,7 @@ rocksdb::Status CuckooChain::Add(engine::Context &ctx, const Slice &user_key, co
     WriteBatchLogData log_data(kRedisCuckooFilter, std::vector<std::string>{"add", user_key.ToString()});
     s = batch->PutLogData(log_data.Encode());
     if (!s.ok()) return s;
-    s = pages.WriteBackDirtyPages(batch.Get());
+    s = new_filter.WriteToBatch(batch.Get());
     if (!s.ok()) return s;
 
     metadata.size++;
@@ -286,53 +284,6 @@ rocksdb::Status CuckooChain::Add(engine::Context &ctx, const Slice &user_key, co
   // No expansion allowed and filter is full
   *added = false;
   return rocksdb::Status::Aborted("filter is full");
-}
-
-rocksdb::Status CuckooChain::kickOutInsert(engine::Context &ctx, const Slice &ns_key,
-                                           const CuckooChainMetadata &metadata, uint16_t filter_index,
-                                           uint32_t num_buckets, uint8_t fingerprint, uint64_t hash, bool *inserted,
-                                           rocksdb::WriteBatchBase *batch) {
-  *inserted = false;
-  CuckooPageSet pages(storage_, ctx, ns_key, metadata, storage_->IsSlotIdEncoded());
-
-  // Start from bucket1
-  uint32_t current_bucket_idx = hash % num_buckets;
-  uint8_t current_fp = fingerprint;
-  uint32_t victim_slot = 0;
-
-  // Try to kick out existing fingerprints (all operations in memory)
-  for (uint16_t iteration = 0; iteration < metadata.max_iterations; ++iteration) {
-    // Swap fingerprint with victim slot
-    uint8_t old_fp = 0;
-    auto s = pages.GetBucketSlot(filter_index, num_buckets, current_bucket_idx, victim_slot, &old_fp);
-    if (!s.ok()) return s;
-    s = pages.SetBucketSlot(filter_index, num_buckets, current_bucket_idx, victim_slot, current_fp);
-    if (!s.ok()) return s;
-    current_fp = old_fp;
-
-    // If kicked-out fingerprint is 0 (empty), we successfully inserted
-    if (current_fp == 0) {
-      *inserted = true;
-      break;
-    }
-
-    uint32_t alt_bucket_idx = CuckooFilterHelper::GetAltBucketIndex(current_bucket_idx, current_fp, num_buckets);
-
-    bool inserted_in_alt_bucket = false;
-    s = pages.TryInsertInBucket(filter_index, num_buckets, alt_bucket_idx, current_fp, &inserted_in_alt_bucket);
-    if (!s.ok()) return s;
-    if (inserted_in_alt_bucket) {
-      *inserted = true;
-      break;
-    }
-
-    // Move to alternate bucket and try next victim slot
-    current_bucket_idx = alt_bucket_idx;
-    victim_slot = (victim_slot + 1) % metadata.bucket_size;
-  }
-
-  if (*inserted) return pages.WriteBackDirtyPages(batch);
-  return rocksdb::Status::OK();
 }
 
 }  // namespace redis

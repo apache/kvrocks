@@ -26,7 +26,7 @@
 
 namespace redis {
 
-// Default values for Cuckoo Filter
+// Default values for a newly created cuckoo filter.
 const uint32_t kCFDefaultCapacity = 1024;
 const uint8_t kCFDefaultBucketSize = 4;  // 4 fingerprints per bucket
 const uint16_t kCFDefaultMaxIterations = 500;
@@ -37,16 +37,16 @@ class CuckooChain : public Database {
  public:
   CuckooChain(engine::Storage *storage, const std::string &ns) : Database(storage, ns) {}
 
-  // CF.RESERVE command - creates a new cuckoo filter with specified capacity
+  // Creates a new cuckoo filter with the specified parameters.
   rocksdb::Status Reserve(engine::Context &ctx, const Slice &user_key, uint64_t capacity, uint8_t bucket_size,
                           uint16_t max_iterations, uint16_t expansion, uint32_t page_size);
 
-  // CF.ADD command - adds an item to the cuckoo filter.
+  // Adds one item to the cuckoo filter.
   // Duplicate items are allowed, so added is true whenever insertion succeeds.
   rocksdb::Status Add(engine::Context &ctx, const Slice &user_key, const Slice &item, bool *added);
 
  private:
-  // Get metadata for the cuckoo filter
+  // Loads metadata for a cuckoo filter key.
   rocksdb::Status getCuckooChainMetadata(engine::Context &ctx, const Slice &ns_key, CuckooChainMetadata *metadata);
 
   static rocksdb::Status validateMetadata(const CuckooChainMetadata &metadata);

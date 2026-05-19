@@ -60,7 +60,7 @@ enum RedisType : uint8_t {
 
 inline constexpr const std::array<std::string_view, kRedisTypeMax> RedisTypeNames = {
     "none",   "string",    "hash",      "list",        "set",       "zset",       "bitmap",      "sortedint",
-    "stream", "MBbloom--", "ReJSON-RL", "hyperloglog", "TDIS-TYPE", "timeseries", "cuckoofilter"};
+    "stream", "MBbloomCF", "ReJSON-RL", "hyperloglog", "TDIS-TYPE", "timeseries", "cuckoofilter"};
 
 struct RedisTypes {
   RedisTypes(std::initializer_list<RedisType> list) {
@@ -335,7 +335,7 @@ class BloomChainMetadata : public Metadata {
   bool IsScaling() const { return expansion != 0; };
 };
 
-constexpr uint32_t kCuckooFilterDefaultPageSize = 2048;
+constexpr uint32_t kCuckooFilterDefaultPageSize = 2048;  // bytes
 
 class CuckooChainMetadata : public Metadata {
  public:
@@ -346,7 +346,9 @@ class CuckooChainMetadata : public Metadata {
   /// When a filter is full, a new one is created with capacity = base_capacity * expansion^n
   uint16_t expansion;
 
-  /// The capacity of the first filter
+  /// The capacity of the first filter.
+  /// Later sub-filter capacities are derived as base_capacity * expansion^n after restart,
+  /// so we need to persist the base value in metadata.
   uint64_t base_capacity;
 
   /// Number of fingerprints per bucket
@@ -358,7 +360,7 @@ class CuckooChainMetadata : public Metadata {
   /// Track number of deleted items for maintenance
   uint64_t num_deleted_items;
 
-  /// Target maximum payload size for each persisted Cuckoo Filter page
+  /// Target maximum payload size for each persisted Cuckoo Filter page, in bytes
   uint32_t page_size;
 
   explicit CuckooChainMetadata(bool generate_version = true)

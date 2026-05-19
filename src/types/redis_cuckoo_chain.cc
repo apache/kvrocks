@@ -108,19 +108,9 @@ rocksdb::Status CuckooChain::Reserve(engine::Context &ctx, const Slice &user_key
   metadata.num_deleted_items = 0;
   metadata.page_size = page_size;
 
-  // Calculate the number of buckets needed for this filter
-  uint32_t num_buckets = 0;
-  s = CuckooFilter::OptimalNumBuckets(capacity, bucket_size, &num_buckets);
-  if (!s.ok()) return s;
-
-  INFO(
-      "Creating cuckoo filter with capacity={}, bucket_size={}, num_buckets={}, max_iterations={}, expansion={}, "
-      "page_size={}",
-      capacity, bucket_size, num_buckets, max_iterations, static_cast<int>(expansion), page_size);
-
   // Create a write batch for atomic operation
   auto batch = storage_->GetWriteBatchBase();
-  WriteBatchLogData log_data(kRedisCuckooFilter, std::vector<std::string>{"CF.RESERVE", user_key.ToString()});
+  WriteBatchLogData log_data(kRedisCuckooFilter, std::vector<std::string>{"reserve", user_key.ToString()});
   s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) return s;
 
@@ -144,6 +134,16 @@ static bool CalculateFilterCapacity(uint64_t base_capacity, uint16_t expansion, 
   }
   *filter_capacity = capacity;
   return true;
+}
+
+static rocksdb::Status GetFilterNumBuckets(const CuckooChainMetadata &metadata, uint16_t filter_index,
+                                           uint32_t *num_buckets) {
+  uint64_t filter_capacity = 0;
+  if (!CalculateFilterCapacity(metadata.base_capacity, metadata.expansion, filter_index, &filter_capacity) ||
+      !CuckooFilter::IsCapacitySupported(filter_capacity, metadata.bucket_size)) {
+    return rocksdb::Status::Corruption("invalid metadata: filter capacity is too large");
+  }
+  return CuckooFilter::CalculateRequiredBuckets(filter_capacity, metadata.bucket_size, num_buckets);
 }
 
 rocksdb::Status CuckooChain::Add(engine::Context &ctx, const Slice &user_key, const Slice &item, bool *added) {
@@ -176,13 +176,8 @@ rocksdb::Status CuckooChain::Add(engine::Context &ctx, const Slice &user_key, co
   // RedisBloom prioritizes the newest sub-filter to avoid repeatedly probing older, fuller filters.
   for (int filter_idx = static_cast<int>(metadata.n_filters) - 1; filter_idx >= 0; --filter_idx) {
     auto current_filter_idx = static_cast<uint16_t>(filter_idx);
-    uint64_t filter_capacity = 0;
-    if (!CalculateFilterCapacity(metadata.base_capacity, metadata.expansion, current_filter_idx, &filter_capacity) ||
-        !CuckooFilter::IsCapacitySupported(filter_capacity, metadata.bucket_size)) {
-      return rocksdb::Status::Corruption("invalid metadata: filter capacity is too large");
-    }
     uint32_t num_buckets = 0;
-    s = CuckooFilter::OptimalNumBuckets(filter_capacity, metadata.bucket_size, &num_buckets);
+    s = GetFilterNumBuckets(metadata, current_filter_idx, &num_buckets);
     if (!s.ok()) return s;
 
     // Calculate bucket indices
@@ -199,7 +194,7 @@ rocksdb::Status CuckooChain::Add(engine::Context &ctx, const Slice &user_key, co
     if (inserted) {
       // Successfully inserted, write to storage atomically
       auto batch = storage_->GetWriteBatchBase();
-      WriteBatchLogData log_data(kRedisCuckooFilter, std::vector<std::string>{"CF.ADD", user_key.ToString()});
+      WriteBatchLogData log_data(kRedisCuckooFilter, std::vector<std::string>{"add", user_key.ToString()});
       s = batch->PutLogData(log_data.Encode());
       if (!s.ok()) return s;
       s = pages.WriteBackDirtyPages(batch.Get());
@@ -221,20 +216,15 @@ rocksdb::Status CuckooChain::Add(engine::Context &ctx, const Slice &user_key, co
 
   // No space found in any filter, try kick-out on the last filter
   uint16_t last_filter_idx = metadata.n_filters - 1;
-  uint64_t filter_capacity = 0;
-  if (!CalculateFilterCapacity(metadata.base_capacity, metadata.expansion, last_filter_idx, &filter_capacity) ||
-      !CuckooFilter::IsCapacitySupported(filter_capacity, metadata.bucket_size)) {
-    return rocksdb::Status::Corruption("invalid metadata: filter capacity is too large");
-  }
   uint32_t num_buckets = 0;
-  s = CuckooFilter::OptimalNumBuckets(filter_capacity, metadata.bucket_size, &num_buckets);
+  s = GetFilterNumBuckets(metadata, last_filter_idx, &num_buckets);
   if (!s.ok()) return s;
 
   bool inserted = false;
   auto batch = storage_->GetWriteBatchBase();
   s = kickOutInsert(ctx, ns_key, metadata, last_filter_idx, num_buckets, fingerprint, hash, &inserted, batch.Get());
   if (s.ok() && inserted) {
-    WriteBatchLogData log_data(kRedisCuckooFilter, std::vector<std::string>{"CF.ADD", user_key.ToString()});
+    WriteBatchLogData log_data(kRedisCuckooFilter, std::vector<std::string>{"add", user_key.ToString()});
     s = batch->PutLogData(log_data.Encode());
     if (!s.ok()) return s;
 
@@ -256,17 +246,15 @@ rocksdb::Status CuckooChain::Add(engine::Context &ctx, const Slice &user_key, co
     if (metadata.n_filters >= UINT16_MAX) return rocksdb::Status::Aborted("maximum number of filters reached");
 
     metadata.n_filters++;
-    INFO("CF.ADD: Expanded to {} filters", metadata.n_filters);
+    INFO("add expanded to {} filters", metadata.n_filters);
 
     // Retry insertion in the new expanded filter
     uint16_t new_filter_idx = metadata.n_filters - 1;
-    uint64_t new_filter_capacity = 0;
-    if (!CalculateFilterCapacity(metadata.base_capacity, metadata.expansion, new_filter_idx, &new_filter_capacity) ||
-        !CuckooFilter::IsCapacitySupported(new_filter_capacity, metadata.bucket_size)) {
+    uint32_t new_num_buckets = 0;
+    s = GetFilterNumBuckets(metadata, new_filter_idx, &new_num_buckets);
+    if (s.IsCorruption()) {
       return rocksdb::Status::Aborted("maximum filter capacity reached");
     }
-    uint32_t new_num_buckets = 0;
-    s = CuckooFilter::OptimalNumBuckets(new_filter_capacity, metadata.bucket_size, &new_num_buckets);
     if (!s.ok()) return s;
 
     uint32_t bucket1_idx = hash % new_num_buckets;
@@ -276,7 +264,7 @@ rocksdb::Status CuckooChain::Add(engine::Context &ctx, const Slice &user_key, co
     if (!inserted) return rocksdb::Status::Corruption("failed to insert into new cuckoo filter");
 
     auto batch = storage_->GetWriteBatchBase();
-    WriteBatchLogData log_data(kRedisCuckooFilter, std::vector<std::string>{"CF.ADD", user_key.ToString()});
+    WriteBatchLogData log_data(kRedisCuckooFilter, std::vector<std::string>{"add", user_key.ToString()});
     s = batch->PutLogData(log_data.Encode());
     if (!s.ok()) return s;
     s = pages.WriteBackDirtyPages(batch.Get());

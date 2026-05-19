@@ -217,7 +217,7 @@ TEST_F(RedisCuckooFilterTest, ReserveDuplicate) {
   ASSERT_NE(s.ToString().find("already exists"), std::string::npos);
 }
 
-TEST_F(RedisCuckooFilterTest, OptimalNumBucketsCalculation) {
+TEST_F(RedisCuckooFilterTest, CalculateRequiredBucketsCalculation) {
   struct TestCase {
     uint64_t capacity;
     uint8_t bucket_size;
@@ -231,7 +231,7 @@ TEST_F(RedisCuckooFilterTest, OptimalNumBucketsCalculation) {
 
   for (const auto &test_case : test_cases) {
     uint32_t num_buckets = 0;
-    auto s = redis::CuckooFilter::OptimalNumBuckets(test_case.capacity, test_case.bucket_size, &num_buckets);
+    auto s = redis::CuckooFilter::CalculateRequiredBuckets(test_case.capacity, test_case.bucket_size, &num_buckets);
     ASSERT_TRUE(s.ok()) << "capacity=" << test_case.capacity
                         << ", bucket_size=" << static_cast<int>(test_case.bucket_size) << ": " << s.ToString();
     ASSERT_EQ(num_buckets, test_case.expected_num_buckets)
@@ -372,7 +372,7 @@ TEST_F(RedisCuckooFilterTest, AddWritesPagedLayout) {
 
   auto metadata = getMetadata(key_);
   uint32_t num_buckets = 0;
-  auto s = redis::CuckooFilter::OptimalNumBuckets(capacity, bucket_size, &num_buckets);
+  auto s = redis::CuckooFilter::CalculateRequiredBuckets(capacity, bucket_size, &num_buckets);
   ASSERT_TRUE(s.ok()) << s.ToString();
   auto hash = redis::CuckooFilter::Hash(item);
   auto fingerprint = redis::CuckooFilter::GenerateFingerprint(hash);
@@ -451,7 +451,8 @@ TEST_F(RedisCuckooFilterTest, AddPrioritizesNewestFilter) {
 
   auto hash = redis::CuckooFilter::Hash(item);
   uint32_t old_num_buckets = 0;
-  auto s = redis::CuckooFilter::OptimalNumBuckets(metadata.base_capacity, metadata.bucket_size, &old_num_buckets);
+  auto s =
+      redis::CuckooFilter::CalculateRequiredBuckets(metadata.base_capacity, metadata.bucket_size, &old_num_buckets);
   ASSERT_TRUE(s.ok()) << s.ToString();
   auto buckets_per_page = stored_metadata.page_size / stored_metadata.bucket_size;
   auto old_page_idx = static_cast<uint32_t>(hash % old_num_buckets) / buckets_per_page;
@@ -461,8 +462,8 @@ TEST_F(RedisCuckooFilterTest, AddPrioritizesNewestFilter) {
   EXPECT_TRUE(s.IsNotFound()) << s.ToString();
 
   uint32_t num_buckets = 0;
-  s = redis::CuckooFilter::OptimalNumBuckets(metadata.base_capacity * metadata.expansion, metadata.bucket_size,
-                                             &num_buckets);
+  s = redis::CuckooFilter::CalculateRequiredBuckets(metadata.base_capacity * metadata.expansion, metadata.bucket_size,
+                                                    &num_buckets);
   ASSERT_TRUE(s.ok()) << s.ToString();
   auto bucket1_idx = static_cast<uint32_t>(hash % num_buckets);
   auto expected_page_idx = bucket1_idx / buckets_per_page;
@@ -611,7 +612,7 @@ TEST_F(RedisCuckooFilterTest, ExpansionWritesNewFilterIndexPage) {
   for (uint16_t i = 0; i < metadata.n_filters - 1; ++i) {
     new_filter_capacity *= metadata.expansion;
   }
-  auto s = redis::CuckooFilter::OptimalNumBuckets(new_filter_capacity, bucket_size, &num_buckets);
+  auto s = redis::CuckooFilter::CalculateRequiredBuckets(new_filter_capacity, bucket_size, &num_buckets);
   ASSERT_TRUE(s.ok()) << s.ToString();
   auto expected_page_size = std::min(metadata.page_size / bucket_size, num_buckets) * bucket_size;
 

@@ -32,6 +32,11 @@
 
 namespace redis {
 
+constexpr long double kCuckooFilterLoadFactor = 0.955L;
+constexpr uint64_t kCuckooFilterMaxSupportedBuckets = std::numeric_limits<uint32_t>::max() / 2 + 1ULL;
+constexpr uint64_t kCuckooFilterFingerprintModulus = 255;
+constexpr uint64_t kCuckooFilterAltHashMultiplier = 0x5bd1e995ULL;
+
 // Cuckoo filter implementation from the paper:
 // "Cuckoo Filter: Practically Better Than Bloom" by Fan et al.
 // Buckets are grouped into page values in RocksDB. The Cuckoo algorithm still
@@ -46,23 +51,22 @@ class CuckooFilter {
  public:
   static bool IsCapacitySupported(uint64_t capacity, uint8_t bucket_size) {
     uint32_t num_buckets = 0;
-    return OptimalNumBuckets(capacity, bucket_size, &num_buckets).ok();
+    return CalculateRequiredBuckets(capacity, bucket_size, &num_buckets).ok();
   }
 
-  // Calculate the optimal number of buckets for the filter.
-  static rocksdb::Status OptimalNumBuckets(uint64_t capacity, uint8_t bucket_size, uint32_t* num_buckets) {
+  // Returns the power-of-two bucket count required for the requested capacity.
+  static rocksdb::Status CalculateRequiredBuckets(uint64_t capacity, uint8_t bucket_size, uint32_t *num_buckets) {
     if (bucket_size == 0) {
       return rocksdb::Status::InvalidArgument("bucket_size must be larger than 0");
     }
 
-    constexpr long double kLoadFactor = 0.955L;
-    constexpr uint64_t kMaxSupportedBuckets = std::numeric_limits<uint32_t>::max() / 2 + 1ULL;
-    auto max_supported_capacity = static_cast<uint64_t>(kMaxSupportedBuckets * bucket_size * kLoadFactor);
+    auto max_supported_capacity =
+        static_cast<uint64_t>(kCuckooFilterMaxSupportedBuckets * bucket_size * kCuckooFilterLoadFactor);
     if (capacity > max_supported_capacity) {
       return rocksdb::Status::InvalidArgument("capacity is too large");
     }
 
-    auto exact_buckets = static_cast<long double>(capacity) / bucket_size / kLoadFactor;
+    auto exact_buckets = static_cast<long double>(capacity) / bucket_size / kCuckooFilterLoadFactor;
     auto required_buckets = static_cast<uint64_t>(exact_buckets);
     if (static_cast<long double>(required_buckets) < exact_buckets) required_buckets++;
     if (required_buckets == 0) required_buckets = 1;
@@ -74,15 +78,16 @@ class CuckooFilter {
     return rocksdb::Status::OK();
   }
 
-  // Generate fingerprint from hash (8-bit fingerprint, non-zero, range: 1-255)
-  // Following RedisBloom: fp = hash % 255 + 1
-  static uint8_t GenerateFingerprint(uint64_t hash) { return static_cast<uint8_t>(hash % 255 + 1); }
+  // Following RedisBloom: fp = hash % 255 + 1.
+  static uint8_t GenerateFingerprint(uint64_t hash) {
+    return static_cast<uint8_t>(hash % kCuckooFilterFingerprintModulus + 1);
+  }
 
   // Calculate alternate hash using XOR (following RedisBloom)
-  // h2 = h1 ^ (fp * 0x5bd1e995)
+  // h2 = h1 ^ (fp * kCuckooFilterAltHashMultiplier)
   // This preserves symmetry: GetAltHash(fp, GetAltHash(fp, h)) == h
   static uint64_t GetAltHash(uint8_t fingerprint, uint64_t hash) {
-    return hash ^ (static_cast<uint64_t>(fingerprint) * 0x5bd1e995);
+    return hash ^ (static_cast<uint64_t>(fingerprint) * kCuckooFilterAltHashMultiplier);
   }
 
   // Calculate an alternate bucket from a bucket index and fingerprint.
@@ -92,12 +97,11 @@ class CuckooFilter {
     return static_cast<uint32_t>(alt_hash % num_buckets);
   }
 
-  // Compute hash for a given item using MurmurHash2 (compatible with RedisBloom)
-  // This is the entry point for hashing items before they are inserted/checked in the filter
-  static uint64_t Hash(const char* data, size_t length) { return HllMurMurHash64A(data, static_cast<int>(length), 0); }
+  // Compute hash for a given item using MurmurHash2 (compatible with RedisBloom).
+  static uint64_t Hash(const char *data, size_t length) { return HllMurMurHash64A(data, static_cast<int>(length), 0); }
 
   // Convenience overload for std::string
-  static uint64_t Hash(const std::string& item) { return Hash(item.data(), item.size()); }
+  static uint64_t Hash(const std::string &item) { return Hash(item.data(), item.size()); }
 };
 
 }  // namespace redis

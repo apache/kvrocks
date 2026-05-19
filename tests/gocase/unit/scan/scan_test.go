@@ -463,8 +463,8 @@ func ScanTest(t *testing.T, rdb *redis.Client, ctx context.Context) {
 		require.NoError(t, rdb.Do(ctx, "bf.reserve", "MBbloomtype1", "0.02", "1000").Err())
 		require.NoError(t, rdb.Do(ctx, "bf.reserve", "MBbloomtype2", "0.02", "1000").Err())
 		require.NoError(t, rdb.Do(ctx, "bf.reserve", "MBbloomtype3", "0.02", "1000").Err())
-		require.Equal(t, []string{"MBbloomtype1", "MBbloomtype2", "MBbloomtype3"}, scanAll(t, rdb, "match", "MBbloomtype*", "type", "MBbloom--"))
-		require.Equal(t, []string{"MBbloomtype1", "MBbloomtype2", "MBbloomtype3"}, scanAll(t, rdb, "match", "MBbloomtype*", "count", "3", "type", "MBbloom--"))
+		require.Equal(t, []string{"MBbloomtype1", "MBbloomtype2", "MBbloomtype3"}, scanAll(t, rdb, "match", "MBbloomtype*", "type", "MBbloomCF"))
+		require.Equal(t, []string{"MBbloomtype1", "MBbloomtype2", "MBbloomtype3"}, scanAll(t, rdb, "match", "MBbloomtype*", "count", "3", "type", "MBbloomCF"))
 		//ReJSON-RL type
 		require.NoError(t, rdb.Do(ctx, "JSON.SET", "ReJSONtype1", "$", ` {"x":1, "y":2} `).Err())
 		require.NoError(t, rdb.Do(ctx, "JSON.SET", "ReJSONtype2", "$", ` {"x":1, "y":2} `).Err())

@@ -49,7 +49,7 @@ rocksdb::Status CuckooChain::validateMetadata(const CuckooChainMetadata &metadat
   if (metadata.page_size < metadata.bucket_size) {
     return rocksdb::Status::Corruption("invalid metadata: page_size is smaller than bucket_size");
   }
-  if (!CuckooFilter::IsCapacitySupported(metadata.base_capacity, metadata.bucket_size)) {
+  if (!CuckooFilterHelper::IsCapacitySupported(metadata.base_capacity, metadata.bucket_size)) {
     return rocksdb::Status::Corruption("invalid metadata: base_capacity is too large");
   }
   return rocksdb::Status::OK();
@@ -84,7 +84,7 @@ rocksdb::Status CuckooChain::Reserve(engine::Context &ctx, const Slice &user_key
   if (expansion > kCFMaxExpansion) {
     return rocksdb::Status::InvalidArgument("expansion must be between 0 and 32768");
   }
-  if (!CuckooFilter::IsCapacitySupported(capacity, bucket_size)) {
+  if (!CuckooFilterHelper::IsCapacitySupported(capacity, bucket_size)) {
     return rocksdb::Status::InvalidArgument("capacity is too large");
   }
 
@@ -140,10 +140,10 @@ static rocksdb::Status GetFilterNumBuckets(const CuckooChainMetadata &metadata, 
                                            uint32_t *num_buckets) {
   uint64_t filter_capacity = 0;
   if (!CalculateFilterCapacity(metadata.base_capacity, metadata.expansion, filter_index, &filter_capacity) ||
-      !CuckooFilter::IsCapacitySupported(filter_capacity, metadata.bucket_size)) {
+      !CuckooFilterHelper::IsCapacitySupported(filter_capacity, metadata.bucket_size)) {
     return rocksdb::Status::Corruption("invalid metadata: filter capacity is too large");
   }
-  return CuckooFilter::CalculateRequiredBuckets(filter_capacity, metadata.bucket_size, num_buckets);
+  return CuckooFilterHelper::CalculateRequiredBuckets(filter_capacity, metadata.bucket_size, num_buckets);
 }
 
 rocksdb::Status CuckooChain::Add(engine::Context &ctx, const Slice &user_key, const Slice &item, bool *added) {
@@ -170,8 +170,8 @@ rocksdb::Status CuckooChain::Add(engine::Context &ctx, const Slice &user_key, co
   if (!s.ok()) return s;
 
   // Calculate hash and fingerprint for the item
-  uint64_t hash = CuckooFilter::Hash(item.data(), item.size());
-  uint8_t fingerprint = CuckooFilter::GenerateFingerprint(hash);
+  uint64_t hash = CuckooFilterHelper::Hash(item.data(), item.size());
+  uint8_t fingerprint = CuckooFilterHelper::GenerateFingerprint(hash);
 
   // RedisBloom prioritizes the newest sub-filter to avoid repeatedly probing older, fuller filters.
   for (int filter_idx = static_cast<int>(metadata.n_filters) - 1; filter_idx >= 0; --filter_idx) {
@@ -182,7 +182,7 @@ rocksdb::Status CuckooChain::Add(engine::Context &ctx, const Slice &user_key, co
 
     // Calculate bucket indices
     uint32_t bucket1_idx = hash % num_buckets;
-    uint64_t alt_hash = CuckooFilter::GetAltHash(fingerprint, hash);
+    uint64_t alt_hash = CuckooFilterHelper::GetAltHash(fingerprint, hash);
     uint32_t bucket2_idx = alt_hash % num_buckets;
 
     CuckooPageSet pages(storage_, ctx, ns_key, metadata, storage_->IsSlotIdEncoded());
@@ -316,7 +316,7 @@ rocksdb::Status CuckooChain::kickOutInsert(engine::Context &ctx, const Slice &ns
       break;
     }
 
-    uint32_t alt_bucket_idx = CuckooFilter::GetAltBucketIndex(current_bucket_idx, current_fp, num_buckets);
+    uint32_t alt_bucket_idx = CuckooFilterHelper::GetAltBucketIndex(current_bucket_idx, current_fp, num_buckets);
 
     bool inserted_in_alt_bucket = false;
     s = pages.TryInsertInBucket(filter_index, num_buckets, alt_bucket_idx, current_fp, &inserted_in_alt_bucket);

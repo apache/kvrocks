@@ -47,7 +47,7 @@ constexpr uint64_t kCuckooFilterAltHashMultiplier = 0x5bd1e995ULL;
 // - h1 = hash (primary hash)
 // - h2 = h1 ^ (fp * 0x5bd1e995) (alternate hash via XOR)
 // - bucket_index = hash % num_buckets (only apply modulo when indexing)
-class CuckooFilter {
+class CuckooFilterHelper {
  public:
   static bool IsCapacitySupported(uint64_t capacity, uint8_t bucket_size) {
     uint32_t num_buckets = 0;

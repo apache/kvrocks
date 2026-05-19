@@ -231,7 +231,8 @@ TEST_F(RedisCuckooFilterTest, CalculateRequiredBucketsCalculation) {
 
   for (const auto &test_case : test_cases) {
     uint32_t num_buckets = 0;
-    auto s = redis::CuckooFilter::CalculateRequiredBuckets(test_case.capacity, test_case.bucket_size, &num_buckets);
+    auto s =
+        redis::CuckooFilterHelper::CalculateRequiredBuckets(test_case.capacity, test_case.bucket_size, &num_buckets);
     ASSERT_TRUE(s.ok()) << "capacity=" << test_case.capacity
                         << ", bucket_size=" << static_cast<int>(test_case.bucket_size) << ": " << s.ToString();
     ASSERT_EQ(num_buckets, test_case.expected_num_buckets)
@@ -248,16 +249,16 @@ TEST_F(RedisCuckooFilterTest, FingerprintGeneration) {
   // Test fingerprint generation ensures non-zero values in range [1, 255]
   // Following RedisBloom: fp = hash % 255 + 1
   for (uint64_t hash = 0; hash < 1000; ++hash) {
-    uint8_t fp = redis::CuckooFilter::GenerateFingerprint(hash);
+    uint8_t fp = redis::CuckooFilterHelper::GenerateFingerprint(hash);
     ASSERT_GE(fp, 1) << "Fingerprint should be at least 1";
     ASSERT_LE(fp, 255) << "Fingerprint should be at most 255";
   }
 
   // Verify the formula: fp = hash % 255 + 1
-  ASSERT_EQ(redis::CuckooFilter::GenerateFingerprint(0), 1);
-  ASSERT_EQ(redis::CuckooFilter::GenerateFingerprint(254), 255);
-  ASSERT_EQ(redis::CuckooFilter::GenerateFingerprint(255), 1);
-  ASSERT_EQ(redis::CuckooFilter::GenerateFingerprint(256), 2);
+  ASSERT_EQ(redis::CuckooFilterHelper::GenerateFingerprint(0), 1);
+  ASSERT_EQ(redis::CuckooFilterHelper::GenerateFingerprint(254), 255);
+  ASSERT_EQ(redis::CuckooFilterHelper::GenerateFingerprint(255), 1);
+  ASSERT_EQ(redis::CuckooFilterHelper::GenerateFingerprint(256), 2);
 }
 
 TEST_F(RedisCuckooFilterTest, AlternateBucketCalculation) {
@@ -270,10 +271,10 @@ TEST_F(RedisCuckooFilterTest, AlternateBucketCalculation) {
     for (uint64_t hash = 0; hash < 100; ++hash) {
       for (uint16_t fp = 1; fp <= 255; ++fp) {
         auto fingerprint = static_cast<uint8_t>(fp);
-        uint64_t alt_hash = redis::CuckooFilter::GetAltHash(fingerprint, hash);
+        uint64_t alt_hash = redis::CuckooFilterHelper::GetAltHash(fingerprint, hash);
 
         // Applying GetAltHash twice should return original hash
-        uint64_t double_alt_hash = redis::CuckooFilter::GetAltHash(fingerprint, alt_hash);
+        uint64_t double_alt_hash = redis::CuckooFilterHelper::GetAltHash(fingerprint, alt_hash);
         ASSERT_EQ(double_alt_hash, hash) << "Double alternate hash should give original hash";
 
         // Both hashes should map to valid bucket indices
@@ -289,30 +290,30 @@ TEST_F(RedisCuckooFilterTest, AlternateBucketCalculation) {
 TEST_F(RedisCuckooFilterTest, HashFunction) {
   // Test that Hash function produces consistent 64-bit values
   std::string test_item = "hello";
-  uint64_t hash1 = redis::CuckooFilter::Hash(test_item);
-  uint64_t hash2 = redis::CuckooFilter::Hash(test_item.data(), test_item.size());
+  uint64_t hash1 = redis::CuckooFilterHelper::Hash(test_item);
+  uint64_t hash2 = redis::CuckooFilterHelper::Hash(test_item.data(), test_item.size());
 
   // Both methods should produce the same result
   ASSERT_EQ(hash1, hash2) << "Hash methods should be consistent";
 
   // Hash should be deterministic
-  uint64_t hash3 = redis::CuckooFilter::Hash(test_item);
+  uint64_t hash3 = redis::CuckooFilterHelper::Hash(test_item);
   ASSERT_EQ(hash1, hash3) << "Hash should be deterministic";
 
   // Different items should produce different hashes (with high probability)
-  uint64_t hash_world = redis::CuckooFilter::Hash("world");
+  uint64_t hash_world = redis::CuckooFilterHelper::Hash("world");
   ASSERT_NE(hash1, hash_world) << "Different items should have different hashes";
 
   // Empty string produces hash value 0 (this is expected with MurmurHash)
-  uint64_t hash_empty = redis::CuckooFilter::Hash("");
+  uint64_t hash_empty = redis::CuckooFilterHelper::Hash("");
   ASSERT_EQ(hash_empty, 0) << "Empty string should produce hash value 0 with MurmurHash";
 
   // Even with hash=0, fingerprint should be non-zero
-  uint8_t fp_empty = redis::CuckooFilter::GenerateFingerprint(hash_empty);
+  uint8_t fp_empty = redis::CuckooFilterHelper::GenerateFingerprint(hash_empty);
   ASSERT_EQ(fp_empty, 1) << "Fingerprint of hash=0 should be 1 (0 % 255 + 1)";
 
   // Test that hash can be used with fingerprint generation
-  uint8_t fp = redis::CuckooFilter::GenerateFingerprint(hash1);
+  uint8_t fp = redis::CuckooFilterHelper::GenerateFingerprint(hash1);
   ASSERT_GE(fp, 1) << "Fingerprint should be at least 1";
   ASSERT_LE(fp, 255) << "Fingerprint should be at most 255";
 }
@@ -372,12 +373,12 @@ TEST_F(RedisCuckooFilterTest, AddWritesPagedLayout) {
 
   auto metadata = getMetadata(key_);
   uint32_t num_buckets = 0;
-  auto s = redis::CuckooFilter::CalculateRequiredBuckets(capacity, bucket_size, &num_buckets);
+  auto s = redis::CuckooFilterHelper::CalculateRequiredBuckets(capacity, bucket_size, &num_buckets);
   ASSERT_TRUE(s.ok()) << s.ToString();
-  auto hash = redis::CuckooFilter::Hash(item);
-  auto fingerprint = redis::CuckooFilter::GenerateFingerprint(hash);
+  auto hash = redis::CuckooFilterHelper::Hash(item);
+  auto fingerprint = redis::CuckooFilterHelper::GenerateFingerprint(hash);
   auto bucket1_idx = static_cast<uint32_t>(hash % num_buckets);
-  auto bucket2_idx = static_cast<uint32_t>(redis::CuckooFilter::GetAltHash(fingerprint, hash) % num_buckets);
+  auto bucket2_idx = static_cast<uint32_t>(redis::CuckooFilterHelper::GetAltHash(fingerprint, hash) % num_buckets);
   auto buckets_per_page = metadata.page_size / bucket_size;
   auto page_index = bucket1_idx / buckets_per_page;
   auto page_size = std::min(buckets_per_page, num_buckets - page_index * buckets_per_page) * bucket_size;
@@ -449,10 +450,10 @@ TEST_F(RedisCuckooFilterTest, AddPrioritizesNewestFilter) {
   ASSERT_EQ(stored_metadata.n_filters, 2);
   ASSERT_EQ(stored_metadata.size, 1);
 
-  auto hash = redis::CuckooFilter::Hash(item);
+  auto hash = redis::CuckooFilterHelper::Hash(item);
   uint32_t old_num_buckets = 0;
-  auto s =
-      redis::CuckooFilter::CalculateRequiredBuckets(metadata.base_capacity, metadata.bucket_size, &old_num_buckets);
+  auto s = redis::CuckooFilterHelper::CalculateRequiredBuckets(metadata.base_capacity, metadata.bucket_size,
+                                                               &old_num_buckets);
   ASSERT_TRUE(s.ok()) << s.ToString();
   auto buckets_per_page = stored_metadata.page_size / stored_metadata.bucket_size;
   auto old_page_idx = static_cast<uint32_t>(hash % old_num_buckets) / buckets_per_page;
@@ -462,8 +463,8 @@ TEST_F(RedisCuckooFilterTest, AddPrioritizesNewestFilter) {
   EXPECT_TRUE(s.IsNotFound()) << s.ToString();
 
   uint32_t num_buckets = 0;
-  s = redis::CuckooFilter::CalculateRequiredBuckets(metadata.base_capacity * metadata.expansion, metadata.bucket_size,
-                                                    &num_buckets);
+  s = redis::CuckooFilterHelper::CalculateRequiredBuckets(metadata.base_capacity * metadata.expansion,
+                                                          metadata.bucket_size, &num_buckets);
   ASSERT_TRUE(s.ok()) << s.ToString();
   auto bucket1_idx = static_cast<uint32_t>(hash % num_buckets);
   auto expected_page_idx = bucket1_idx / buckets_per_page;
@@ -532,10 +533,11 @@ TEST_F(RedisCuckooFilterTest, KickOutSuccessWritesDirtyPages) {
   std::vector<Candidate> candidates;
   for (int i = 0; i < 10000; ++i) {
     std::string item = "kick_item_" + std::to_string(i);
-    auto hash = redis::CuckooFilter::Hash(item);
-    auto fingerprint = redis::CuckooFilter::GenerateFingerprint(hash);
-    candidates.push_back({item, fingerprint, static_cast<uint32_t>(hash % num_buckets),
-                          static_cast<uint32_t>(redis::CuckooFilter::GetAltHash(fingerprint, hash) % num_buckets)});
+    auto hash = redis::CuckooFilterHelper::Hash(item);
+    auto fingerprint = redis::CuckooFilterHelper::GenerateFingerprint(hash);
+    candidates.push_back(
+        {item, fingerprint, static_cast<uint32_t>(hash % num_buckets),
+         static_cast<uint32_t>(redis::CuckooFilterHelper::GetAltHash(fingerprint, hash) % num_buckets)});
   }
 
   Candidate first;
@@ -548,7 +550,7 @@ TEST_F(RedisCuckooFilterTest, KickOutSuccessWritesDirtyPages) {
     for (const auto &first_candidate : candidates) {
       if (first_candidate.item == candidate.item || first_candidate.bucket1 != candidate.bucket1) continue;
       auto alt_for_victim =
-          redis::CuckooFilter::GetAltBucketIndex(candidate.bucket1, first_candidate.fingerprint, num_buckets);
+          redis::CuckooFilterHelper::GetAltBucketIndex(candidate.bucket1, first_candidate.fingerprint, num_buckets);
       if (alt_for_victim == candidate.bucket1 || alt_for_victim == candidate.bucket2) continue;
 
       for (const auto &second_candidate : candidates) {
@@ -612,7 +614,7 @@ TEST_F(RedisCuckooFilterTest, ExpansionWritesNewFilterIndexPage) {
   for (uint16_t i = 0; i < metadata.n_filters - 1; ++i) {
     new_filter_capacity *= metadata.expansion;
   }
-  auto s = redis::CuckooFilter::CalculateRequiredBuckets(new_filter_capacity, bucket_size, &num_buckets);
+  auto s = redis::CuckooFilterHelper::CalculateRequiredBuckets(new_filter_capacity, bucket_size, &num_buckets);
   ASSERT_TRUE(s.ok()) << s.ToString();
   auto expected_page_size = std::min(metadata.page_size / bucket_size, num_buckets) * bucket_size;
 

@@ -51,7 +51,7 @@ class CuckooSubFilter {
   const CuckooChainMetadata &metadata_;
   uint16_t filter_index_ = 0;
   uint32_t num_buckets_ = 0;
-  CuckooPageSet pages_;
+  CuckooPageCache pages_;
 };
 
 }  // namespace redis

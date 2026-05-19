@@ -30,17 +30,18 @@
 #include "test_base.h"
 #include "types/redis_cuckoo_chain.h"
 
-class RedisCuckooPageSetTest : public TestBase {
+class RedisCuckooPageCacheTest : public TestBase {
  public:
-  RedisCuckooPageSetTest(const RedisCuckooPageSetTest &) = delete;
-  RedisCuckooPageSetTest &operator=(const RedisCuckooPageSetTest &) = delete;
-  RedisCuckooPageSetTest(RedisCuckooPageSetTest &&) = delete;
-  RedisCuckooPageSetTest &operator=(RedisCuckooPageSetTest &&) = delete;
+  RedisCuckooPageCacheTest(const RedisCuckooPageCacheTest &) = delete;
+  RedisCuckooPageCacheTest &operator=(const RedisCuckooPageCacheTest &) = delete;
+  RedisCuckooPageCacheTest(RedisCuckooPageCacheTest &&) = delete;
+  RedisCuckooPageCacheTest &operator=(RedisCuckooPageCacheTest &&) = delete;
 
  protected:
-  explicit RedisCuckooPageSetTest() : TestBase(), db_(std::make_unique<redis::Database>(storage_.get(), "cuckoo_ns")) {}
+  explicit RedisCuckooPageCacheTest()
+      : TestBase(), db_(std::make_unique<redis::Database>(storage_.get(), "cuckoo_ns")) {}
 
-  ~RedisCuckooPageSetTest() override { db_.reset(); }
+  ~RedisCuckooPageCacheTest() override { db_.reset(); }
 
   void SetUp() override {
     const ::testing::TestInfo *const test_info = ::testing::UnitTest::GetInstance()->current_test_info();
@@ -91,9 +92,9 @@ class RedisCuckooPageSetTest : public TestBase {
   std::string ns_key_;
 };
 
-TEST_F(RedisCuckooPageSetTest, TryInsertWritesSmallPage) {
+TEST_F(RedisCuckooPageCacheTest, TryInsertWritesSmallPage) {
   auto metadata = makeMetadata(4);
-  redis::CuckooPageSet pages(storage_.get(), *ctx_, ns_key_, metadata, storage_->IsSlotIdEncoded());
+  redis::CuckooPageCache pages(storage_.get(), *ctx_, ns_key_, metadata, storage_->IsSlotIdEncoded());
 
   bool inserted = false;
   auto s = pages.TryInsertInBucket(0, 2, 1, 11, &inserted);
@@ -114,9 +115,9 @@ TEST_F(RedisCuckooPageSetTest, TryInsertWritesSmallPage) {
   EXPECT_EQ(page.substr(5, 3), std::string(3, 0));
 }
 
-TEST_F(RedisCuckooPageSetTest, TryInsertWritesLastPartialPage) {
+TEST_F(RedisCuckooPageCacheTest, TryInsertWritesLastPartialPage) {
   auto metadata = makeMetadata(4);
-  redis::CuckooPageSet pages(storage_.get(), *ctx_, ns_key_, metadata, storage_->IsSlotIdEncoded());
+  redis::CuckooPageCache pages(storage_.get(), *ctx_, ns_key_, metadata, storage_->IsSlotIdEncoded());
 
   bool inserted = false;
   auto s = pages.TryInsertInBucket(0, 513, 512, 33, &inserted);
@@ -139,61 +140,55 @@ TEST_F(RedisCuckooPageSetTest, TryInsertWritesLastPartialPage) {
   EXPECT_TRUE(s.IsNotFound()) << s.ToString();
 }
 
-TEST_F(RedisCuckooPageSetTest, CandidateBucketsOnSamePagePreserveBothBuckets) {
+TEST_F(RedisCuckooPageCacheTest, PrefetchBucketsOnSamePageLoadsCachedPage) {
   auto metadata = makeMetadata(2);
-  writePage(makePageKey(metadata, 0, 0), std::string{static_cast<char>(11), static_cast<char>(12), 0, 0, 0, 0, 0, 0});
-  redis::CuckooPageSet pages(storage_.get(), *ctx_, ns_key_, metadata, storage_->IsSlotIdEncoded());
+  auto page_key = makePageKey(metadata, 0, 0);
+  writePage(page_key, std::string{static_cast<char>(11), static_cast<char>(12), static_cast<char>(21),
+                                  static_cast<char>(22), 0, 0, 0, 0});
+  redis::CuckooPageCache pages(storage_.get(), *ctx_, ns_key_, metadata, storage_->IsSlotIdEncoded());
 
-  bool inserted = false;
-  auto s = pages.TryInsertInCandidateBuckets(0, 4, 0, 1, 22, &inserted);
+  auto s = pages.PrefetchBuckets(0, 4, 0, 1);
   ASSERT_TRUE(s.ok()) << s.ToString();
-  ASSERT_TRUE(inserted);
+  writePage(page_key, std::string(8, static_cast<char>(99)));
 
-  auto batch = storage_->GetWriteBatchBase();
-  s = pages.WriteBackDirtyPages(batch.Get());
+  uint8_t fingerprint = 0;
+  s = pages.GetBucketSlot(0, 4, 0, 0, &fingerprint);
   ASSERT_TRUE(s.ok()) << s.ToString();
-  commitBatch(batch.Get());
-
-  std::string page;
-  s = readPage(makePageKey(metadata, 0, 0), &page);
+  EXPECT_EQ(fingerprint, 11);
+  s = pages.GetBucketSlot(0, 4, 1, 1, &fingerprint);
   ASSERT_TRUE(s.ok()) << s.ToString();
-  ASSERT_EQ(page.size(), 8);
-  EXPECT_EQ(static_cast<uint8_t>(page[0]), 11);
-  EXPECT_EQ(static_cast<uint8_t>(page[1]), 12);
-  EXPECT_EQ(static_cast<uint8_t>(page[2]), 22);
-  EXPECT_EQ(static_cast<uint8_t>(page[3]), 0);
-  EXPECT_EQ(page.substr(4), std::string(4, 0));
+  EXPECT_EQ(fingerprint, 22);
 }
 
-TEST_F(RedisCuckooPageSetTest, CandidateBucketsOnDifferentPagesWriteBothPages) {
+TEST_F(RedisCuckooPageCacheTest, PrefetchBucketsOnDifferentPagesLoadsBothPages) {
   auto metadata = makeMetadata(4);
-  redis::CuckooPageSet pages(storage_.get(), *ctx_, ns_key_, metadata, storage_->IsSlotIdEncoded());
+  auto page0_key = makePageKey(metadata, 0, 0);
+  auto page1_key = makePageKey(metadata, 0, 1);
+  std::string page0(metadata.page_size, 0);
+  std::string page1(metadata.page_size, 0);
+  page0[0] = static_cast<char>(44);
+  page1[0] = static_cast<char>(55);
+  writePage(page0_key, page0);
+  writePage(page1_key, page1);
+  redis::CuckooPageCache pages(storage_.get(), *ctx_, ns_key_, metadata, storage_->IsSlotIdEncoded());
 
-  auto s = pages.SetBucketSlot(0, 1025, 0, 0, 44);
+  auto s = pages.PrefetchBuckets(0, 1025, 0, 512);
   ASSERT_TRUE(s.ok()) << s.ToString();
-  s = pages.SetBucketSlot(0, 1025, 512, 0, 55);
-  ASSERT_TRUE(s.ok()) << s.ToString();
+  writePage(page0_key, std::string(metadata.page_size, static_cast<char>(99)));
+  writePage(page1_key, std::string(metadata.page_size, static_cast<char>(88)));
 
-  auto batch = storage_->GetWriteBatchBase();
-  s = pages.WriteBackDirtyPages(batch.Get());
+  uint8_t fingerprint = 0;
+  s = pages.GetBucketSlot(0, 1025, 0, 0, &fingerprint);
   ASSERT_TRUE(s.ok()) << s.ToString();
-  commitBatch(batch.Get());
-
-  std::string page;
-  s = readPage(makePageKey(metadata, 0, 0), &page);
+  EXPECT_EQ(fingerprint, 44);
+  s = pages.GetBucketSlot(0, 1025, 512, 0, &fingerprint);
   ASSERT_TRUE(s.ok()) << s.ToString();
-  ASSERT_EQ(page.size(), metadata.page_size);
-  EXPECT_EQ(static_cast<uint8_t>(page[0]), 44);
-
-  s = readPage(makePageKey(metadata, 0, 1), &page);
-  ASSERT_TRUE(s.ok()) << s.ToString();
-  ASSERT_EQ(page.size(), metadata.page_size);
-  EXPECT_EQ(static_cast<uint8_t>(page[0]), 55);
+  EXPECT_EQ(fingerprint, 55);
 }
 
-TEST_F(RedisCuckooPageSetTest, NonDefaultPageSizeControlsBucketMapping) {
+TEST_F(RedisCuckooPageCacheTest, NonDefaultPageSizeControlsBucketMapping) {
   auto metadata = makeMetadata(4, 1, 8);
-  redis::CuckooPageSet pages(storage_.get(), *ctx_, ns_key_, metadata, storage_->IsSlotIdEncoded());
+  redis::CuckooPageCache pages(storage_.get(), *ctx_, ns_key_, metadata, storage_->IsSlotIdEncoded());
 
   bool inserted = false;
   auto s = pages.TryInsertInBucket(0, 3, 2, 66, &inserted);
@@ -216,11 +211,11 @@ TEST_F(RedisCuckooPageSetTest, NonDefaultPageSizeControlsBucketMapping) {
   EXPECT_EQ(page.substr(1, 3), std::string(3, 0));
 }
 
-TEST_F(RedisCuckooPageSetTest, SetBucketSlotWritesOnlyTargetSlot) {
+TEST_F(RedisCuckooPageCacheTest, SetBucketSlotWritesOnlyTargetSlot) {
   auto metadata = makeMetadata(4);
   std::string expected(16, static_cast<char>(7));
   writePage(makePageKey(metadata, 0, 0), expected);
-  redis::CuckooPageSet pages(storage_.get(), *ctx_, ns_key_, metadata, storage_->IsSlotIdEncoded());
+  redis::CuckooPageCache pages(storage_.get(), *ctx_, ns_key_, metadata, storage_->IsSlotIdEncoded());
 
   auto s = pages.SetBucketSlot(0, 4, 2, 1, 88);
   ASSERT_TRUE(s.ok()) << s.ToString();
@@ -237,9 +232,9 @@ TEST_F(RedisCuckooPageSetTest, SetBucketSlotWritesOnlyTargetSlot) {
   EXPECT_EQ(page, expected);
 }
 
-TEST_F(RedisCuckooPageSetTest, InvalidBucketAndSlotArguments) {
+TEST_F(RedisCuckooPageCacheTest, InvalidBucketAndSlotArguments) {
   auto metadata = makeMetadata(4);
-  redis::CuckooPageSet pages(storage_.get(), *ctx_, ns_key_, metadata, storage_->IsSlotIdEncoded());
+  redis::CuckooPageCache pages(storage_.get(), *ctx_, ns_key_, metadata, storage_->IsSlotIdEncoded());
 
   uint8_t fingerprint = 0;
   auto s = pages.GetBucketSlot(0, 2, 0, 4, &fingerprint);
@@ -265,10 +260,10 @@ TEST_F(RedisCuckooPageSetTest, InvalidBucketAndSlotArguments) {
   EXPECT_TRUE(s.IsNotFound()) << s.ToString();
 }
 
-TEST_F(RedisCuckooPageSetTest, OversizedPageReturnsCorruption) {
+TEST_F(RedisCuckooPageCacheTest, OversizedPageReturnsCorruption) {
   auto metadata = makeMetadata(4);
   writePage(makePageKey(metadata, 0, 0), std::string(9, static_cast<char>(1)));
-  redis::CuckooPageSet pages(storage_.get(), *ctx_, ns_key_, metadata, storage_->IsSlotIdEncoded());
+  redis::CuckooPageCache pages(storage_.get(), *ctx_, ns_key_, metadata, storage_->IsSlotIdEncoded());
 
   uint8_t fingerprint = 0;
   auto s = pages.GetBucketSlot(0, 2, 0, 0, &fingerprint);
@@ -280,10 +275,10 @@ TEST_F(RedisCuckooPageSetTest, OversizedPageReturnsCorruption) {
   EXPECT_EQ(page, std::string(9, static_cast<char>(1)));
 }
 
-TEST_F(RedisCuckooPageSetTest, DirtyPagesAreDiscardedWithoutWriteBack) {
+TEST_F(RedisCuckooPageCacheTest, DirtyPagesAreDiscardedWithoutWriteBack) {
   auto metadata = makeMetadata(4);
   {
-    redis::CuckooPageSet pages(storage_.get(), *ctx_, ns_key_, metadata, storage_->IsSlotIdEncoded());
+    redis::CuckooPageCache pages(storage_.get(), *ctx_, ns_key_, metadata, storage_->IsSlotIdEncoded());
     bool inserted = false;
     auto s = pages.TryInsertInBucket(0, 2, 0, 11, &inserted);
     ASSERT_TRUE(s.ok()) << s.ToString();
@@ -295,11 +290,11 @@ TEST_F(RedisCuckooPageSetTest, DirtyPagesAreDiscardedWithoutWriteBack) {
   EXPECT_TRUE(s.IsNotFound()) << s.ToString();
 }
 
-TEST_F(RedisCuckooPageSetTest, PageKeyUsesMetadataVersion) {
+TEST_F(RedisCuckooPageCacheTest, PageKeyUsesMetadataVersion) {
   auto old_metadata = makeMetadata(4, 100);
   auto new_metadata = makeMetadata(4, 101);
   {
-    redis::CuckooPageSet pages(storage_.get(), *ctx_, ns_key_, old_metadata, storage_->IsSlotIdEncoded());
+    redis::CuckooPageCache pages(storage_.get(), *ctx_, ns_key_, old_metadata, storage_->IsSlotIdEncoded());
     bool inserted = false;
     auto s = pages.TryInsertInBucket(0, 2, 0, 11, &inserted);
     ASSERT_TRUE(s.ok()) << s.ToString();
@@ -311,7 +306,7 @@ TEST_F(RedisCuckooPageSetTest, PageKeyUsesMetadataVersion) {
     commitBatch(batch.Get());
   }
 
-  redis::CuckooPageSet pages(storage_.get(), *ctx_, ns_key_, new_metadata, storage_->IsSlotIdEncoded());
+  redis::CuckooPageCache pages(storage_.get(), *ctx_, ns_key_, new_metadata, storage_->IsSlotIdEncoded());
   uint8_t fingerprint = 0;
   auto s = pages.GetBucketSlot(0, 2, 0, 0, &fingerprint);
   ASSERT_TRUE(s.ok()) << s.ToString();

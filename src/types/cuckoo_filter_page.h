@@ -33,13 +33,13 @@
 
 namespace redis {
 
-class CuckooPageSet {
+class CuckooPageCache {
  public:
-  CuckooPageSet(engine::Storage *storage, engine::Context &ctx, const Slice &ns_key,
-                const CuckooChainMetadata &metadata, bool slot_id_encoded);
+  CuckooPageCache(engine::Storage *storage, engine::Context &ctx, const Slice &ns_key,
+                  const CuckooChainMetadata &metadata, bool slot_id_encoded);
 
-  rocksdb::Status TryInsertInCandidateBuckets(uint16_t filter_index, uint32_t num_buckets, uint32_t bucket1_index,
-                                              uint32_t bucket2_index, uint8_t fingerprint, bool *inserted);
+  rocksdb::Status PrefetchBuckets(uint16_t filter_index, uint32_t num_buckets, uint32_t bucket1_index,
+                                  uint32_t bucket2_index);
   rocksdb::Status TryInsertInBucket(uint16_t filter_index, uint32_t num_buckets, uint32_t bucket_index,
                                     uint8_t fingerprint, bool *inserted);
   rocksdb::Status GetBucketSlot(uint16_t filter_index, uint32_t num_buckets, uint32_t bucket_index, uint32_t slot_idx,
@@ -70,8 +70,6 @@ class CuckooPageSet {
                                         BucketLocation *location) const;
   rocksdb::Status ensureBucketLoaded(uint16_t filter_index, uint32_t num_buckets, uint32_t bucket_index,
                                      BucketRef *bucket);
-  rocksdb::Status ensureCandidateBucketsLoaded(uint16_t filter_index, uint32_t num_buckets, uint32_t bucket1_index,
-                                               uint32_t bucket2_index, BucketRef *bucket1, BucketRef *bucket2);
   rocksdb::Status loadPage(const BucketLocation &location, PageEntry **page);
   rocksdb::Status loadPages(const std::vector<BucketLocation> &locations);
   static rocksdb::Status normalizePage(const rocksdb::Status &status, uint32_t expected_size, PageEntry *page);

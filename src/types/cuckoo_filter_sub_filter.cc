@@ -33,10 +33,16 @@ CuckooSubFilter::CuckooSubFilter(engine::Storage *storage, engine::Context &ctx,
       pages_(storage, ctx, ns_key, metadata, slot_id_encoded) {}
 
 rocksdb::Status CuckooSubFilter::TryInsert(uint64_t hash, uint8_t fingerprint, bool *inserted) {
+  *inserted = false;
   uint32_t bucket1_idx = getPrimaryBucketIndex(hash);
   uint32_t bucket2_idx = getSecondaryBucketIndex(hash, fingerprint);
-  return pages_.TryInsertInCandidateBuckets(filter_index_, num_buckets_, bucket1_idx, bucket2_idx, fingerprint,
-                                            inserted);
+  auto s = pages_.PrefetchBuckets(filter_index_, num_buckets_, bucket1_idx, bucket2_idx);
+  if (!s.ok()) return s;
+
+  s = pages_.TryInsertInBucket(filter_index_, num_buckets_, bucket1_idx, fingerprint, inserted);
+  if (!s.ok() || *inserted || bucket1_idx == bucket2_idx) return s;
+
+  return pages_.TryInsertInBucket(filter_index_, num_buckets_, bucket2_idx, fingerprint, inserted);
 }
 
 rocksdb::Status CuckooSubFilter::TryInsertPrimaryBucket(uint64_t hash, uint8_t fingerprint, bool *inserted) {

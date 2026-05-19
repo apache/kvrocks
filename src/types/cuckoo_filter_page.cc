@@ -55,35 +55,32 @@ std::string GetCuckooPageKey(const Slice &ns_key, const CuckooChainMetadata &met
 
 }  // namespace
 
-CuckooPageSet::CuckooPageSet(engine::Storage *storage, engine::Context &ctx, const Slice &ns_key,
-                             const CuckooChainMetadata &metadata, bool slot_id_encoded)
+CuckooPageCache::CuckooPageCache(engine::Storage *storage, engine::Context &ctx, const Slice &ns_key,
+                                 const CuckooChainMetadata &metadata, bool slot_id_encoded)
     : storage_(storage),
       ctx_(ctx),
       ns_key_(ns_key.ToString()),
       metadata_(metadata),
       slot_id_encoded_(slot_id_encoded) {}
 
-rocksdb::Status CuckooPageSet::TryInsertInCandidateBuckets(uint16_t filter_index, uint32_t num_buckets,
-                                                           uint32_t bucket1_index, uint32_t bucket2_index,
-                                                           uint8_t fingerprint, bool *inserted) {
-  *inserted = false;
-  BucketRef bucket1, bucket2;
-  auto s = ensureCandidateBucketsLoaded(filter_index, num_buckets, bucket1_index, bucket2_index, &bucket1, &bucket2);
+rocksdb::Status CuckooPageCache::PrefetchBuckets(uint16_t filter_index, uint32_t num_buckets, uint32_t bucket1_index,
+                                                 uint32_t bucket2_index) {
+  BucketLocation location1, location2;
+  auto s = resolveBucketLocation(filter_index, num_buckets, bucket1_index, &location1);
+  if (!s.ok()) return s;
+  s = resolveBucketLocation(filter_index, num_buckets, bucket2_index, &location2);
   if (!s.ok()) return s;
 
-  size_t slot_idx = 0;
-  if (tryInsertInBucketRef(bucket1, fingerprint, &slot_idx)) {
-    *inserted = true;
-    return rocksdb::Status::OK();
+  std::vector<BucketLocation> missing_locations;
+  if (pages_.find(location1.page_key) == pages_.end()) missing_locations.push_back(location1);
+  if (location2.page_key != location1.page_key && pages_.find(location2.page_key) == pages_.end()) {
+    missing_locations.push_back(location2);
   }
-  if (bucket1_index != bucket2_index && tryInsertInBucketRef(bucket2, fingerprint, &slot_idx)) {
-    *inserted = true;
-  }
-  return rocksdb::Status::OK();
+  return loadPages(missing_locations);
 }
 
-rocksdb::Status CuckooPageSet::TryInsertInBucket(uint16_t filter_index, uint32_t num_buckets, uint32_t bucket_index,
-                                                 uint8_t fingerprint, bool *inserted) {
+rocksdb::Status CuckooPageCache::TryInsertInBucket(uint16_t filter_index, uint32_t num_buckets, uint32_t bucket_index,
+                                                   uint8_t fingerprint, bool *inserted) {
   *inserted = false;
   BucketRef bucket;
   auto s = ensureBucketLoaded(filter_index, num_buckets, bucket_index, &bucket);
@@ -94,8 +91,8 @@ rocksdb::Status CuckooPageSet::TryInsertInBucket(uint16_t filter_index, uint32_t
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status CuckooPageSet::GetBucketSlot(uint16_t filter_index, uint32_t num_buckets, uint32_t bucket_index,
-                                             uint32_t slot_idx, uint8_t *fingerprint) {
+rocksdb::Status CuckooPageCache::GetBucketSlot(uint16_t filter_index, uint32_t num_buckets, uint32_t bucket_index,
+                                               uint32_t slot_idx, uint8_t *fingerprint) {
   if (slot_idx >= metadata_.bucket_size) return rocksdb::Status::InvalidArgument("invalid cuckoo filter bucket slot");
 
   BucketRef bucket;
@@ -105,8 +102,8 @@ rocksdb::Status CuckooPageSet::GetBucketSlot(uint16_t filter_index, uint32_t num
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status CuckooPageSet::SetBucketSlot(uint16_t filter_index, uint32_t num_buckets, uint32_t bucket_index,
-                                             uint32_t slot_idx, uint8_t fingerprint) {
+rocksdb::Status CuckooPageCache::SetBucketSlot(uint16_t filter_index, uint32_t num_buckets, uint32_t bucket_index,
+                                               uint32_t slot_idx, uint8_t fingerprint) {
   if (slot_idx >= metadata_.bucket_size) return rocksdb::Status::InvalidArgument("invalid cuckoo filter bucket slot");
 
   BucketRef bucket;
@@ -116,7 +113,7 @@ rocksdb::Status CuckooPageSet::SetBucketSlot(uint16_t filter_index, uint32_t num
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status CuckooPageSet::WriteBackDirtyPages(rocksdb::WriteBatchBase *batch) {
+rocksdb::Status CuckooPageCache::WriteBackDirtyPages(rocksdb::WriteBatchBase *batch) {
   for (const auto &entry : pages_) {
     if (!entry.second.is_dirty) continue;
     auto s = batch->Put(entry.first, entry.second.data);
@@ -125,8 +122,8 @@ rocksdb::Status CuckooPageSet::WriteBackDirtyPages(rocksdb::WriteBatchBase *batc
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status CuckooPageSet::resolveBucketLocation(uint16_t filter_index, uint32_t num_buckets, uint32_t bucket_index,
-                                                     BucketLocation *location) const {
+rocksdb::Status CuckooPageCache::resolveBucketLocation(uint16_t filter_index, uint32_t num_buckets,
+                                                       uint32_t bucket_index, BucketLocation *location) const {
   if (metadata_.bucket_size == 0 || num_buckets == 0 || bucket_index >= num_buckets) {
     return rocksdb::Status::Corruption("invalid cuckoo filter bucket location");
   }
@@ -139,8 +136,8 @@ rocksdb::Status CuckooPageSet::resolveBucketLocation(uint16_t filter_index, uint
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status CuckooPageSet::ensureBucketLoaded(uint16_t filter_index, uint32_t num_buckets, uint32_t bucket_index,
-                                                  BucketRef *bucket) {
+rocksdb::Status CuckooPageCache::ensureBucketLoaded(uint16_t filter_index, uint32_t num_buckets, uint32_t bucket_index,
+                                                    BucketRef *bucket) {
   BucketLocation location;
   auto s = resolveBucketLocation(filter_index, num_buckets, bucket_index, &location);
   if (!s.ok()) return s;
@@ -155,33 +152,7 @@ rocksdb::Status CuckooPageSet::ensureBucketLoaded(uint16_t filter_index, uint32_
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status CuckooPageSet::ensureCandidateBucketsLoaded(uint16_t filter_index, uint32_t num_buckets,
-                                                            uint32_t bucket1_index, uint32_t bucket2_index,
-                                                            BucketRef *bucket1, BucketRef *bucket2) {
-  BucketLocation location1, location2;
-  auto s = resolveBucketLocation(filter_index, num_buckets, bucket1_index, &location1);
-  if (!s.ok()) return s;
-  s = resolveBucketLocation(filter_index, num_buckets, bucket2_index, &location2);
-  if (!s.ok()) return s;
-
-  std::vector<BucketLocation> missing_locations;
-  if (pages_.find(location1.page_key) == pages_.end()) missing_locations.push_back(location1);
-  if (location2.page_key != location1.page_key && pages_.find(location2.page_key) == pages_.end()) {
-    missing_locations.push_back(location2);
-  }
-  s = loadPages(missing_locations);
-  if (!s.ok()) return s;
-
-  bucket1->page = &pages_.at(location1.page_key);
-  bucket1->offset = location1.offset;
-  bucket1->size = metadata_.bucket_size;
-  bucket2->page = &pages_.at(location2.page_key);
-  bucket2->offset = location2.offset;
-  bucket2->size = metadata_.bucket_size;
-  return rocksdb::Status::OK();
-}
-
-rocksdb::Status CuckooPageSet::loadPage(const BucketLocation &location, PageEntry **page) {
+rocksdb::Status CuckooPageCache::loadPage(const BucketLocation &location, PageEntry **page) {
   auto iter = pages_.find(location.page_key);
   if (iter != pages_.end()) {
     *page = &iter->second;
@@ -199,7 +170,7 @@ rocksdb::Status CuckooPageSet::loadPage(const BucketLocation &location, PageEntr
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status CuckooPageSet::loadPages(const std::vector<BucketLocation> &locations) {
+rocksdb::Status CuckooPageCache::loadPages(const std::vector<BucketLocation> &locations) {
   if (locations.empty()) return rocksdb::Status::OK();
   if (locations.size() == 1) {
     PageEntry *page = nullptr;
@@ -225,7 +196,7 @@ rocksdb::Status CuckooPageSet::loadPages(const std::vector<BucketLocation> &loca
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status CuckooPageSet::normalizePage(const rocksdb::Status &status, uint32_t expected_size, PageEntry *page) {
+rocksdb::Status CuckooPageCache::normalizePage(const rocksdb::Status &status, uint32_t expected_size, PageEntry *page) {
   if (!status.ok() && !status.IsNotFound()) return status;
   if (status.IsNotFound()) page->data.clear();
   if (page->data.size() > expected_size) return rocksdb::Status::Corruption("invalid cuckoo filter page size");
@@ -233,7 +204,7 @@ rocksdb::Status CuckooPageSet::normalizePage(const rocksdb::Status &status, uint
   return rocksdb::Status::OK();
 }
 
-bool CuckooPageSet::tryInsertInBucketRef(const BucketRef &bucket, uint8_t fingerprint, size_t *slot_idx) {
+bool CuckooPageCache::tryInsertInBucketRef(const BucketRef &bucket, uint8_t fingerprint, size_t *slot_idx) {
   for (size_t i = 0; i < bucket.size; ++i) {
     size_t offset = bucket.offset + i;
     if (static_cast<uint8_t>(bucket.page->data[offset]) == 0) {
@@ -246,11 +217,11 @@ bool CuckooPageSet::tryInsertInBucketRef(const BucketRef &bucket, uint8_t finger
   return false;
 }
 
-uint8_t CuckooPageSet::getBucketRefSlot(const BucketRef &bucket, uint32_t slot_idx) {
+uint8_t CuckooPageCache::getBucketRefSlot(const BucketRef &bucket, uint32_t slot_idx) {
   return static_cast<uint8_t>(bucket.page->data[bucket.offset + slot_idx]);
 }
 
-void CuckooPageSet::setBucketRefSlot(const BucketRef &bucket, uint32_t slot_idx, uint8_t fingerprint) {
+void CuckooPageCache::setBucketRefSlot(const BucketRef &bucket, uint32_t slot_idx, uint8_t fingerprint) {
   bucket.page->data[bucket.offset + slot_idx] = static_cast<char>(fingerprint);
   bucket.page->is_dirty = true;
 }

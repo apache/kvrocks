@@ -347,8 +347,6 @@ class CuckooChainMetadata : public Metadata {
   uint16_t expansion;
 
   /// The capacity of the first filter.
-  /// Later sub-filter capacities are derived as base_capacity * expansion^n after restart,
-  /// so we need to persist the base value in metadata.
   uint64_t base_capacity;
 
   /// Number of fingerprints per bucket

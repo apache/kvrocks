@@ -62,10 +62,9 @@ namespace lua {
 
 namespace {
 
-std::string SanitizeErrorReply(std::string_view message) {
+std::string SanitizeErrorMessage(std::string_view message) {
   std::string sanitized(message);
-  sanitized.erase(std::remove_if(sanitized.begin(), sanitized.end(), [](char c) { return c == '\r' || c == '\n'; }),
-                  sanitized.end());
+  std::erase_if(sanitized, [](char c) { return c == '\r' || c == '\n'; });
   return sanitized;
 }
 
@@ -1306,7 +1305,7 @@ std::string ReplyToRedisReply(redis::Connection *conn, lua_State *lua) {
       lua_rawget(lua, -2);
       t = lua_type(lua, -1);
       if (t == LUA_TSTRING) {
-        output = redis::Error({Status::RedisErrorNoPrefix, SanitizeErrorReply(lua_tostring(lua, -1))});
+        output = redis::Error({Status::RedisErrorNoPrefix, SanitizeErrorMessage(lua_tostring(lua, -1))});
         lua_pop(lua, 1);
         return output;
       }

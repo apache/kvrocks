@@ -445,7 +445,7 @@ func testBloom(t *testing.T, configs util.KvrocksServerConfigs) {
 	t.Run("Get type of bloom filter", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, key).Err())
 		require.NoError(t, rdb.Do(ctx, "bf.reserve", key, "0.02", "1000").Err())
-		require.Equal(t, "MBbloomCF", rdb.Type(ctx, key).Val())
+		require.Equal(t, "MBbloom--", rdb.Type(ctx, key).Val())
 	})
 
 	t.Run("Get Card of bloom filter", func(t *testing.T) {

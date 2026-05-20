@@ -59,7 +59,7 @@ enum RedisType : uint8_t {
 };
 
 inline constexpr const std::array<std::string_view, kRedisTypeMax> RedisTypeNames = {
-    "none",   "string",    "hash",      "list",        "set",       "zset",       "bitmap",      "sortedint",
+    "none",   "string",    "hash",      "list",        "set",       "zset",       "bitmap",   "sortedint",
     "stream", "MBbloom--", "ReJSON-RL", "hyperloglog", "TDIS-TYPE", "timeseries", "MBbloomCF"};
 
 struct RedisTypes {

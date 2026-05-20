@@ -38,6 +38,7 @@ func TestCuckooFilter(t *testing.T) {
 		key := "test_cuckoo_filter_add_create"
 		require.NoError(t, rdb.Del(ctx, key).Err())
 		require.Equal(t, int64(1), rdb.Do(ctx, "cf.add", key, "item").Val())
+		require.Equal(t, "MBbloomCF", rdb.Type(ctx, key).Val())
 		require.ErrorContains(t, rdb.Do(ctx, "cf.reserve", key, "1000").Err(), "already exists")
 	})
 
@@ -51,5 +52,12 @@ func TestCuckooFilter(t *testing.T) {
 		require.NoError(t, rdb.Do(ctx, "cf.reserve", "test_cuckoo_filter_expansion_256", "1000", "EXPANSION", "256").Err())
 		require.NoError(t, rdb.Do(ctx, "cf.reserve", "test_cuckoo_filter_expansion_max", "1000", "EXPANSION", "32768").Err())
 		require.ErrorContains(t, rdb.Do(ctx, "cf.reserve", "test_cuckoo_filter_expansion_too_large", "1000", "EXPANSION", "32769").Err(), "expansion must be between 0 and 32768")
+	})
+
+	t.Run("Reserve creates cuckoo filter type", func(t *testing.T) {
+		key := "test_cuckoo_filter_reserve_type"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "1000").Err())
+		require.Equal(t, "MBbloomCF", rdb.Type(ctx, key).Val())
 	})
 }

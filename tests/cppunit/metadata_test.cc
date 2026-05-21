@@ -81,7 +81,7 @@ TEST(HashMetadata, DecodeLegacyMetadataWithoutExtensions) {
   EXPECT_EQ(decoded.version, legacy_md.version);
   EXPECT_EQ(decoded.size, legacy_md.size);
   EXPECT_EQ(decoded.mode, HashSubkeyEncodingMode::kLegacy);
-  EXPECT_EQ(decoded.expsz, 0);
+  EXPECT_EQ(decoded.persist, 0);
   EXPECT_EQ(decoded.lower, 0);
   EXPECT_EQ(decoded.upper, 0);
 }
@@ -91,7 +91,7 @@ TEST(HashMetadata, EncodeAndDecodeWithExtensions) {
   metadata.expire = 123000;
   metadata.version = 9;
   metadata.size = 11;
-  metadata.expsz = 3;
+  metadata.persist = 8;
   metadata.lower = 1000;
   metadata.upper = 2000;
 
@@ -104,7 +104,7 @@ TEST(HashMetadata, EncodeAndDecodeWithExtensions) {
   EXPECT_EQ(decoded.version, metadata.version);
   EXPECT_EQ(decoded.size, metadata.size);
   EXPECT_EQ(decoded.mode, HashSubkeyEncodingMode::kFieldExpiration);
-  EXPECT_EQ(decoded.expsz, metadata.expsz);
+  EXPECT_EQ(decoded.persist, metadata.persist);
   EXPECT_EQ(decoded.lower, metadata.lower);
   EXPECT_EQ(decoded.upper, metadata.upper);
 }

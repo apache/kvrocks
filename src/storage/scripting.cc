@@ -60,6 +60,16 @@ enum {
 
 namespace lua {
 
+namespace {
+
+std::string SanitizeErrorMessage(std::string_view message) {
+  std::string sanitized(message);
+  std::erase_if(sanitized, [](char c) { return c == '\r' || c == '\n'; });
+  return sanitized;
+}
+
+}  // namespace
+
 lua_State *CreateState() {
   lua_State *lua = lua_open();
   LoadLibraries(lua);
@@ -1295,7 +1305,7 @@ std::string ReplyToRedisReply(redis::Connection *conn, lua_State *lua) {
       lua_rawget(lua, -2);
       t = lua_type(lua, -1);
       if (t == LUA_TSTRING) {
-        output = redis::Error({Status::RedisErrorNoPrefix, lua_tostring(lua, -1)});
+        output = redis::Error({Status::RedisErrorNoPrefix, SanitizeErrorMessage(lua_tostring(lua, -1))});
         lua_pop(lua, 1);
         return output;
       }

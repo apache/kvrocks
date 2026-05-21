@@ -21,6 +21,7 @@ package scripting
 
 import (
 	"context"
+	_ "embed"
 	"fmt"
 	"math/big"
 	"testing"
@@ -31,6 +32,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/slices"
 )
+
+//go:embed luajit_bytecode_dos.lua
+var luaJITBytecodeDoSPayload string
 
 func TestScripting(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{"resp3-enabled": "no"})
@@ -84,6 +88,17 @@ func TestScripting(t *testing.T) {
 		r := rdb.Eval(ctx, `return {err='this is an error'}`, []string{})
 		require.EqualError(t, r.Err(), "this is an error")
 		require.Nil(t, r.Val())
+	})
+
+	t.Run("EVAL - Lua error reply strips embedded CRLF", func(t *testing.T) {
+		c := srv.NewTCPClient()
+		defer func() { require.NoError(t, c.Close()) }()
+
+		require.NoError(t, c.WriteArgs("EVAL", "return redis.error_reply('ERR injected\\r\\n+INJECTED\\r\\n')", "0"))
+		c.MustRead(t, "-ERR injected+INJECTED")
+
+		require.NoError(t, c.WriteArgs("PING"))
+		c.MustRead(t, "+PONG")
 	})
 
 	t.Run("Script return recursive object", func(t *testing.T) {
@@ -924,4 +939,22 @@ func TestEvalScriptInStrictMode(t *testing.T) {
 
 		require.NoError(t, rdb.Eval(ctx, "return redis.call('set', 'a', 1)", []string{}).Err())
 	})
+}
+
+func TestLuaJITBytecodeDoS(t *testing.T) {
+	if !util.LuaJITEnable() {
+		t.Skip("LuaJIT bytecode DoS test runs only when LuaJIT is enabled.")
+	}
+
+	srv := util.StartServer(t, map[string]string{"resp3-enabled": "no"})
+	defer srv.Close()
+
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	r := rdb.Eval(ctx, luaJITBytecodeDoSPayload, nil)
+	require.NoError(t, r.Err())
+	require.Equal(t, []interface{}{"load_failed:attempt to load chunk with wrong mode"}, r.Val())
+	require.NoError(t, rdb.Ping(ctx).Err())
 }

@@ -28,15 +28,14 @@
 #include <unordered_map>
 #include <vector>
 
-#include "storage/redis_metadata.h"
 #include "storage/storage.h"
 
 namespace redis {
 
 class CuckooPageCache {
  public:
-  CuckooPageCache(engine::Storage *storage, engine::Context &ctx, const Slice &ns_key,
-                  const CuckooChainMetadata &metadata, bool slot_id_encoded);
+  CuckooPageCache(engine::Storage *storage, engine::Context &ctx, const Slice &ns_key, bool slot_id_encoded,
+                  uint64_t version, uint8_t bucket_size, uint32_t page_size);
 
   rocksdb::Status PrefetchBuckets(uint16_t filter_index, uint32_t num_buckets, uint32_t bucket1_index,
                                   uint32_t bucket2_index);
@@ -81,8 +80,10 @@ class CuckooPageCache {
   engine::Storage *storage_ = nullptr;
   engine::Context &ctx_;
   std::string ns_key_;
-  const CuckooChainMetadata &metadata_;
   bool slot_id_encoded_ = false;
+  uint64_t version_ = 0;
+  uint8_t bucket_size_ = 0;
+  uint32_t page_size_ = 0;
   std::unordered_map<std::string, PageEntry> pages_;
 };
 

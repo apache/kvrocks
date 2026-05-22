@@ -102,6 +102,30 @@ class CuckooFilterHelper {
 
   // Convenience overload for std::string
   static uint64_t Hash(const std::string &item) { return Hash(item.data(), item.size()); }
+
+  // Calculate the capacity of a sub-filter at a given index in the chain.
+  // Returns false if overflow would occur.
+  static bool CalculateFilterCapacity(uint64_t base_capacity, uint16_t expansion, uint16_t filter_index,
+                                      uint64_t *filter_capacity) {
+    uint64_t capacity = base_capacity;
+    for (uint16_t i = 0; i < filter_index; ++i) {
+      if (expansion != 0 && capacity > std::numeric_limits<uint64_t>::max() / expansion) return false;
+      capacity *= expansion;
+    }
+    *filter_capacity = capacity;
+    return true;
+  }
+
+  // Calculate the number of buckets for a sub-filter at a given index.
+  static rocksdb::Status GetFilterNumBuckets(uint64_t base_capacity, uint16_t expansion, uint8_t bucket_size,
+                                             uint16_t filter_index, uint32_t *num_buckets) {
+    uint64_t filter_capacity = 0;
+    if (!CalculateFilterCapacity(base_capacity, expansion, filter_index, &filter_capacity) ||
+        !IsCapacitySupported(filter_capacity, bucket_size)) {
+      return rocksdb::Status::Corruption("invalid metadata: filter capacity is too large");
+    }
+    return CalculateRequiredBuckets(filter_capacity, bucket_size, num_buckets);
+  }
 };
 
 }  // namespace redis

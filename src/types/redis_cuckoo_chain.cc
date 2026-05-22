@@ -20,8 +20,6 @@
 
 #include "redis_cuckoo_chain.h"
 
-#include <limits>
-
 #include "cuckoo_filter.h"
 #include "cuckoo_filter_sub_filter.h"
 #include "logging.h"
@@ -125,27 +123,6 @@ rocksdb::Status CuckooChain::Reserve(engine::Context &ctx, const Slice &user_key
   return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
-static bool CalculateFilterCapacity(uint64_t base_capacity, uint16_t expansion, uint16_t filter_index,
-                                    uint64_t *filter_capacity) {
-  uint64_t capacity = base_capacity;
-  for (uint16_t i = 0; i < filter_index; ++i) {
-    if (expansion != 0 && capacity > std::numeric_limits<uint64_t>::max() / expansion) return false;
-    capacity *= expansion;
-  }
-  *filter_capacity = capacity;
-  return true;
-}
-
-static rocksdb::Status GetFilterNumBuckets(const CuckooChainMetadata &metadata, uint16_t filter_index,
-                                           uint32_t *num_buckets) {
-  uint64_t filter_capacity = 0;
-  if (!CalculateFilterCapacity(metadata.base_capacity, metadata.expansion, filter_index, &filter_capacity) ||
-      !CuckooFilterHelper::IsCapacitySupported(filter_capacity, metadata.bucket_size)) {
-    return rocksdb::Status::Corruption("invalid metadata: filter capacity is too large");
-  }
-  return CuckooFilterHelper::CalculateRequiredBuckets(filter_capacity, metadata.bucket_size, num_buckets);
-}
-
 rocksdb::Status CuckooChain::Add(engine::Context &ctx, const Slice &user_key, const Slice &item, bool *added) {
   std::string ns_key = AppendNamespacePrefix(user_key);
 
@@ -177,11 +154,12 @@ rocksdb::Status CuckooChain::Add(engine::Context &ctx, const Slice &user_key, co
   for (int filter_idx = static_cast<int>(metadata.n_filters) - 1; filter_idx >= 0; --filter_idx) {
     auto current_filter_idx = static_cast<uint16_t>(filter_idx);
     uint32_t num_buckets = 0;
-    s = GetFilterNumBuckets(metadata, current_filter_idx, &num_buckets);
+    s = CuckooFilterHelper::GetFilterNumBuckets(metadata.base_capacity, metadata.expansion, metadata.bucket_size,
+                                                current_filter_idx, &num_buckets);
     if (!s.ok()) return s;
 
-    CuckooSubFilter sub_filter(storage_, ctx, ns_key, metadata, current_filter_idx, num_buckets,
-                               storage_->IsSlotIdEncoded());
+    CuckooSubFilter sub_filter(storage_, ctx, ns_key, storage_->IsSlotIdEncoded(), metadata.version,
+                               metadata.bucket_size, metadata.page_size, current_filter_idx, num_buckets);
     bool inserted = false;
     s = sub_filter.TryInsert(hash, fingerprint, &inserted);
     if (!s.ok()) return s;
@@ -211,13 +189,14 @@ rocksdb::Status CuckooChain::Add(engine::Context &ctx, const Slice &user_key, co
   // No space found in any filter, try kick-out on the last filter
   uint16_t last_filter_idx = metadata.n_filters - 1;
   uint32_t num_buckets = 0;
-  s = GetFilterNumBuckets(metadata, last_filter_idx, &num_buckets);
+  s = CuckooFilterHelper::GetFilterNumBuckets(metadata.base_capacity, metadata.expansion, metadata.bucket_size,
+                                              last_filter_idx, &num_buckets);
   if (!s.ok()) return s;
 
   bool inserted = false;
   auto batch = storage_->GetWriteBatchBase();
-  CuckooSubFilter last_filter(storage_, ctx, ns_key, metadata, last_filter_idx, num_buckets,
-                              storage_->IsSlotIdEncoded());
+  CuckooSubFilter last_filter(storage_, ctx, ns_key, storage_->IsSlotIdEncoded(), metadata.version,
+                              metadata.bucket_size, metadata.page_size, last_filter_idx, num_buckets);
   s = last_filter.KickOutInsert(hash, fingerprint, metadata.max_iterations, &inserted);
   if (s.ok() && inserted) {
     WriteBatchLogData log_data(kRedisCuckooFilter, std::vector<std::string>{"add", user_key.ToString()});
@@ -249,14 +228,15 @@ rocksdb::Status CuckooChain::Add(engine::Context &ctx, const Slice &user_key, co
     // Retry insertion in the new expanded filter
     uint16_t new_filter_idx = metadata.n_filters - 1;
     uint32_t new_num_buckets = 0;
-    s = GetFilterNumBuckets(metadata, new_filter_idx, &new_num_buckets);
+    s = CuckooFilterHelper::GetFilterNumBuckets(metadata.base_capacity, metadata.expansion, metadata.bucket_size,
+                                                new_filter_idx, &new_num_buckets);
     if (s.IsCorruption()) {
       return rocksdb::Status::Aborted("maximum filter capacity reached");
     }
     if (!s.ok()) return s;
 
-    CuckooSubFilter new_filter(storage_, ctx, ns_key, metadata, new_filter_idx, new_num_buckets,
-                               storage_->IsSlotIdEncoded());
+    CuckooSubFilter new_filter(storage_, ctx, ns_key, storage_->IsSlotIdEncoded(), metadata.version,
+                               metadata.bucket_size, metadata.page_size, new_filter_idx, new_num_buckets);
     s = new_filter.TryInsertPrimaryBucket(hash, fingerprint, &inserted);
     if (!s.ok()) return s;
     if (!inserted) return rocksdb::Status::Corruption("failed to insert into new cuckoo filter");

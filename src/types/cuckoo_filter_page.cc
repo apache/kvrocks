@@ -22,7 +22,7 @@
 
 #include <algorithm>
 
-#include "cuckoo_filter.h"
+#include "common/encoding.h"
 #include "storage/redis_db.h"
 
 namespace redis {
@@ -45,23 +45,25 @@ uint32_t GetPageValueSize(uint32_t page_index, uint32_t num_buckets, uint32_t bu
   return page_bucket_count * bucket_size;
 }
 
-std::string GetCuckooPageKey(const Slice &ns_key, const CuckooChainMetadata &metadata, bool slot_id_encoded,
-                             uint16_t filter_index, uint32_t page_index) {
+std::string GetCuckooPageKey(const Slice &ns_key, uint64_t version, bool slot_id_encoded, uint16_t filter_index,
+                             uint32_t page_index) {
   std::string sub_key;
   PutFixed16(&sub_key, filter_index);
   PutFixed32(&sub_key, page_index);
-  return InternalKey(ns_key, sub_key, metadata.version, slot_id_encoded).Encode();
+  return InternalKey(ns_key, sub_key, version, slot_id_encoded).Encode();
 }
 
 }  // namespace
 
 CuckooPageCache::CuckooPageCache(engine::Storage *storage, engine::Context &ctx, const Slice &ns_key,
-                                 const CuckooChainMetadata &metadata, bool slot_id_encoded)
+                                 bool slot_id_encoded, uint64_t version, uint8_t bucket_size, uint32_t page_size)
     : storage_(storage),
       ctx_(ctx),
       ns_key_(ns_key.ToString()),
-      metadata_(metadata),
-      slot_id_encoded_(slot_id_encoded) {}
+      slot_id_encoded_(slot_id_encoded),
+      version_(version),
+      bucket_size_(bucket_size),
+      page_size_(page_size) {}
 
 rocksdb::Status CuckooPageCache::PrefetchBuckets(uint16_t filter_index, uint32_t num_buckets, uint32_t bucket1_index,
                                                  uint32_t bucket2_index) {
@@ -93,7 +95,7 @@ rocksdb::Status CuckooPageCache::TryInsertInBucket(uint16_t filter_index, uint32
 
 rocksdb::Status CuckooPageCache::GetBucketSlot(uint16_t filter_index, uint32_t num_buckets, uint32_t bucket_index,
                                                uint32_t slot_idx, uint8_t *fingerprint) {
-  if (slot_idx >= metadata_.bucket_size) return rocksdb::Status::InvalidArgument("invalid cuckoo filter bucket slot");
+  if (slot_idx >= bucket_size_) return rocksdb::Status::InvalidArgument("invalid cuckoo filter bucket slot");
 
   BucketRef bucket;
   auto s = ensureBucketLoaded(filter_index, num_buckets, bucket_index, &bucket);
@@ -103,8 +105,8 @@ rocksdb::Status CuckooPageCache::GetBucketSlot(uint16_t filter_index, uint32_t n
 }
 
 rocksdb::Status CuckooPageCache::SetBucketSlot(uint16_t filter_index, uint32_t num_buckets, uint32_t bucket_index,
-                                               uint32_t slot_idx, uint8_t fingerprint) {
-  if (slot_idx >= metadata_.bucket_size) return rocksdb::Status::InvalidArgument("invalid cuckoo filter bucket slot");
+                                                uint32_t slot_idx, uint8_t fingerprint) {
+  if (slot_idx >= bucket_size_) return rocksdb::Status::InvalidArgument("invalid cuckoo filter bucket slot");
 
   BucketRef bucket;
   auto s = ensureBucketLoaded(filter_index, num_buckets, bucket_index, &bucket);
@@ -123,16 +125,16 @@ rocksdb::Status CuckooPageCache::WriteBackDirtyPages(rocksdb::WriteBatchBase *ba
 }
 
 rocksdb::Status CuckooPageCache::resolveBucketLocation(uint16_t filter_index, uint32_t num_buckets,
-                                                       uint32_t bucket_index, BucketLocation *location) const {
-  if (metadata_.bucket_size == 0 || num_buckets == 0 || bucket_index >= num_buckets) {
+                                                        uint32_t bucket_index, BucketLocation *location) const {
+  if (bucket_size_ == 0 || num_buckets == 0 || bucket_index >= num_buckets) {
     return rocksdb::Status::Corruption("invalid cuckoo filter bucket location");
   }
 
-  uint32_t buckets_per_page = GetBucketsPerPage(metadata_.page_size, metadata_.bucket_size);
+  uint32_t buckets_per_page = GetBucketsPerPage(page_size_, bucket_size_);
   uint32_t page_index = GetPageIndex(bucket_index, buckets_per_page);
-  location->page_key = GetCuckooPageKey(ns_key_, metadata_, slot_id_encoded_, filter_index, page_index);
-  location->offset = GetBucketOffset(bucket_index, buckets_per_page, metadata_.bucket_size);
-  location->expected_page_size = GetPageValueSize(page_index, num_buckets, buckets_per_page, metadata_.bucket_size);
+  location->page_key = GetCuckooPageKey(ns_key_, version_, slot_id_encoded_, filter_index, page_index);
+  location->offset = GetBucketOffset(bucket_index, buckets_per_page, bucket_size_);
+  location->expected_page_size = GetPageValueSize(page_index, num_buckets, buckets_per_page, bucket_size_);
   return rocksdb::Status::OK();
 }
 
@@ -148,7 +150,7 @@ rocksdb::Status CuckooPageCache::ensureBucketLoaded(uint16_t filter_index, uint3
 
   bucket->page = page;
   bucket->offset = location.offset;
-  bucket->size = metadata_.bucket_size;
+  bucket->size = bucket_size_;
   return rocksdb::Status::OK();
 }
 

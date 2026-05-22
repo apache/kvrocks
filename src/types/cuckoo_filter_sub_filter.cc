@@ -25,12 +25,12 @@
 namespace redis {
 
 CuckooSubFilter::CuckooSubFilter(engine::Storage *storage, engine::Context &ctx, const Slice &ns_key,
-                                 const CuckooChainMetadata &metadata, uint16_t filter_index, uint32_t num_buckets,
-                                 bool slot_id_encoded)
-    : metadata_(metadata),
+                                 bool slot_id_encoded, uint64_t version, uint8_t bucket_size, uint32_t page_size,
+                                 uint16_t filter_index, uint32_t num_buckets)
+    : bucket_size_(bucket_size),
       filter_index_(filter_index),
       num_buckets_(num_buckets),
-      pages_(storage, ctx, ns_key, metadata, slot_id_encoded) {}
+      pages_(storage, ctx, ns_key, slot_id_encoded, version, bucket_size, page_size) {}
 
 rocksdb::Status CuckooSubFilter::TryInsert(uint64_t hash, uint8_t fingerprint, bool *inserted) {
   *inserted = false;
@@ -81,7 +81,7 @@ rocksdb::Status CuckooSubFilter::KickOutInsert(uint64_t hash, uint8_t fingerprin
     }
 
     current_bucket_idx = alt_bucket_idx;
-    victim_slot = (victim_slot + 1) % metadata_.bucket_size;
+    victim_slot = (victim_slot + 1) % bucket_size_;
   }
 
   return rocksdb::Status::OK();

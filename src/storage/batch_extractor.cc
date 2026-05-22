@@ -397,8 +397,27 @@ rocksdb::Status WriteBatchExtractor::DeleteCF(uint32_t column_family_id, const S
     Slice encoded_id = ikey.GetSubKey();
     redis::StreamEntryID entry_id;
     GetFixed64(&encoded_id, &entry_id.ms);
+
+    if (entry_id.ms == UINT64_MAX) {
+      return rocksdb::Status::OK();
+    }
+
     GetFixed64(&encoded_id, &entry_id.seq);
-    command_args = {"XDEL", ikey.GetKey().ToString(), entry_id.ToString()};
+    std::string entry_id_str = entry_id.ToString();
+    std::string user_key = ikey.GetKey().ToString();
+
+    auto args = log_data_.GetArguments();
+    if (!args->empty()) {
+      if ((*args)[0] == "XACKDEL" && args->size() >= 3) {
+        command_args = {(*args)[0], user_key, (*args)[1], (*args)[2], "IDS", "1", entry_id_str};
+      } else if ((*args)[0] == "XDELEX" && args->size() >= 2) {
+        command_args = {(*args)[0], user_key, (*args)[1], "IDS", "1", entry_id_str};
+      } else {
+        command_args = {"XDEL", user_key, entry_id_str};
+      }
+    } else {
+      command_args = {"XDEL", user_key, entry_id_str};
+    }
   }
 
   if (!command_args.empty()) {

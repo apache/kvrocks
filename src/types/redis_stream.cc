@@ -1389,6 +1389,11 @@ rocksdb::Status Stream::GetConsumerInfo(
       continue;
     }
 
+    // Iterate bounds may include consumers from other groups; verify group name explicitly.
+    if (groupNameFromInternalKey(iter->key()) != group_name) {
+      continue;
+    }
+
     std::string consumer_name = consumerNameFromInternalKey(iter->key());
     StreamConsumerMetadata c_metadata = decodeStreamConsumerMetadataValue(iter->value().ToString());
     std::pair<std::string, StreamConsumerMetadata> tmp_item(consumer_name, c_metadata);

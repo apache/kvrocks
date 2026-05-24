@@ -19,6 +19,7 @@
  */
 
 #include <limits>
+#include <optional>
 
 #include "commander.h"
 #include "commands/command_parser.h"
@@ -51,6 +52,22 @@ Status ParseHashFieldListTail(Parser &parser, std::vector<std::string> *fields) 
     fields->emplace_back(GET_OR_RET(parser.TakeStr()));
   }
   return Status::OK();
+}
+
+uint64_t GenerateHLenFlags(uint64_t flags, const std::vector<std::string> &args, const Config &config) {
+  bool needs_repair = false;
+  if (args.size() == 2) {
+    needs_repair = config.hash_encoding_mode == HashSubkeyEncodingMode::kFieldExpiration &&
+                   config.hash_length_mode == HashLengthMode::kAccurate;
+  } else if (args.size() == 3) {
+    needs_repair = util::EqualICase(args[2], "REPAIR");
+  }
+
+  if (!needs_repair) {
+    return flags;
+  }
+
+  return (flags | kCmdWrite | kCmdNoDBSizeCheck) & ~kCmdReadOnly;
 }
 
 }  // namespace
@@ -155,11 +172,29 @@ class CommandHExists : public Commander {
 
 class CommandHLen : public Commander {
  public:
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() == 2) {
+      length_mode_ = std::nullopt;
+      return Commander::Parse(args);
+    }
+    if (args.size() != 3) {
+      return {Status::RedisParseErr, errWrongNumOfArguments};
+    }
+    if (util::EqualICase(args[2], "APPROX")) {
+      length_mode_ = HashLengthMode::kApproximate;
+    } else if (util::EqualICase(args[2], "REPAIR")) {
+      length_mode_ = HashLengthMode::kAccurate;
+    } else {
+      return {Status::RedisParseErr, errInvalidSyntax};
+    }
+    return Commander::Parse(args);
+  }
+
   Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
     uint64_t count = 0;
     redis::Hash hash_db(srv->storage, conn->GetNamespace());
 
-    auto s = hash_db.Size(ctx, args_[1], &count);
+    auto s = length_mode_ ? hash_db.Size(ctx, args_[1], &count, *length_mode_) : hash_db.Size(ctx, args_[1], &count);
     if (!s.ok() && !s.IsNotFound()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -167,6 +202,9 @@ class CommandHLen : public Commander {
     *output = s.IsNotFound() ? redis::Integer(0) : redis::Integer(count);
     return Status::OK();
   }
+
+ private:
+  std::optional<HashLengthMode> length_mode_;
 };
 
 class CommandHIncrBy : public Commander {
@@ -639,7 +677,7 @@ REDIS_REGISTER_COMMANDS(Hash, MakeCmdAttr<CommandHGet>("hget", 3, "read-only", 1
                         MakeCmdAttr<CommandHDel>("hdel", -3, "write no-dbsize-check", 1, 1, 1),
                         MakeCmdAttr<CommandHStrlen>("hstrlen", 3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandHExists>("hexists", 3, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandHLen>("hlen", 2, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandHLen>("hlen", -2, "read-only", 1, 1, 1, GenerateHLenFlags),
                         MakeCmdAttr<CommandHMGet>("hmget", -3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandHMSet>("hmset", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandHKeys>("hkeys", 2, "read-only slow", 1, 1, 1),

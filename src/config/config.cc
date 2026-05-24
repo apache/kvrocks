@@ -910,15 +910,6 @@ Status Config::finish() {
   if (requirepass.empty() && !load_tokens.empty()) {
     return {Status::NotOK, "requirepass empty wasn't allowed while the namespace exists"};
   }
-  if ((cluster_enabled) && !load_tokens.empty()) {
-    return {Status::NotOK, "enabled cluster mode wasn't allowed while the namespace exists"};
-  }
-  if ((redis_databases > 0) && !load_tokens.empty()) {
-    return {Status::NotOK, "redis-databases > 0 is not allowed while any non-default namespace exists"};
-  }
-  if ((redis_databases > 0) && (cluster_enabled)) {
-    return {Status::NotOK, "cluster mode and redis-databases cannot be enabled at the same time"};
-  }
   if (unixsocket.empty() && binds.size() == 0) {
     binds.emplace_back(kDefaultBindAddress);
   }

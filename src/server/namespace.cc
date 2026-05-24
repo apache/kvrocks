@@ -27,7 +27,6 @@ constexpr const char* kErrNamespaceExists = "the namespace already exists";
 constexpr const char* kErrTokenExists = "the token already exists";
 constexpr const char* kErrNamespaceNotFound = "the namespace was not found";
 constexpr const char* kErrRequiredPassEmpty = "forbidden to add namespace when requirepass was empty";
-constexpr const char* kErrClusterModeEnabled = "forbidden to add namespace when cluster mode was enabled";
 constexpr const char* kErrDeleteDefaultNamespace = "forbidden to delete the default namespace";
 constexpr const char* kErrAddDefaultNamespace = "forbidden to add the default namespace";
 constexpr const char* kErrInvalidToken = "the token is duplicated with requirepass or masterauth";
@@ -70,8 +69,6 @@ Status Namespace::loadFromDB(std::map<std::string, std::string>* db_tokens) cons
 
 Status Namespace::LoadAndRewrite() {
   auto config = storage_->GetConfig();
-  // Namespace is NOT allowed in the cluster mode, so we don't need to rewrite here.
-  if (config->cluster_enabled) return Status::OK();
 
   std::map<std::string, std::string> db_tokens;
   auto s = loadFromDB(&db_tokens);
@@ -127,9 +124,6 @@ Status Namespace::Set(const std::string& ns, const std::string& token) {
   auto config = storage_->GetConfig();
   if (config->requirepass.empty()) {
     return {Status::NotOK, kErrRequiredPassEmpty};
-  }
-  if (config->cluster_enabled) {
-    return {Status::NotOK, kErrClusterModeEnabled};
   }
   if (!IsAllowModify()) {
     return {Status::NotOK, kErrCantModifyNamespace};

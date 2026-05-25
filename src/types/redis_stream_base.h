@@ -203,6 +203,18 @@ enum class StreamSubkeyType {
   StreamPelEntry = 3,
 };
 
+enum class StreamDeleteOption {
+  KeepRef = 0,
+  DelRef = 1,
+  Acked = 2,
+};
+
+enum class StreamEntryDeleteResult : int {
+  kEntryNotFound = -1,
+  kEntryDeleted = 1,
+  kEntrySkipped = 2,
+};
+
 struct StreamPelEntry {
   uint64_t last_delivery_time_ms;
   uint64_t last_delivery_count;

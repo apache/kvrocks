@@ -2691,3 +2691,17 @@ TEST_F(RedisStreamTest, DestroyGroupDoesNotAffectOtherGroups) {
   s = stream_->Del(*ctx_, stream_name);
   EXPECT_TRUE(s.ok());
 }
+
+TEST_F(RedisStreamTest, DeleteEntriesWithOptionEmptyIDs) {
+  redis::StreamAddOptions add_options;
+  add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("12345-6789");
+  std::vector<std::string> values = {"key1", "val1"};
+  redis::StreamEntryID id;
+  auto s = stream_->Add(*ctx_, name_, add_options, values, &id);
+  EXPECT_TRUE(s.ok());
+
+  std::vector<int> results;
+  s = stream_->DeleteEntriesWithOption(*ctx_, name_, {}, redis::StreamDeleteOption::KeepRef, &results);
+  EXPECT_TRUE(s.ok());
+  EXPECT_TRUE(results.empty());
+}

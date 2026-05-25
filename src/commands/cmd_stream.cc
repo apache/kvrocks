@@ -268,6 +268,73 @@ class CommandXDel : public Commander {
   std::vector<redis::StreamEntryID> ids_;
 };
 
+class CommandXDelEx : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    CommandParser parser(args, 1);
+    stream_name_ = GET_OR_RET(parser.TakeStr());
+
+    option_ = redis::StreamDeleteOption::KeepRef;
+
+    while (parser.Good() && !util::EqualICase(parser.RawPeek(), "IDS")) {
+      if (parser.EatEqICase("KEEPREF")) {
+        option_ = redis::StreamDeleteOption::KeepRef;
+      } else if (parser.EatEqICase("DELREF")) {
+        option_ = redis::StreamDeleteOption::DelRef;
+      } else if (parser.EatEqICase("ACKED")) {
+        option_ = redis::StreamDeleteOption::Acked;
+      } else {
+        return parser.InvalidSyntax();
+      }
+    }
+
+    if (!parser.EatEqICase("IDS")) {
+      return {Status::RedisParseErr, "syntax error, expected IDS keyword"};
+    }
+
+    auto numids_result = parser.TakeInt<int64_t>();
+    if (!numids_result.IsOK()) {
+      return {Status::RedisParseErr, errValueNotInteger};
+    }
+    int64_t numids = numids_result.GetValue();
+    if (numids <= 0) {
+      return {Status::RedisParseErr, "numids must be positive"};
+    }
+
+    for (int64_t i = 0; i < numids; i++) {
+      auto id_str = GET_OR_RET(parser.TakeStr());
+      redis::StreamEntryID id;
+      auto s = ParseStreamEntryID(id_str, &id);
+      if (!s.IsOK()) return s;
+      entry_ids_.emplace_back(id);
+    }
+
+    return Status::OK();
+  }
+
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    redis::Stream stream_db(srv->storage, conn->GetNamespace());
+    std::vector<int> results;
+
+    auto s = stream_db.DeleteEntriesWithOption(ctx, stream_name_, entry_ids_, option_, &results);
+    if (!s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+
+    output->append(redis::MultiLen(results.size()));
+    for (int r : results) {
+      output->append(redis::Integer(r));
+    }
+
+    return Status::OK();
+  }
+
+ private:
+  std::string stream_name_;
+  redis::StreamDeleteOption option_ = redis::StreamDeleteOption::KeepRef;
+  std::vector<redis::StreamEntryID> entry_ids_;
+};
+
 class CommandXClaim : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
@@ -1907,6 +1974,7 @@ class CommandXSetId : public Commander {
 REDIS_REGISTER_COMMANDS(Stream, MakeCmdAttr<CommandXAck>("xack", -4, "write no-dbsize-check", 1, 1, 1),
                         MakeCmdAttr<CommandXAdd>("xadd", -5, "write", 1, 1, 1),
                         MakeCmdAttr<CommandXDel>("xdel", -3, "write no-dbsize-check", 1, 1, 1),
+                        MakeCmdAttr<CommandXDelEx>("xdelex", -5, "write no-dbsize-check", 1, 1, 1),
                         MakeCmdAttr<CommandXClaim>("xclaim", -6, "write", 1, 1, 1),
                         MakeCmdAttr<CommandAutoClaim>("xautoclaim", -6, "write", 1, 1, 1),
                         MakeCmdAttr<CommandXGroup>("xgroup", -4, "write", 2, 2, 1),

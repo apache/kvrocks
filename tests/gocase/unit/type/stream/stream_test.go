@@ -767,6 +767,271 @@ var streamTests = func(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.NoError(t, err)
 		require.Equal(t, 3, val)
 	})
+
+	t.Run("XDELEX KEEPREF deletes entry without PEL cleanup", func(t *testing.T) {
+		streamName := "xdelex_keepref_" + strconv.Itoa(rand.Int())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName, ID: "1-0", Values: []string{"field", "value"},
+		}).Err())
+		r, err := rdb.Do(ctx, "XDELEX", streamName, "KEEPREF", "IDS", "1", "1-0").Result()
+		require.NoError(t, err)
+		require.Equal(t, []interface{}{int64(1)}, r)
+		require.Equal(t, int64(0), rdb.XLen(ctx, streamName).Val())
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+	})
+
+	t.Run("XDELEX DELREF deletes entry with PEL cleanup", func(t *testing.T) {
+		streamName := "xdelex_delref_" + strconv.Itoa(rand.Int())
+		groupName := "myGroup"
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName, ID: "1-0", Values: []string{"field", "value"},
+		}).Err())
+		require.NoError(t, rdb.XGroupCreateMkStream(ctx, streamName, groupName, "0").Err())
+		_, err := rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group: groupName, Consumer: "c1", Streams: []string{streamName, ">"}, Count: 1,
+		}).Result()
+		require.NoError(t, err)
+		r, err := rdb.Do(ctx, "XDELEX", streamName, "DELREF", "IDS", "1", "1-0").Result()
+		require.NoError(t, err)
+		require.Equal(t, []interface{}{int64(1)}, r)
+		require.Equal(t, int64(0), rdb.XLen(ctx, streamName).Val())
+		pending, err := rdb.XPending(ctx, streamName, groupName).Result()
+		require.NoError(t, err)
+		require.Equal(t, int64(0), pending.Count)
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+	})
+
+	t.Run("XDELEX duplicate IDs are idempotent", func(t *testing.T) {
+		streamName := "xdelex_dedup_" + strconv.Itoa(rand.Int())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName, ID: "1-0", Values: []string{"field", "value"},
+		}).Err())
+		r, err := rdb.Do(ctx, "XDELEX", streamName, "KEEPREF", "IDS", "2", "1-0", "1-0").Result()
+		require.NoError(t, err)
+		require.Equal(t, []interface{}{int64(1), int64(-1)}, r)
+		require.Equal(t, int64(0), rdb.XLen(ctx, streamName).Val())
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+	})
+
+	t.Run("XDELEX ACKED with no groups returns 2", func(t *testing.T) {
+		streamName := "xdelex_acked_nogroup_" + strconv.Itoa(rand.Int())
+
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     "1-0",
+			Values: []string{"field", "value"},
+		}).Err())
+
+		r, err := rdb.Do(ctx, "XDELEX", streamName, "ACKED", "IDS", "1", "1-0").Result()
+		require.NoError(t, err)
+		require.Equal(t, []interface{}{int64(2)}, r)
+
+		require.Equal(t, int64(1), rdb.XLen(ctx, streamName).Val())
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+	})
+
+	t.Run("XDELEX ACKED with group acked deletes entry", func(t *testing.T) {
+		streamName := "xdelex_acked_group_" + strconv.Itoa(rand.Int())
+		groupName := "myGroup"
+
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     "1-0",
+			Values: []string{"field", "value"},
+		}).Err())
+		require.NoError(t, rdb.XGroupCreateMkStream(ctx, streamName, groupName, "0").Err())
+
+		_, err := rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    groupName,
+			Consumer: "c1",
+			Streams:  []string{streamName, ">"},
+			Count:    1,
+		}).Result()
+		require.NoError(t, err)
+
+		require.NoError(t, rdb.XAck(ctx, streamName, groupName, "1-0").Err())
+
+		r, err := rdb.Do(ctx, "XDELEX", streamName, "ACKED", "IDS", "1", "1-0").Result()
+		require.NoError(t, err)
+		require.Equal(t, []interface{}{int64(1)}, r)
+
+		require.Equal(t, int64(0), rdb.XLen(ctx, streamName).Val())
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+	})
+
+	t.Run("XDELEX ACKED with multi-group some acked returns 2", func(t *testing.T) {
+		streamName := "xdelex_acked_multigroup_notall_" + strconv.Itoa(rand.Int())
+		groupName := "myGroup"
+		otherGroup := "otherGroup"
+
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     "1-0",
+			Values: []string{"field", "value"},
+		}).Err())
+		require.NoError(t, rdb.XGroupCreateMkStream(ctx, streamName, groupName, "0").Err())
+		require.NoError(t, rdb.XGroupCreateMkStream(ctx, streamName, otherGroup, "0").Err())
+
+		_, err := rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    groupName,
+			Consumer: "c1",
+			Streams:  []string{streamName, ">"},
+			Count:    1,
+		}).Result()
+		require.NoError(t, err)
+
+		_, err = rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    otherGroup,
+			Consumer: "c2",
+			Streams:  []string{streamName, ">"},
+			Count:    1,
+		}).Result()
+		require.NoError(t, err)
+
+		require.NoError(t, rdb.XAck(ctx, streamName, groupName, "1-0").Err())
+
+		r, err := rdb.Do(ctx, "XDELEX", streamName, "ACKED", "IDS", "1", "1-0").Result()
+		require.NoError(t, err)
+		require.Equal(t, []interface{}{int64(2)}, r)
+
+		require.Equal(t, int64(1), rdb.XLen(ctx, streamName).Val())
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+	})
+
+	t.Run("XDELEX ACKED with multi-group all acked deletes entry", func(t *testing.T) {
+		streamName := "xdelex_acked_multigroup_all_" + strconv.Itoa(rand.Int())
+		groupName := "myGroup"
+		otherGroup := "otherGroup"
+
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     "1-0",
+			Values: []string{"field", "value"},
+		}).Err())
+		require.NoError(t, rdb.XGroupCreateMkStream(ctx, streamName, groupName, "0").Err())
+		require.NoError(t, rdb.XGroupCreateMkStream(ctx, streamName, otherGroup, "0").Err())
+
+		_, err := rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    groupName,
+			Consumer: "c1",
+			Streams:  []string{streamName, ">"},
+			Count:    1,
+		}).Result()
+		require.NoError(t, err)
+
+		_, err = rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    otherGroup,
+			Consumer: "c2",
+			Streams:  []string{streamName, ">"},
+			Count:    1,
+		}).Result()
+		require.NoError(t, err)
+
+		require.NoError(t, rdb.XAck(ctx, streamName, groupName, "1-0").Err())
+		require.NoError(t, rdb.XAck(ctx, streamName, otherGroup, "1-0").Err())
+
+		r, err := rdb.Do(ctx, "XDELEX", streamName, "ACKED", "IDS", "1", "1-0").Result()
+		require.NoError(t, err)
+		require.Equal(t, []interface{}{int64(1)}, r)
+
+		require.Equal(t, int64(0), rdb.XLen(ctx, streamName).Val())
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+	})
+
+	t.Run("XDELEX with invalid option returns error", func(t *testing.T) {
+		streamName := "xdelex_badopt_" + strconv.Itoa(rand.Int())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName, ID: "1-0", Values: []string{"field", "value"},
+		}).Err())
+		_, err := rdb.Do(ctx, "XDELEX", streamName, "INVALID", "IDS", "1", "1-0").Result()
+		require.Error(t, err)
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+	})
+
+	t.Run("XDELEX missing IDS returns error", func(t *testing.T) {
+		streamName := "xdelex_noids_" + strconv.Itoa(rand.Int())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName, ID: "1-0", Values: []string{"field", "value"},
+		}).Err())
+		_, err := rdb.Do(ctx, "XDELEX", streamName, "KEEPREF").Result()
+		require.Error(t, err)
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+	})
+
+	t.Run("XDELEX with non-integer numids returns error", func(t *testing.T) {
+		streamName := "xdelex_badnumids_" + strconv.Itoa(rand.Int())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName, ID: "1-0", Values: []string{"field", "value"},
+		}).Err())
+		_, err := rdb.Do(ctx, "XDELEX", streamName, "KEEPREF", "IDS", "abc").Result()
+		require.Error(t, err)
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+	})
+
+	t.Run("XDELEX with zero numids returns error", func(t *testing.T) {
+		streamName := "xdelex_zeronumids_" + strconv.Itoa(rand.Int())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName, ID: "1-0", Values: []string{"field", "value"},
+		}).Err())
+		_, err := rdb.Do(ctx, "XDELEX", streamName, "KEEPREF", "IDS", "0").Result()
+		require.Error(t, err)
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+	})
+
+	t.Run("XDELEX with negative numids returns error", func(t *testing.T) {
+		streamName := "xdelex_negnumids_" + strconv.Itoa(rand.Int())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName, ID: "1-0", Values: []string{"field", "value"},
+		}).Err())
+		_, err := rdb.Do(ctx, "XDELEX", streamName, "KEEPREF", "IDS", "-1").Result()
+		require.Error(t, err)
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+	})
+
+	t.Run("XDELEX with invalid entry ID returns error", func(t *testing.T) {
+		streamName := "xdelex_badid_" + strconv.Itoa(rand.Int())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName, ID: "1-0", Values: []string{"field", "value"},
+		}).Err())
+		_, err := rdb.Do(ctx, "XDELEX", streamName, "KEEPREF", "IDS", "1", "bad-id").Result()
+		require.Error(t, err)
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+	})
+
+	t.Run("XDELEX KEEPREF non-existent entry returns -1", func(t *testing.T) {
+		streamName := "xdelex_notfound_" + strconv.Itoa(rand.Int())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName, ID: "1-0", Values: []string{"field", "value"},
+		}).Err())
+		r, err := rdb.Do(ctx, "XDELEX", streamName, "KEEPREF", "IDS", "1", "999-999").Result()
+		require.NoError(t, err)
+		require.Equal(t, []interface{}{int64(-1)}, r)
+		// Verify entry 1-0 still exists
+		require.Equal(t, int64(1), rdb.XLen(ctx, streamName).Val())
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+	})
+
+	t.Run("XDELEX KEEPREF delete first entry recalculates boundary", func(t *testing.T) {
+		streamName := "xdelex_boundary_" + strconv.Itoa(rand.Int())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName, ID: "1-0", Values: []string{"f", "v"},
+		}).Err())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName, ID: "2-0", Values: []string{"f", "v"},
+		}).Err())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName, ID: "3-0", Values: []string{"f", "v"},
+		}).Err())
+		r, err := rdb.Do(ctx, "XDELEX", streamName, "KEEPREF", "IDS", "1", "1-0").Result()
+		require.NoError(t, err)
+		require.Equal(t, []interface{}{int64(1)}, r)
+		require.Equal(t, int64(2), rdb.XLen(ctx, streamName).Val())
+		// XRANGE should start from 2-0 now
+		msgs, err := rdb.XRange(ctx, streamName, "-", "+").Result()
+		require.NoError(t, err)
+		require.Equal(t, "2-0", msgs[0].ID)
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+	})
 }
 
 // streamSimulateXRANGE simulates Redis XRANGE implementation in Golang.

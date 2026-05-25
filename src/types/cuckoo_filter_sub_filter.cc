@@ -45,12 +45,8 @@ rocksdb::Status CuckooSubFilter::TryInsert(uint64_t hash, uint8_t fingerprint, b
   return pages_.TryInsertInBucket(filter_index_, num_buckets_, bucket2_idx, fingerprint, inserted);
 }
 
-rocksdb::Status CuckooSubFilter::TryInsertPrimaryBucket(uint64_t hash, uint8_t fingerprint, bool *inserted) {
-  return pages_.TryInsertInBucket(filter_index_, num_buckets_, getPrimaryBucketIndex(hash), fingerprint, inserted);
-}
-
-rocksdb::Status CuckooSubFilter::KickOutInsert(uint64_t hash, uint8_t fingerprint, uint16_t max_iterations,
-                                               bool *inserted) {
+rocksdb::Status CuckooSubFilter::TryKickOutInsert(uint64_t hash, uint8_t fingerprint, uint16_t max_iterations,
+                                                  bool *inserted) {
   *inserted = false;
 
   uint32_t current_bucket_idx = getPrimaryBucketIndex(hash);

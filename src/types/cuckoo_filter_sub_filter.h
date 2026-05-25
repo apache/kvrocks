@@ -39,8 +39,7 @@ class CuckooSubFilter {
   uint32_t NumBuckets() const { return num_buckets_; }
 
   rocksdb::Status TryInsert(uint64_t hash, uint8_t fingerprint, bool *inserted);
-  rocksdb::Status TryInsertPrimaryBucket(uint64_t hash, uint8_t fingerprint, bool *inserted);
-  rocksdb::Status KickOutInsert(uint64_t hash, uint8_t fingerprint, uint16_t max_iterations, bool *inserted);
+  rocksdb::Status TryKickOutInsert(uint64_t hash, uint8_t fingerprint, uint16_t max_iterations, bool *inserted);
   rocksdb::Status WriteToBatch(rocksdb::WriteBatchBase *batch);
 
  private:

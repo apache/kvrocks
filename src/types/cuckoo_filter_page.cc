@@ -39,7 +39,8 @@ uint32_t GetBucketOffset(uint32_t bucket_index, uint32_t buckets_per_page, uint8
   return (bucket_index % buckets_per_page) * bucket_size;
 }
 
-uint32_t GetPageValueSize(uint32_t page_index, uint32_t num_buckets, uint32_t buckets_per_page, uint8_t bucket_size) {
+uint32_t GetExpectedPageSize(uint32_t page_index, uint32_t num_buckets, uint32_t buckets_per_page,
+                             uint8_t bucket_size) {
   uint32_t first_bucket = page_index * buckets_per_page;
   uint32_t page_bucket_count = std::min(buckets_per_page, num_buckets - first_bucket);
   return page_bucket_count * bucket_size;
@@ -105,7 +106,7 @@ rocksdb::Status CuckooPageCache::GetBucketSlot(uint16_t filter_index, uint32_t n
 }
 
 rocksdb::Status CuckooPageCache::SetBucketSlot(uint16_t filter_index, uint32_t num_buckets, uint32_t bucket_index,
-                                                uint32_t slot_idx, uint8_t fingerprint) {
+                                               uint32_t slot_idx, uint8_t fingerprint) {
   if (slot_idx >= bucket_size_) return rocksdb::Status::InvalidArgument("invalid cuckoo filter bucket slot");
 
   BucketRef bucket;
@@ -125,7 +126,7 @@ rocksdb::Status CuckooPageCache::WriteBackDirtyPages(rocksdb::WriteBatchBase *ba
 }
 
 rocksdb::Status CuckooPageCache::resolveBucketLocation(uint16_t filter_index, uint32_t num_buckets,
-                                                        uint32_t bucket_index, BucketLocation *location) const {
+                                                       uint32_t bucket_index, BucketLocation *location) const {
   if (bucket_size_ == 0 || num_buckets == 0 || bucket_index >= num_buckets) {
     return rocksdb::Status::Corruption("invalid cuckoo filter bucket location");
   }
@@ -134,7 +135,7 @@ rocksdb::Status CuckooPageCache::resolveBucketLocation(uint16_t filter_index, ui
   uint32_t page_index = GetPageIndex(bucket_index, buckets_per_page);
   location->page_key = GetCuckooPageKey(ns_key_, version_, slot_id_encoded_, filter_index, page_index);
   location->offset = GetBucketOffset(bucket_index, buckets_per_page, bucket_size_);
-  location->expected_page_size = GetPageValueSize(page_index, num_buckets, buckets_per_page, bucket_size_);
+  location->expected_page_size = GetExpectedPageSize(page_index, num_buckets, buckets_per_page, bucket_size_);
   return rocksdb::Status::OK();
 }
 
@@ -200,9 +201,12 @@ rocksdb::Status CuckooPageCache::loadPages(const std::vector<BucketLocation> &lo
 
 rocksdb::Status CuckooPageCache::normalizePage(const rocksdb::Status &status, uint32_t expected_size, PageEntry *page) {
   if (!status.ok() && !status.IsNotFound()) return status;
-  if (status.IsNotFound()) page->data.clear();
+  if (status.IsNotFound()) {
+    page->data.assign(expected_size, 0);
+    return rocksdb::Status::OK();
+  }
   if (page->data.size() > expected_size) return rocksdb::Status::Corruption("invalid cuckoo filter page size");
-  if (page->data.size() < expected_size) page->data.resize(expected_size, 0);
+  if (page->data.size() < expected_size) return rocksdb::Status::Corruption("invalid cuckoo filter page size");
   return rocksdb::Status::OK();
 }
 

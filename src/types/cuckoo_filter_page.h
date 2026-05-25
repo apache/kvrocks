@@ -84,6 +84,7 @@ class CuckooPageCache {
   uint64_t version_ = 0;
   uint8_t bucket_size_ = 0;
   uint32_t page_size_ = 0;
+  // Maps encoded cuckoo page keys to cached page entries.
   std::unordered_map<std::string, PageEntry> pages_;
 };
 

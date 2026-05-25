@@ -197,7 +197,7 @@ rocksdb::Status CuckooChain::Add(engine::Context &ctx, const Slice &user_key, co
   auto batch = storage_->GetWriteBatchBase();
   CuckooSubFilter last_filter(storage_, ctx, ns_key, storage_->IsSlotIdEncoded(), metadata.version,
                               metadata.bucket_size, metadata.page_size, last_filter_idx, num_buckets);
-  s = last_filter.KickOutInsert(hash, fingerprint, metadata.max_iterations, &inserted);
+  s = last_filter.TryKickOutInsert(hash, fingerprint, metadata.max_iterations, &inserted);
   if (s.ok() && inserted) {
     WriteBatchLogData log_data(kRedisCuckooFilter, std::vector<std::string>{"add", user_key.ToString()});
     s = batch->PutLogData(log_data.Encode());
@@ -222,11 +222,8 @@ rocksdb::Status CuckooChain::Add(engine::Context &ctx, const Slice &user_key, co
   if (metadata.expansion > 0) {
     if (metadata.n_filters >= UINT16_MAX) return rocksdb::Status::Aborted("maximum number of filters reached");
 
-    metadata.n_filters++;
-    INFO("add expanded to {} filters", metadata.n_filters);
-
     // Retry insertion in the new expanded filter
-    uint16_t new_filter_idx = metadata.n_filters - 1;
+    uint16_t new_filter_idx = metadata.n_filters;
     uint32_t new_num_buckets = 0;
     s = CuckooFilterHelper::GetFilterNumBuckets(metadata.base_capacity, metadata.expansion, metadata.bucket_size,
                                                 new_filter_idx, &new_num_buckets);
@@ -237,7 +234,7 @@ rocksdb::Status CuckooChain::Add(engine::Context &ctx, const Slice &user_key, co
 
     CuckooSubFilter new_filter(storage_, ctx, ns_key, storage_->IsSlotIdEncoded(), metadata.version,
                                metadata.bucket_size, metadata.page_size, new_filter_idx, new_num_buckets);
-    s = new_filter.TryInsertPrimaryBucket(hash, fingerprint, &inserted);
+    s = new_filter.TryInsert(hash, fingerprint, &inserted);
     if (!s.ok()) return s;
     if (!inserted) return rocksdb::Status::Corruption("failed to insert into new cuckoo filter");
 
@@ -248,6 +245,7 @@ rocksdb::Status CuckooChain::Add(engine::Context &ctx, const Slice &user_key, co
     s = new_filter.WriteToBatch(batch.Get());
     if (!s.ok()) return s;
 
+    metadata.n_filters++;
     metadata.size++;
     std::string metadata_bytes;
     metadata.Encode(&metadata_bytes);

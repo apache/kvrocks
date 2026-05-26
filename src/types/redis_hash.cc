@@ -189,13 +189,117 @@ rocksdb::Status Hash::decodeValue(const HashMetadata &metadata, Slice *value, ui
 }
 
 rocksdb::Status Hash::Size(engine::Context &ctx, const Slice &user_key, uint64_t *size) {
+  return Size(ctx, user_key, size, storage_->GetConfig()->hash_length_mode);
+}
+
+rocksdb::Status Hash::Size(engine::Context &ctx, const Slice &user_key, uint64_t *size, HashLengthMode length_mode) {
   *size = 0;
 
   std::string ns_key = AppendNamespacePrefix(user_key);
   HashMetadata metadata(false);
   rocksdb::Status s = getMetadata(ctx, ns_key, &metadata);
   if (!s.ok()) return s;
-  *size = metadata.size;
+
+  if (metadata.IsLegacySubkeyEncoding() || length_mode == HashLengthMode::kApproximate) {
+    *size = metadata.size;
+    return rocksdb::Status::OK();
+  }
+
+  if (metadata.persist > metadata.size) {
+    return scanAndRepair(ctx, ns_key, &metadata, util::GetTimeStampMS(), size);
+  }
+
+  uint64_t ttl_candidates = metadata.size - metadata.persist;
+  if (ttl_candidates == 0) {
+    *size = metadata.size;
+    return rocksdb::Status::OK();
+  }
+
+  uint64_t now = util::GetTimeStampMS();
+  if (metadata.lower != 0 && now < metadata.lower) {
+    *size = metadata.size;
+    return rocksdb::Status::OK();
+  }
+  if (metadata.upper != 0 && now > metadata.upper && metadata.persist == 0) {
+    auto batch = storage_->GetWriteBatchBase();
+    WriteBatchLogData log_data(kRedisHash);
+    s = batch->PutLogData(log_data.Encode());
+    if (!s.ok()) return s;
+    s = batch->Delete(metadata_cf_handle_, ns_key);
+    if (!s.ok()) return s;
+    s = storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+    if (!s.ok()) return s;
+    *size = 0;
+    return rocksdb::Status::OK();
+  }
+
+  return scanAndRepair(ctx, ns_key, &metadata, now, size);
+}
+
+rocksdb::Status Hash::scanAndRepair(engine::Context &ctx, const Slice &ns_key, HashMetadata *metadata, uint64_t now,
+                                    uint64_t *size) {
+  *size = metadata->size;
+  if (!metadata->IsFieldExpirationEncoding()) {
+    return rocksdb::Status::OK();
+  }
+
+  HashMetadata repaired_metadata = *metadata;
+  repaired_metadata.size = 0;
+  repaired_metadata.persist = 0;
+  repaired_metadata.lower = 0;
+  repaired_metadata.upper = 0;
+
+  auto batch = storage_->GetWriteBatchBase();
+  WriteBatchLogData log_data(kRedisHash);
+  auto s = batch->PutLogData(log_data.Encode());
+  if (!s.ok()) return s;
+
+  std::string prefix_key = InternalKey(ns_key, "", metadata->version, storage_->IsSlotIdEncoded()).Encode();
+  std::string next_version_prefix_key =
+      InternalKey(ns_key, "", metadata->version + 1, storage_->IsSlotIdEncoded()).Encode();
+
+  rocksdb::ReadOptions read_options = ctx.DefaultScanOptions();
+  rocksdb::Slice lower_bound(prefix_key);
+  rocksdb::Slice upper_bound(next_version_prefix_key);
+  read_options.iterate_lower_bound = &lower_bound;
+  read_options.iterate_upper_bound = &upper_bound;
+
+  auto iter = util::UniqueIterator(ctx, read_options);
+  for (iter->Seek(prefix_key); iter->Valid() && iter->key().starts_with(prefix_key); iter->Next()) {
+    HashFieldState state;
+    s = DecodeFieldState(*metadata, Slice(iter->value()), now, &state);
+    if (!s.ok()) return s;
+    if (state.kind == HashFieldStateKind::kExpiredTTLPhysical) {
+      s = batch->Delete(iter->key());
+      if (!s.ok()) return s;
+      continue;
+    }
+    repaired_metadata.size += 1;
+    if (state.kind == HashFieldStateKind::kPersistent) {
+      repaired_metadata.persist += 1;
+    } else if (state.kind == HashFieldStateKind::kLiveTTL) {
+      if (repaired_metadata.lower == 0 || state.expire < repaired_metadata.lower) {
+        repaired_metadata.lower = state.expire;
+      }
+      repaired_metadata.upper = std::max(repaired_metadata.upper, state.expire);
+    }
+  }
+  s = iter->status();
+  if (!s.ok()) return s;
+
+  *size = repaired_metadata.size;
+  if (repaired_metadata.size == 0) {
+    s = batch->Delete(metadata_cf_handle_, ns_key);
+  } else {
+    std::string bytes;
+    repaired_metadata.Encode(&bytes);
+    s = batch->Put(metadata_cf_handle_, ns_key, bytes);
+  }
+  if (!s.ok()) return s;
+
+  s = storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+  if (!s.ok()) return s;
+  *metadata = repaired_metadata;
   return rocksdb::Status::OK();
 }
 

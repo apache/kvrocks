@@ -54,6 +54,7 @@ class Hash : public SubKeyScanner {
   Hash(engine::Storage *storage, const std::string &ns) : SubKeyScanner(storage, ns) {}
 
   rocksdb::Status Size(engine::Context &ctx, const Slice &user_key, uint64_t *size);
+  rocksdb::Status Size(engine::Context &ctx, const Slice &user_key, uint64_t *size, HashLengthMode length_mode);
   rocksdb::Status Get(engine::Context &ctx, const Slice &user_key, const Slice &field, std::string *value);
   rocksdb::Status Set(engine::Context &ctx, const Slice &user_key, const Slice &field, const Slice &value,
                       uint64_t *added_cnt);
@@ -87,6 +88,8 @@ class Hash : public SubKeyScanner {
   rocksdb::Status getMetadata(engine::Context &ctx, const Slice &ns_key, HashMetadata *metadata);
   rocksdb::Status getRawValue(engine::Context &ctx, const std::string &sub_key, std::string *value);
   static rocksdb::Status decodeValue(const HashMetadata &metadata, Slice *value, uint64_t *expire = nullptr);
+  rocksdb::Status scanAndRepair(engine::Context &ctx, const Slice &ns_key, HashMetadata *metadata, uint64_t now,
+                                uint64_t *size);
 
   friend struct FieldValueRetriever;
 };

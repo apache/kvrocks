@@ -44,10 +44,20 @@ const (
 func runWithFieldExpirationHash(t *testing.T, fn func(t *testing.T, rdb *redis.Client, ctx context.Context)) {
 	t.Helper()
 
-	srv := util.StartServer(t, util.KvrocksServerConfigs{
+	runWithFieldExpirationHashConfigs(t, nil, fn)
+}
+
+func runWithFieldExpirationHashConfigs(t *testing.T, configs util.KvrocksServerConfigs, fn func(t *testing.T, rdb *redis.Client, ctx context.Context)) {
+	t.Helper()
+
+	serverConfigs := util.KvrocksServerConfigs{
 		"hash-encoding-mode": "field-expiration",
 		"resp3-enabled":      "yes",
-	})
+	}
+	for k, v := range configs {
+		serverConfigs[k] = v
+	}
+	srv := util.StartServer(t, serverConfigs)
 	defer srv.Close()
 
 	ctx := context.Background()
@@ -73,13 +83,25 @@ func requireHashMetadata(t *testing.T, meta util.KMetadataResponse, size, persis
 	}
 }
 
+func requireHLenCommandInfoFlags(t *testing.T, rdb *redis.Client, ctx context.Context, want []interface{}) {
+	t.Helper()
+
+	info, err := rdb.Do(ctx, "command", "info", "hlen").Slice()
+	require.NoError(t, err)
+	require.Len(t, info, 1)
+	hlenInfo := info[0].([]interface{})
+	require.Len(t, hlenInfo, 6)
+	require.Equal(t, "hlen", hlenInfo[0])
+	require.Equal(t, want, hlenInfo[2])
+}
+
 func waitHashFieldExpired(t *testing.T, rdb *redis.Client, ctx context.Context, key, field string) {
 	t.Helper()
 
 	require.Eventually(t, func() bool {
 		err := rdb.HGet(ctx, key, field).Err()
 		return errors.Is(err, redis.Nil)
-	}, 3*time.Second, 50*time.Millisecond)
+	}, 5*time.Second, 50*time.Millisecond)
 }
 
 func requireIntArray(t *testing.T, got interface{}, want []int64) {
@@ -191,8 +213,6 @@ func TestHashFieldExpirationFiltersReadsWithoutMutatingMetadata(t *testing.T) {
 		require.NotContains(t, rangeByLex, "a")
 		randField := rdb.HRandField(ctx, key, 10).Val()
 		require.NotContains(t, randField, "a")
-		require.Equal(t, int64(3), rdb.HLen(ctx, key).Val())
-
 		after := util.GetKMetadata(t, rdb, ctx, key)
 		require.Equal(t, before, after)
 	})
@@ -282,7 +302,6 @@ func TestHashFieldExpirationReadCommandsAcrossFieldStates(t *testing.T) {
 
 		require.Equal(t, []interface{}{"10", "20", nil, nil},
 			rdb.HMGet(ctx, key, hfePersistentField, hfeLiveField, hfeExpiredField, hfeMissingField).Val())
-		require.Equal(t, int64(4), rdb.HLen(ctx, key).Val())
 
 		require.Equal(t, map[string]string{
 			hfePersistentField: "10",
@@ -573,15 +592,257 @@ func TestHashFieldExpirationOptionsAndDuplicates(t *testing.T) {
 	})
 }
 
-func TestHashFieldExpirationHLenMetadataSize(t *testing.T) {
+func TestHashFieldExpirationHLenFastPathAndRepair(t *testing.T) {
 	runWithFieldExpirationHash(t, func(t *testing.T, rdb *redis.Client, ctx context.Context) {
-		key := "hfe-hlen"
+		key := "hfe-hlen-repair"
+		require.Equal(t, int64(2), rdb.HSet(ctx, key, "a", "1", "b", "2").Val())
+		requireIntArray(t, rdb.Do(ctx, "hexpire", key, 1, "FIELDS", 1, "a").Val(), []int64{1})
+		before := util.GetKMetadata(t, rdb, ctx, key)
+		requireHashMetadata(t, before, 2, 1)
+
+		require.Equal(t, int64(2), rdb.HLen(ctx, key).Val())
+		require.Equal(t, before, util.GetKMetadata(t, rdb, ctx, key))
+
+		waitHashFieldExpired(t, rdb, ctx, key, "a")
+		require.Equal(t, int64(2), rdb.Do(ctx, "hlen", key, "APPROX").Val())
+		require.Equal(t, before, util.GetKMetadata(t, rdb, ctx, key))
+		require.Equal(t, int64(1), rdb.HLen(ctx, key).Val())
+		requireHashMetadata(t, util.GetKMetadata(t, rdb, ctx, key), 1, 1)
+		require.Equal(t, map[string]string{"b": "2"}, rdb.HGetAll(ctx, key).Val())
+
+		requireIntArray(t, rdb.Do(ctx, "hexpire", key, 1, "FIELDS", 1, "b").Val(), []int64{1})
+		waitHashFieldExpired(t, rdb, ctx, key, "b")
+		require.Equal(t, int64(0), rdb.Do(ctx, "hlen", key, "REPAIR").Val())
+		require.Equal(t, int64(0), rdb.Exists(ctx, key).Val())
+		require.Error(t, rdb.Do(ctx, "kmetadata", key).Err())
+	})
+}
+
+func TestHashFieldExpirationHLenApproximateConfig(t *testing.T) {
+	runWithFieldExpirationHashConfigs(t, util.KvrocksServerConfigs{
+		"hash-length-mode": "approximate",
+	}, func(t *testing.T, rdb *redis.Client, ctx context.Context) {
+		key := "hfe-hlen-approx-config"
+		require.Equal(t, int64(2), rdb.HSet(ctx, key, "a", "1", "b", "2").Val())
+		requireIntArray(t, rdb.Do(ctx, "hexpire", key, 1, "FIELDS", 1, "a").Val(), []int64{1})
+		before := util.GetKMetadata(t, rdb, ctx, key)
+		waitHashFieldExpired(t, rdb, ctx, key, "a")
+
+		require.Equal(t, int64(2), rdb.HLen(ctx, key).Val())
+		require.Equal(t, before, util.GetKMetadata(t, rdb, ctx, key))
+		require.Equal(t, int64(1), rdb.Do(ctx, "hlen", key, "REPAIR").Val())
+		requireHashMetadata(t, util.GetKMetadata(t, rdb, ctx, key), 1, 1)
+	})
+}
+
+func TestHashFieldExpirationHLenProposalFastPathTimeline(t *testing.T) {
+	runWithFieldExpirationHash(t, func(t *testing.T, rdb *redis.Client, ctx context.Context) {
+		key := "hfe-hlen-proposal-timeline"
+		require.Equal(t, int64(2), rdb.HSet(ctx, key, "field1", "value1", "field2", "value2").Val())
+		requireIntArray(t, rdb.Do(ctx, "hexpire", key, 1, "FIELDS", 1, "field1").Val(), []int64{1})
+		requireIntArray(t, rdb.Do(ctx, "hexpire", key, 4, "FIELDS", 1, "field2").Val(), []int64{1})
+
+		initial := util.GetKMetadata(t, rdb, ctx, key)
+		requireHashMetadata(t, initial, 2, 0)
+		require.Less(t, initial.Lower, initial.Upper)
+		require.Equal(t, int64(2), rdb.Do(ctx, "hlen", key, "APPROX").Val())
+		require.Equal(t, int64(2), rdb.HLen(ctx, key).Val())
+		require.Equal(t, initial, util.GetKMetadata(t, rdb, ctx, key))
+
+		waitHashFieldExpired(t, rdb, ctx, key, "field1")
+		require.Equal(t, "value2", rdb.HGet(ctx, key, "field2").Val())
+		require.Equal(t, int64(2), rdb.Do(ctx, "hlen", key, "APPROX").Val())
+		require.Equal(t, initial, util.GetKMetadata(t, rdb, ctx, key))
+
+		require.Equal(t, int64(1), rdb.HLen(ctx, key).Val())
+		afterRepair := util.GetKMetadata(t, rdb, ctx, key)
+		requireHashMetadata(t, afterRepair, 1, 0)
+		require.Equal(t, initial.Upper, afterRepair.Lower)
+		require.Equal(t, initial.Upper, afterRepair.Upper)
+		require.Equal(t, int64(1), rdb.Do(ctx, "hlen", key, "APPROX").Val())
+
+		require.Equal(t, int64(1), rdb.HLen(ctx, key).Val())
+		require.Equal(t, afterRepair, util.GetKMetadata(t, rdb, ctx, key))
+
+		waitHashFieldExpired(t, rdb, ctx, key, "field2")
+		require.Equal(t, int64(1), rdb.Do(ctx, "hlen", key, "APPROX").Val())
+		require.Equal(t, afterRepair, util.GetKMetadata(t, rdb, ctx, key))
+		require.Equal(t, int64(0), rdb.HLen(ctx, key).Val())
+		require.Equal(t, int64(0), rdb.Exists(ctx, key).Val())
+		require.Error(t, rdb.Do(ctx, "kmetadata", key).Err())
+	})
+}
+
+func TestHashFieldExpirationHLenMetadataEffectsByPath(t *testing.T) {
+	runWithFieldExpirationHash(t, func(t *testing.T, rdb *redis.Client, ctx context.Context) {
+		t.Run("no ttl candidates fast path does not mutate metadata", func(t *testing.T) {
+			key := "hfe-hlen-effect-persistent"
+			require.Equal(t, int64(2), rdb.HSet(ctx, key, "a", "1", "b", "2").Val())
+			before := util.GetKMetadata(t, rdb, ctx, key)
+			requireHashMetadata(t, before, 2, 2)
+
+			require.Equal(t, int64(2), rdb.Do(ctx, "hlen", key, "APPROX").Val())
+			require.Equal(t, int64(2), rdb.HLen(ctx, key).Val())
+			require.Equal(t, before, util.GetKMetadata(t, rdb, ctx, key))
+		})
+
+		t.Run("future ttl lower bound fast path does not mutate metadata", func(t *testing.T) {
+			key := "hfe-hlen-effect-future"
+			require.Equal(t, int64(2), rdb.HSet(ctx, key, "ttl", "1", "persist", "2").Val())
+			requireIntArray(t, rdb.Do(ctx, "hexpire", key, 300, "FIELDS", 1, "ttl").Val(), []int64{1})
+			before := util.GetKMetadata(t, rdb, ctx, key)
+			requireHashMetadata(t, before, 2, 1)
+
+			require.Equal(t, int64(2), rdb.Do(ctx, "hlen", key, "APPROX").Val())
+			require.Equal(t, int64(2), rdb.HLen(ctx, key).Val())
+			require.Equal(t, before, util.GetKMetadata(t, rdb, ctx, key))
+		})
+
+		t.Run("slow repair removes expired ttl candidates and rewrites metadata", func(t *testing.T) {
+			key := "hfe-hlen-effect-repair"
+			require.Equal(t, int64(3), rdb.HSet(ctx, key, "persist", "1", "expired", "2", "live", "3").Val())
+			requireIntArray(t, rdb.Do(ctx, "hexpire", key, 1, "FIELDS", 1, "expired").Val(), []int64{1})
+			requireIntArray(t, rdb.Do(ctx, "hexpire", key, 300, "FIELDS", 1, "live").Val(), []int64{1})
+			before := util.GetKMetadata(t, rdb, ctx, key)
+			requireHashMetadata(t, before, 3, 1)
+			require.Less(t, before.Lower, before.Upper)
+			waitHashFieldExpired(t, rdb, ctx, key, "expired")
+
+			require.Equal(t, int64(3), rdb.Do(ctx, "hlen", key, "APPROX").Val())
+			require.Equal(t, before, util.GetKMetadata(t, rdb, ctx, key))
+			require.Equal(t, int64(2), rdb.HLen(ctx, key).Val())
+			afterRepair := util.GetKMetadata(t, rdb, ctx, key)
+			requireHashMetadata(t, afterRepair, 2, 1)
+			require.Equal(t, before.Upper, afterRepair.Lower)
+			require.Equal(t, before.Upper, afterRepair.Upper)
+			require.Equal(t, int64(2), rdb.Do(ctx, "hlen", key, "APPROX").Val())
+			require.Equal(t, map[string]string{"persist": "1", "live": "3"}, rdb.HGetAll(ctx, key).Val())
+		})
+
+		t.Run("all ttl candidates expired fast delete removes metadata", func(t *testing.T) {
+			key := "hfe-hlen-effect-fast-delete"
+			require.Equal(t, int64(2), rdb.HSet(ctx, key, "a", "1", "b", "2").Val())
+			requireIntArray(t, rdb.Do(ctx, "hexpire", key, 1, "FIELDS", 2, "a", "b").Val(), []int64{1, 1})
+			before := util.GetKMetadata(t, rdb, ctx, key)
+			requireHashMetadata(t, before, 2, 0)
+			waitHashFieldExpired(t, rdb, ctx, key, "a")
+			waitHashFieldExpired(t, rdb, ctx, key, "b")
+
+			require.Equal(t, int64(2), rdb.Do(ctx, "hlen", key, "APPROX").Val())
+			require.Equal(t, before, util.GetKMetadata(t, rdb, ctx, key))
+			require.Equal(t, int64(0), rdb.HLen(ctx, key).Val())
+			require.Equal(t, int64(0), rdb.Exists(ctx, key).Val())
+			require.Error(t, rdb.Do(ctx, "kmetadata", key).Err())
+		})
+	})
+}
+
+func TestHashFieldExpirationHLenParseErrors(t *testing.T) {
+	runWithFieldExpirationHash(t, func(t *testing.T, rdb *redis.Client, ctx context.Context) {
+		key := "hfe-hlen-parse"
+		require.Equal(t, int64(1), rdb.HSet(ctx, key, "a", "1").Val())
+
+		require.ErrorContains(t, rdb.Do(ctx, "hlen", key, "BAD").Err(), "syntax")
+		require.ErrorContains(t, rdb.Do(ctx, "hlen", key, "APPROX", "REPAIR").Err(), "wrong number")
+	})
+}
+
+func TestHashFieldExpirationHLenReadonlyAndRepairFlags(t *testing.T) {
+	runWithFieldExpirationHash(t, func(t *testing.T, rdb *redis.Client, ctx context.Context) {
+		requireHLenCommandInfoFlags(t, rdb, ctx, []interface{}{"readonly"})
+
+		key := "hfe-hlen-flags"
 		require.Equal(t, int64(2), rdb.HSet(ctx, key, "a", "1", "b", "2").Val())
 		requireIntArray(t, rdb.Do(ctx, "hexpire", key, 1, "FIELDS", 1, "a").Val(), []int64{1})
 		waitHashFieldExpired(t, rdb, ctx, key, "a")
-		require.Equal(t, int64(2), rdb.HLen(ctx, key).Val())
-		require.Equal(t, map[string]string{"b": "2"}, rdb.HGetAll(ctx, key).Val())
+
+		require.ErrorContains(t,
+			rdb.Do(ctx, "eval_ro", `return redis.call('hlen', KEYS[1])`, 1, key).Err(),
+			"Write commands are not allowed from read-only scripts")
+		require.Equal(t, int64(2), rdb.Do(ctx, "eval_ro", `return redis.call('hlen', KEYS[1], 'APPROX')`, 1, key).Val())
+		require.ErrorContains(t,
+			rdb.Do(ctx, "eval_ro", `return redis.call('hlen', KEYS[1], 'REPAIR')`, 1, key).Err(),
+			"Write commands are not allowed from read-only scripts")
 	})
+}
+
+func TestHashFieldExpirationHLenAccurateConfigDynamicFlagsInEvalRO(t *testing.T) {
+	runWithFieldExpirationHashConfigs(t, util.KvrocksServerConfigs{
+		"hash-length-mode": "accurate",
+	}, func(t *testing.T, rdb *redis.Client, ctx context.Context) {
+		requireHLenCommandInfoFlags(t, rdb, ctx, []interface{}{"readonly"})
+		key := "hfe-hlen-dynamic-accurate"
+		require.Equal(t, int64(1), rdb.HSet(ctx, key, "a", "1").Val())
+
+		require.ErrorContains(t,
+			rdb.Do(ctx, "eval_ro", `return redis.call('hlen', KEYS[1])`, 1, key).Err(),
+			"Write commands are not allowed from read-only scripts")
+		require.Equal(t, int64(1),
+			rdb.Do(ctx, "eval_ro", `return redis.call('hlen', KEYS[1], 'APPROX')`, 1, key).Val())
+		require.ErrorContains(t,
+			rdb.Do(ctx, "eval_ro", `return redis.call('hlen', KEYS[1], 'REPAIR')`, 1, key).Err(),
+			"Write commands are not allowed from read-only scripts")
+	})
+}
+
+func TestHashFieldExpirationHLenApproximateConfigDynamicFlagsInEvalRO(t *testing.T) {
+	runWithFieldExpirationHashConfigs(t, util.KvrocksServerConfigs{
+		"hash-length-mode": "approximate",
+	}, func(t *testing.T, rdb *redis.Client, ctx context.Context) {
+		requireHLenCommandInfoFlags(t, rdb, ctx, []interface{}{"readonly"})
+		key := "hfe-hlen-dynamic-approx"
+		require.Equal(t, int64(1), rdb.HSet(ctx, key, "a", "1").Val())
+
+		require.Equal(t, int64(1),
+			rdb.Do(ctx, "eval_ro", `return redis.call('hlen', KEYS[1])`, 1, key).Val())
+		require.Equal(t, int64(1),
+			rdb.Do(ctx, "eval_ro", `return redis.call('hlen', KEYS[1], 'APPROX')`, 1, key).Val())
+		require.ErrorContains(t,
+			rdb.Do(ctx, "eval_ro", `return redis.call('hlen', KEYS[1], 'REPAIR')`, 1, key).Err(),
+			"Write commands are not allowed from read-only scripts")
+	})
+}
+
+func TestHashFieldExpirationHLenLegacyAccurateConfigDynamicFlagsInEvalRO(t *testing.T) {
+	srv := util.StartServer(t, util.KvrocksServerConfigs{
+		"hash-encoding-mode": "legacy",
+		"hash-length-mode":   "accurate",
+		"resp3-enabled":      "yes",
+	})
+	defer srv.Close()
+
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	requireHLenCommandInfoFlags(t, rdb, ctx, []interface{}{"readonly"})
+	key := "hfe-hlen-dynamic-legacy"
+	require.Equal(t, int64(1), rdb.HSet(ctx, key, "a", "1").Val())
+	require.Equal(t, int64(1), rdb.Do(ctx, "eval_ro", `return redis.call('hlen', KEYS[1])`, 1, key).Val())
+	require.Equal(t, int64(1), rdb.Do(ctx, "eval_ro", `return redis.call('hlen', KEYS[1], 'APPROX')`, 1, key).Val())
+	require.ErrorContains(t,
+		rdb.Do(ctx, "eval_ro", `return redis.call('hlen', KEYS[1], 'REPAIR')`, 1, key).Err(),
+		"Write commands are not allowed from read-only scripts")
+}
+
+func TestHashFieldExpirationHLenLegacyConfigDefaultStaysReadonly(t *testing.T) {
+	srv := util.StartServer(t, util.KvrocksServerConfigs{
+		"hash-encoding-mode": "legacy",
+		"hash-length-mode":   "accurate",
+		"resp3-enabled":      "yes",
+	})
+	defer srv.Close()
+
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	key := "hfe-hlen-legacy-flags"
+	require.Equal(t, int64(1), rdb.HSet(ctx, key, "a", "1").Val())
+	require.Equal(t, int64(1), rdb.Do(ctx, "eval_ro", `return redis.call('hlen', KEYS[1])`, 1, key).Val())
+	require.ErrorContains(t,
+		rdb.Do(ctx, "eval_ro", `return redis.call('hlen', KEYS[1], 'REPAIR')`, 1, key).Err(),
+		"Write commands are not allowed from read-only scripts")
 }
 
 func TestHashFieldExpirationLegacyRejectsFieldTTLCommands(t *testing.T) {

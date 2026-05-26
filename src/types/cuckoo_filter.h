@@ -120,11 +120,13 @@ class CuckooFilterHelper {
   static rocksdb::Status GetFilterNumBuckets(uint64_t base_capacity, uint16_t expansion, uint8_t bucket_size,
                                              uint16_t filter_index, uint32_t *num_buckets) {
     uint64_t filter_capacity = 0;
-    if (!CalculateFilterCapacity(base_capacity, expansion, filter_index, &filter_capacity) ||
-        !IsCapacitySupported(filter_capacity, bucket_size)) {
+    if (!CalculateFilterCapacity(base_capacity, expansion, filter_index, &filter_capacity)) {
       return rocksdb::Status::Corruption("invalid metadata: filter capacity is too large");
     }
-    return CalculateRequiredBuckets(filter_capacity, bucket_size, num_buckets);
+
+    auto s = CalculateRequiredBuckets(filter_capacity, bucket_size, num_buckets);
+    if (!s.ok()) return rocksdb::Status::Corruption("invalid metadata: filter capacity is too large");
+    return rocksdb::Status::OK();
   }
 };
 

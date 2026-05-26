@@ -39,6 +39,12 @@
 namespace {
 
 class CompactHashFieldExpirationTest : public ::testing::Test {
+ public:
+  CompactHashFieldExpirationTest(const CompactHashFieldExpirationTest &) = delete;
+  CompactHashFieldExpirationTest &operator=(const CompactHashFieldExpirationTest &) = delete;
+  CompactHashFieldExpirationTest(CompactHashFieldExpirationTest &&) = delete;
+  CompactHashFieldExpirationTest &operator=(CompactHashFieldExpirationTest &&) = delete;
+
  protected:
   CompactHashFieldExpirationTest() {
     const char *path = "compact_hash_field_expiration.conf";
@@ -75,39 +81,39 @@ class CompactHashFieldExpirationTest : public ::testing::Test {
     unlink("compact_hash_field_expiration.conf");
   }
 
-  HashMetadata HashMetadataOf(const std::string &key) {
+  HashMetadata hashMetadataOf(const std::string &key) {
     HashMetadata metadata(false);
     auto s = db_->GetMetadata(*ctx_, {kRedisHash}, db_->AppendNamespacePrefix(key), &metadata);
     assert(s.ok());
     return metadata;
   }
 
-  std::string HashSubKey(const std::string &key, const std::string &field) {
-    HashMetadata metadata = HashMetadataOf(key);
+  std::string hashSubKey(const std::string &key, const std::string &field) {
+    HashMetadata metadata = hashMetadataOf(key);
     return InternalKey(db_->AppendNamespacePrefix(key), field, metadata.version, storage_->IsSlotIdEncoded()).Encode();
   }
 
-  rocksdb::Status GetRawHashValue(const std::string &key, const std::string &field, std::string *value) {
-    return storage_->Get(*ctx_, ctx_->GetReadOptions(), HashSubKey(key, field), value);
+  rocksdb::Status getRawHashValue(const std::string &key, const std::string &field, std::string *value) {
+    return storage_->Get(*ctx_, ctx_->GetReadOptions(), hashSubKey(key, field), value);
   }
 
-  rocksdb::Status GetRawSubKeyValue(const std::string &sub_key, std::string *value) {
+  rocksdb::Status getRawSubKeyValue(const std::string &sub_key, std::string *value) {
     return storage_->Get(*ctx_, ctx_->GetReadOptions(), sub_key, value);
   }
 
-  rocksdb::Status PutRawHashValue(const std::string &key, const std::string &field, const std::string &value) {
+  rocksdb::Status putRawHashValue(const std::string &key, const std::string &field, const std::string &value) {
     auto batch = storage_->GetWriteBatchBase();
-    auto s = batch->Put(HashSubKey(key, field), value);
+    auto s = batch->Put(hashSubKey(key, field), value);
     if (!s.ok()) return s;
     return storage_->Write(*ctx_, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
   }
 
-  rocksdb::Status GetRawMetadata(const std::string &key, std::string *value) {
+  rocksdb::Status getRawMetadata(const std::string &key, std::string *value) {
     return storage_->Get(*ctx_, ctx_->GetReadOptions(), storage_->GetCFHandle(ColumnFamilyID::Metadata),
                          db_->AppendNamespacePrefix(key), value);
   }
 
-  void CompactTwice() {
+  void compactTwice() {
     auto s = storage_->Compact(nullptr, nullptr, nullptr);
     ASSERT_TRUE(s.ok()) << s.ToString();
     s = storage_->Compact(nullptr, nullptr, nullptr);
@@ -246,7 +252,7 @@ TEST_F(CompactHashFieldExpirationTest, DropsExpiredTTLSubkeyWithoutChangingMetad
   s = hash_->ExpireFields(*ctx_, key, {"expired"}, expired_at, HashFieldExpireCondition::kNone, &results);
   ASSERT_TRUE(s.ok()) << s.ToString();
 
-  HashMetadata before = HashMetadataOf(key);
+  HashMetadata before = hashMetadataOf(key);
   ASSERT_EQ(before.size, 3);
   ASSERT_EQ(before.persist, 1);
   ASSERT_LT(before.lower, before.upper);
@@ -254,21 +260,21 @@ TEST_F(CompactHashFieldExpirationTest, DropsExpiredTTLSubkeyWithoutChangingMetad
   ASSERT_LT(expired_at, util::GetTimeStampMS());
 
   std::string raw_value;
-  ASSERT_TRUE(GetRawHashValue(key, "persistent", &raw_value).ok());
-  ASSERT_TRUE(GetRawHashValue(key, "live", &raw_value).ok());
-  ASSERT_TRUE(GetRawHashValue(key, "expired", &raw_value).ok());
+  ASSERT_TRUE(getRawHashValue(key, "persistent", &raw_value).ok());
+  ASSERT_TRUE(getRawHashValue(key, "live", &raw_value).ok());
+  ASSERT_TRUE(getRawHashValue(key, "expired", &raw_value).ok());
 
   engine::SubKeyFilter filter(storage_.get());
-  EXPECT_EQ(filter.FilterBlobByKey(0, HashSubKey(key, "expired"), nullptr, nullptr),
+  EXPECT_EQ(filter.FilterBlobByKey(0, hashSubKey(key, "expired"), nullptr, nullptr),
             rocksdb::CompactionFilter::Decision::kUndetermined);
 
-  CompactTwice();
+  compactTwice();
 
-  EXPECT_TRUE(GetRawHashValue(key, "persistent", &raw_value).ok());
-  EXPECT_TRUE(GetRawHashValue(key, "live", &raw_value).ok());
-  EXPECT_TRUE(GetRawHashValue(key, "expired", &raw_value).IsNotFound());
+  EXPECT_TRUE(getRawHashValue(key, "persistent", &raw_value).ok());
+  EXPECT_TRUE(getRawHashValue(key, "live", &raw_value).ok());
+  EXPECT_TRUE(getRawHashValue(key, "expired", &raw_value).IsNotFound());
 
-  HashMetadata after = HashMetadataOf(key);
+  HashMetadata after = hashMetadataOf(key);
   EXPECT_EQ(after.size, before.size);
   EXPECT_EQ(after.persist, before.persist);
   EXPECT_EQ(after.lower, before.lower);
@@ -288,7 +294,7 @@ TEST_F(CompactHashFieldExpirationTest, DropsWholeHashWhenAllTTLFieldsExpiredByBo
   s = hash_->ExpireFields(*ctx_, key, {"first", "second"}, expire_at, HashFieldExpireCondition::kNone, &results);
   ASSERT_TRUE(s.ok()) << s.ToString();
 
-  HashMetadata before = HashMetadataOf(key);
+  HashMetadata before = hashMetadataOf(key);
   ASSERT_TRUE(before.IsFieldExpirationEncoding());
   ASSERT_EQ(before.size, 2);
   ASSERT_EQ(before.persist, 0);
@@ -299,17 +305,17 @@ TEST_F(CompactHashFieldExpirationTest, DropsWholeHashWhenAllTTLFieldsExpiredByBo
   ASSERT_LT(before.upper, util::GetTimeStampMS());
 
   std::string raw_value;
-  std::string first_sub_key = HashSubKey(key, "first");
-  std::string second_sub_key = HashSubKey(key, "second");
-  ASSERT_TRUE(GetRawMetadata(key, &raw_value).ok());
-  ASSERT_TRUE(GetRawSubKeyValue(first_sub_key, &raw_value).ok());
-  ASSERT_TRUE(GetRawSubKeyValue(second_sub_key, &raw_value).ok());
+  std::string first_sub_key = hashSubKey(key, "first");
+  std::string second_sub_key = hashSubKey(key, "second");
+  ASSERT_TRUE(getRawMetadata(key, &raw_value).ok());
+  ASSERT_TRUE(getRawSubKeyValue(first_sub_key, &raw_value).ok());
+  ASSERT_TRUE(getRawSubKeyValue(second_sub_key, &raw_value).ok());
 
-  CompactTwice();
+  compactTwice();
 
-  EXPECT_TRUE(GetRawMetadata(key, &raw_value).IsNotFound());
-  EXPECT_TRUE(GetRawSubKeyValue(first_sub_key, &raw_value).IsNotFound());
-  EXPECT_TRUE(GetRawSubKeyValue(second_sub_key, &raw_value).IsNotFound());
+  EXPECT_TRUE(getRawMetadata(key, &raw_value).IsNotFound());
+  EXPECT_TRUE(getRawSubKeyValue(first_sub_key, &raw_value).IsNotFound());
+  EXPECT_TRUE(getRawSubKeyValue(second_sub_key, &raw_value).IsNotFound());
 }
 
 TEST_F(CompactHashFieldExpirationTest, KeepsHashMetadataWhenPersistentFieldExistsPastUpperBound) {
@@ -324,7 +330,7 @@ TEST_F(CompactHashFieldExpirationTest, KeepsHashMetadataWhenPersistentFieldExist
   s = hash_->ExpireFields(*ctx_, key, {"expired"}, expire_at, HashFieldExpireCondition::kNone, &results);
   ASSERT_TRUE(s.ok()) << s.ToString();
 
-  HashMetadata before = HashMetadataOf(key);
+  HashMetadata before = hashMetadataOf(key);
   ASSERT_TRUE(before.IsFieldExpirationEncoding());
   ASSERT_EQ(before.size, 2);
   ASSERT_EQ(before.persist, 1);
@@ -334,14 +340,14 @@ TEST_F(CompactHashFieldExpirationTest, KeepsHashMetadataWhenPersistentFieldExist
   usleep(250 * 1000);
   ASSERT_LT(before.upper, util::GetTimeStampMS());
 
-  CompactTwice();
+  compactTwice();
 
   std::string raw_value;
-  EXPECT_TRUE(GetRawMetadata(key, &raw_value).ok());
-  EXPECT_TRUE(GetRawHashValue(key, "persistent", &raw_value).ok());
-  EXPECT_TRUE(GetRawHashValue(key, "expired", &raw_value).IsNotFound());
+  EXPECT_TRUE(getRawMetadata(key, &raw_value).ok());
+  EXPECT_TRUE(getRawHashValue(key, "persistent", &raw_value).ok());
+  EXPECT_TRUE(getRawHashValue(key, "expired", &raw_value).IsNotFound());
 
-  HashMetadata after = HashMetadataOf(key);
+  HashMetadata after = hashMetadataOf(key);
   EXPECT_EQ(after.size, before.size);
   EXPECT_EQ(after.persist, before.persist);
   EXPECT_EQ(after.lower, before.lower);
@@ -414,20 +420,20 @@ TEST_F(CompactHashFieldExpirationTest, KeepsMalformedFieldExpirationSubkeyValue)
                           &results);
   ASSERT_TRUE(s.ok()) << s.ToString();
 
-  HashMetadata before = HashMetadataOf(key);
+  HashMetadata before = hashMetadataOf(key);
   ASSERT_TRUE(before.IsFieldExpirationEncoding());
   ASSERT_EQ(before.persist, 0);
 
-  s = PutRawHashValue(key, "field", "short");
+  s = putRawHashValue(key, "field", "short");
   ASSERT_TRUE(s.ok()) << s.ToString();
 
-  CompactTwice();
+  compactTwice();
 
   std::string raw_value;
-  EXPECT_TRUE(GetRawHashValue(key, "field", &raw_value).ok());
+  EXPECT_TRUE(getRawHashValue(key, "field", &raw_value).ok());
   EXPECT_EQ(raw_value, "short");
 
-  HashMetadata after = HashMetadataOf(key);
+  HashMetadata after = hashMetadataOf(key);
   EXPECT_EQ(after.size, before.size);
   EXPECT_EQ(after.persist, before.persist);
   EXPECT_EQ(after.lower, before.lower);

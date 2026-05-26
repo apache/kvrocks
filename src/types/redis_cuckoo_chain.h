@@ -26,6 +26,8 @@
 
 namespace redis {
 
+class CuckooSubFilter;
+
 // Default values for a newly created cuckoo filter.
 const uint32_t kCFDefaultCapacity = 1024;
 const uint8_t kCFDefaultBucketSize = 4;  // 4 fingerprints per bucket
@@ -50,6 +52,16 @@ class CuckooChain : public Database {
   rocksdb::Status getCuckooChainMetadata(engine::Context &ctx, const Slice &ns_key, CuckooChainMetadata *metadata);
 
   static rocksdb::Status validateMetadata(const CuckooChainMetadata &metadata);
+
+  rocksdb::Status tryCuckooInsert(engine::Context &ctx, const Slice &user_key, const std::string &ns_key,
+                                  CuckooChainMetadata *metadata, uint64_t hash, uint8_t fingerprint, bool *inserted);
+  rocksdb::Status tryCuckooKickOut(engine::Context &ctx, const Slice &user_key, const std::string &ns_key,
+                                   CuckooChainMetadata *metadata, uint64_t hash, uint8_t fingerprint, bool *inserted);
+  rocksdb::Status expandAndInsertCuckooChain(engine::Context &ctx, const Slice &user_key, const std::string &ns_key,
+                                             CuckooChainMetadata *metadata, uint64_t hash, uint8_t fingerprint,
+                                             bool *inserted);
+  rocksdb::Status commitSubFilterAndMetadata(engine::Context &ctx, const Slice &user_key, const std::string &ns_key,
+                                             CuckooChainMetadata *metadata, CuckooSubFilter *sub_filter);
 };
 
 }  // namespace redis

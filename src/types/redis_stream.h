@@ -22,8 +22,10 @@
 
 #include <rocksdb/status.h>
 
+#include <map>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "storage/redis_db.h"
@@ -53,6 +55,9 @@ class Stream : public SubKeyScanner {
                                 uint64_t *deleted_cnt);
   rocksdb::Status DeletePelEntries(engine::Context &ctx, const Slice &stream_name, const std::string &group_name,
                                    const std::vector<StreamEntryID> &entry_ids, uint64_t *acknowledged);
+  rocksdb::Status DeleteEntriesAndAck(engine::Context &ctx, const Slice &stream_name, const std::string &group_name,
+                                      const std::vector<StreamEntryID> &ids, StreamDeleteOption option,
+                                      std::vector<int> *results);
   rocksdb::Status ClaimPelEntries(engine::Context &ctx, const Slice &stream_name, const std::string &group_name,
                                   const std::string &consumer_name, uint64_t min_idle_time_ms,
                                   const std::vector<StreamEntryID> &entry_ids, const StreamClaimOptions &options,
@@ -100,6 +105,8 @@ class Stream : public SubKeyScanner {
   static StreamConsumerGroupMetadata decodeStreamConsumerGroupMetadataValue(const std::string &value);
   std::string internalKeyFromConsumerName(const std::string &ns_key, const StreamMetadata &metadata,
                                           const std::string &group_name, const std::string &consumer_name) const;
+  rocksdb::Status getGroupNames(engine::Context &ctx, const std::string &ns_key, const StreamMetadata &metadata,
+                                std::vector<std::string> *group_names);
   std::string consumerNameFromInternalKey(rocksdb::Slice key) const;
   static std::string encodeStreamConsumerMetadataValue(const StreamConsumerMetadata &consumer_metadata);
   static StreamConsumerMetadata decodeStreamConsumerMetadataValue(const std::string &value);
@@ -109,6 +116,22 @@ class Stream : public SubKeyScanner {
   std::string internalPelKeyFromGroupAndEntryId(const std::string &ns_key, const StreamMetadata &metadata,
                                                 const std::string &group_name, const StreamEntryID &id);
   StreamEntryID groupAndEntryIdFromPelInternalKey(rocksdb::Slice key, std::string &group_name);
+
+  rocksdb::Status deleteEntryAndUpdateMeta(rocksdb::WriteBatchBase *batch, const std::string &entry_key,
+                                           const StreamEntryID &id, StreamMetadata *metadata, uint64_t *deleted_cnt);
+  rocksdb::Status cleanPelFromAllGroups(
+      engine::Context &ctx, const std::string &ns_key, const StreamMetadata &metadata, const StreamEntryID &id,
+      rocksdb::WriteBatchBase *batch, bool *batch_modified, const std::vector<std::string> &group_names,
+      std::map<std::string, uint64_t> *group_pending_decrements,
+      std::map<std::string, std::map<std::string, uint64_t>> *consumer_pending_decrements);
+  rocksdb::Status isAckedByAllGroups(engine::Context &ctx, const std::string &ns_key, const StreamMetadata &metadata,
+                                     const StreamEntryID &id, const std::vector<std::string> &group_names,
+                                     const std::unordered_map<std::string, StreamEntryID> &last_delivered_ids_by_group,
+                                     bool *all_acked);
+  rocksdb::Status flushPendingNumberUpdates(
+      engine::Context &ctx, const std::string &ns_key, const StreamMetadata &metadata, rocksdb::WriteBatchBase *batch,
+      const std::map<std::string, uint64_t> &group_pending_decrements,
+      const std::map<std::string, std::map<std::string, uint64_t>> &consumer_pending_decrements);
   static std::string encodeStreamPelEntryValue(const StreamPelEntry &pel_entry);
   static StreamPelEntry decodeStreamPelEntryValue(const std::string &value);
   StreamSubkeyType identifySubkeyType(const rocksdb::Slice &key) const;

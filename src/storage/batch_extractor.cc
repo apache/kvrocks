@@ -26,6 +26,7 @@
 #include "server/redis_reply.h"
 #include "server/server.h"
 #include "types/redis_bitmap.h"
+#include "types/redis_stream_base.h"
 
 void WriteBatchExtractor::LogData(const rocksdb::Slice &blob) {
   // Currently, we only have two kinds of log data
@@ -38,6 +39,8 @@ void WriteBatchExtractor::LogData(const rocksdb::Slice &blob) {
     // Redis type log data
     if (auto s = log_data_.Decode(blob); !s.IsOK()) {
       WARN("Failed to decode Redis type log: {}", s.Msg());
+    } else {
+      seen_xackdel_entry_keys_.clear();
     }
   }
 }
@@ -266,6 +269,21 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
         break;
     }
   } else if (column_family_id == static_cast<uint32_t>(ColumnFamilyID::Stream)) {
+    InternalKey ikey(key, is_slot_id_encoded_);
+    Slice entry_id_check = ikey.GetSubKey();
+    uint64_t delimiter = 0;
+    GetFixed64(&entry_id_check, &delimiter);
+    if (delimiter == UINT64_MAX) {
+      return rocksdb::Status::OK();
+    }
+
+    user_key = ikey.GetKey().ToString();
+    auto key_slot_id = GetSlotIdFromKey(user_key);
+    if (slot_range_.IsValid() && !slot_range_.Contains(key_slot_id)) {
+      return rocksdb::Status::OK();
+    }
+    ns = ikey.GetNamespace().ToString();
+
     auto s = ExtractStreamAddCommand(is_slot_id_encoded_, key, value, &command_args);
     if (!s.IsOK()) {
       ERROR("Failed to parse write_batch in PutCF. Type=Stream: {}", s.Msg());
@@ -397,8 +415,70 @@ rocksdb::Status WriteBatchExtractor::DeleteCF(uint32_t column_family_id, const S
     Slice encoded_id = ikey.GetSubKey();
     redis::StreamEntryID entry_id;
     GetFixed64(&encoded_id, &entry_id.ms);
+
+    if (entry_id.ms == UINT64_MAX) {
+      // PEL / group / consumer metadata sub-key. Only PEL deletions
+      // produce XACKDEL commands for replication.
+      auto args = log_data_.GetArguments();
+      if (!args->empty() && (*args)[0] == "XACKDEL" && args->size() >= 3) {
+        uint8_t type_delimiter = 0;
+        if (!GetFixed8(&encoded_id, &type_delimiter)) {
+          return rocksdb::Status::OK();
+        }
+        if (type_delimiter == static_cast<uint8_t>(redis::StreamSubkeyType::StreamPelEntry)) {
+          uint64_t group_name_len = 0;
+          if (!GetFixed64(&encoded_id, &group_name_len)) {
+            return rocksdb::Status::OK();
+          }
+          if (group_name_len > encoded_id.size() || encoded_id.size() - group_name_len < 16) {
+            return rocksdb::Status::OK();
+          }
+          encoded_id.remove_prefix(group_name_len);
+
+          if (!GetFixed64(&encoded_id, &entry_id.ms) || !GetFixed64(&encoded_id, &entry_id.seq)) {
+            return rocksdb::Status::OK();
+          }
+          std::string entry_id_str = entry_id.ToString();
+
+          std::string user_key = ikey.GetKey().ToString();
+          auto key_slot_id = GetSlotIdFromKey(user_key);
+          if (slot_range_.IsValid() && !slot_range_.Contains(key_slot_id)) {
+            return rocksdb::Status::OK();
+          }
+          ns = ikey.GetNamespace().ToString();
+          std::string dedup_key = ns + '\0' + user_key + '\0' + (*args)[1] + '\0' + entry_id_str;
+          if (seen_xackdel_entry_keys_.insert(std::move(dedup_key)).second) {
+            command_args = {(*args)[0], user_key, (*args)[1], (*args)[2], "IDS", "1", entry_id_str};
+            resp_commands_[ns].emplace_back(redis::ArrayOfBulkStrings(command_args));
+          }
+        }
+      }
+      return rocksdb::Status::OK();
+    }
+
     GetFixed64(&encoded_id, &entry_id.seq);
-    command_args = {"XDEL", ikey.GetKey().ToString(), entry_id.ToString()};
+    std::string entry_id_str = entry_id.ToString();
+    std::string user_key = ikey.GetKey().ToString();
+
+    auto key_slot_id = GetSlotIdFromKey(user_key);
+    if (slot_range_.IsValid() && !slot_range_.Contains(key_slot_id)) {
+      return rocksdb::Status::OK();
+    }
+    ns = ikey.GetNamespace().ToString();
+
+    auto args = log_data_.GetArguments();
+    if (!args->empty()) {
+      if ((*args)[0] == "XACKDEL" && args->size() >= 3) {
+        std::string dedup_key = ns + '\0' + user_key + '\0' + (*args)[1] + '\0' + entry_id_str;
+        if (seen_xackdel_entry_keys_.insert(std::move(dedup_key)).second) {
+          command_args = {(*args)[0], user_key, (*args)[1], (*args)[2], "IDS", "1", entry_id_str};
+        }
+      } else {
+        command_args = {"XDEL", user_key, entry_id_str};
+      }
+    } else {
+      command_args = {"XDEL", user_key, entry_id_str};
+    }
   }
 
   if (!command_args.empty()) {

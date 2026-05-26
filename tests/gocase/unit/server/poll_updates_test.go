@@ -283,6 +283,7 @@ func TestPollUpdates_WithRESPFormat(t *testing.T) {
 		pollUpdates = parsePollUpdatesResult(t, result.(map[any]any), true)
 		require.Len(t, pollUpdates.Updates, 1)
 		require.EqualValues(t, []any{RESPFormat{
+			Namespace: "default",
 			Commands: [][]string{
 				{"XADD", "stream", id, "field", "value"},
 				{"XDEL", "stream", id},

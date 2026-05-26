@@ -2643,6 +2643,583 @@ func TestStreamOffset(t *testing.T) {
 
 		require.NoError(t, rdb.Del(ctx, streamKey).Err())
 	})
+
+	t.Run("XACKDEL DELREF cross-group PEL cleanup", func(t *testing.T) {
+		streamName := "xackdel_delref_" + strconv.Itoa(rand.Int())
+		groupName := "myGroup"
+		otherGroup := "otherGroup"
+
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     "1-0",
+			Values: []string{"field", "value"},
+		}).Err())
+		require.NoError(t, rdb.XGroupCreateMkStream(ctx, streamName, groupName, "0").Err())
+		require.NoError(t, rdb.XGroupCreateMkStream(ctx, streamName, otherGroup, "0").Err())
+
+		_, err := rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    groupName,
+			Consumer: "c1",
+			Streams:  []string{streamName, ">"},
+			Count:    1,
+		}).Result()
+		require.NoError(t, err)
+
+		_, err = rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    otherGroup,
+			Consumer: "c2",
+			Streams:  []string{streamName, ">"},
+			Count:    1,
+		}).Result()
+		require.NoError(t, err)
+
+		r, err := rdb.Do(ctx, "XACKDEL", streamName, groupName, "DELREF", "IDS", "1", "1-0").Result()
+		require.NoError(t, err)
+		require.Equal(t, []interface{}{int64(1)}, r)
+
+		require.Equal(t, int64(0), rdb.XLen(ctx, streamName).Val())
+
+		pending, err := rdb.XPending(ctx, streamName, groupName).Result()
+		require.NoError(t, err)
+		require.Equal(t, int64(0), pending.Count)
+
+		otherPending, err := rdb.XPending(ctx, streamName, otherGroup).Result()
+		require.NoError(t, err)
+		require.Equal(t, int64(0), otherPending.Count)
+
+		infoGroups := rdb.XInfoGroups(ctx, streamName).Val()
+		require.Len(t, infoGroups, 2)
+		require.Equal(t, int64(0), infoGroups[0].Pending)
+		require.Equal(t, int64(0), infoGroups[1].Pending)
+
+		consumers1 := rdb.XInfoConsumers(ctx, streamName, groupName).Val()
+		require.Len(t, consumers1, 1)
+		require.Equal(t, "c1", consumers1[0].Name)
+		require.Equal(t, int64(0), consumers1[0].Pending)
+
+		consumers2 := rdb.XInfoConsumers(ctx, streamName, otherGroup).Val()
+		require.Len(t, consumers2, 1)
+		require.Equal(t, "c2", consumers2[0].Name)
+		require.Equal(t, int64(0), consumers2[0].Pending)
+
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+	})
+
+	t.Run("XACKDEL ACKED all groups have acked deletes entry", func(t *testing.T) {
+		streamName := "xackdel_acked_all_" + strconv.Itoa(rand.Int())
+		groupName := "myGroup"
+		otherGroup := "otherGroup"
+
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     "1-0",
+			Values: []string{"field", "value"},
+		}).Err())
+		require.NoError(t, rdb.XGroupCreateMkStream(ctx, streamName, groupName, "0").Err())
+		require.NoError(t, rdb.XGroupCreateMkStream(ctx, streamName, otherGroup, "0").Err())
+
+		_, err := rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    groupName,
+			Consumer: "c1",
+			Streams:  []string{streamName, ">"},
+			Count:    1,
+		}).Result()
+		require.NoError(t, err)
+
+		_, err = rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    otherGroup,
+			Consumer: "c2",
+			Streams:  []string{streamName, ">"},
+			Count:    1,
+		}).Result()
+		require.NoError(t, err)
+
+		require.NoError(t, rdb.XAck(ctx, streamName, otherGroup, "1-0").Err())
+
+		r, err := rdb.Do(ctx, "XACKDEL", streamName, groupName, "ACKED", "IDS", "1", "1-0").Result()
+		require.NoError(t, err)
+		require.Equal(t, []interface{}{int64(1)}, r)
+
+		require.Equal(t, int64(0), rdb.XLen(ctx, streamName).Val())
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+	})
+
+	t.Run("XACKDEL ACKED with other group not acked returns 2", func(t *testing.T) {
+		streamName := "xackdel_acked_notall_" + strconv.Itoa(rand.Int())
+		groupName := "myGroup"
+		otherGroup := "otherGroup"
+
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     "1-0",
+			Values: []string{"field", "value"},
+		}).Err())
+		require.NoError(t, rdb.XGroupCreateMkStream(ctx, streamName, groupName, "0").Err())
+		require.NoError(t, rdb.XGroupCreateMkStream(ctx, streamName, otherGroup, "0").Err())
+
+		_, err := rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    groupName,
+			Consumer: "c1",
+			Streams:  []string{streamName, ">"},
+			Count:    1,
+		}).Result()
+		require.NoError(t, err)
+
+		_, err = rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    otherGroup,
+			Consumer: "c2",
+			Streams:  []string{streamName, ">"},
+			Count:    1,
+		}).Result()
+		require.NoError(t, err)
+
+		// Both groups still have pending entries; XACKDEL acks current group but
+		// other group still references the entry, so it cannot be deleted.
+		r, err := rdb.Do(ctx, "XACKDEL", streamName, groupName, "ACKED", "IDS", "1", "1-0").Result()
+		require.NoError(t, err)
+		require.Equal(t, []interface{}{int64(2)}, r)
+
+		require.Equal(t, int64(1), rdb.XLen(ctx, streamName).Val())
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+	})
+
+	t.Run("XACKDEL non-existent key returns array of -1", func(t *testing.T) {
+		streamName := "xackdel_nokey_" + strconv.Itoa(rand.Int())
+
+		r, err := rdb.Do(ctx, "XACKDEL", streamName, "nonexistent", "KEEPREF", "IDS", "1", "1-0").Result()
+		require.NoError(t, err)
+		require.Equal(t, []interface{}{int64(-1)}, r)
+	})
+
+	t.Run("XACKDEL non-existent group on existing stream returns array of -1", func(t *testing.T) {
+		streamName := "xackdel_nogroup_" + strconv.Itoa(rand.Int())
+
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     "1-0",
+			Values: []string{"field", "value"},
+		}).Err())
+
+		r, err := rdb.Do(ctx, "XACKDEL", streamName, "nonexistent", "KEEPREF", "IDS", "1", "1-0").Result()
+		require.NoError(t, err)
+		require.Equal(t, []interface{}{int64(-1)}, r)
+
+		require.Equal(t, int64(1), rdb.XLen(ctx, streamName).Val())
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+	})
+
+	t.Run("XACKDEL DELREF duplicate IDs are idempotent", func(t *testing.T) {
+		streamName := "xackdel_dedup_" + strconv.Itoa(rand.Int())
+		groupName := "myGroup"
+
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     "1-0",
+			Values: []string{"field", "value"},
+		}).Err())
+		require.NoError(t, rdb.XGroupCreateMkStream(ctx, streamName, groupName, "0").Err())
+
+		_, err := rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    groupName,
+			Consumer: "c1",
+			Streams:  []string{streamName, ">"},
+			Count:    1,
+		}).Result()
+		require.NoError(t, err)
+
+		r, err := rdb.Do(ctx, "XACKDEL", streamName, groupName, "DELREF", "IDS", "2", "1-0", "1-0").Result()
+		require.NoError(t, err)
+		require.Equal(t, []interface{}{int64(1), int64(-1)}, r)
+
+		require.Equal(t, int64(0), rdb.XLen(ctx, streamName).Val())
+
+		pending, err := rdb.XPending(ctx, streamName, groupName).Result()
+		require.NoError(t, err)
+		require.Equal(t, int64(0), pending.Count)
+
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+	})
+
+	t.Run("XACKDEL KEEPREF deletes entry", func(t *testing.T) {
+		streamName := "xackdel_keepref_" + strconv.Itoa(rand.Int())
+		groupName := "myGroup"
+
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     "1-0",
+			Values: []string{"field", "value"},
+		}).Err())
+		require.NoError(t, rdb.XGroupCreateMkStream(ctx, streamName, groupName, "0").Err())
+
+		// Create a pending entry so the ID is in the group's PEL.
+		_, err := rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    groupName,
+			Consumer: "c1",
+			Streams:  []string{streamName, ">"},
+			Count:    1,
+		}).Result()
+		require.NoError(t, err)
+
+		r, err := rdb.Do(ctx, "XACKDEL", streamName, groupName, "KEEPREF", "IDS", "1", "1-0").Result()
+		require.NoError(t, err)
+		require.Equal(t, []interface{}{int64(1)}, r)
+
+		require.Equal(t, int64(0), rdb.XLen(ctx, streamName).Val())
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+	})
+
+	t.Run("XACKDEL KEEPREF ID not pending in group does not delete entry", func(t *testing.T) {
+		streamName := "xackdel_keepref_notpending_" + strconv.Itoa(rand.Int())
+		groupName := "myGroup"
+
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     "1-0",
+			Values: []string{"field", "value"},
+		}).Err())
+		require.NoError(t, rdb.XGroupCreateMkStream(ctx, streamName, groupName, "0").Err())
+
+		r, err := rdb.Do(ctx, "XACKDEL", streamName, groupName, "KEEPREF", "IDS", "1", "1-0").Result()
+		require.NoError(t, err)
+		require.Equal(t, []interface{}{int64(-1)}, r)
+		require.Equal(t, int64(1), rdb.XLen(ctx, streamName).Val())
+
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+	})
+
+	t.Run("XACKDEL DELREF dangling PEL after stream entry deleted by XDEL", func(t *testing.T) {
+		streamName := "xackdel_delref_dangling_" + strconv.Itoa(rand.Int())
+		groupName := "myGroup"
+		otherGroup := "otherGroup"
+
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     "1-0",
+			Values: []string{"field", "value"},
+		}).Err())
+		require.NoError(t, rdb.XGroupCreateMkStream(ctx, streamName, groupName, "0").Err())
+		require.NoError(t, rdb.XGroupCreateMkStream(ctx, streamName, otherGroup, "0").Err())
+
+		// Both groups read the entry so both have PEL entries.
+		_, err := rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    groupName,
+			Consumer: "c1",
+			Streams:  []string{streamName, ">"},
+			Count:    1,
+		}).Result()
+		require.NoError(t, err)
+
+		_, err = rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    otherGroup,
+			Consumer: "c2",
+			Streams:  []string{streamName, ">"},
+			Count:    1,
+		}).Result()
+		require.NoError(t, err)
+
+		// Delete the stream entry directly, leaving dangling PEL entries.
+		require.NoError(t, rdb.XDel(ctx, streamName, "1-0").Err())
+
+		// XACKDEL DELREF from the first group should clean up all dangling PEL entries.
+		r, err := rdb.Do(ctx, "XACKDEL", streamName, groupName, "DELREF", "IDS", "1", "1-0").Result()
+		require.NoError(t, err)
+		require.Equal(t, []interface{}{int64(1)}, r)
+
+		pending, err := rdb.XPending(ctx, streamName, groupName).Result()
+		require.NoError(t, err)
+		require.Equal(t, int64(0), pending.Count)
+
+		otherPending, err := rdb.XPending(ctx, streamName, otherGroup).Result()
+		require.NoError(t, err)
+		require.Equal(t, int64(0), otherPending.Count)
+
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+	})
+
+	t.Run("XACKDEL KEEPREF acks current group PEL", func(t *testing.T) {
+		streamName := "xackdel_keepref_ack_" + strconv.Itoa(rand.Int())
+		groupName := "myGroup"
+
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     "1-0",
+			Values: []string{"field", "value"},
+		}).Err())
+		require.NoError(t, rdb.XGroupCreateMkStream(ctx, streamName, groupName, "0").Err())
+
+		// Create a pending entry by reading.
+		_, err := rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    groupName,
+			Consumer: "c1",
+			Streams:  []string{streamName, ">"},
+			Count:    1,
+		}).Result()
+		require.NoError(t, err)
+
+		r, err := rdb.Do(ctx, "XACKDEL", streamName, groupName, "KEEPREF", "IDS", "1", "1-0").Result()
+		require.NoError(t, err)
+		require.Equal(t, []interface{}{int64(1)}, r)
+
+		require.Equal(t, int64(0), rdb.XLen(ctx, streamName).Val())
+
+		// KEEPREF must still ACK the current group's pending entry.
+		pending, err := rdb.XPending(ctx, streamName, groupName).Result()
+		require.NoError(t, err)
+		require.Equal(t, int64(0), pending.Count)
+
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+	})
+
+	t.Run("XACKDEL KEEPREF non-existent entry returns -1", func(t *testing.T) {
+		streamName := "xackdel_keepref_notfound_" + strconv.Itoa(rand.Int())
+		groupName := "myGroup"
+
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     "1-0",
+			Values: []string{"field", "value"},
+		}).Err())
+		require.NoError(t, rdb.XGroupCreateMkStream(ctx, streamName, groupName, "0").Err())
+
+		r, err := rdb.Do(ctx, "XACKDEL", streamName, groupName, "KEEPREF", "IDS", "1", "999-999").Result()
+		require.NoError(t, err)
+		require.Equal(t, []interface{}{int64(-1)}, r)
+
+		require.Equal(t, int64(1), rdb.XLen(ctx, streamName).Val())
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+	})
+
+	t.Run("XACKDEL KEEPREF delete first entry recalculates boundary", func(t *testing.T) {
+		streamName := "xackdel_boundary_" + strconv.Itoa(rand.Int())
+		groupName := "myGroup"
+
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName, ID: "1-0", Values: []string{"f", "v"},
+		}).Err())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName, ID: "2-0", Values: []string{"f", "v"},
+		}).Err())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName, ID: "3-0", Values: []string{"f", "v"},
+		}).Err())
+		require.NoError(t, rdb.XGroupCreateMkStream(ctx, streamName, groupName, "0").Err())
+
+		// Create a pending entry so the ID is in the group's PEL.
+		_, err := rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    groupName,
+			Consumer: "c1",
+			Streams:  []string{streamName, ">"},
+			Count:    3,
+		}).Result()
+		require.NoError(t, err)
+
+		r, err := rdb.Do(ctx, "XACKDEL", streamName, groupName, "KEEPREF", "IDS", "1", "1-0").Result()
+		require.NoError(t, err)
+		require.Equal(t, []interface{}{int64(1)}, r)
+		require.Equal(t, int64(2), rdb.XLen(ctx, streamName).Val())
+
+		msgs, err := rdb.XRange(ctx, streamName, "-", "+").Result()
+		require.NoError(t, err)
+		require.Equal(t, "2-0", msgs[0].ID)
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+	})
+
+	t.Run("XACKDEL DELREF single group PEL cleanup", func(t *testing.T) {
+		streamName := "xackdel_delref_single_" + strconv.Itoa(rand.Int())
+		groupName := "myGroup"
+
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     "1-0",
+			Values: []string{"field", "value"},
+		}).Err())
+		require.NoError(t, rdb.XGroupCreateMkStream(ctx, streamName, groupName, "0").Err())
+
+		_, err := rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    groupName,
+			Consumer: "c1",
+			Streams:  []string{streamName, ">"},
+			Count:    1,
+		}).Result()
+		require.NoError(t, err)
+
+		r, err := rdb.Do(ctx, "XACKDEL", streamName, groupName, "DELREF", "IDS", "1", "1-0").Result()
+		require.NoError(t, err)
+		require.Equal(t, []interface{}{int64(1)}, r)
+		require.Equal(t, int64(0), rdb.XLen(ctx, streamName).Val())
+
+		pending, err := rdb.XPending(ctx, streamName, groupName).Result()
+		require.NoError(t, err)
+		require.Equal(t, int64(0), pending.Count)
+
+		consumers := rdb.XInfoConsumers(ctx, streamName, groupName).Val()
+		require.Len(t, consumers, 1)
+		require.Equal(t, "c1", consumers[0].Name)
+		require.Equal(t, int64(0), consumers[0].Pending)
+
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+	})
+
+	t.Run("XACKDEL ACKED already acked in current group returns -1", func(t *testing.T) {
+		streamName := "xackdel_acked_single_" + strconv.Itoa(rand.Int())
+		groupName := "myGroup"
+
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     "1-0",
+			Values: []string{"field", "value"},
+		}).Err())
+		require.NoError(t, rdb.XGroupCreateMkStream(ctx, streamName, groupName, "0").Err())
+
+		_, err := rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    groupName,
+			Consumer: "c1",
+			Streams:  []string{streamName, ">"},
+			Count:    1,
+		}).Result()
+		require.NoError(t, err)
+
+		// Ack the entry first; the PEL entry for the current group is now gone.
+		require.NoError(t, rdb.XAck(ctx, streamName, groupName, "1-0").Err())
+
+		// XACKDEL must find the ID in the current group's PEL; since it is already
+		// acked, it returns -1 and does not delete the stream entry.
+		r, err := rdb.Do(ctx, "XACKDEL", streamName, groupName, "ACKED", "IDS", "1", "1-0").Result()
+		require.NoError(t, err)
+		require.Equal(t, []interface{}{int64(-1)}, r)
+		require.Equal(t, int64(1), rdb.XLen(ctx, streamName).Val())
+
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+	})
+
+	t.Run("XACKDEL ACKED single group pending acknowledges and deletes entry", func(t *testing.T) {
+		streamName := "xackdel_acked_pending_" + strconv.Itoa(rand.Int())
+		groupName := "myGroup"
+
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     "1-0",
+			Values: []string{"field", "value"},
+		}).Err())
+		require.NoError(t, rdb.XGroupCreateMkStream(ctx, streamName, groupName, "0").Err())
+
+		_, err := rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    groupName,
+			Consumer: "c1",
+			Streams:  []string{streamName, ">"},
+			Count:    1,
+		}).Result()
+		require.NoError(t, err)
+
+		pendingBefore, err := rdb.XPending(ctx, streamName, groupName).Result()
+		require.NoError(t, err)
+		require.Equal(t, int64(1), pendingBefore.Count)
+
+		r, err := rdb.Do(ctx, "XACKDEL", streamName, groupName, "ACKED", "IDS", "1", "1-0").Result()
+		require.NoError(t, err)
+		require.Equal(t, []interface{}{int64(1)}, r)
+		require.Equal(t, int64(0), rdb.XLen(ctx, streamName).Val())
+
+		pendingAfter, err := rdb.XPending(ctx, streamName, groupName).Result()
+		require.NoError(t, err)
+		require.Equal(t, int64(0), pendingAfter.Count)
+
+		consumers := rdb.XInfoConsumers(ctx, streamName, groupName).Val()
+		require.Len(t, consumers, 1)
+		require.Equal(t, int64(0), consumers[0].Pending)
+
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+	})
+
+	t.Run("XACKDEL with invalid option returns error", func(t *testing.T) {
+		streamName := "xackdel_badopt_" + strconv.Itoa(rand.Int())
+		groupName := "myGroup"
+
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName, ID: "1-0", Values: []string{"field", "value"},
+		}).Err())
+		require.NoError(t, rdb.XGroupCreateMkStream(ctx, streamName, groupName, "0").Err())
+
+		_, err := rdb.Do(ctx, "XACKDEL", streamName, groupName, "INVALID", "IDS", "1", "1-0").Result()
+		require.Error(t, err)
+
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+	})
+
+	t.Run("XACKDEL missing IDS returns error", func(t *testing.T) {
+		streamName := "xackdel_noids_" + strconv.Itoa(rand.Int())
+		groupName := "myGroup"
+
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName, ID: "1-0", Values: []string{"field", "value"},
+		}).Err())
+		require.NoError(t, rdb.XGroupCreateMkStream(ctx, streamName, groupName, "0").Err())
+
+		_, err := rdb.Do(ctx, "XACKDEL", streamName, groupName, "KEEPREF").Result()
+		require.Error(t, err)
+
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+	})
+
+	t.Run("XACKDEL with non-integer numids returns error", func(t *testing.T) {
+		streamName := "xackdel_badnumids_" + strconv.Itoa(rand.Int())
+		groupName := "myGroup"
+
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName, ID: "1-0", Values: []string{"field", "value"},
+		}).Err())
+		require.NoError(t, rdb.XGroupCreateMkStream(ctx, streamName, groupName, "0").Err())
+
+		_, err := rdb.Do(ctx, "XACKDEL", streamName, groupName, "KEEPREF", "IDS", "abc").Result()
+		require.Error(t, err)
+
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+	})
+
+	t.Run("XACKDEL with zero numids returns error", func(t *testing.T) {
+		streamName := "xackdel_zeronumids_" + strconv.Itoa(rand.Int())
+		groupName := "myGroup"
+
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName, ID: "1-0", Values: []string{"field", "value"},
+		}).Err())
+		require.NoError(t, rdb.XGroupCreateMkStream(ctx, streamName, groupName, "0").Err())
+
+		_, err := rdb.Do(ctx, "XACKDEL", streamName, groupName, "KEEPREF", "IDS", "0").Result()
+		require.Error(t, err)
+
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+	})
+
+	t.Run("XACKDEL with negative numids returns error", func(t *testing.T) {
+		streamName := "xackdel_negnumids_" + strconv.Itoa(rand.Int())
+		groupName := "myGroup"
+
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName, ID: "1-0", Values: []string{"field", "value"},
+		}).Err())
+		require.NoError(t, rdb.XGroupCreateMkStream(ctx, streamName, groupName, "0").Err())
+
+		_, err := rdb.Do(ctx, "XACKDEL", streamName, groupName, "KEEPREF", "IDS", "-1").Result()
+		require.Error(t, err)
+
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+	})
+
+	t.Run("XACKDEL with invalid entry ID returns error", func(t *testing.T) {
+		streamName := "xackdel_badid_" + strconv.Itoa(rand.Int())
+		groupName := "myGroup"
+
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName, ID: "1-0", Values: []string{"field", "value"},
+		}).Err())
+		require.NoError(t, rdb.XGroupCreateMkStream(ctx, streamName, groupName, "0").Err())
+
+		_, err := rdb.Do(ctx, "XACKDEL", streamName, groupName, "KEEPREF", "IDS", "1", "bad-id").Result()
+		require.Error(t, err)
+
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+	})
 }
 
 func parseStreamEntryID(id string) (ts int64, seqNum int64) {

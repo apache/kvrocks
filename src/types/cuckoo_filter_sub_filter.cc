@@ -56,9 +56,15 @@ rocksdb::Status CuckooSubFilter::TryKickOutInsert(uint64_t hash, uint8_t fingerp
   for (uint16_t iteration = 0; iteration < max_iterations; ++iteration) {
     uint8_t old_fp = 0;
     auto s = pages_.GetBucketSlot(filter_index_, num_buckets_, current_bucket_idx, victim_slot, &old_fp);
-    if (!s.ok()) return s;
+    if (!s.ok()) {
+      pages_.Discard();
+      return s;
+    }
     s = pages_.SetBucketSlot(filter_index_, num_buckets_, current_bucket_idx, victim_slot, current_fp);
-    if (!s.ok()) return s;
+    if (!s.ok()) {
+      pages_.Discard();
+      return s;
+    }
     current_fp = old_fp;
 
     if (current_fp == 0) {
@@ -70,7 +76,10 @@ rocksdb::Status CuckooSubFilter::TryKickOutInsert(uint64_t hash, uint8_t fingerp
 
     bool inserted_in_alt_bucket = false;
     s = pages_.TryInsertInBucket(filter_index_, num_buckets_, alt_bucket_idx, current_fp, &inserted_in_alt_bucket);
-    if (!s.ok()) return s;
+    if (!s.ok()) {
+      pages_.Discard();
+      return s;
+    }
     if (inserted_in_alt_bucket) {
       *inserted = true;
       return rocksdb::Status::OK();
@@ -80,6 +89,7 @@ rocksdb::Status CuckooSubFilter::TryKickOutInsert(uint64_t hash, uint8_t fingerp
     victim_slot = (victim_slot + 1) % bucket_size_;
   }
 
+  pages_.Discard();
   return rocksdb::Status::OK();
 }
 

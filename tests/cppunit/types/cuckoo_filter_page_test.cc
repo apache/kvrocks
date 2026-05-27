@@ -321,6 +321,28 @@ TEST_F(RedisCuckooPageCacheTest, DirtyPagesAreDiscardedWithoutWriteBack) {
   EXPECT_TRUE(s.IsNotFound()) << s.ToString();
 }
 
+TEST_F(RedisCuckooPageCacheTest, DiscardDropsDirtyPages) {
+  auto metadata = makeMetadata(4);
+  redis::CuckooPageCache pages(storage_.get(), *ctx_, ns_key_, storage_->IsSlotIdEncoded(), metadata.version,
+                               metadata.bucket_size, metadata.page_size);
+
+  bool inserted = false;
+  auto s = pages.TryInsertInBucket(0, 2, 0, 11, &inserted);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  ASSERT_TRUE(inserted);
+
+  pages.Discard();
+
+  auto batch = storage_->GetWriteBatchBase();
+  s = pages.WriteBackDirtyPages(batch.Get());
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  commitBatch(batch.Get());
+
+  std::string page;
+  s = readPage(makePageKey(metadata, 0, 0), &page);
+  EXPECT_TRUE(s.IsNotFound()) << s.ToString();
+}
+
 TEST_F(RedisCuckooPageCacheTest, PageKeyUsesMetadataVersion) {
   auto old_metadata = makeMetadata(4, 100);
   auto new_metadata = makeMetadata(4, 101);

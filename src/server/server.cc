@@ -1921,6 +1921,22 @@ void Server::UnregisterRunningScript(lua::ScriptRunCtx *rctx) {
   is_script_timeout_.store(any_timed_out, std::memory_order_relaxed);
 }
 
+void Server::ReevaluateScriptTimeout() {
+  std::lock_guard<std::mutex> guard(running_scripts_mu_);
+  bool any_timed_out = false;
+  int limit = config_->lua_time_limit;
+  if (limit > 0 && !running_scripts_.empty()) {
+    uint64_t now_ms = util::GetTimeStampMS();
+    for (const auto *ctx : running_scripts_) {
+      if (now_ms - ctx->start_time_ms >= static_cast<uint64_t>(limit)) {
+        any_timed_out = true;
+        break;
+      }
+    }
+  }
+  is_script_timeout_.store(any_timed_out, std::memory_order_relaxed);
+}
+
 bool Server::IsScriptTimedOut() const { return is_script_timeout_.load(std::memory_order_relaxed); }
 
 void Server::SetScriptTimedOut(bool timed_out) { is_script_timeout_.store(timed_out, std::memory_order_relaxed); }

@@ -23,6 +23,12 @@
 
 #include "scripting.h"
 
+#ifndef _WIN32
+#include <sys/socket.h>
+#else
+#include <winsock2.h>
+#endif
+
 #include <math.h>
 
 #include <algorithm>
@@ -85,6 +91,9 @@ class ScriptRunCtxGuard {
 };
 
 static void KillScript(lua_State *lua) {
+  // We set the hook mask to LUA_MASKLINE to ensure that if the script catches the error
+  // (e.g. using pcall or xpcall) and attempts to continue executing, the hook will be
+  // triggered again immediately on the very next line to raise the kill error again.
   lua_sethook(lua, LuaMaskCountHook, LUA_MASKLINE, 0);
   PushError(lua, "Script killed by user with SCRIPT KILL...");
   RaiseError(lua);
@@ -102,6 +111,26 @@ void LuaMaskCountHook(lua_State *lua, [[maybe_unused]] lua_Debug *ar) {
 
   int limit = srv->GetConfig()->lua_time_limit;
   bool is_disconnected = script_run_ctx->conn->IsFlagEnabled(redis::Connection::kCloseAsync);
+
+  if (!is_disconnected) {
+    int fd = script_run_ctx->conn->GetFD();
+    if (fd >= 0) {
+      char buf[1];
+#ifdef _WIN32
+      int n = recv(fd, buf, 1, MSG_PEEK);
+      if (n == 0 || (n == -1 && WSAGetLastError() != WSAEWOULDBLOCK && WSAGetLastError() != WSAEINTR)) {
+        script_run_ctx->conn->EnableFlag(redis::Connection::kCloseAsync);
+        is_disconnected = true;
+      }
+#else
+      ssize_t n = recv(fd, buf, 1, MSG_PEEK | MSG_DONTWAIT);
+      if (n == 0 || (n == -1 && errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)) {
+        script_run_ctx->conn->EnableFlag(redis::Connection::kCloseAsync);
+        is_disconnected = true;
+      }
+#endif
+    }
+  }
 
   uint64_t now_ms = util::GetTimeStampMS();
 

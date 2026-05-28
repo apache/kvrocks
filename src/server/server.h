@@ -321,6 +321,7 @@ class Server {
 
   void RegisterRunningScript(lua::ScriptRunCtx *rctx);
   void UnregisterRunningScript(lua::ScriptRunCtx *rctx);
+  void ReevaluateScriptTimeout();
   bool IsScriptTimedOut() const;
   void SetScriptTimedOut(bool timed_out);
   Status ScriptKill();

@@ -454,17 +454,9 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     to_process_cmds->pop_front();
     if (cmd_tokens.empty()) continue;
 
-    bool is_script_kill = (util::EqualICase(cmd_tokens.front(), "script") && cmd_tokens.size() >= 2 &&
+    bool is_script_kill = (util::EqualICase(cmd_tokens.front(), "script") && cmd_tokens.size() == 2 &&
                            util::EqualICase(cmd_tokens[1], "kill"));
     bool is_shutdown = util::EqualICase(cmd_tokens.front(), "shutdown");
-
-    if (srv_->IsScriptTimedOut()) {
-      if (!is_script_kill && !is_shutdown) {
-        Reply(redis::Error({Status::RedisErrorNoPrefix,
-                            "BUSY Redis is busy running a script. You can only call SCRIPT KILL or SHUTDOWN NOSAVE."}));
-        continue;
-      }
-    }
 
     bool is_multi_exec = IsFlagEnabled(Connection::kMultiExec);
     if (IsFlagEnabled(redis::Connection::kCloseAfterReply) && !is_multi_exec) break;
@@ -517,6 +509,14 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
       } else {
         BecomeAdmin();
         SetNamespace(kDefaultNamespace);
+      }
+    }
+
+    if (srv_->IsScriptTimedOut()) {
+      if (!is_script_kill && !is_shutdown) {
+        Reply(redis::Error({Status::RedisErrorNoPrefix,
+                            "BUSY Redis is busy running a script. You can only call SCRIPT KILL or SHUTDOWN NOSAVE."}));
+        continue;
       }
     }
 

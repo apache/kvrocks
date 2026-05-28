@@ -24,7 +24,9 @@
 #include <unistd.h>
 
 #include <atomic>
+#include <cerrno>
 #include <cstdint>
+#include <cstring>
 #include <stdexcept>
 #include <string>
 
@@ -621,7 +623,12 @@ void Worker::PollEventLoop() {
       } else {
         auto *output = bufferevent_get_output(bev);
         if (evbuffer_get_length(output) > 0) {
-          evbuffer_write(output, conn->GetFD());
+          if (evbuffer_write(output, conn->GetFD()) == -1) {
+            int err = errno;
+            if (err != EAGAIN && err != EWOULDBLOCK && err != EINTR) {
+              WARN("[worker] Failed to write to connection output buffer: {}", strerror(err));
+            }
+          }
         }
       }
     }

@@ -1935,8 +1935,6 @@ Status Server::ScriptKill() {
   for (auto *rctx : running_scripts_) {
     if (rctx->is_write_dirty) {
       has_unkillable = true;
-    } else {
-      rctx->is_killed = true;
     }
   }
 
@@ -1945,6 +1943,10 @@ Status Server::ScriptKill() {
             "UNKILLABLE Sorry the script already executed write commands against the dataset. "
             "You can either wait the script termination or kill the server in a hard way using the SHUTDOWN NOSAVE "
             "command."};
+  }
+
+  for (auto *rctx : running_scripts_) {
+    rctx->is_killed = true;
   }
 
   return Status::OK();

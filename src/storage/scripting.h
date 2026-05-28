@@ -164,6 +164,7 @@ struct ScriptRunCtx {
   std::atomic<bool> is_killed{false};
   bool slow_logged = false;
   std::atomic<bool> is_write_dirty{false};
+  uint64_t last_poll_time_ms = 0;
 };
 
 /// SaveOnRegistry saves user-defined data to lua REGISTRY

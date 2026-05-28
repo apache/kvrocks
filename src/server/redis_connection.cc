@@ -119,10 +119,18 @@ void Connection::OnRead([[maybe_unused]] struct bufferevent *bev) {
   if (is_running_) return;
   is_running_ = true;
 
+  auto exit = MakeScopeExit([this] {
+    is_running_ = false;
+    if (IsFlagEnabled(kCloseAsync)) {
+      Close();
+    } else if (evbuffer_get_length(Input()) > 0) {
+      bufferevent_trigger(bev_, EV_READ, BEV_TRIG_IGNORE_WATERMARKS);
+    }
+  });
+
   SetLastInteraction();
   auto s = req_.Tokenize(Input());
   if (!s.IsOK()) {
-    is_running_ = false;
     EnableFlag(redis::Connection::kCloseAfterReply);
     Reply(redis::Error(s));
     INFO("[connection] Failed to tokenize the request. Error: {}", s.Msg());
@@ -130,13 +138,6 @@ void Connection::OnRead([[maybe_unused]] struct bufferevent *bev) {
   }
 
   ExecuteCommands(req_.GetCommands());
-  is_running_ = false;
-
-  if (IsFlagEnabled(kCloseAsync)) {
-    Close();
-  } else if (evbuffer_get_length(Input()) > 0) {
-    bufferevent_trigger(bev_, EV_READ, BEV_TRIG_IGNORE_WATERMARKS);
-  }
 }
 
 void Connection::OnWrite([[maybe_unused]] bufferevent *bev) {

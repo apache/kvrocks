@@ -103,44 +103,55 @@ void LuaMaskCountHook(lua_State *lua, [[maybe_unused]] lua_Debug *ar) {
   int limit = srv->GetConfig()->lua_time_limit;
   bool is_disconnected = script_run_ctx->conn->IsFlagEnabled(redis::Connection::kCloseAsync);
 
-  int effective_limit = limit;
-  if (is_disconnected && limit <= 0) {
-    effective_limit = 60000;  // 60 seconds default timeout when disconnected
+  uint64_t now_ms = util::GetTimeStampMS();
+
+  // If the time limit is reached, we set the script timeout flag and maybe warn
+  if (limit > 0 && now_ms - script_run_ctx->start_time_ms >= static_cast<uint64_t>(limit)) {
+    srv->SetScriptTimedOut(true);
+    if (!script_run_ctx->slow_logged) {
+      WARN(
+          "Slow script detected: still in execution after {} milliseconds. You can try killing the script using the "
+          "SCRIPT KILL command.",
+          now_ms - script_run_ctx->start_time_ms);
+      script_run_ctx->slow_logged = true;
+    }
   }
 
-  if (effective_limit > 0) {
-    uint64_t now_ms = util::GetTimeStampMS();
-    if (now_ms - script_run_ctx->start_time_ms >= static_cast<uint64_t>(effective_limit)) {
-      if (limit > 0) {
-        srv->SetScriptTimedOut(true);
-      }
+  // If the client has disconnected, we kill the script (if it hasn't written to the DB).
+  if (is_disconnected) {
+    if (!script_run_ctx->slow_logged) {
+      WARN("Slow script detected on disconnected client: still in execution after {} milliseconds. Killing it.",
+           now_ms - script_run_ctx->start_time_ms);
+      script_run_ctx->slow_logged = true;
+    }
+    if (!script_run_ctx->is_write_dirty) {
+      KillScript(lua);
+    }
+  } else {
+    // Determine the polling interval.
+    // If the limit is enabled, we poll immediately when the limit is exceeded.
+    // If the limit is disabled, we poll every 5 seconds to check for client disconnection.
+    uint64_t poll_interval = limit > 0 ? static_cast<uint64_t>(limit) : 5000;
 
-      if (!script_run_ctx->slow_logged) {
-        if (is_disconnected) {
-          WARN("Slow script detected on disconnected client: still in execution after {} milliseconds. Killing it.",
-               now_ms - script_run_ctx->start_time_ms);
-        } else {
-          WARN(
-              "Slow script detected: still in execution after {} milliseconds. You can try killing the script using "
-              "the "
-              "SCRIPT KILL command.",
-              now_ms - script_run_ctx->start_time_ms);
-        }
-        script_run_ctx->slow_logged = true;
-      }
+    // We only poll if:
+    // 1. The limit is enabled and the script has exceeded the limit.
+    // 2. OR the script has been running for at least poll_interval, and we haven't polled in the last poll_interval.
+    bool should_poll = false;
+    if (limit > 0 && now_ms - script_run_ctx->start_time_ms >= static_cast<uint64_t>(limit)) {
+      should_poll = (script_run_ctx->last_poll_time_ms == 0 || now_ms - script_run_ctx->last_poll_time_ms >= 100);
+    } else {
+      should_poll =
+          (now_ms - script_run_ctx->start_time_ms >= poll_interval) &&
+          (script_run_ctx->last_poll_time_ms == 0 || now_ms - script_run_ctx->last_poll_time_ms >= poll_interval);
+    }
 
-      if (is_disconnected) {
-        if (!script_run_ctx->is_write_dirty) {
-          KillScript(lua);
-        }
-      } else {
-        // Poll the worker thread's event loop to process SCRIPT KILL or other commands.
-        auto *worker = script_run_ctx->conn->Owner();
-        worker->PollEventLoop();
+    if (should_poll) {
+      auto *worker = script_run_ctx->conn->Owner();
+      worker->PollEventLoop();
+      script_run_ctx->last_poll_time_ms = now_ms;
 
-        if (script_run_ctx->is_killed) {
-          KillScript(lua);
-        }
+      if (script_run_ctx->is_killed) {
+        KillScript(lua);
       }
     }
   }

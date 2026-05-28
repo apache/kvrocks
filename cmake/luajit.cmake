@@ -47,19 +47,28 @@ FetchContent_GetProperties(luajit)
 if (NOT lua_POPULATED)
   FetchContent_Populate(luajit)
 
-  set(LUA_CFLAGS "-DLUA_ANSI -DENABLE_CJSON_GLOBAL -DREDIS_STATIC= -DLUA_USE_MKSTEMP")
+  # We use LUAJIT_CFLAGS instead of LUA_CFLAGS and we do not define LUA_ANSI.
+  # LuaJIT relies heavily on architecture-specific assembly code and compiler optimization settings,
+  # and LUA_ANSI is meant for standard Lua to restrict to ANSI C which LuaJIT does not support.
+  set(LUAJIT_CFLAGS "-DENABLE_CJSON_GLOBAL -DREDIS_STATIC= -DLUA_USE_MKSTEMP -DLUAJIT_ENABLE_CHECKHOOK")
+  set(LUAJIT_LDFLAGS "")
   if((CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang") OR
    (CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND CMAKE_CXX_COMPILER_ID STREQUAL "Clang"))
-    set(LUA_CFLAGS "${LUA_CFLAGS} -isysroot ${CMAKE_OSX_SYSROOT}")
+    set(LUAJIT_CFLAGS "${LUAJIT_CFLAGS} -isysroot ${CMAKE_OSX_SYSROOT}")
+    set(LUAJIT_LDFLAGS "-isysroot ${CMAKE_OSX_SYSROOT}")
   endif ()
 
   if (CMAKE_HOST_APPLE)
     set(MACOSX_TARGET "MACOSX_DEPLOYMENT_TARGET=${CMAKE_OSX_DEPLOYMENT_TARGET}")
   endif ()
 
+  # We pass C compiler path CC and custom preprocessor definitions via XCFLAGS instead of CFLAGS.
+  # Overriding CFLAGS on the make command line completely discards LuaJIT's own Makefile CFLAGS (such as
+  # -O2 and target-specific compiler optimizations), which breaks the JIT compiler and assembler VM
+  # stack unwinding on platforms like macOS arm64, leading to CPU spin locks or crashes.
   add_custom_target(make_luajit
     COMMAND ${MAKE_COMMAND} libluajit.a ${NINJA_MAKE_JOBS_FLAG}
-      "CFLAGS=${LUA_CFLAGS}" ${MACOSX_TARGET}
+      "CC=${CMAKE_C_COMPILER}" "XCFLAGS=${LUAJIT_CFLAGS}" "LDFLAGS=${LUAJIT_LDFLAGS}" "HOST_LDFLAGS=${LUAJIT_LDFLAGS}" ${MACOSX_TARGET}
     COMMAND ${CMAKE_COMMAND} -E make_directory ${luajit_BINARY_DIR}/include
     COMMAND sh -c "cp ${luajit_SOURCE_DIR}/src/*.h ${luajit_SOURCE_DIR}/src/*.hpp ${luajit_BINARY_DIR}/include/"
     WORKING_DIRECTORY ${luajit_SOURCE_DIR}/src

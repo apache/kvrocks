@@ -54,7 +54,8 @@
 #include "server.h"
 #include "storage/scripting.h"
 
-Worker::Worker(Server *srv, Config *config) : srv(srv), base_(event_base_new()) {
+Worker::Worker(Server *srv, Config *config, const std::vector<int> &tcp_listen_fds)
+    : srv(srv), base_(event_base_new()) {
   if (!base_) throw std::runtime_error{"event base failed to be created"};
 
   timer_.reset(NewEvent(base_, -1, EV_PERSIST));
@@ -65,6 +66,19 @@ Worker::Worker(Server *srv, Config *config) : srv(srv), base_(event_base_new()) 
     if (const Status s = listenFD(config->socket_fd, config->port, config->backlog); !s.IsOK()) {
       ERROR("[worker] Failed to listen to socket with fd: {}, Error: {}", config->socket_fd, s.Msg());
       exit(1);
+    }
+  } else if (!tcp_listen_fds.empty()) {
+    for (int fd : tcp_listen_fds) {
+      int dup_fd = dup(fd);
+      if (dup_fd == -1) {
+        ERROR("[worker] Failed to dup fd: {}, Error: {}", fd, strerror(errno));
+        exit(1);
+      }
+      evconnlistener *lev = NewEvconnlistener<&Worker::newTCPConnection>(
+          base_, LEV_OPT_THREADSAFE | LEV_OPT_CLOSE_ON_FREE, config->backlog, dup_fd);
+      listen_events_.emplace_back(lev);
+      tcp_listen_fds_.push_back(dup_fd);
+      INFO("[worker] Listening on shared TCP fd: {} (original: {})", dup_fd, fd);
     }
   } else {
     const uint32_t ports[3] = {config->port, config->tls_port, 0};
@@ -241,6 +255,7 @@ Status Worker::listenFD(int fd, uint32_t expected_port, int backlog) {
   evconnlistener *lev =
       NewEvconnlistener<&Worker::newTCPConnection>(base_, LEV_OPT_THREADSAFE | LEV_OPT_CLOSE_ON_FREE, backlog, dup_fd);
   listen_events_.emplace_back(lev);
+  tcp_listen_fds_.push_back(dup_fd);
   INFO("[worker] Listening on dup'ed fd: {}", dup_fd);
   return Status::OK();
 }
@@ -285,6 +300,7 @@ Status Worker::listenTCP(const std::string &host, uint32_t port, int backlog) {
     auto lev =
         NewEvconnlistener<&Worker::newTCPConnection>(base_, LEV_OPT_THREADSAFE | LEV_OPT_CLOSE_ON_FREE, backlog, fd);
     listen_events_.emplace_back(lev);
+    tcp_listen_fds_.push_back(fd);
   }
 
   return Status::OK();
@@ -581,6 +597,36 @@ void Worker::LuaReset() {
 }
 
 int64_t Worker::GetLuaMemorySize() { return (int64_t)lua_gc(lua_, LUA_GCCOUNT, 0) * 1024; }
+
+void Worker::PollEventLoop() {
+  event_base_loop(base_, EVLOOP_ONCE | EVLOOP_NONBLOCK);
+
+  // Flush all active connections' output buffers to their sockets
+  std::lock_guard<std::mutex> lock(conns_mu_);
+  for (const auto &iter : conns_) {
+    auto *conn = iter.second;
+    if (conn->IsFlagEnabled(redis::Connection::kCloseAsync)) {
+      continue;
+    }
+    auto *bev = conn->GetBufferEvent();
+    if (bev) {
+      bool is_tls = false;
+#ifdef ENABLE_OPENSSL
+      if (bufferevent_openssl_get_ssl(bev) != nullptr) {
+        is_tls = true;
+      }
+#endif
+      if (is_tls) {
+        bufferevent_flush(bev, EV_WRITE, BEV_FLUSH);
+      } else {
+        auto *output = bufferevent_get_output(bev);
+        if (evbuffer_get_length(output) > 0) {
+          evbuffer_write(output, conn->GetFD());
+        }
+      }
+    }
+  }
+}
 
 void Worker::KickoutIdleClients(int timeout) {
   std::vector<std::pair<int, uint64_t>> to_be_killed_conns;

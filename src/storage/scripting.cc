@@ -31,6 +31,7 @@
 
 #include "commands/commander.h"
 #include "commands/error_constants.h"
+#include "common/logging.h"
 #include "db_util.h"
 #include "fmt/format.h"
 #include "lua.h"
@@ -40,9 +41,11 @@
 #include "server/redis_connection.h"
 #include "server/redis_reply.h"
 #include "server/server.h"
+#include "server/worker.h"
 #include "sha1.h"
 #include "storage/storage.h"
 #include "string_util.h"
+#include "time_util.h"
 
 /* The maximum number of characters needed to represent a long double
  * as a string (long double has a huge range).
@@ -60,6 +63,89 @@ enum {
 
 namespace lua {
 
+class ScriptRunCtxGuard {
+ public:
+  ScriptRunCtxGuard(Server *srv, lua_State *lua, ScriptRunCtx *rctx) : srv_(srv), lua_(lua), rctx_(rctx) {
+    rctx_->start_time_ms = util::GetTimeStampMS();
+    SaveOnRegistry(lua_, REGISTRY_SCRIPT_RUN_CTX_NAME, rctx_);
+    srv_->RegisterRunningScript(rctx_);
+    lua_sethook(lua_, LuaMaskCountHook, LUA_MASKCOUNT, 100000);
+  }
+
+  ~ScriptRunCtxGuard() {
+    lua_sethook(lua_, nullptr, 0, 0);
+    srv_->UnregisterRunningScript(rctx_);
+    RemoveFromRegistry(lua_, REGISTRY_SCRIPT_RUN_CTX_NAME);
+  }
+
+ private:
+  Server *srv_;
+  lua_State *lua_;
+  ScriptRunCtx *rctx_;
+};
+
+static void KillScript(lua_State *lua) {
+  lua_sethook(lua, LuaMaskCountHook, LUA_MASKLINE, 0);
+  PushError(lua, "Script killed by user with SCRIPT KILL...");
+  RaiseError(lua);
+}
+
+void LuaMaskCountHook(lua_State *lua, [[maybe_unused]] lua_Debug *ar) {
+  auto *script_run_ctx = GetFromRegistry<ScriptRunCtx>(lua, REGISTRY_SCRIPT_RUN_CTX_NAME);
+  if (script_run_ctx == nullptr) return;
+
+  auto *srv = script_run_ctx->conn->GetServer();
+
+  if (script_run_ctx->is_killed) {
+    KillScript(lua);
+  }
+
+  int limit = srv->GetConfig()->lua_time_limit;
+  bool is_disconnected = script_run_ctx->conn->IsFlagEnabled(redis::Connection::kCloseAsync);
+
+  int effective_limit = limit;
+  if (is_disconnected && limit <= 0) {
+    effective_limit = 60000;  // 60 seconds default timeout when disconnected
+  }
+
+  if (effective_limit > 0) {
+    uint64_t now_ms = util::GetTimeStampMS();
+    if (now_ms - script_run_ctx->start_time_ms >= static_cast<uint64_t>(effective_limit)) {
+      if (limit > 0) {
+        srv->SetScriptTimedOut(true);
+      }
+
+      if (!script_run_ctx->slow_logged) {
+        if (is_disconnected) {
+          WARN("Slow script detected on disconnected client: still in execution after {} milliseconds. Killing it.",
+               now_ms - script_run_ctx->start_time_ms);
+        } else {
+          WARN(
+              "Slow script detected: still in execution after {} milliseconds. You can try killing the script using "
+              "the "
+              "SCRIPT KILL command.",
+              now_ms - script_run_ctx->start_time_ms);
+        }
+        script_run_ctx->slow_logged = true;
+      }
+
+      if (is_disconnected) {
+        if (!script_run_ctx->is_write_dirty) {
+          KillScript(lua);
+        }
+      } else {
+        // Poll the worker thread's event loop to process SCRIPT KILL or other commands.
+        auto *worker = script_run_ctx->conn->Owner();
+        worker->PollEventLoop();
+
+        if (script_run_ctx->is_killed) {
+          KillScript(lua);
+        }
+      }
+    }
+  }
+}
+
 namespace {
 
 std::string SanitizeErrorMessage(std::string_view message) {
@@ -72,6 +158,8 @@ std::string SanitizeErrorMessage(std::string_view message) {
 
 lua_State *CreateState() {
   lua_State *lua = lua_open();
+  // We do not turn off the JIT engine because LUAJIT_ENABLE_CHECKHOOK is defined,
+  // which allows JIT-compiled code to check hooks safely while preserving performance.
   LoadLibraries(lua);
   RemoveUnsupportedFunctions(lua);
   LoadFuncs(lua);
@@ -434,7 +522,7 @@ Status FunctionCall(redis::Connection *conn, engine::Context *ctx, const std::st
   }
   lua_pop(lua, 1);
 
-  SaveOnRegistry(lua, REGISTRY_SCRIPT_RUN_CTX_NAME, &script_run_ctx);
+  ScriptRunCtxGuard guard(srv, lua, &script_run_ctx);
 
   // save keys on registry the to perform key touching check
   SaveOnRegistry(lua, REGISTRY_KEYS_NAME, &keys);
@@ -451,7 +539,6 @@ Status FunctionCall(redis::Connection *conn, engine::Context *ctx, const std::st
   }
 
   RemoveFromRegistry(lua, REGISTRY_KEYS_NAME);
-  RemoveFromRegistry(lua, REGISTRY_SCRIPT_RUN_CTX_NAME);
 
   /* Call the Lua garbage collector from time to time to avoid a
    * full cycle performed by Lua, which adds too latency.
@@ -705,7 +792,7 @@ Status EvalGenericCommand(redis::Connection *conn, engine::Context *ctx, const s
   }
   lua_pop(lua, 1);
 
-  SaveOnRegistry(lua, REGISTRY_SCRIPT_RUN_CTX_NAME, &current_script_run_ctx);
+  ScriptRunCtxGuard guard(srv, lua, &current_script_run_ctx);
 
   // For the Lua script, should be always run with RESP2 protocol,
   // unless users explicitly set the protocol version in the script via `redis.setresp`.
@@ -737,7 +824,6 @@ Status EvalGenericCommand(redis::Connection *conn, engine::Context *ctx, const s
   lua_pushnil(lua);
   lua_setglobal(lua, "ARGV");
   RemoveFromRegistry(lua, REGISTRY_KEYS_NAME);
-  RemoveFromRegistry(lua, REGISTRY_SCRIPT_RUN_CTX_NAME);
 
   /* Call the Lua garbage collector from time to time to avoid a
    * full cycle performed by Lua, which adds too latency.
@@ -888,6 +974,9 @@ int RedisGenericCommand(lua_State *lua, int raise_error) {
   }
 
   std::string output;
+  if (cmd_flags & redis::kCmdWrite) {
+    script_run_ctx->is_write_dirty = true;
+  }
   s = conn->ExecuteCommand(*script_run_ctx->ctx, cmd_name, args, cmd.get(), &output);
   if (!s) {
     PushError(lua, s.Msg().data());

@@ -24,6 +24,7 @@ import (
 	_ "embed"
 	"fmt"
 	"math/big"
+	"strings"
 	"testing"
 	"time"
 
@@ -512,6 +513,126 @@ math.randomseed(ARGV[1]); return tostring(math.random())
 	t.Run("EVAL - cannot use redis.setresp(3) if RESP3 is disabled", func(t *testing.T) {
 		r := rdb.Eval(ctx, `redis.setresp(3);`, []string{})
 		util.ErrorRegexp(t, r.Err(), ".*ERR.*You need set resp3-enabled to yes to enable RESP3.*")
+	})
+
+	t.Run("SCRIPT KILL and lua-time-limit", func(t *testing.T) {
+		srv2 := util.StartServer(t, map[string]string{"lua-time-limit": "100"})
+		defer srv2.Close()
+
+		rdb2 := srv2.NewClient()
+		defer func() { require.NoError(t, rdb2.Close()) }()
+
+		require.NoError(t, rdb2.Set(ctx, "k1", "v1", 0).Err())
+
+		errChan := make(chan error, 1)
+		go func() {
+			errChan <- rdb2.Eval(ctx, "while true do end", []string{}).Err()
+		}()
+
+		time.Sleep(200 * time.Millisecond)
+
+		// Get command might get dispatched to the busy thread and time out, so we retry with a short timeout.
+		var getErr error
+		for i := 0; i < 20; i++ {
+			rdb3 := redis.NewClient(&redis.Options{
+				Addr:         srv2.HostPort(),
+				DialTimeout:  500 * time.Millisecond,
+				ReadTimeout:  500 * time.Millisecond,
+				WriteTimeout: 500 * time.Millisecond,
+			})
+			getErr = rdb3.Get(ctx, "k1").Err()
+			_ = rdb3.Close()
+			if getErr != nil && strings.Contains(getErr.Error(), "BUSY") {
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+		require.Error(t, getErr)
+		util.ErrorRegexp(t, getErr, ".*BUSY Redis is busy running a script.*")
+
+		// ScriptKill command might also get dispatched to the busy thread and time out, so we retry it.
+		var killErr error
+		for i := 0; i < 20; i++ {
+			rdb3 := redis.NewClient(&redis.Options{
+				Addr:         srv2.HostPort(),
+				DialTimeout:  500 * time.Millisecond,
+				ReadTimeout:  500 * time.Millisecond,
+				WriteTimeout: 500 * time.Millisecond,
+			})
+			killErr = rdb3.ScriptKill(ctx).Err()
+			_ = rdb3.Close()
+			if killErr == nil {
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+		require.NoError(t, killErr)
+
+		select {
+		case err := <-errChan:
+			util.ErrorRegexp(t, err, ".*Script killed by user with SCRIPT.*")
+		case <-time.After(5 * time.Second):
+			t.Fatal("timeout waiting for script to be killed")
+		}
+
+		require.NoError(t, rdb2.Set(ctx, "k1", "v2", 0).Err())
+		require.Equal(t, "v2", rdb2.Get(ctx, "k1").Val())
+
+		go func() {
+			errChan <- rdb2.Eval(ctx, "redis.call('set', 'k2', 'v2'); while true do end", []string{}).Err()
+		}()
+
+		time.Sleep(200 * time.Millisecond)
+
+		// ScriptKill command on write script might get dispatched to the busy thread and time out, so we retry it.
+		for i := 0; i < 20; i++ {
+			rdb3 := redis.NewClient(&redis.Options{
+				Addr:         srv2.HostPort(),
+				DialTimeout:  500 * time.Millisecond,
+				ReadTimeout:  500 * time.Millisecond,
+				WriteTimeout: 500 * time.Millisecond,
+			})
+			killErr = rdb3.ScriptKill(ctx).Err()
+			_ = rdb3.Close()
+			if killErr != nil && strings.Contains(killErr.Error(), "UNKILLABLE") {
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+		require.Error(t, killErr)
+		util.ErrorRegexp(t, killErr, ".*UNKILLABLE Sorry the script already executed write commands.*")
+	})
+
+	t.Run("SCRIPT KILL on disconnected client", func(t *testing.T) {
+		srv2 := util.StartServer(t, map[string]string{"lua-time-limit": "500"})
+		defer srv2.Close()
+
+		rdb2 := srv2.NewClient()
+		require.NoError(t, rdb2.Set(ctx, "k1", "v1", 0).Err())
+
+		errChan := make(chan error, 1)
+		go func() {
+			errChan <- rdb2.Eval(ctx, "while true do end", []string{}).Err()
+		}()
+
+		// 1. Script is running, elapsed time < 500ms
+		time.Sleep(100 * time.Millisecond)
+		rdb3 := srv2.NewClient()
+		defer func() { require.NoError(t, rdb3.Close()) }()
+		require.Equal(t, "v1", rdb3.Get(ctx, "k1").Val()) // Should succeed
+
+		// 2. Disconnect Client A (rdb2)
+		require.NoError(t, rdb2.Close())
+
+		// 3. Immediately after disconnect, elapsed time is still < 500ms, script should still be running
+		time.Sleep(100 * time.Millisecond)
+		require.Equal(t, "v1", rdb3.Get(ctx, "k1").Val()) // Should still succeed
+
+		// 4. Wait for total elapsed time to exceed 500ms, the script should be killed automatically
+		time.Sleep(500 * time.Millisecond)
+
+		// 5. Verify the script has been killed (we can run Get successfully and server is not BUSY)
+		require.Equal(t, "v1", rdb3.Get(ctx, "k1").Val()) // Should succeed and not be BUSY
 	})
 }
 

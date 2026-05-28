@@ -28,6 +28,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"sync"
 	"syscall"
 	"testing"
@@ -234,7 +235,8 @@ func StartServerWithCLIOptions(
 
 	dir := *workspace
 	require.NotEmpty(t, dir, "please set the workspace by `-workspace`")
-	dir, err = os.MkdirTemp(dir, fmt.Sprintf("%s-%d-*", t.Name(), time.Now().UnixMilli()))
+	name := strings.ReplaceAll(t.Name(), "/", "_")
+	dir, err = os.MkdirTemp(dir, fmt.Sprintf("%s-%d-*", name, time.Now().UnixMilli()))
 	require.NoError(t, err)
 	configs["dir"] = dir
 

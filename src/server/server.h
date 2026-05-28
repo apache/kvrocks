@@ -62,6 +62,10 @@
 
 constexpr const char *REDIS_VERSION = "7.0.0";
 
+namespace lua {
+struct ScriptRunCtx;
+}
+
 struct DBScanInfo {
   // Last scan system clock in seconds
   int64_t last_scan_time_secs = 0;
@@ -315,6 +319,12 @@ class Server {
   void KillClient(int64_t *killed, const std::string &addr, uint64_t id, uint64_t type, bool skipme,
                   redis::Connection *conn);
 
+  void RegisterRunningScript(lua::ScriptRunCtx *rctx);
+  void UnregisterRunningScript(lua::ScriptRunCtx *rctx);
+  bool IsScriptTimedOut() const;
+  void SetScriptTimedOut(bool timed_out);
+  Status ScriptKill();
+
   Status ScriptExists(const std::string &sha) const;
   Status ScriptGet(const std::string &sha, std::string *body) const;
   Status ScriptSet(const std::string &sha, const std::string &body) const;
@@ -478,4 +488,8 @@ class Server {
     uint64_t id;
   };
   std::vector<PausedConnEntry> paused_conns_;
+
+  std::vector<lua::ScriptRunCtx *> running_scripts_;
+  mutable std::mutex running_scripts_mu_;
+  std::atomic<bool> is_script_timeout_{false};
 };

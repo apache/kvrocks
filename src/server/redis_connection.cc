@@ -94,19 +94,35 @@ std::string Connection::ToString() {
 }
 
 void Connection::Close() {
-  if (close_cb) close_cb(GetFD());
+  if (is_running_) {
+    EnableFlag(kCloseAsync);
+    if (bev_) {
+      bufferevent_disable(bev_, EV_READ | EV_WRITE);
+      bufferevent_setcb(bev_, nullptr, nullptr, nullptr, nullptr);
+      int fd = bufferevent_getfd(bev_);
+      if (fd != -1) {
+        evutil_closesocket(fd);
+      }
+    }
+    return;
+  }
+
+  if (close_cb) {
+    close_cb(GetFD());
+  }
   owner_->FreeConnection(this);
 }
 
 void Connection::Detach() { owner_->DetachConnection(this); }
 
 void Connection::OnRead([[maybe_unused]] struct bufferevent *bev) {
+  if (is_running_) return;
   is_running_ = true;
-  MakeScopeExit([this] { is_running_ = false; });
 
   SetLastInteraction();
   auto s = req_.Tokenize(Input());
   if (!s.IsOK()) {
+    is_running_ = false;
     EnableFlag(redis::Connection::kCloseAfterReply);
     Reply(redis::Error(s));
     INFO("[connection] Failed to tokenize the request. Error: {}", s.Msg());
@@ -114,8 +130,12 @@ void Connection::OnRead([[maybe_unused]] struct bufferevent *bev) {
   }
 
   ExecuteCommands(req_.GetCommands());
+  is_running_ = false;
+
   if (IsFlagEnabled(kCloseAsync)) {
     Close();
+  } else if (evbuffer_get_length(Input()) > 0) {
+    bufferevent_trigger(bev_, EV_READ, BEV_TRIG_IGNORE_WATERMARKS);
   }
 }
 
@@ -433,6 +453,18 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     to_process_cmds->pop_front();
     if (cmd_tokens.empty()) continue;
 
+    bool is_script_kill = (util::EqualICase(cmd_tokens.front(), "script") && cmd_tokens.size() >= 2 &&
+                           util::EqualICase(cmd_tokens[1], "kill"));
+    bool is_shutdown = util::EqualICase(cmd_tokens.front(), "shutdown");
+
+    if (srv_->IsScriptTimedOut()) {
+      if (!is_script_kill && !is_shutdown) {
+        Reply(redis::Error({Status::RedisErrorNoPrefix,
+                            "BUSY Redis is busy running a script. You can only call SCRIPT KILL or SHUTDOWN NOSAVE."}));
+        continue;
+      }
+    }
+
     bool is_multi_exec = IsFlagEnabled(Connection::kMultiExec);
     if (IsFlagEnabled(redis::Connection::kCloseAfterReply) && !is_multi_exec) break;
     auto multi_error_exit = MakeScopeExit([&] {
@@ -457,7 +489,6 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
       continue;
     }
     auto current_cmd = std::move(*cmd_s);
-
     const auto &attributes = current_cmd->GetAttributes();
     auto cmd_name = attributes->name;
 
@@ -494,7 +525,9 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     // that can guarantee other threads can't come into critical zone, such as DEBUG,
     // CLUSTER subcommand, CONFIG SET, MULTI, LUA (in the immediate future).
     // Otherwise, we just use 'ConcurrencyGuard' to allow all workers to execute commands at the same time.
-    if (is_multi_exec && !(cmd_flags & kCmdBypassMulti)) {
+    if (is_script_kill || is_shutdown) {
+      // Bypass locks to allow SCRIPT KILL and SHUTDOWN to run even if another thread is stuck in a script
+    } else if (is_multi_exec && !(cmd_flags & kCmdBypassMulti)) {
       // No lock guard, because 'exec' command has acquired 'WorkExclusivityGuard'
     } else if (cmd_flags & kCmdExclusive) {
       exclusivity = srv_->WorkExclusivityGuard();

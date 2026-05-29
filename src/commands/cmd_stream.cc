@@ -275,38 +275,44 @@ class CommandXDelEx : public Commander {
     stream_name_ = GET_OR_RET(parser.TakeStr());
 
     option_ = redis::StreamDeleteOption::KeepRef;
+    bool has_ids = false;
 
-    while (parser.Good() && !util::EqualICase(parser.RawPeek(), "IDS")) {
+    while (parser.Good()) {
       if (parser.EatEqICase("KEEPREF")) {
         option_ = redis::StreamDeleteOption::KeepRef;
       } else if (parser.EatEqICase("DELREF")) {
         option_ = redis::StreamDeleteOption::DelRef;
       } else if (parser.EatEqICase("ACKED")) {
         option_ = redis::StreamDeleteOption::Acked;
+      } else if (parser.EatEqICase("IDS")) {
+        if (has_ids) {
+          return parser.InvalidSyntax();
+        }
+        has_ids = true;
+
+        auto numids_result = parser.TakeInt<int64_t>();
+        if (!numids_result.IsOK()) {
+          return {Status::RedisParseErr, errValueNotInteger};
+        }
+        int64_t numids = numids_result.GetValue();
+        if (numids <= 0) {
+          return {Status::RedisParseErr, "numids must be positive"};
+        }
+
+        for (int64_t i = 0; i < numids; i++) {
+          auto id_str = GET_OR_RET(parser.TakeStr());
+          redis::StreamEntryID id;
+          auto s = ParseStreamEntryID(id_str, &id);
+          if (!s.IsOK()) return s;
+          entry_ids_.emplace_back(id);
+        }
       } else {
         return parser.InvalidSyntax();
       }
     }
 
-    if (!parser.EatEqICase("IDS")) {
+    if (!has_ids) {
       return {Status::RedisParseErr, "syntax error, expected IDS keyword"};
-    }
-
-    auto numids_result = parser.TakeInt<int64_t>();
-    if (!numids_result.IsOK()) {
-      return {Status::RedisParseErr, errValueNotInteger};
-    }
-    int64_t numids = numids_result.GetValue();
-    if (numids <= 0) {
-      return {Status::RedisParseErr, "numids must be positive"};
-    }
-
-    for (int64_t i = 0; i < numids; i++) {
-      auto id_str = GET_OR_RET(parser.TakeStr());
-      redis::StreamEntryID id;
-      auto s = ParseStreamEntryID(id_str, &id);
-      if (!s.IsOK()) return s;
-      entry_ids_.emplace_back(id);
     }
 
     return Status::OK();

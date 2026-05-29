@@ -25,9 +25,9 @@
 #include <map>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
-#include "common/db_util.h"
 #include "storage/redis_db.h"
 #include "storage/redis_metadata.h"
 
@@ -119,19 +119,14 @@ class Stream : public SubKeyScanner {
 
   rocksdb::Status deleteEntryAndUpdateMeta(rocksdb::WriteBatchBase *batch, const std::string &entry_key,
                                            const StreamEntryID &id, StreamMetadata *metadata, uint64_t *deleted_cnt);
-  rocksdb::Status processOneEntryDeletion(
-      engine::Context &ctx, const rocksdb::ReadOptions &read_options, const std::string &ns_key,
-      StreamMetadata *metadata, const StreamEntryID &id, const std::vector<std::string> &all_groups,
-      StreamDeleteOption option, rocksdb::WriteBatchBase *batch, bool *batch_modified, uint64_t *deleted_cnt,
-      StreamEntryDeleteResult *result, std::map<std::string, uint64_t> *group_pending_decrements,
-      std::map<std::string, std::map<std::string, uint64_t>> *consumer_pending_decrements);
   rocksdb::Status cleanPelFromAllGroups(
       engine::Context &ctx, const std::string &ns_key, const StreamMetadata &metadata, const StreamEntryID &id,
       rocksdb::WriteBatchBase *batch, bool *batch_modified, const std::vector<std::string> &group_names,
       std::map<std::string, uint64_t> *group_pending_decrements,
       std::map<std::string, std::map<std::string, uint64_t>> *consumer_pending_decrements);
   rocksdb::Status isAckedByAllGroups(engine::Context &ctx, const std::string &ns_key, const StreamMetadata &metadata,
-                                     const StreamEntryID &id, const std::vector<std::string> &all_groups,
+                                     const StreamEntryID &id, const std::vector<std::string> &group_names,
+                                     const std::unordered_map<std::string, StreamEntryID> &last_delivered_ids_by_group,
                                      bool *all_acked);
   rocksdb::Status flushPendingNumberUpdates(
       engine::Context &ctx, const std::string &ns_key, const StreamMetadata &metadata, rocksdb::WriteBatchBase *batch,

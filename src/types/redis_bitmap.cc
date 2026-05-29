@@ -483,6 +483,10 @@ rocksdb::Status Bitmap::BitOp(engine::Context &ctx, BitOpFlags op_flag, const st
   }
   size_t num_keys = meta_pairs.size();
 
+  // Determine if the first source key (X) exists in meta_pairs.
+  // meta_pairs preserves op_keys order for existing keys, so meta_pairs[0] is X iff X exists.
+  const bool first_key_exists = !meta_pairs.empty() && meta_pairs[0].first == AppendNamespacePrefix(op_keys[0]);
+
   auto batch = storage_->GetWriteBatchBase();
   if (max_bitmap_size == 0) {
     /* Compute the bit operation, if all bitmap is empty. cleanup the dest bitmap. */
@@ -499,9 +503,10 @@ rocksdb::Status Bitmap::BitOp(engine::Context &ctx, BitOpFlags op_flag, const st
   if (!s.ok()) return s;
 
   BitmapMetadata res_metadata;
-  // If the operation is AND and the number of keys is less than the number of op_keys,
-  // we can skip setting the subkeys of the result bitmap and just set the metadata.
-  const bool can_skip_op = op_flag == kBitOpAnd && num_keys != op_keys.size();
+  // AND: any missing key means result is all zeros.
+  // DIFF/ANDOR: missing X means result is all zeros (X=0 → X & anything = 0).
+  const bool can_skip_op = (op_flag == kBitOpAnd && num_keys != op_keys.size()) ||
+                           ((op_flag == kBitOpDiff || op_flag == kBitOpAndOr) && !first_key_exists);
   if (!can_skip_op) {
     uint64_t stop_index = (max_bitmap_size - 1) / kBitmapSegmentBytes;
     std::unique_ptr<unsigned char[]> frag_res(new unsigned char[kBitmapSegmentBytes]);
@@ -510,6 +515,9 @@ rocksdb::Status Bitmap::BitOp(engine::Context &ctx, BitOpFlags op_flag, const st
     for (uint64_t frag_index = 0; frag_index <= stop_index; frag_index++) {
       std::vector<rocksdb::PinnableSlice> fragments;
       uint16_t frag_maxlen = 0, frag_minlen = 0;
+      // Tracks whether fragments[0] is X's fragment (only relevant for DIFF/DIFF1/ANDOR).
+      bool x_frag_is_first = false;
+      bool is_first_meta_pair = true;
       for (const auto &meta_pair : meta_pairs) {
         std::string sub_key = InternalKey(meta_pair.first, std::to_string(frag_index * kBitmapSegmentBytes),
                                           meta_pair.second.version, storage_->IsSlotIdEncoded())
@@ -521,16 +529,24 @@ rocksdb::Status Bitmap::BitOp(engine::Context &ctx, BitOpFlags op_flag, const st
         }
         if (s.IsNotFound()) {
           if (op_flag == kBitOpAnd) {
-            // If any of the input bitmaps is empty, the result of AND
-            // is empty.
+            // If any of the input bitmaps is empty, the result of AND is empty.
+            frag_maxlen = 0;
+            break;
+          }
+          // For DIFF/ANDOR: X's segment missing means result is 0 for this segment.
+          if ((op_flag == kBitOpDiff || op_flag == kBitOpAndOr) && first_key_exists && is_first_meta_pair) {
             frag_maxlen = 0;
             break;
           }
         } else {
           if (frag_maxlen < fragment.size()) frag_maxlen = fragment.size();
           if (fragment.size() < frag_minlen || frag_minlen == 0) frag_minlen = fragment.size();
+          if (is_first_meta_pair && first_key_exists && fragments.empty()) {
+            x_frag_is_first = true;
+          }
           fragments.emplace_back(std::move(fragment));
         }
+        is_first_meta_pair = false;
       }
 
       size_t frag_numkeys = fragments.size();
@@ -548,8 +564,8 @@ rocksdb::Status Bitmap::BitOp(engine::Context &ctx, BitOpFlags op_flag, const st
          * result in GCC compiling the code using multiple-words load/store
          * operations that are not supported even in ARM >= v6. */
 #ifndef USE_ALIGNED_ACCESS
-        if (frag_minlen >= sizeof(uint64_t) * 4 && frag_numkeys <= 16 &&
-            op_flag != kBitOpDiff && op_flag != kBitOpDiff1 && op_flag != kBitOpAndOr && op_flag != kBitOpOne) {
+        if (frag_minlen >= sizeof(uint64_t) * 4 && frag_numkeys <= 16 && op_flag != kBitOpDiff &&
+            op_flag != kBitOpDiff1 && op_flag != kBitOpAndOr && op_flag != kBitOpOne) {
           auto *lres = reinterpret_cast<uint64_t *>(frag_res.get());
           const uint64_t *lp[16];
           for (uint64_t i = 0; i < frag_numkeys; i++) {
@@ -594,23 +610,30 @@ rocksdb::Status Bitmap::BitOp(engine::Context &ctx, BitOpFlags op_flag, const st
         }
 #endif
 
+        // For DIFF/DIFF1/ANDOR: y_start is where Y fragments begin in fragments[].
+        // When x_frag_is_first=true, fragments[0]=X and Ys start at 1.
+        // When x_frag_is_first=false, X=0 (missing) and all fragments are Ys.
+        const uint64_t y_start = x_frag_is_first ? 1 : 0;
+
         uint8_t output = 0, byte = 0;
         for (; j < frag_maxlen; j++) {
           output = (fragments[0].size() <= j) ? 0 : static_cast<uint8_t>(fragments[0][j]);
           if (op_flag == kBitOpNot) {
             output = ~output;
           } else if (op_flag == kBitOpDiff1) {
-            // DIFF1: bits set in any Y but not in X (X = fragments[0])
+            // DIFF1: bits set in any Y but not in X
+            uint8_t x_byte = x_frag_is_first ? output : 0;
             uint8_t or_rest = 0;
-            for (uint64_t i = 1; i < frag_numkeys; i++) {
+            for (uint64_t i = y_start; i < frag_numkeys; i++) {
               byte = (fragments[i].size() <= j) ? 0 : static_cast<uint8_t>(fragments[i][j]);
               or_rest |= byte;
             }
-            output = or_rest & ~output;
+            output = or_rest & ~x_byte;
           } else if (op_flag == kBitOpAndOr) {
             // ANDOR: bits set in X AND in at least one Y
+            // (ANDOR with missing X is already handled by can_skip_op)
             uint8_t or_rest = 0;
-            for (uint64_t i = 1; i < frag_numkeys; i++) {
+            for (uint64_t i = y_start; i < frag_numkeys; i++) {
               byte = (fragments[i].size() <= j) ? 0 : static_cast<uint8_t>(fragments[i][j]);
               or_rest |= byte;
             }
@@ -626,7 +649,12 @@ rocksdb::Status Bitmap::BitOp(engine::Context &ctx, BitOpFlags op_flag, const st
             }
             output = xor_acc & ~and_acc;
           } else {
-            for (uint64_t i = 1; i < frag_numkeys; i++) {
+            // For DIFF: X = fragments[0] if x_frag_is_first, else X = 0.
+            // DIFF with missing X is handled by can_skip_op, so x_frag_is_first=true here.
+            if (op_flag == kBitOpDiff && !x_frag_is_first) {
+              output = 0;
+            }
+            for (uint64_t i = (op_flag == kBitOpDiff ? y_start : 1); i < frag_numkeys; i++) {
               byte = (fragments[i].size() <= j) ? 0 : static_cast<uint8_t>(fragments[i][j]);
               switch (op_flag) {
                 case kBitOpAnd:

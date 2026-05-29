@@ -469,6 +469,52 @@ func TestBitmap(t *testing.T) {
 		require.EqualValues(t, SimulateBitOp(ANDOR, []byte("\xff"), []byte("\x0f"), []byte("\xf0")), rdb.Get(ctx, "dest").Val())
 	})
 
+	// Redis semantics: when X (first source key) does not exist, it is treated as
+	// a stream of zero bytes. So DIFF(nosuch, y) = 0 & ~y = 0, not y.
+	t.Run("BITOP DIFF missing first key X treated as zero (Redis semantics)", func(t *testing.T) {
+		require.NoError(t, rdb.FlushDB(ctx).Err())
+		Set2SetBit(t, rdb, ctx, "y", []byte("\x0f"))
+		require.NoError(t, rdb.Do(ctx, "BITOP", "DIFF", "dest", "nosuch", "y").Err())
+		// X=0x00, Y=0x0f -> DIFF = 0x00 & ~0x0f = 0x00
+		require.EqualValues(t, SimulateBitOp(DIFF, []byte("\x00"), []byte("\x0f")), rdb.Get(ctx, "dest").Val())
+	})
+
+	t.Run("BITOP DIFF1 missing first key X treated as zero (Redis semantics)", func(t *testing.T) {
+		require.NoError(t, rdb.FlushDB(ctx).Err())
+		Set2SetBit(t, rdb, ctx, "y", []byte("\x0f"))
+		require.NoError(t, rdb.Do(ctx, "BITOP", "DIFF1", "dest", "nosuch", "y").Err())
+		// X=0x00, Y=0x0f -> DIFF1 = 0x0f & ~0x00 = 0x0f
+		require.EqualValues(t, SimulateBitOp(DIFF1, []byte("\x00"), []byte("\x0f")), rdb.Get(ctx, "dest").Val())
+	})
+
+	t.Run("BITOP ANDOR missing first key X treated as zero (Redis semantics)", func(t *testing.T) {
+		require.NoError(t, rdb.FlushDB(ctx).Err())
+		Set2SetBit(t, rdb, ctx, "y", []byte("\x0f"))
+		require.NoError(t, rdb.Do(ctx, "BITOP", "ANDOR", "dest", "nosuch", "y").Err())
+		// X=0x00, Y=0x0f -> ANDOR = 0x00 & 0x0f = 0x00
+		require.EqualValues(t, SimulateBitOp(ANDOR, []byte("\x00"), []byte("\x0f")), rdb.Get(ctx, "dest").Val())
+	})
+
+	// Redis requires at least 2 source keys for DIFF, DIFF1, ANDOR (X + at least one Y).
+	// Calling with only X and no Y keys should return an error.
+	t.Run("BITOP DIFF requires at least one Y key (Redis semantics)", func(t *testing.T) {
+		require.NoError(t, rdb.FlushDB(ctx).Err())
+		Set2SetBit(t, rdb, ctx, "x", []byte("\xaa"))
+		util.ErrorRegexp(t, rdb.Do(ctx, "BITOP", "DIFF", "dest", "x").Err(), ".*")
+	})
+
+	t.Run("BITOP DIFF1 requires at least one Y key (Redis semantics)", func(t *testing.T) {
+		require.NoError(t, rdb.FlushDB(ctx).Err())
+		Set2SetBit(t, rdb, ctx, "x", []byte("\xaa"))
+		util.ErrorRegexp(t, rdb.Do(ctx, "BITOP", "DIFF1", "dest", "x").Err(), ".*")
+	})
+
+	t.Run("BITOP ANDOR requires at least one Y key (Redis semantics)", func(t *testing.T) {
+		require.NoError(t, rdb.FlushDB(ctx).Err())
+		Set2SetBit(t, rdb, ctx, "x", []byte("\xaa"))
+		util.ErrorRegexp(t, rdb.Do(ctx, "BITOP", "ANDOR", "dest", "x").Err(), ".*")
+	})
+
 	t.Run("BITOP ONE basic", func(t *testing.T) {
 		require.NoError(t, rdb.FlushDB(ctx).Err())
 		// A=0xff, B=0x0f -> ONE = 0xf0 (bits set in exactly one key)

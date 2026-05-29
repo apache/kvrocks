@@ -232,6 +232,9 @@ class CommandBitOp : public Commander {
     if (op_flag_ == kBitOpNot && args.size() != 4) {
       return {Status::RedisInvalidCmd, "BITOP NOT must be called with a single source key."};
     }
+    if ((op_flag_ == kBitOpDiff || op_flag_ == kBitOpDiff1 || op_flag_ == kBitOpAndOr) && args.size() < 5) {
+      return {Status::RedisInvalidCmd, "BITOP DIFF/DIFF1/ANDOR must be called with at least two source keys."};
+    }
 
     return Commander::Parse(args);
   }

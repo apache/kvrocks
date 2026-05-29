@@ -47,7 +47,7 @@ class CuckooPageCache {
                                 uint8_t fingerprint);
   rocksdb::Status WriteBackDirtyPages(rocksdb::WriteBatchBase *batch);
 
-  void Discard();
+  void DiscardCachedPages();
 
  private:
   struct PageEntry {

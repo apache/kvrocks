@@ -25,6 +25,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <optional>
 #include <random>
 #include <unordered_map>
 #include <unordered_set>
@@ -859,9 +860,52 @@ rocksdb::Status Hash::RandField(engine::Context &ctx, const Slice &user_key, int
   return rocksdb::Status::OK();
 }
 
+rocksdb::Status Hash::GetFieldsExpireTime(engine::Context &ctx, const Slice &user_key, const std::vector<Slice> &fields,
+                                          std::vector<int64_t> *results, std::optional<uint64_t> now_ms) {
+  results->clear();
+  results->resize(fields.size(), -2);
+
+  std::string ns_key = AppendNamespacePrefix(user_key);
+  HashMetadata metadata(false);
+  rocksdb::Status s = getMetadata(ctx, ns_key, &metadata);
+  if (s.IsNotFound()) {
+    return rocksdb::Status::OK();
+  }
+  if (!s.ok()) return s;
+  if (!metadata.IsFieldExpirationEncoding()) {
+    return rocksdb::Status::InvalidArgument("hash field expiration is not supported by legacy hash encoding");
+  }
+
+  uint64_t now = now_ms.value_or(util::GetTimeStampMS());
+  std::unordered_map<std::string, int64_t> result_cache;
+  for (size_t i = 0; i < fields.size(); i++) {
+    std::string field = fields[i].ToString();
+    auto cache_iter = result_cache.find(field);
+    if (cache_iter != result_cache.end()) {
+      (*results)[i] = cache_iter->second;
+      continue;
+    }
+
+    std::string sub_key = InternalKey(ns_key, field, metadata.version, storage_->IsSlotIdEncoded()).Encode();
+    HashFieldState state;
+    s = LoadFieldState(storage_, ctx, metadata, sub_key, now, &state);
+    if (!s.ok()) return s;
+
+    int64_t result = -2;
+    if (state.kind == HashFieldStateKind::kPersistent) {
+      result = -1;
+    } else if (state.kind == HashFieldStateKind::kLiveTTL) {
+      result = static_cast<int64_t>(state.expire);
+    }
+    result_cache.emplace(std::move(field), result);
+    (*results)[i] = result;
+  }
+  return rocksdb::Status::OK();
+}
+
 rocksdb::Status Hash::ExpireFields(engine::Context &ctx, const Slice &user_key, const std::vector<Slice> &fields,
                                    uint64_t expire_at_ms, HashFieldExpireCondition condition,
-                                   std::vector<int64_t> *results) {
+                                   std::vector<int64_t> *results, std::optional<uint64_t> now_ms) {
   results->clear();
   results->resize(fields.size(), -2);
 
@@ -882,7 +926,7 @@ rocksdb::Status Hash::ExpireFields(engine::Context &ctx, const Slice &user_key, 
   if (!s.ok()) return s;
 
   bool metadata_changed = false;
-  uint64_t now = util::GetTimeStampMS();
+  uint64_t now = now_ms.value_or(util::GetTimeStampMS());
   bool immediate = IsImmediateExpire(expire_at_ms, now);
   std::unordered_map<std::string, HashFieldState> state_cache;
 

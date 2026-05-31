@@ -174,3 +174,13 @@ Common scopes: `server`, `storage`, `commands`, `cluster`, `search`, `types`, `r
 - Prefer focused patches over broad refactors when contributing.
 - Some website or documentation tasks may belong in the separate website repository rather than this repository.
 - If AI assistance is used, keep the generated changes reviewable and be able to explain and defend the final patch.
+
+## Security
+
+Security model: [SECURITY.md](./SECURITY.md) → [THREAT_MODEL.md](./THREAT_MODEL.md)
+
+Agents that scan this repository should consult `SECURITY.md` and the linked
+`THREAT_MODEL.md` for the project's threat model — in-scope / out-of-scope
+declarations, the security properties claimed and disclaimed (namespace
+isolation, admin/namespace token separation, the Lua sandbox), the adversary
+model, and known non-findings — before reporting issues.

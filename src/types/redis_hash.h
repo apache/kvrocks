@@ -22,6 +22,7 @@
 
 #include <rocksdb/status.h>
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -77,9 +78,11 @@ class Hash : public SubKeyScanner {
                        std::vector<std::string> *values = nullptr);
   rocksdb::Status RandField(engine::Context &ctx, const Slice &user_key, int64_t command_count,
                             std::vector<FieldValue> *field_values, HashFetchType type = HashFetchType::kOnlyKey);
+  rocksdb::Status GetFieldsExpireTime(engine::Context &ctx, const Slice &user_key, const std::vector<Slice> &fields,
+                                      std::vector<int64_t> *results, std::optional<uint64_t> now_ms = std::nullopt);
   rocksdb::Status ExpireFields(engine::Context &ctx, const Slice &user_key, const std::vector<Slice> &fields,
-                               uint64_t expire_at_ms, HashFieldExpireCondition condition,
-                               std::vector<int64_t> *results);
+                               uint64_t expire_at_ms, HashFieldExpireCondition condition, std::vector<int64_t> *results,
+                               std::optional<uint64_t> now_ms = std::nullopt);
   rocksdb::Status PersistFields(engine::Context &ctx, const Slice &user_key, const std::vector<Slice> &fields,
                                 std::vector<int64_t> *results);
 

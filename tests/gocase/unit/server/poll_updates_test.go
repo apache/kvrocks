@@ -291,6 +291,30 @@ func TestPollUpdates_WithRESPFormat(t *testing.T) {
 		}, pollUpdates.Updates)
 	})
 
+	t.Run("Stream XDELEX KEEPREF entry deletion", func(t *testing.T) {
+		streamName := "stream_xdelex_keepref"
+		require.NoError(t, rdb0.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     "1-0",
+			Values: map[string]interface{}{"field": "value"},
+		}).Err())
+		_, err := rdb0.Do(ctx, "XDELEX", streamName, "KEEPREF", "IDS", "1", "1-0").Result()
+		require.NoError(t, err)
+
+		result, err := rdb0.Do(ctx, "POLLUPDATES", pollUpdates.NextSeq, "MAX", 10, "FORMAT", "RESP").Result()
+		require.NoError(t, err)
+
+		pollUpdates = parsePollUpdatesResult(t, result.(map[any]any), true)
+		require.Len(t, pollUpdates.Updates, 1)
+		require.EqualValues(t, []any{RESPFormat{
+			Namespace: "default",
+			Commands: [][]string{
+				{"XADD", streamName, "1-0", "field", "value"},
+				{"XDELEX", streamName, "KEEPREF", "IDS", "1", "1-0"},
+			},
+		}}, pollUpdates.Updates)
+	})
+
 	t.Run("Stream XDELEX DELREF dangling PEL", func(t *testing.T) {
 		streamName := "stream_xdelex"
 		require.NoError(t, rdb0.XAdd(ctx, &redis.XAddArgs{

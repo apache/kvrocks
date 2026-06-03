@@ -369,6 +369,14 @@ jobs:
           cp -r build _build
           build-wrapper-linux-x86-64 --out-dir ${{ env.SONARCLOUD_OUTPUT_DIR }} ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.sonarcloud }} --dep-dir ${{ env.KVROCKS_DEPS_CACHE_DIR }}
 
+      - name: Build kvrocks2redis test targets (SonarCloud)
+        if: ${{ matrix.sonarcloud }}
+        run: |
+          ./x.py build build-kvrocks2redis -j$NPROC --compiler ${{ matrix.compiler }} ${{ matrix.sonarcloud }} --skip-build --dep-dir ${{ env.KVROCKS_DEPS_CACHE_DIR }}
+          cmake --build build-kvrocks2redis --target kvrocks --parallel $NPROC
+          ./x.py build build-kvrocks2redis-tool -j$NPROC --compiler ${{ matrix.compiler }} --skip-build --dep-dir ${{ env.KVROCKS_DEPS_CACHE_DIR }}
+          cmake --build build-kvrocks2redis-tool --target kvrocks2redis --parallel $NPROC
+
       - name: Build Kvrocks (RISC-V)
         if: ${{ matrix.riscv_toolchain }}
         run: |
@@ -408,13 +416,18 @@ jobs:
           fi
           ./x.py test go build -parallel 2 $GOCASE_RUN_ARGS ${{ matrix.ignore_when_tsan}} ${{ matrix.ignore_when_asan}} ${{ matrix.ignore_when_ubsan}}
 
+      - name: Collect main coverage data
+        if: ${{ matrix.sonarcloud }}
+        run: |
+          gcovr --json ${{ env.SONARCLOUD_OUTPUT_DIR }}/coverage-main.json build
+
       - name: Install redis-py
         run: pip3 install redis==5.2.0
 
       - name: Run kvrocks2redis Test
         # Currently, when enabling Tsan/Asan or running in macOS 11/14, the value mismatch in destination redis server.
         # See https://github.com/apache/kvrocks/issues/2195.
-        if: ${{ !contains(matrix.name, 'Tsan') && !contains(matrix.name, 'Asan') && !startsWith(matrix.os, 'macos') }}
+        if: ${{ !matrix.sonarcloud && !contains(matrix.name, 'Tsan') && !contains(matrix.name, 'Asan') && !startsWith(matrix.os, 'macos') }}
         run: |
           ulimit -c unlimited
           export LSAN_OPTIONS="suppressions=$(realpath ./tests/lsan-suppressions)"
@@ -430,6 +443,57 @@ jobs:
           python3 utils/kvrocks2redis/tests/populate-kvrocks.py --password="" --flushdb=true
           sleep 10s
           python3 utils/kvrocks2redis/tests/check_consistency.py --src_password=""
+
+      - name: Run kvrocks2redis Test (SonarCloud)
+        if: ${{ matrix.sonarcloud }}
+        run: |
+          ulimit -c unlimited
+          export LSAN_OPTIONS="suppressions=$(realpath ./tests/lsan-suppressions)"
+          export TSAN_OPTIONS="suppressions=$(realpath ./tests/tsan-suppressions)"
+          stop_process() {
+            local pidfile="$1"
+            if [[ ! -f "$pidfile" ]]; then
+              return
+            fi
+
+            local pid
+            pid=$(cat "$pidfile")
+            if [[ -z "$pid" ]]; then
+              return
+            fi
+
+            kill -TERM "$pid" || true
+            for _ in {1..20}; do
+              if ! kill -0 "$pid" 2>/dev/null; then
+                break
+              fi
+              sleep 0.5
+            done
+            if kill -0 "$pid" 2>/dev/null; then
+              kill -KILL "$pid" || true
+            fi
+          }
+          cleanup_kvrocks2redis_test() {
+            stop_process kvrocks2redis.pid
+            stop_process kvrocks.pid
+          }
+          trap cleanup_kvrocks2redis_test EXIT
+          $HOME/local/bin/redis-server --daemonize yes
+          mkdir -p kvrocks2redis-ci-data
+          ./build-kvrocks2redis/kvrocks --dir `pwd`/kvrocks2redis-ci-data --pidfile `pwd`/kvrocks.pid --daemonize yes
+          sleep 10s
+          echo -en "data-dir `pwd`/kvrocks2redis-ci-data\ndaemonize yes\noutput-dir ./\nnamespace.__namespace 127.0.0.1 6379\n" >> ./kvrocks2redis-ci.conf
+          cat ./kvrocks2redis-ci.conf
+          ./build-kvrocks2redis-tool/kvrocks2redis -c ./kvrocks2redis-ci.conf
+          sleep 10s
+          python3 utils/kvrocks2redis/tests/populate-kvrocks.py --password="" --flushdb=true
+          sleep 10s
+          python3 utils/kvrocks2redis/tests/check_consistency.py --src_password=""
+
+      - name: Collect kvrocks2redis coverage data
+        if: ${{ matrix.sonarcloud }}
+        run: |
+          gcovr --json ${{ env.SONARCLOUD_OUTPUT_DIR }}/coverage-kvrocks2redis.json build-kvrocks2redis
 
       - name: Find reports and crashes
         if: always()
@@ -462,7 +526,10 @@ jobs:
       - name: Collect coverage into one XML report
         if: ${{ matrix.sonarcloud }}
         run: |
-          gcovr --sonarqube > ${{ env.SONARCLOUD_OUTPUT_DIR }}/coverage.xml
+          gcovr \
+            --add-tracefile ${{ env.SONARCLOUD_OUTPUT_DIR }}/coverage-main.json \
+            --add-tracefile ${{ env.SONARCLOUD_OUTPUT_DIR }}/coverage-kvrocks2redis.json \
+            --sonarqube ${{ env.SONARCLOUD_OUTPUT_DIR }}/coverage.xml
       
       - name: Add event information
         if: ${{ matrix.sonarcloud }}

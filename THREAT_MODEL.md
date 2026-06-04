@@ -23,9 +23,11 @@ limitations under the License.
   multi-tenancy, binlog-based async replication, Redis-Sentinel failover, and a proxyless
   centralized cluster mode *(documented — README)*.
 - **Modelled against:** `apache/kvrocks` `unstable`/HEAD (2026-05-31).
-- **Status:** **DRAFT — v0, not yet reviewed by the Kvrocks PMC.** Produced by the ASF Security team
+- **Status:** **DRAFT — v0, partially reviewed by the Kvrocks PMC.** Produced by the ASF Security team
   via the `threat-model-producer` rubric
-  (<https://gist.github.com/potiuk/da14a826283038ddfe38cc9fe6310573>) for the PMC to react to.
+  (<https://gist.github.com/potiuk/da14a826283038ddfe38cc9fe6310573>) for the PMC to react to. A first
+  review pass by PragmaTwice (Kvrocks PMC) has been folded in; remaining *(inferred)* items still await
+  confirmation.
 - **Version binding:** versioned with the project; a report against release *N* is triaged against the
   model as it stood at *N*.
 - **Reporting cross-reference:** §8-property violations → report privately per `SECURITY.md` /
@@ -33,7 +35,7 @@ limitations under the License.
 - **Provenance legend:** *(documented)* = Kvrocks docs/README/`kvrocks.conf`/source; *(maintainer)* =
   confirmed by a Kvrocks PMC member; *(inferred)* = reasoned from code/config/Redis-family domain
   norms, **not yet confirmed** — each routes to a §14 question.
-- **Draft confidence:** ~16 documented / 0 maintainer / ~50 inferred.
+- **Draft confidence:** ~16 documented / ~8 maintainer / ~42 inferred.
 
 Kvrocks is a network server: clients speak the Redis wire protocol to it over TCP (default port
 `6666`, default `bind 127.0.0.1`) *(documented — `kvrocks.conf`)*. Data is partitioned into
@@ -53,7 +55,7 @@ Caller roles:
 - **Namespace client** — authenticated with a namespace token; trusted only within its namespace.
 - **Admin client** — authenticated with the `requirepass` admin token; trusted for the instance.
 - **Replica / cluster peer** — another Kvrocks node in the same replication/cluster topology; assumed
-  operator-provisioned and trusted *(inferred — §7/§14)*.
+  operator-provisioned and trusted *(maintainer — peers are trusted)*.
 - **Operator / deployer** — controls `kvrocks.conf`, the data directory, TLS material, and the network
   exposure. Fully trusted; **out of model** as adversary (§3).
 
@@ -97,13 +99,14 @@ Trust transitions:
    configured, commands are refused until a valid token is presented via `AUTH` *(inferred — Redis-family
    semantics; default `requirepass` is unset, see §5a)*.
 2. **Namespace token → keyspace:** a namespace-authenticated connection is confined to that namespace's
-   keys and is denied admin/namespace/cluster commands *(documented — README)*.
+   keys and is denied admin/namespace/cluster commands *(maintainer — strict per-namespace keyspace
+   confinement; admin-only metadata)*.
 3. **Admin token → full control:** the admin token may run all commands, including `config`, `slaveof`,
    `bgsave`, namespace management, and cluster operations *(documented)*.
 4. **EVAL → Lua sandbox:** scripts execute in the embedded LuaJIT sandbox, which is intended to deny
-   arbitrary host access *(inferred — `scripting.*`; a `luajit_bytecode_dos.lua` regression test exists)*.
-5. **Master → replica:** the master streams a binlog to replicas; the replica applies it. Peers are assumed
-   mutually trusted within the topology *(inferred)*.
+   arbitrary host access *(maintainer — scripting confined to the namespace; no host access)*.
+5. **Master → replica:** the master streams a binlog to replicas; the replica applies it. Peers are
+   mutually trusted within the topology *(maintainer — peers are trusted)*.
 
 **Reachability preconditions:**
 
@@ -114,8 +117,8 @@ Trust transitions:
 - A finding in **Lua scripting** is in-model if a script permitted to a non-admin caller can break the
   sandbox or access another namespace / host resources.
 - A finding reachable only from `kvrocks.conf`, the data dir, or the admin token is out of model (§3).
-- A finding requiring a malicious replica/cluster peer is out of model unless the PMC says peers are
-  untrusted (§7/§14).
+- A finding requiring a malicious replica/cluster peer is **out of model** — peers are trusted
+  *(maintainer)*.
 
 ## §5 Assumptions about the environment
 
@@ -123,8 +126,10 @@ Trust transitions:
   *(inferred)*.
 - **Network:** the operator controls who can reach the listening port; default `bind 127.0.0.1` limits this
   to localhost until changed *(documented — `kvrocks.conf`)*.
-- **Storage:** local disk is trusted; RocksDB data at rest is **not** encrypted by Kvrocks *(inferred)*.
-- **Replication/cluster peers:** provisioned by the operator on a trusted network *(inferred)*.
+- **Storage:** local disk is trusted; RocksDB data at rest is **not** encrypted by Kvrocks, and no
+  per-namespace encryption is claimed *(maintainer — no per-namespace encryption claimed)*.
+- **Replication/cluster peers:** provisioned by the operator on a trusted network; peers are trusted
+  *(maintainer)*.
 - **What Kvrocks does to its host (inventory, *(inferred)* — wave-2 target):** binds a TCP port; reads/writes
   the configured data directory; reads `kvrocks.conf`; opens outbound connections to replication masters /
   cluster peers; may write RDB/backup files on `bgsave`. Not assumed to spawn shells or read arbitrary files
@@ -133,32 +138,32 @@ Trust transitions:
 ## §5a Build-time and configuration variants
 
 These `kvrocks.conf` knobs change which §8 properties hold. **Defaults below are documented; the
-*ruling* on whether an insecure default is the supported posture is a wave-1 question.**
+maintainer has clarified the supported posture for the auth/TLS defaults (see rulings).**
 
 | Knob | Default *(documented — `kvrocks.conf`)* | Effect | Insecure-default ruling |
 | --- | --- | --- | --- |
-| `requirepass` | **unset (commented)** | No admin token ⇒ **no authentication**; all clients are effectively admin | **Open (wave-1):** is "no `requirepass`" a supported posture (relying on `bind`/network) or must operators set it before exposing the port? |
+| `requirepass` | **unset (commented)** | No admin token ⇒ **no authentication**; all clients are effectively admin | *(maintainer)* If `requirepass` is unset, operators are responsible for restricting access to trusted personnel only; an unauth-access report against a routable, no-`requirepass` deployment is operator responsibility |
 | `bind` | `127.0.0.1` | Localhost-only by default; limits exposure | Safe default; reports requiring a routable bind + no auth are operator misconfig |
-| `tls-port` / `tls-*` | **off** | No transport encryption ⇒ token + data in plaintext on the wire | **Open (wave-1):** plaintext-on-untrusted-network → operator responsibility or claimed gap? |
-| namespace tokens | none until configured | Multi-tenant isolation only exists once namespaces+tokens are set | Confirm isolation guarantees (wave-2) |
-| Lua scripting (`EVAL`) | enabled *(inferred)* | Adds a sandboxed code-execution surface | Confirm sandbox scope + who may script (wave-2) |
-| `maxclients` / value-size / proto limits | defaults *(inferred)* | DoS envelope | Confirm resource line (wave-3) |
+| `tls-port` / `tls-*` | **off** | No transport encryption ⇒ token + data in plaintext on the wire | *(maintainer)* Same as `requirepass`: when TLS is off, operators are responsible for restricting access to trusted personnel only; plaintext-on-untrusted-network is operator responsibility |
+| namespace tokens | none until configured | Multi-tenant isolation only exists once namespaces+tokens are set | Strict per-namespace keyspace confinement *(maintainer)*; pub/sub is a known exception (§9) |
+| Lua scripting (`EVAL`) | enabled *(inferred)* | Adds a sandboxed code-execution surface | Sandbox confined to the namespace; no host access *(maintainer)* |
+| `maxclients` / value-size / proto limits | defaults *(inferred)* | DoS envelope | No intrinsic guarantee beyond configured limits *(maintainer)* |
 
 ## §6 Assumptions about inputs
 
 | Entry point | Parameter | Attacker-controllable? | Caller/operator must enforce |
 | --- | --- | --- | --- |
 | any RESP command | command name + arguments | **yes** (any connected client) | auth gate; namespace confinement; arg bounds |
-| `AUTH` | token | **yes** | constant-time-ish compare; throttling |
+| `AUTH` | token | **yes** | constant-time compare *(maintainer — desirable hardening)*; throttling |
 | key/value ops | key, value bytes | **yes** (within namespace) | value-size / memory limits |
 | `EVAL`/`FUNCTION` | Lua script body + keys/args | **yes** (if non-admin may script) | sandbox; no cross-namespace/host access |
 | `namespace`/`config`/`slaveof`/`bgsave`/`cluster` | args | **yes**, but **admin-token-gated** | admin-token-only enforcement |
-| replication stream | binlog bytes from master | from a **trusted** peer *(inferred)* | peer authenticity (network/TLS) |
+| replication stream | binlog bytes from master | from a **trusted** peer *(maintainer — peers are trusted)* | peer authenticity (network/TLS) |
 | `kvrocks.conf` | all keys | **no — operator-trusted** | never sourced from a client |
 
-Inputs are bounded only where the operator configures limits; Kvrocks is not assumed to bound pipeline
-depth, value size, `KEYS`/scan cost, or Lua run-time intrinsically beyond configured maxima *(inferred —
-§8.6/§9)*.
+Inputs are bounded only where the operator configures limits; Kvrocks provides no intrinsic guarantee
+beyond configured limits — it is not assumed to bound pipeline depth, value size, `KEYS`/scan cost, or
+Lua run-time intrinsically beyond configured maxima *(maintainer — no intrinsic DoS guarantee; §8.6/§9)*.
 
 ## §7 Adversary model
 
@@ -168,16 +173,19 @@ depth, value size, `KEYS`/scan cost, or Lua run-time intrinsically beyond config
 - **Goals:** access data in another namespace or without a token; run admin commands without the admin token;
   break the Lua sandbox; exhaust CPU/memory/disk; read tokens/data off an unencrypted wire.
 - **Out of model:** the operator, the admin-token holder, anyone with filesystem/`kvrocks.conf` access, and
-  (pending §14) a malicious replication/cluster peer. A command reachable **only** with the admin token is
-  `OUT-OF-MODEL: adversary-not-in-scope` unless it crosses into the host beyond the documented admin surface.
+  a malicious replication/cluster peer (peers are trusted *(maintainer)*). A command reachable **only** with
+  the admin token is `OUT-OF-MODEL: adversary-not-in-scope` unless it crosses into the host beyond the
+  documented admin surface.
 
 ## §8 Security properties the project provides
 
 *(All *(inferred)* working hypotheses for v0 unless tagged; symptom + severity per the rubric.)*
 
 1. **Namespace data isolation.** A connection authenticated with a namespace token can access only that
-   namespace's keyspace; it cannot read/write other namespaces *(documented — README; mechanism unconfirmed)*.
-   *Symptom:* cross-namespace read/write. *Severity:* critical.
+   namespace's keyspace; it cannot read/write other namespaces *(maintainer — strict per-namespace keyspace
+   confinement; admin-only metadata)*. **Known limitation:** pub/sub does **not** currently respect
+   namespaces *(maintainer)* — see §9. *Symptom:* cross-namespace read/write (excluding the documented
+   pub/sub limitation). *Severity:* critical.
 2. **Admin/namespace privilege separation.** Only the admin (`requirepass`) token may run namespace
    management and sensitive admin commands (`config`, `slaveof`, `bgsave`, cluster ops) *(documented)*.
    *Symptom:* a namespace/unauth client runs an admin command. *Severity:* critical.
@@ -185,29 +193,38 @@ depth, value size, `KEYS`/scan cost, or Lua run-time intrinsically beyond config
    `AUTH` are refused on an unauthenticated connection *(inferred)*. *Symptom:* pre-auth data access.
    *Severity:* critical.
 4. **Lua sandboxing.** Scripts run in a constrained LuaJIT environment without arbitrary host/file access and
-   confined to the caller's namespace *(inferred — sandbox intent; DoS regression test present)*. *Symptom:*
-   sandbox escape / host access / cross-namespace access from a script. *Severity:* critical.
+   confined to the caller's namespace *(maintainer — scripting confined to the namespace; no host access)*.
+   *Symptom:* sandbox escape / host access / cross-namespace access from a script. *Severity:* critical.
 5. **Memory safety on protocol parsing.** Well-formed and malformed RESP input does not cause memory-corruption
    on supported platforms *(inferred)*. *Symptom:* OOB read/write, crash from crafted input. *Severity:*
    critical.
-6. **Resource bounds — UNRESOLVED.** Whether super-linear CPU/memory on crafted commands, Lua run-time, or a
-   hang is a bug, vs. "no guarantee beyond configured limits", is **not yet stated** (the
-   `luajit_bytecode_dos` test suggests at least Lua DoS is taken seriously). *Symptom:* hang/OOM/disk-fill.
-   *Severity:* medium (contested until the line is drawn — §14).
+6. **Resource bounds.** There is **no intrinsic DoS guarantee beyond configured limits** *(maintainer)*;
+   the operator's contract is to configure `maxclients` and size limits. (The `luajit_bytecode_dos` test
+   shows Lua DoS is taken seriously, but no broader intrinsic guarantee is claimed.) *Symptom:* hang/OOM/disk-fill
+   beyond configured limits. *Severity:* medium (treated as operator-tuning, not a property breach, unless a
+   configured limit is bypassed).
 
 ## §9 Security properties the project does NOT provide
 
 - **No authentication by default.** `requirepass` ships unset; an operator who binds to a routable interface
   without setting it exposes an **unauthenticated admin-level** store *(documented — `kvrocks.conf`)*. The
-  `bind 127.0.0.1` default mitigates this until changed.
+  `bind 127.0.0.1` default mitigates this until changed. **When `requirepass` is unset, operators are
+  responsible for restricting access to trusted personnel only** *(maintainer)*.
 - **No transport encryption by default.** TLS is opt-in; on an untrusted network the auth token and all data
-  are observable/modifiable *(documented)*.
+  are observable/modifiable *(documented)*. **As with `requirepass`, when TLS is off operators are responsible
+  for restricting access to trusted personnel only** *(maintainer)*.
 - **No defence against the operator / admin-token holder** (§3).
 - **Namespace isolation is logical, not cryptographic.** All namespaces share one RocksDB instance on disk;
   isolation is an access-control property at the command layer, not at-rest encryption or per-tenant key
-  separation *(inferred)*.
+  separation. **No per-namespace encryption is claimed** *(maintainer)*.
+- **Pub/sub does not respect namespaces (known limitation).** Namespace keyspace confinement is strict for
+  keys, but pub/sub channels are **not** currently namespaced — a namespace client can publish/subscribe
+  across the instance *(maintainer — known limitation)*. This is a documented current limitation rather than
+  a property breach; a report matching exactly this behaviour is a `KNOWN-NON-FINDING` (§11a), while
+  namespacing pub/sub is desirable hardening.
 - **No strong anti-DoS guarantee** against expensive commands (`KEYS`, large `MGET`, huge values, deep
-  pipelines) or adversarial Lua beyond configured limits *(inferred)*.
+  pipelines) or adversarial Lua beyond configured limits — **no intrinsic guarantee beyond configured limits**
+  *(maintainer)*.
 
 **False-friend properties:**
 
@@ -215,48 +232,63 @@ depth, value size, `KEYS`/scan cost, or Lua run-time intrinsically beyond config
   the token is every user of that namespace; rotation is manual (`namespace set`).
 - *`requirepass` looks like "a password" but is the **admin** token* — it is not a low-privilege credential;
   giving it out grants full control.
-- *Replication/cluster membership looks authenticated but (pending §14) assumes trusted peers* — it is not a
-  defence against a malicious peer that holds valid topology credentials.
+- *Namespace confinement looks total but pub/sub is an exception* — keyspace access is strictly confined, but
+  pub/sub channels currently cross namespaces *(maintainer)*.
+- *Replication/cluster membership is authenticated and peers are trusted* — it is **not** a defence against a
+  malicious peer; the model assumes trusted peers *(maintainer)*.
 
 **Well-known attack classes left to the operator/integrator:**
 
-- **Unauthenticated exposure** (the Redis-family classic) — set `requirepass` and/or restrict `bind`.
-- **Plaintext token/data sniffing & MITM** without TLS.
+- **Unauthenticated exposure** (the Redis-family classic) — set `requirepass` and/or restrict `bind`; when
+  unset, restrict access to trusted personnel *(maintainer)*.
+- **Plaintext token/data sniffing & MITM** without TLS — when TLS is off, restrict access to trusted personnel
+  *(maintainer)*.
 - **RESP command injection** from a downstream app that interpolates untrusted input into commands.
 - **Lua-based DoS / sandbox probing.**
-- **Cross-namespace or replication/cluster trust** assumptions on a hostile network.
+- **Cross-namespace pub/sub** on a multi-tenant instance (known limitation, §9).
 
 ## §10 Downstream (operator) responsibilities
 
-- **Set `requirepass` (and namespace tokens) before binding to any non-localhost interface.**
+- **Set `requirepass` (and namespace tokens) before binding to any non-localhost interface; if `requirepass`
+  is left unset, restrict access to trusted personnel only** *(maintainer)*.
 - Enable TLS (`tls-port`, certs, `tls-auth-clients`) on untrusted networks; otherwise keep traffic on a
-  trusted/segmented network.
+  trusted/segmented network. **When TLS is off, restrict access to trusted personnel only** *(maintainer)*.
 - Treat the admin token as root-equivalent; distribute only namespace tokens to tenants; rotate on exposure.
-- Run replication/cluster peers on a trusted network (and/or with TLS); provision peers yourself.
-- Configure resource limits (`maxclients`, value/proto size) for the deployment's risk profile.
+- Do not rely on namespace isolation for **pub/sub** — channels are not currently namespaced *(maintainer)*.
+- Run replication/cluster peers on a trusted network (and/or with TLS); peers are trusted, so provision them
+  yourself *(maintainer)*.
+- Configure resource limits (`maxclients`, value/proto size) for the deployment's risk profile — there is no
+  intrinsic DoS guarantee beyond these *(maintainer)*.
 - Protect the RocksDB data directory and backup/RDB files at the filesystem layer.
 
 ## §11 Known misuse patterns
 
-- Exposing Kvrocks to a routable network with `requirepass` unset (unauthenticated admin store).
+- Exposing Kvrocks to a routable network with `requirepass` unset (unauthenticated admin store) without
+  restricting access to trusted personnel.
 - Handing the admin token to applications that only need a single namespace.
 - Building RESP commands by string-concatenating untrusted user input in a downstream app.
 - Running over plaintext on an untrusted network and treating namespace tokens as if confidential.
 - Assuming RocksDB-at-rest is per-namespace isolated/encrypted.
+- Relying on namespace isolation for **pub/sub** channels (not currently namespaced).
 
 ## §11a Known non-findings (recurring false positives)
 
 *(v0 seed — the PMC's real list is the highest-leverage §14 input.)*
 
 - **"No password set"/"unauthenticated access"** flagged against a default config — by design, mitigated by
-  `bind 127.0.0.1`; `OUT-OF-MODEL: non-default-build` / operator responsibility unless the PMC rules the
-  no-auth posture unsupported (§5a/§14).
-- **"Plaintext protocol / no TLS"** against default config — TLS is opt-in (§9/§10); operator responsibility.
+  `bind 127.0.0.1`; operator responsibility (when `requirepass` is unset, operators restrict access to
+  trusted personnel) *(maintainer)* → `BY-DESIGN: property-disclaimed` / operator responsibility.
+- **"Plaintext protocol / no TLS"** against default config — TLS is opt-in (§9/§10); operator responsibility
+  (restrict access to trusted personnel when TLS is off) *(maintainer)*.
+- **Cross-namespace pub/sub** — pub/sub does not currently respect namespaces; this is a known limitation, not
+  a property breach *(maintainer)* → `KNOWN-NON-FINDING` (namespacing pub/sub is desirable hardening).
 - **Admin command "danger" (`FLUSHALL`, `CONFIG`, `DEBUG`, `bgsave`)** reachable with the admin token — by
   design; admin token is root-equivalent (§7).
 - **Findings in `tests/`, `dev/`, `utils/`, `x.py`** — out of scope (§3).
 - **RESP command injection** attributable to a downstream caller concatenating input — not a Kvrocks bug (§9).
 - **RocksDB-internal warnings** from the bundled storage engine that are not reachable from client input.
+- **Non-constant-time token compare** in `AUTH` — constant-time compare is desirable hardening, not a property
+  breach *(maintainer)* → `VALID-HARDENING`.
 
 ## §12 Conditions that would change this model
 
@@ -265,6 +297,7 @@ depth, value size, `KEYS`/scan cost, or Lua run-time intrinsically beyond config
 - A new client-reachable surface (new protocol, HTTP admin API, new cluster control plane).
 - A change to the Lua sandbox scope or who may script.
 - Treating replication/cluster peers as untrusted (would pull them into §7).
+- Namespacing pub/sub (would close the known limitation in §9).
 - Any report that can't be routed to a single §13 disposition (→ revise the model).
 
 ## §13 Triage dispositions
@@ -272,51 +305,58 @@ depth, value size, `KEYS`/scan cost, or Lua run-time intrinsically beyond config
 | Disposition | Meaning | Licensed by |
 | --- | --- | --- |
 | `VALID` | Violates a claimed property via an in-scope adversary/input. | §8, §6, §7 |
-| `VALID-HARDENING` | No §8 property broken, but a §11 misuse is easy enough to warrant hardening. | §11 |
+| `VALID-HARDENING` | No §8 property broken, but a §11 misuse is easy enough to warrant hardening (e.g. constant-time `AUTH` compare, namespacing pub/sub). | §11 |
 | `OUT-OF-MODEL: trusted-input` | Requires control of a trusted input (config / admin token / replica stream). | §6 |
-| `OUT-OF-MODEL: adversary-not-in-scope` | Requires operator / admin-token / filesystem / (pending §14) peer capability. | §7, §3 |
+| `OUT-OF-MODEL: adversary-not-in-scope` | Requires operator / admin-token / filesystem / trusted-peer capability. | §7, §3 |
 | `OUT-OF-MODEL: unsupported-component` | Lands in `tests/`, `dev/`, `utils/`, tooling. | §3 |
 | `OUT-OF-MODEL: non-default-build` | Only under a discouraged/non-default `kvrocks.conf` setting. | §5a |
-| `BY-DESIGN: property-disclaimed` | Concerns a §9-disclaimed property (no-auth default, no-TLS default, logical-only namespace isolation). | §9 |
-| `KNOWN-NON-FINDING` | Matches a §11a entry. | §11a |
+| `BY-DESIGN: property-disclaimed` | Concerns a §9-disclaimed property (no-auth default, no-TLS default, logical-only namespace isolation, non-namespaced pub/sub). | §9 |
+| `KNOWN-NON-FINDING` | Matches a §11a entry (incl. cross-namespace pub/sub). | §11a |
 | `MODEL-GAP` | Routes to none of the above → revise the model. | §12 |
 
 ## §14 Open questions for the maintainers
 
-Proposed answers stated for confirm/correct/strike. Three waves.
+First-pass answers from PragmaTwice (Kvrocks PMC) are folded into the body as *(maintainer)*. The
+questions below retain the remaining open / unconfirmed items; *(inferred)* claims elsewhere still route
+here. Three waves.
 
 **Wave 1 — scope & insecure-default rulings (§2/§3/§5a/§8/§9):**
-1. Is running **without `requirepass`** a supported production posture (relying on `bind`/network controls),
-   or must operators set it before exposing the port — i.e. is an unauth-access report `BY-DESIGN` or `VALID`?
-   *Proposed:* operator must set it before non-localhost exposure; default no-auth is dev-only.
-2. Same question for **TLS-off** on an untrusted network — operator responsibility (§10) or a claimed gap?
-   *Proposed:* operator responsibility; plaintext is documented and opt-out.
-3. Are **replication / cluster peers trusted** (out of §7) or should a malicious peer holding valid topology
-   credentials be in the adversary model? *Proposed:* peers trusted; out of scope.
+1. *(Answered — maintainer.)* Running **without `requirepass`** / with **TLS off**: operators are responsible
+   for restricting access to trusted personnel only. An unauth/plaintext report against such a deployment is
+   operator responsibility, not a property breach. *Remaining:* none.
+2. *(Answered — maintainer.)* **Replication / cluster peers are trusted** — a malicious peer holding valid
+   topology credentials is out of the §7 adversary model. *Remaining:* none.
+3. *(Open — inferred.)* Is the **authentication gate** (§8.3) — refusing commands beyond `AUTH` on an
+   unauthenticated connection once tokens are set — confirmed to behave as the Redis-family semantics assume?
+   *Proposed:* yes, commands are refused pre-`AUTH` when a token is configured.
 
 **Wave 2 — isolation & scripting (§4/§8):**
-4. How is **namespace isolation** enforced at the command layer, and which commands (if any) can observe data
-   or metadata across namespaces (e.g. `INFO`, `CLIENT`, keyspace scans, `__namespace`)? *Proposed:* strict
-   per-namespace keyspace confinement; admin-only metadata.
-5. May **non-admin (namespace) clients run `EVAL`/`FUNCTION`**, and what is the Lua sandbox's scope — is host
-   I/O denied and is a script confined to its caller's namespace? *Proposed:* scripting confined to namespace;
-   no host access; `luajit_bytecode_dos` already treated as a bug.
-6. Is **RocksDB data-at-rest** considered out of model for confidentiality (operator-trusted disk), i.e. no
-   per-namespace encryption is claimed? *Proposed:* yes, at-rest is operator's domain.
+4. *(Answered — maintainer.)* **Namespace isolation:** strict per-namespace keyspace confinement; metadata is
+   admin-only. **Known limitation:** pub/sub does **not** currently respect namespaces (documented in §9 as a
+   known limitation / `KNOWN-NON-FINDING`; namespacing it is desirable hardening). *Remaining:* confirm whether
+   any other command (e.g. `INFO`, `CLIENT`, keyspace scans) can observe cross-namespace data beyond the
+   pub/sub case.
+5. *(Answered — maintainer.)* **Lua scripting** is confined to the caller's namespace with no host access.
+   *Remaining (inferred):* confirm whether **non-admin (namespace) clients** may run `EVAL`/`FUNCTION` at all,
+   or whether scripting is admin-gated. *Proposed:* namespace clients may script, confined to their namespace.
+6. *(Answered — maintainer.)* **RocksDB data-at-rest** is operator-trusted disk; **no per-namespace encryption
+   is claimed**. *Remaining:* none.
 
 **Wave 3 — resource line, auth hardening, §11a (§8/§9/§11a):**
-7. Where is the **resource line** (§8.6)? Are super-linear commands / Lua run-time / deep pipelines bugs, or
-   is the only contract "configure `maxclients` and size limits"? *Proposed:* no intrinsic guarantee beyond
-   configured limits, except sandbox-DoS which is a bug.
-8. Is `AUTH` **throttled / constant-time**, and is brute-force of the token in the model? *Proposed:* network
-   controls expected; constant-time compare desirable — confirm.
-9. What do scanners/researchers most often report that the PMC considers a **non-finding**? (Seeds §11a.)
+7. *(Answered — maintainer.)* **Resource line:** no intrinsic guarantee beyond configured limits; the contract
+   is to configure `maxclients` and size limits. *Remaining:* none.
+8. *(Answered — maintainer.)* **`AUTH` hardening:** network controls are expected; a constant-time token
+   compare is **desirable hardening** (`VALID-HARDENING`), not a property breach. *Remaining (inferred):*
+   confirm whether `AUTH` is **throttled** against brute-force, or whether throttling is purely operator
+   responsibility. *Proposed:* throttling is operator/network responsibility.
+9. *(Open — inferred.)* What do scanners/researchers most often report that the PMC considers a
+   **non-finding**? (Seeds §11a.) *Proposed:* the §11a list above; please add the PMC's recurring cases.
 
 **Meta:**
-10. Where should this live — root `THREAT_MODEL.md` referenced from a new `SECURITY.md` (this PR), and does
-    the same model cover **`kvrocks-controller`** or should the controller get its own (its trust surface —
-    the cluster control plane — differs)? *Proposed:* this model covers `apache/kvrocks`; a sibling model
-    covers `apache/kvrocks-controller`.
+10. *(Open — inferred.)* Where should this live — root `THREAT_MODEL.md` referenced from a new `SECURITY.md`
+    (this PR), and does the same model cover **`kvrocks-controller`** or should the controller get its own (its
+    trust surface — the cluster control plane — differs)? *Proposed:* this model covers `apache/kvrocks`; a
+    sibling model covers `apache/kvrocks-controller`.
 
 ## §15 Machine-readable companion
 

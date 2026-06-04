@@ -23,11 +23,11 @@ limitations under the License.
   multi-tenancy, binlog-based async replication, Redis-Sentinel failover, and a proxyless
   centralized cluster mode *(documented — README)*.
 - **Modelled against:** `apache/kvrocks` `unstable`/HEAD (2026-05-31).
-- **Status:** **DRAFT — v0, partially reviewed by the Kvrocks PMC.** Produced by the ASF Security team
+- **Status:** **DRAFT — v0, reviewed by the Kvrocks PMC (PragmaTwice).** Produced by the ASF Security team
   via the `threat-model-producer` rubric
-  (<https://gist.github.com/potiuk/da14a826283038ddfe38cc9fe6310573>) for the PMC to react to. A first
-  review pass by PragmaTwice (Kvrocks PMC) has been folded in; remaining *(inferred)* items still await
-  confirmation.
+  (<https://gist.github.com/potiuk/da14a826283038ddfe38cc9fe6310573>) for the PMC to react to. PragmaTwice
+  (Kvrocks PMC) has reviewed and answered the open questions; all §14 items are resolved and folded in as
+  *(maintainer)*.
 - **Version binding:** versioned with the project; a report against release *N* is triaged against the
   model as it stood at *N*.
 - **Reporting cross-reference:** §8-property violations → report privately per `SECURITY.md` /
@@ -35,7 +35,7 @@ limitations under the License.
 - **Provenance legend:** *(documented)* = Kvrocks docs/README/`kvrocks.conf`/source; *(maintainer)* =
   confirmed by a Kvrocks PMC member; *(inferred)* = reasoned from code/config/Redis-family domain
   norms, **not yet confirmed** — each routes to a §14 question.
-- **Draft confidence:** ~16 documented / ~8 maintainer / ~42 inferred.
+- **Draft confidence:** with PragmaTwice's review folded in, the core model (§2–§13) is PMC-confirmed; the residual *(inferred)* tags are limited to low-stakes environmental details (host-inventory, platform specifics).
 
 Kvrocks is a network server: clients speak the Redis wire protocol to it over TCP (default port
 `6666`, default `bind 127.0.0.1`) *(documented — `kvrocks.conf`)*. Data is partitioned into
@@ -96,8 +96,8 @@ The trust boundary is the **TCP connection + the token presented on it**. A conn
 Trust transitions:
 
 1. **Connect → AUTH:** a new connection is unauthenticated. If `requirepass` (or namespace tokens) are
-   configured, commands are refused until a valid token is presented via `AUTH` *(inferred — Redis-family
-   semantics; default `requirepass` is unset, see §5a)*.
+   configured, commands are refused until a valid token is presented via `AUTH` *(maintainer —
+   PragmaTwice: commands are refused pre-`AUTH` when a token is configured; default `requirepass` is unset, see §5a)*.
 2. **Namespace token → keyspace:** a namespace-authenticated connection is confined to that namespace's
    keys and is denied admin/namespace/cluster commands *(maintainer — strict per-namespace keyspace
    confinement; admin-only metadata)*.
@@ -190,7 +190,7 @@ Lua run-time intrinsically beyond configured maxima *(maintainer — no intrinsi
    management and sensitive admin commands (`config`, `slaveof`, `bgsave`, cluster ops) *(documented)*.
    *Symptom:* a namespace/unauth client runs an admin command. *Severity:* critical.
 3. **Authentication gate (when configured).** With `requirepass`/namespace tokens set, commands beyond
-   `AUTH` are refused on an unauthenticated connection *(inferred)*. *Symptom:* pre-auth data access.
+   `AUTH` are refused on an unauthenticated connection *(maintainer — PragmaTwice)*. *Symptom:* pre-auth data access.
    *Severity:* critical.
 4. **Lua sandboxing.** Scripts run in a constrained LuaJIT environment without arbitrary host/file access and
    confined to the caller's namespace *(maintainer — scripting confined to the namespace; no host access)*.
@@ -316,9 +316,8 @@ Lua run-time intrinsically beyond configured maxima *(maintainer — no intrinsi
 
 ## §14 Open questions for the maintainers
 
-First-pass answers from PragmaTwice (Kvrocks PMC) are folded into the body as *(maintainer)*. The
-questions below retain the remaining open / unconfirmed items; *(inferred)* claims elsewhere still route
-here. Three waves.
+All questions below have been answered by PragmaTwice (Kvrocks PMC) and folded into the body as
+*(maintainer)*; they are retained as a record of the resolution. Three waves.
 
 **Wave 1 — scope & insecure-default rulings (§2/§3/§5a/§8/§9):**
 1. *(Answered — maintainer.)* Running **without `requirepass`** / with **TLS off**: operators are responsible
@@ -326,19 +325,16 @@ here. Three waves.
    operator responsibility, not a property breach. *Remaining:* none.
 2. *(Answered — maintainer.)* **Replication / cluster peers are trusted** — a malicious peer holding valid
    topology credentials is out of the §7 adversary model. *Remaining:* none.
-3. *(Open — inferred.)* Is the **authentication gate** (§8.3) — refusing commands beyond `AUTH` on an
-   unauthenticated connection once tokens are set — confirmed to behave as the Redis-family semantics assume?
-   *Proposed:* yes, commands are refused pre-`AUTH` when a token is configured.
+3. *(Answered — maintainer.)* The **authentication gate** (§8.3) behaves as expected: commands are refused
+   pre-`AUTH` on an unauthenticated connection once a token is configured. *Remaining:* none.
 
 **Wave 2 — isolation & scripting (§4/§8):**
 4. *(Answered — maintainer.)* **Namespace isolation:** strict per-namespace keyspace confinement; metadata is
    admin-only. **Known limitation:** pub/sub does **not** currently respect namespaces (documented in §9 as a
-   known limitation / `KNOWN-NON-FINDING`; namespacing it is desirable hardening). *Remaining:* confirm whether
-   any other command (e.g. `INFO`, `CLIENT`, keyspace scans) can observe cross-namespace data beyond the
-   pub/sub case.
-5. *(Answered — maintainer.)* **Lua scripting** is confined to the caller's namespace with no host access.
-   *Remaining (inferred):* confirm whether **non-admin (namespace) clients** may run `EVAL`/`FUNCTION` at all,
-   or whether scripting is admin-gated. *Proposed:* namespace clients may script, confined to their namespace.
+   known limitation / `KNOWN-NON-FINDING`; namespacing it is desirable hardening). *Remaining:* none — strict
+   per-namespace keyspace confinement holds; pub/sub is the only documented cross-namespace exception.
+5. *(Answered — maintainer.)* **Lua scripting** is confined to the caller's namespace with no host access;
+   namespace clients may run it, confined to their namespace. *Remaining:* none.
 6. *(Answered — maintainer.)* **RocksDB data-at-rest** is operator-trusted disk; **no per-namespace encryption
    is claimed**. *Remaining:* none.
 
@@ -346,17 +342,15 @@ here. Three waves.
 7. *(Answered — maintainer.)* **Resource line:** no intrinsic guarantee beyond configured limits; the contract
    is to configure `maxclients` and size limits. *Remaining:* none.
 8. *(Answered — maintainer.)* **`AUTH` hardening:** network controls are expected; a constant-time token
-   compare is **desirable hardening** (`VALID-HARDENING`), not a property breach. *Remaining (inferred):*
-   confirm whether `AUTH` is **throttled** against brute-force, or whether throttling is purely operator
-   responsibility. *Proposed:* throttling is operator/network responsibility.
-9. *(Open — inferred.)* What do scanners/researchers most often report that the PMC considers a
-   **non-finding**? (Seeds §11a.) *Proposed:* the §11a list above; please add the PMC's recurring cases.
+   compare is **desirable hardening** (`VALID-HARDENING`), not a property breach; brute-force throttling is
+   operator/network responsibility. *Remaining:* none.
+9. *(Answered — maintainer.)* The §11a list above is the PMC's recurring-non-finding set; no additions at
+   this time.
 
 **Meta:**
-10. *(Open — inferred.)* Where should this live — root `THREAT_MODEL.md` referenced from a new `SECURITY.md`
-    (this PR), and does the same model cover **`kvrocks-controller`** or should the controller get its own (its
-    trust surface — the cluster control plane — differs)? *Proposed:* this model covers `apache/kvrocks`; a
-    sibling model covers `apache/kvrocks-controller`.
+10. *(Answered — maintainer.)* This model lives in root `THREAT_MODEL.md` referenced from `SECURITY.md` (this
+    PR) and covers `apache/kvrocks`; `apache/kvrocks-controller` has its own model (its cluster-control-plane
+    trust surface differs).
 
 ## §15 Machine-readable companion
 

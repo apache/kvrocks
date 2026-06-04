@@ -413,8 +413,9 @@ jobs:
 
       - name: Run kvrocks2redis Test
         # Currently, when enabling Tsan/Asan or running in macOS 11/14, the value mismatch in destination redis server.
+        # It also stays out of the SonarCloud matrix so kvrocks2redis execution does not affect coverage.
         # See https://github.com/apache/kvrocks/issues/2195.
-        if: ${{ !contains(matrix.name, 'Tsan') && !contains(matrix.name, 'Asan') && !startsWith(matrix.os, 'macos') }}
+        if: ${{ !contains(matrix.name, 'Tsan') && !contains(matrix.name, 'Asan') && !startsWith(matrix.os, 'macos') && !matrix.sonarcloud }}
         run: |
           ulimit -c unlimited
           export LSAN_OPTIONS="suppressions=$(realpath ./tests/lsan-suppressions)"

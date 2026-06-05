@@ -363,7 +363,7 @@ TEST_F(RedisCuckooFilterTest, HashFunction) {
 
 TEST_F(RedisCuckooFilterTest, MetadataEncodeDecodeRoundTrip) {
   CuckooChainMetadata metadata(false);
-  metadata.expire = 1234;
+  metadata.expire = 2000;
   metadata.version = 5678;
   metadata.size = 42;
   metadata.n_filters = 3;

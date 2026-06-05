@@ -54,6 +54,14 @@ class CuckooFilterHelper {
     return CalculateRequiredBuckets(capacity, bucket_size, &num_buckets).ok();
   }
 
+  static uint16_t NormalizeExpansion(uint16_t expansion) {
+    if (expansion <= 1) return expansion;
+
+    uint32_t normalized = 1;
+    while (normalized < expansion) normalized <<= 1;
+    return static_cast<uint16_t>(normalized);
+  }
+
   // Returns the power-of-two bucket count required for the requested capacity.
   static rocksdb::Status CalculateRequiredBuckets(uint64_t capacity, uint8_t bucket_size, uint32_t *num_buckets) {
     if (bucket_size == 0) {

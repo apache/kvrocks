@@ -85,6 +85,7 @@ rocksdb::Status CuckooChain::Reserve(engine::Context &ctx, const Slice &user_key
   if (!CuckooFilterHelper::IsCapacitySupported(capacity, bucket_size)) {
     return rocksdb::Status::InvalidArgument("capacity is too large");
   }
+  uint16_t normalized_expansion = CuckooFilterHelper::NormalizeExpansion(expansion);
 
   std::string ns_key = AppendNamespacePrefix(user_key);
 
@@ -101,7 +102,7 @@ rocksdb::Status CuckooChain::Reserve(engine::Context &ctx, const Slice &user_key
   metadata.base_capacity = capacity;
   metadata.bucket_size = bucket_size;
   metadata.max_iterations = max_iterations;
-  metadata.expansion = expansion;
+  metadata.expansion = normalized_expansion;
   metadata.n_filters = 1;
   metadata.num_deleted_items = 0;
   metadata.page_size = page_size;
@@ -140,8 +141,9 @@ rocksdb::Status CuckooChain::Add(engine::Context &ctx, const Slice &user_key, co
     metadata.n_filters = 1;
     metadata.num_deleted_items = 0;
     metadata.page_size = kCuckooFilterDefaultPageSize;
+  } else if (!s.ok()) {
+    return s;
   }
-  if (!s.ok() && !s.IsNotFound()) return s;
 
   s = validateMetadata(metadata);
   if (!s.ok()) return s;

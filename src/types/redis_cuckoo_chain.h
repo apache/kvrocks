@@ -30,9 +30,9 @@ class CuckooSubFilter;
 
 // Default values for a newly created cuckoo filter.
 const uint32_t kCFDefaultCapacity = 1024;
-const uint8_t kCFDefaultBucketSize = 4;  // 4 fingerprints per bucket
-const uint16_t kCFDefaultMaxIterations = 500;
-const uint16_t kCFDefaultExpansion = 2;
+const uint8_t kCFDefaultBucketSize = 2;
+const uint16_t kCFDefaultMaxIterations = 20;
+const uint16_t kCFDefaultExpansion = 1;
 const uint16_t kCFMaxExpansion = 32768;
 
 class CuckooChain : public Database {

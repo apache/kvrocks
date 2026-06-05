@@ -26,6 +26,7 @@
 #include <vector>
 
 #include "common/encoding.h"
+#include "storage/batch_extractor.h"
 #include "storage/redis_db.h"
 #include "storage/redis_metadata.h"
 #include "test_base.h"
@@ -216,6 +217,39 @@ TEST_F(RedisCuckooFilterTest, ReserveValidParams) {
   }
 }
 
+TEST_F(RedisCuckooFilterTest, ReserveRoundsExpansionToPowerOfTwo) {
+  auto s = cuckoo_->Reserve(*ctx_, key_, 1000, 4, 500, 3, kCuckooFilterDefaultPageSize);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  verifyMetadata(key_, 1000, 4, 500, 4, 0, 1);
+
+  EXPECT_EQ(redis::CuckooFilterHelper::NormalizeExpansion(0), 0);
+  EXPECT_EQ(redis::CuckooFilterHelper::NormalizeExpansion(1), 1);
+  EXPECT_EQ(redis::CuckooFilterHelper::NormalizeExpansion(3), 4);
+  EXPECT_EQ(redis::CuckooFilterHelper::NormalizeExpansion(5), 8);
+  EXPECT_EQ(redis::CuckooFilterHelper::NormalizeExpansion(32767), 32768);
+}
+
+TEST_F(RedisCuckooFilterTest, ReserveKeepsZeroExpansionNonScaling) {
+  reserveAndVerify(key_, 2, 1, 1, 0);
+
+  uint64_t added_count = 0;
+  bool full = false;
+  for (int i = 0; i < 100; ++i) {
+    bool added = false;
+    auto s = cuckoo_->Add(*ctx_, key_, "item_" + std::to_string(i), &added);
+    if (!s.ok()) {
+      ASSERT_TRUE(s.IsAborted()) << s.ToString();
+      full = true;
+      break;
+    }
+    ASSERT_TRUE(added);
+    ++added_count;
+  }
+
+  ASSERT_TRUE(full);
+  verifyMetadata(key_, 2, 1, 1, 0, added_count, 1, 0);
+}
+
 TEST_F(RedisCuckooFilterTest, ReserveDuplicate) {
   reserveAndVerify(key_, 1000, 4, 500, 2);
 
@@ -325,6 +359,81 @@ TEST_F(RedisCuckooFilterTest, HashFunction) {
   uint8_t fp = redis::CuckooFilterHelper::GenerateFingerprint(hash1);
   ASSERT_GE(fp, 1) << "Fingerprint should be at least 1";
   ASSERT_LE(fp, 255) << "Fingerprint should be at most 255";
+}
+
+TEST_F(RedisCuckooFilterTest, MetadataEncodeDecodeRoundTrip) {
+  CuckooChainMetadata metadata(false);
+  metadata.expire = 1234;
+  metadata.version = 5678;
+  metadata.size = 42;
+  metadata.n_filters = 3;
+  metadata.expansion = 4;
+  metadata.base_capacity = 1000;
+  metadata.bucket_size = 7;
+  metadata.max_iterations = 20;
+  metadata.num_deleted_items = 5;
+  metadata.page_size = 4096;
+
+  std::string encoded;
+  metadata.Encode(&encoded);
+
+  Slice input(encoded);
+  CuckooChainMetadata decoded(false);
+  auto s = decoded.Decode(&input);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+
+  EXPECT_EQ(decoded.Type(), kRedisCuckooFilter);
+  EXPECT_EQ(decoded.expire, metadata.expire);
+  EXPECT_EQ(decoded.version, metadata.version);
+  EXPECT_EQ(decoded.size, metadata.size);
+  EXPECT_EQ(decoded.n_filters, metadata.n_filters);
+  EXPECT_EQ(decoded.expansion, metadata.expansion);
+  EXPECT_EQ(decoded.base_capacity, metadata.base_capacity);
+  EXPECT_EQ(decoded.bucket_size, metadata.bucket_size);
+  EXPECT_EQ(decoded.max_iterations, metadata.max_iterations);
+  EXPECT_EQ(decoded.num_deleted_items, metadata.num_deleted_items);
+  EXPECT_EQ(decoded.page_size, metadata.page_size);
+}
+
+TEST(CuckooFilterMigrationTest, CommandBatchExtractorRejectsCuckooFilterMetadata) {
+  CuckooChainMetadata metadata(false);
+  metadata.version = 1;
+  metadata.size = 1;
+  metadata.n_filters = 1;
+  metadata.expansion = 1;
+  metadata.base_capacity = 1000;
+  metadata.bucket_size = 2;
+  metadata.max_iterations = 20;
+  metadata.page_size = kCuckooFilterDefaultPageSize;
+
+  std::string encoded;
+  metadata.Encode(&encoded);
+  std::string ns_key;
+  PutFixed8(&ns_key, 0);
+  ns_key += "key";
+
+  WriteBatchExtractor extractor(false);
+  auto s = extractor.PutCF(static_cast<uint32_t>(ColumnFamilyID::Metadata), ns_key, encoded);
+  ASSERT_TRUE(s.IsNotSupported()) << s.ToString();
+  EXPECT_NE(s.ToString().find("MBbloomCF command migration is not supported"), std::string::npos);
+}
+
+TEST(CuckooFilterMigrationTest, CommandBatchExtractorRejectsCuckooFilterPages) {
+  WriteBatchExtractor extractor(false);
+  redis::WriteBatchLogData log_data(kRedisCuckooFilter, {"add", "key"});
+  extractor.LogData(log_data.Encode());
+
+  std::string sub_key;
+  PutFixed16(&sub_key, 0);
+  PutFixed32(&sub_key, 0);
+  std::string ns_key;
+  PutFixed8(&ns_key, 0);
+  ns_key += "key";
+  auto page_key = InternalKey(ns_key, sub_key, 1, false).Encode();
+
+  auto s = extractor.PutCF(static_cast<uint32_t>(ColumnFamilyID::PrimarySubkey), page_key, std::string(4, '\1'));
+  ASSERT_TRUE(s.IsNotSupported()) << s.ToString();
+  EXPECT_NE(s.ToString().find("MBbloomCF command migration is not supported"), std::string::npos);
 }
 
 TEST_F(RedisCuckooFilterTest, ReserveVerifyMetadata) {

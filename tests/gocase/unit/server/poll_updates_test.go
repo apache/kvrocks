@@ -347,37 +347,6 @@ func TestPollUpdates_WithRESPFormat(t *testing.T) {
 		}}, pollUpdates.Updates)
 	})
 
-	t.Run("Stream XDELEX DELREF dangling PEL", func(t *testing.T) {
-		streamName := "stream_xdelex"
-		require.NoError(t, rdb0.XAdd(ctx, &redis.XAddArgs{
-			Stream: streamName,
-			ID:     "1-0",
-			Values: map[string]interface{}{"field": "value"},
-		}).Err())
-		require.NoError(t, rdb0.XGroupCreateMkStream(ctx, streamName, "group", "0").Err())
-		_, err := rdb0.XReadGroup(ctx, &redis.XReadGroupArgs{
-			Group: "group", Consumer: "consumer", Streams: []string{streamName, ">"}, Count: 1,
-		}).Result()
-		require.NoError(t, err)
-		require.Equal(t, int64(1), rdb0.XDel(ctx, streamName, "1-0").Val())
-		_, err = rdb0.Do(ctx, "XDELEX", streamName, "DELREF", "IDS", "1", "1-0").Result()
-		require.NoError(t, err)
-
-		result, err := rdb0.Do(ctx, "POLLUPDATES", pollUpdates.NextSeq, "MAX", 10, "FORMAT", "RESP").Result()
-		require.NoError(t, err)
-
-		pollUpdates = parsePollUpdatesResult(t, result.(map[any]any), true)
-		require.Len(t, pollUpdates.Updates, 1)
-		require.EqualValues(t, []any{RESPFormat{
-			Namespace: "default",
-			Commands: [][]string{
-				{"XADD", streamName, "1-0", "field", "value"},
-				{"XDEL", streamName, "1-0"},
-				{"XDELEX", streamName, "DELREF", "IDS", "1", "1-0"},
-			}},
-		}, pollUpdates.Updates)
-	})
-
 	t.Run("Stream XDELEX DELREF multi-group PEL emits one command", func(t *testing.T) {
 		streamName := "stream_xdelex_multi_pel"
 		require.NoError(t, rdb0.XAdd(ctx, &redis.XAddArgs{

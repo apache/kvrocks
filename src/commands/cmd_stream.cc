@@ -58,6 +58,40 @@ bool IsXDelExNumIDs(std::string_view input) {
 
   return std::all_of(input.begin() + 1, input.end(), [](char c) { return c >= '0' && c <= '9'; });
 }
+
+StatusOr<uint64_t> ParseRelaxedStreamEntryIDComponent(std::string_view input, bool allow_negative_zero) {
+  if (input.empty()) return {Status::RedisParseErr, redis::kErrInvalidEntryIdSpecified};
+
+  if (input[0] == '+') {
+    input.remove_prefix(1);
+  } else if (input[0] == '-') {
+    if (!allow_negative_zero) return {Status::RedisParseErr, redis::kErrInvalidEntryIdSpecified};
+    input.remove_prefix(1);
+    if (input.empty() || !std::all_of(input.begin(), input.end(), [](char c) { return c == '0'; })) {
+      return {Status::RedisParseErr, redis::kErrInvalidEntryIdSpecified};
+    }
+    return 0;
+  }
+
+  auto parsed = ParseInt<uint64_t>(input, 10);
+  if (!parsed) return {Status::RedisParseErr, redis::kErrInvalidEntryIdSpecified};
+  return *parsed;
+}
+
+Status ParseRelaxedStreamEntryID(std::string_view input, redis::StreamEntryID *id) {
+  auto pos = input.find('-');
+  if (pos != std::string_view::npos) {
+    auto ms = GET_OR_RET(ParseRelaxedStreamEntryIDComponent(input.substr(0, pos), false));
+    auto seq = GET_OR_RET(ParseRelaxedStreamEntryIDComponent(input.substr(pos + 1), true));
+    id->ms = ms;
+    id->seq = seq;
+  } else {
+    auto ms = GET_OR_RET(ParseRelaxedStreamEntryIDComponent(input, false));
+    id->ms = ms;
+    id->seq = 0;
+  }
+  return Status::OK();
+}
 }  // namespace
 
 void AddStreamEntriesToResponse(std::string *output, const std::vector<StreamEntry> &entries) {
@@ -325,7 +359,7 @@ class CommandXDelEx : public Commander {
         for (int64_t i = 0; i < numids; i++) {
           auto id_str = GET_OR_RET(parser.TakeStr());
           redis::StreamEntryID id;
-          auto s = ParseStreamEntryID(id_str, &id);
+          auto s = ParseRelaxedStreamEntryID(id_str, &id);
           if (!s.IsOK()) return s;
           ids.emplace_back(id);
         }

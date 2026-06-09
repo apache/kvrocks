@@ -22,6 +22,7 @@
 
 #include <rocksdb/status.h>
 
+#include <algorithm>
 #include <memory>
 #include <unordered_map>
 #include <unordered_set>
@@ -33,6 +34,12 @@
 #include "time_util.h"
 
 namespace redis {
+
+namespace {
+
+constexpr size_t kXDelExMultiGetBatchSize = 128;
+
+}  // namespace
 
 const char *errSetEntryIdSmallerThanLastGenerated =
     "The ID specified in XSETID is smaller than the target stream top item";
@@ -396,9 +403,10 @@ rocksdb::Status Stream::DeletePelEntries(engine::Context &ctx, const Slice &stre
   return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
-rocksdb::Status Stream::getGroupNames(engine::Context &ctx, const std::string &ns_key, const StreamMetadata &metadata,
-                                      std::vector<std::string> *group_names) {
-  group_names->clear();
+rocksdb::Status Stream::getConsumerGroups(engine::Context &ctx, const std::string &ns_key,
+                                          const StreamMetadata &metadata,
+                                          std::vector<StreamConsumerGroupInfo> *groups) {
+  groups->clear();
 
   std::string subkey_type_delimiter;
   PutFixed64(&subkey_type_delimiter, UINT64_MAX);
@@ -421,7 +429,8 @@ rocksdb::Status Stream::getGroupNames(engine::Context &ctx, const std::string &n
     if (identifySubkeyType(iter->key()) != StreamSubkeyType::StreamConsumerGroupMetadata) {
       break;
     }
-    group_names->push_back(groupNameFromInternalKey(iter->key()));
+    groups->push_back(
+        {groupNameFromInternalKey(iter->key()), decodeStreamConsumerGroupMetadataValue(iter->value().ToString())});
   }
   return iter->status();
 }
@@ -440,25 +449,45 @@ rocksdb::Status Stream::deleteEntryAndUpdateMeta(rocksdb::WriteBatchBase *batch,
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status Stream::cleanPelFromAllGroups(
-    engine::Context &ctx, const std::string &ns_key, const StreamMetadata &metadata, const StreamEntryID &id,
-    rocksdb::WriteBatchBase *batch, bool *batch_modified, const std::vector<std::string> &group_names,
-    std::map<std::string, uint64_t> *group_pending_decrements,
+rocksdb::Status Stream::cleanPelFromGroups(
+    engine::Context &ctx, const std::string &ns_key, const StreamMetadata &metadata,
+    const std::vector<StreamEntryID> &ids, rocksdb::WriteBatchBase *batch, bool *batch_modified,
+    const std::vector<StreamConsumerGroupInfo> &groups, std::map<std::string, uint64_t> *group_pending_decrements,
     std::map<std::string, std::map<std::string, uint64_t>> *consumer_pending_decrements) {
-  for (const auto &group_name : group_names) {
-    std::string pel_key = internalPelKeyFromGroupAndEntryId(ns_key, metadata, group_name, id);
-    std::string pel_value;
-    auto pel_s = storage_->Get(ctx, ctx.GetReadOptions(), stream_cf_handle_, pel_key, &pel_value);
-    if (pel_s.ok()) {
-      rocksdb::Status s = batch->Delete(stream_cf_handle_, pel_key);
-      if (!s.ok()) return s;
-      *batch_modified = true;
+  if (ids.empty() || groups.empty()) {
+    return rocksdb::Status::OK();
+  }
 
-      auto pel_entry = decodeStreamPelEntryValue(pel_value);
-      (*group_pending_decrements)[group_name]++;
-      (*consumer_pending_decrements)[group_name][pel_entry.consumer_name]++;
-    } else if (!pel_s.IsNotFound()) {
-      return pel_s;
+  rocksdb::ReadOptions read_options = ctx.DefaultMultiGetOptions();
+  for (const auto &group : groups) {
+    for (size_t start = 0; start < ids.size(); start += kXDelExMultiGetBatchSize) {
+      auto count = std::min(kXDelExMultiGetBatchSize, ids.size() - start);
+      std::vector<std::string> encoded_keys;
+      std::vector<rocksdb::Slice> keys;
+      encoded_keys.reserve(count);
+      keys.reserve(count);
+      for (size_t i = 0; i < count; i++) {
+        encoded_keys.push_back(internalPelKeyFromGroupAndEntryId(ns_key, metadata, group.name, ids[start + i]));
+        keys.emplace_back(encoded_keys.back());
+      }
+
+      std::vector<rocksdb::PinnableSlice> values(count);
+      std::vector<rocksdb::Status> statuses(count);
+      storage_->MultiGet(ctx, read_options, stream_cf_handle_, keys.size(), keys.data(), values.data(),
+                         statuses.data());
+
+      for (size_t i = 0; i < count; i++) {
+        if (!statuses[i].ok() && !statuses[i].IsNotFound()) return statuses[i];
+        if (!statuses[i].ok()) continue;
+
+        rocksdb::Status s = batch->Delete(stream_cf_handle_, keys[i]);
+        if (!s.ok()) return s;
+        *batch_modified = true;
+
+        auto pel_entry = decodeStreamPelEntryValue(values[i].ToString());
+        (*group_pending_decrements)[group.name]++;
+        (*consumer_pending_decrements)[group.name][pel_entry.consumer_name]++;
+      }
     }
   }
   return rocksdb::Status::OK();
@@ -466,21 +495,18 @@ rocksdb::Status Stream::cleanPelFromAllGroups(
 
 rocksdb::Status Stream::flushPendingNumberUpdates(
     engine::Context &ctx, const std::string &ns_key, const StreamMetadata &metadata, rocksdb::WriteBatchBase *batch,
+    const std::unordered_map<std::string, StreamConsumerGroupMetadata> &group_metadata_by_name,
     const std::map<std::string, uint64_t> &group_pending_decrements,
     const std::map<std::string, std::map<std::string, uint64_t>> &consumer_pending_decrements) {
   for (const auto &[group_name, decrement] : group_pending_decrements) {
+    auto group_it = group_metadata_by_name.find(group_name);
+    if (group_it == group_metadata_by_name.end()) continue;
+
+    auto group_meta = group_it->second;
+    group_meta.pending_number = group_meta.pending_number >= decrement ? group_meta.pending_number - decrement : 0;
     auto group_key = internalKeyFromGroupName(ns_key, metadata, group_name);
-    std::string group_value;
-    auto s = storage_->Get(ctx, ctx.GetReadOptions(), stream_cf_handle_, group_key, &group_value);
-    if (!s.ok() && !s.IsNotFound()) {
-      return s;
-    }
-    if (s.ok()) {
-      auto group_meta = decodeStreamConsumerGroupMetadataValue(group_value);
-      group_meta.pending_number = group_meta.pending_number >= decrement ? group_meta.pending_number - decrement : 0;
-      s = batch->Put(stream_cf_handle_, group_key, encodeStreamConsumerGroupMetadataValue(group_meta));
-      if (!s.ok()) return s;
-    }
+    auto s = batch->Put(stream_cf_handle_, group_key, encodeStreamConsumerGroupMetadataValue(group_meta));
+    if (!s.ok()) return s;
   }
 
   for (const auto &[group_name, consumers] : consumer_pending_decrements) {
@@ -504,27 +530,43 @@ rocksdb::Status Stream::flushPendingNumberUpdates(
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status Stream::isAckedByAllGroups(
-    engine::Context &ctx, const std::string &ns_key, const StreamMetadata &metadata, const StreamEntryID &id,
-    const std::vector<std::string> &group_names,
-    const std::unordered_map<std::string, StreamEntryID> &last_delivered_ids_by_group, bool *all_acked) {
+rocksdb::Status Stream::isAckedByAllGroups(engine::Context &ctx, const std::string &ns_key,
+                                           const StreamMetadata &metadata, const StreamEntryID &id,
+                                           const std::vector<StreamConsumerGroupInfo> &active_groups,
+                                           const StreamEntryID *min_last_delivered_id, bool *all_acked) {
   *all_acked = true;
-  for (const auto &group_name : group_names) {
-    auto it = last_delivered_ids_by_group.find(group_name);
-    if (it != last_delivered_ids_by_group.end() && id > it->second) {
-      *all_acked = false;
-      return rocksdb::Status::OK();
+  if (min_last_delivered_id != nullptr && id > *min_last_delivered_id) {
+    *all_acked = false;
+    return rocksdb::Status::OK();
+  }
+  if (active_groups.empty()) {
+    return rocksdb::Status::OK();
+  }
+
+  rocksdb::ReadOptions read_options = ctx.DefaultMultiGetOptions();
+  for (size_t start = 0; start < active_groups.size(); start += kXDelExMultiGetBatchSize) {
+    auto count = std::min(kXDelExMultiGetBatchSize, active_groups.size() - start);
+    std::vector<std::string> encoded_keys;
+    std::vector<rocksdb::Slice> keys;
+    encoded_keys.reserve(count);
+    keys.reserve(count);
+    for (size_t i = 0; i < count; i++) {
+      encoded_keys.push_back(internalPelKeyFromGroupAndEntryId(ns_key, metadata, active_groups[start + i].name, id));
+      keys.emplace_back(encoded_keys.back());
     }
 
-    std::string pel_key = internalPelKeyFromGroupAndEntryId(ns_key, metadata, group_name, id);
-    std::string pel_value;
-    auto pel_s = storage_->Get(ctx, ctx.GetReadOptions(), stream_cf_handle_, pel_key, &pel_value);
-    if (pel_s.ok()) {
-      *all_acked = false;
-      return rocksdb::Status::OK();
-    }
-    if (!pel_s.IsNotFound()) {
-      return pel_s;
+    std::vector<rocksdb::PinnableSlice> values(count);
+    std::vector<rocksdb::Status> statuses(count);
+    storage_->MultiGet(ctx, read_options, stream_cf_handle_, keys.size(), keys.data(), values.data(), statuses.data());
+
+    for (const auto &status : statuses) {
+      if (status.ok()) {
+        *all_acked = false;
+        return rocksdb::Status::OK();
+      }
+      if (!status.IsNotFound()) {
+        return status;
+      }
     }
   }
   return rocksdb::Status::OK();
@@ -576,24 +618,18 @@ rocksdb::Status Stream::DeleteEntriesWithOption(engine::Context &ctx, const Slic
 
   auto iter = util::UniqueIterator(ctx, read_options, stream_cf_handle_);
 
-  std::vector<std::string> group_names;
+  std::vector<StreamConsumerGroupInfo> groups;
+  std::unordered_map<std::string, StreamConsumerGroupMetadata> group_metadata_by_name;
+  std::optional<StreamEntryID> min_last_delivered_id;
   bool need_groups = (option == StreamDeleteOption::DelRef || option == StreamDeleteOption::Acked);
   if (need_groups) {
-    s = getGroupNames(ctx, ns_key, metadata, &group_names);
+    s = getConsumerGroups(ctx, ns_key, metadata, &groups);
     if (!s.ok()) return s;
-  }
-
-  std::unordered_map<std::string, StreamEntryID> last_delivered_ids_by_group;
-  if (option == StreamDeleteOption::Acked) {
-    for (const auto &group_name : group_names) {
-      std::string group_metadata_key = internalKeyFromGroupName(ns_key, metadata, group_name);
-      std::string group_metadata_value;
-      s = storage_->Get(ctx, ctx.GetReadOptions(), stream_cf_handle_, group_metadata_key, &group_metadata_value);
-      if (s.ok()) {
-        auto group_metadata = decodeStreamConsumerGroupMetadataValue(group_metadata_value);
-        last_delivered_ids_by_group[group_name] = group_metadata.last_delivered_id;
-      } else if (!s.IsNotFound()) {
-        return s;
+    group_metadata_by_name.reserve(groups.size());
+    for (const auto &group : groups) {
+      group_metadata_by_name.emplace(group.name, group.metadata);
+      if (!min_last_delivered_id || group.metadata.last_delivered_id < *min_last_delivered_id) {
+        min_last_delivered_id = group.metadata.last_delivered_id;
       }
     }
   }
@@ -607,6 +643,10 @@ rocksdb::Status Stream::DeleteEntriesWithOption(engine::Context &ctx, const Slic
   seen_entry_results.reserve(ids.size());
   std::unordered_set<std::string> deleted_entry_keys;
   deleted_entry_keys.reserve(ids.size());
+  std::vector<StreamEntryID> delref_pel_cleanup_ids;
+  if (option == StreamDeleteOption::DelRef) {
+    delref_pel_cleanup_ids.reserve(ids.size());
+  }
   StreamEntryID original_first_entry_id = metadata.first_entry_id;
   StreamEntryID original_last_entry_id = metadata.last_entry_id;
 
@@ -632,12 +672,11 @@ rocksdb::Status Stream::DeleteEntriesWithOption(engine::Context &ctx, const Slic
     if (s.IsNotFound()) {
       // DELREF cleans dangling PELs; ACKED still checks group state without the entry.
       if (option == StreamDeleteOption::DelRef) {
-        s = cleanPelFromAllGroups(ctx, ns_key, metadata, id, batch.Get(), &batch_modified, group_names,
-                                  &group_pending_decrements, &consumer_pending_decrements);
-        if (!s.ok()) return s;
+        delref_pel_cleanup_ids.push_back(id);
       } else if (option == StreamDeleteOption::Acked) {
         bool all_acked = false;
-        s = isAckedByAllGroups(ctx, ns_key, metadata, id, group_names, last_delivered_ids_by_group, &all_acked);
+        s = isAckedByAllGroups(ctx, ns_key, metadata, id, groups,
+                               min_last_delivered_id ? &*min_last_delivered_id : nullptr, &all_acked);
         if (!s.ok()) return s;
         if (!all_acked) {
           (*results)[i] = static_cast<int>(StreamEntryDeleteResult::kEntrySkipped);
@@ -663,9 +702,7 @@ rocksdb::Status Stream::DeleteEntriesWithOption(engine::Context &ctx, const Slic
       case StreamDeleteOption::DelRef:
         s = deleteEntryAndUpdateMeta(batch.Get(), entry_key, id, &metadata, &deleted_cnt);
         if (!s.ok()) return s;
-        s = cleanPelFromAllGroups(ctx, ns_key, metadata, id, batch.Get(), &batch_modified, group_names,
-                                  &group_pending_decrements, &consumer_pending_decrements);
-        if (!s.ok()) return s;
+        delref_pel_cleanup_ids.push_back(id);
         batch_modified = true;
         deleted_entry_keys.insert(entry_key);
         (*results)[i] = static_cast<int>(StreamEntryDeleteResult::kEntryDeleted);
@@ -674,7 +711,8 @@ rocksdb::Status Stream::DeleteEntriesWithOption(engine::Context &ctx, const Slic
 
       case StreamDeleteOption::Acked: {
         bool all_acked = false;
-        s = isAckedByAllGroups(ctx, ns_key, metadata, id, group_names, last_delivered_ids_by_group, &all_acked);
+        s = isAckedByAllGroups(ctx, ns_key, metadata, id, groups,
+                               min_last_delivered_id ? &*min_last_delivered_id : nullptr, &all_acked);
         if (!s.ok()) return s;
         if (all_acked) {
           s = deleteEntryAndUpdateMeta(batch.Get(), entry_key, id, &metadata, &deleted_cnt);
@@ -689,6 +727,12 @@ rocksdb::Status Stream::DeleteEntriesWithOption(engine::Context &ctx, const Slic
         break;
       }
     }
+  }
+
+  if (!delref_pel_cleanup_ids.empty()) {
+    s = cleanPelFromGroups(ctx, ns_key, metadata, delref_pel_cleanup_ids, batch.Get(), &batch_modified, groups,
+                           &group_pending_decrements, &consumer_pending_decrements);
+    if (!s.ok()) return s;
   }
 
   if (deleted_cnt > 0) {
@@ -739,7 +783,7 @@ rocksdb::Status Stream::DeleteEntriesWithOption(engine::Context &ctx, const Slic
   }
 
   if (!group_pending_decrements.empty()) {
-    s = flushPendingNumberUpdates(ctx, ns_key, metadata, batch.Get(), group_pending_decrements,
+    s = flushPendingNumberUpdates(ctx, ns_key, metadata, batch.Get(), group_metadata_by_name, group_pending_decrements,
                                   consumer_pending_decrements);
     if (!s.ok()) return s;
   }

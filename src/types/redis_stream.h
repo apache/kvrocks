@@ -87,6 +87,10 @@ class Stream : public SubKeyScanner {
                         std::optional<uint64_t> entries_added, std::optional<StreamEntryID> max_deleted_id);
 
  private:
+  struct StreamConsumerGroupInfo {
+    std::string name;
+    StreamConsumerGroupMetadata metadata;
+  };
   rocksdb::ColumnFamilyHandle *stream_cf_handle_;
 
   rocksdb::Status range(engine::Context &ctx, const std::string &ns_key, const StreamMetadata &metadata,
@@ -105,8 +109,8 @@ class Stream : public SubKeyScanner {
   static StreamConsumerGroupMetadata decodeStreamConsumerGroupMetadataValue(const std::string &value);
   std::string internalKeyFromConsumerName(const std::string &ns_key, const StreamMetadata &metadata,
                                           const std::string &group_name, const std::string &consumer_name) const;
-  rocksdb::Status getGroupNames(engine::Context &ctx, const std::string &ns_key, const StreamMetadata &metadata,
-                                std::vector<std::string> *group_names);
+  rocksdb::Status getConsumerGroups(engine::Context &ctx, const std::string &ns_key, const StreamMetadata &metadata,
+                                    std::vector<StreamConsumerGroupInfo> *groups);
   std::string consumerNameFromInternalKey(rocksdb::Slice key) const;
   static std::string encodeStreamConsumerMetadataValue(const StreamConsumerMetadata &consumer_metadata);
   static StreamConsumerMetadata decodeStreamConsumerMetadataValue(const std::string &value);
@@ -119,17 +123,17 @@ class Stream : public SubKeyScanner {
 
   rocksdb::Status deleteEntryAndUpdateMeta(rocksdb::WriteBatchBase *batch, const std::string &entry_key,
                                            const StreamEntryID &id, StreamMetadata *metadata, uint64_t *deleted_cnt);
-  rocksdb::Status cleanPelFromAllGroups(
-      engine::Context &ctx, const std::string &ns_key, const StreamMetadata &metadata, const StreamEntryID &id,
-      rocksdb::WriteBatchBase *batch, bool *batch_modified, const std::vector<std::string> &group_names,
-      std::map<std::string, uint64_t> *group_pending_decrements,
+  rocksdb::Status cleanPelFromGroups(
+      engine::Context &ctx, const std::string &ns_key, const StreamMetadata &metadata,
+      const std::vector<StreamEntryID> &ids, rocksdb::WriteBatchBase *batch, bool *batch_modified,
+      const std::vector<StreamConsumerGroupInfo> &groups, std::map<std::string, uint64_t> *group_pending_decrements,
       std::map<std::string, std::map<std::string, uint64_t>> *consumer_pending_decrements);
   rocksdb::Status isAckedByAllGroups(engine::Context &ctx, const std::string &ns_key, const StreamMetadata &metadata,
-                                     const StreamEntryID &id, const std::vector<std::string> &group_names,
-                                     const std::unordered_map<std::string, StreamEntryID> &last_delivered_ids_by_group,
-                                     bool *all_acked);
+                                     const StreamEntryID &id, const std::vector<StreamConsumerGroupInfo> &active_groups,
+                                     const StreamEntryID *min_last_delivered_id, bool *all_acked);
   rocksdb::Status flushPendingNumberUpdates(
       engine::Context &ctx, const std::string &ns_key, const StreamMetadata &metadata, rocksdb::WriteBatchBase *batch,
+      const std::unordered_map<std::string, StreamConsumerGroupMetadata> &group_metadata_by_name,
       const std::map<std::string, uint64_t> &group_pending_decrements,
       const std::map<std::string, std::map<std::string, uint64_t>> &consumer_pending_decrements);
   static std::string encodeStreamPelEntryValue(const StreamPelEntry &pel_entry);

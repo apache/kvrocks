@@ -114,18 +114,46 @@ TEST_F(WriteBatchIndexerTest, SingleDelete) {
 
 namespace {
 
+std::string EncodeSubkeyKeyForBatchExtractorTest(const std::string &ns, const std::string &user_key,
+                                                 const std::string &sub_key) {
+  auto ns_key = ComposeNamespaceKey(ns, user_key, false);
+  return InternalKey(ns_key, sub_key, 1, false).Encode();
+}
+
 std::string EncodeStreamEntryKeyForBatchExtractorTest(const std::string &ns, const std::string &user_key,
                                                       const redis::StreamEntryID &id) {
   std::string sub_key;
   PutFixed64(&sub_key, id.ms);
   PutFixed64(&sub_key, id.seq);
-  auto ns_key = ComposeNamespaceKey(ns, user_key, false);
-  return InternalKey(ns_key, sub_key, 1, false).Encode();
+  return EncodeSubkeyKeyForBatchExtractorTest(ns, user_key, sub_key);
 }
 
 }  // namespace
 
 class WriteBatchExtractorTest : public TestBase {};
+
+TEST_F(WriteBatchExtractorTest, LogDataResetsFirstSeenState) {
+  rocksdb::WriteBatch batch;
+  auto primary_cf = storage_->GetCFHandle(ColumnFamilyID::PrimarySubkey);
+
+  redis::WriteBatchLogData linsert_log_data(kRedisList, {std::to_string(kRedisCmdLInsert), "1", "pivot", "value"});
+  ASSERT_TRUE(batch.PutLogData(linsert_log_data.Encode()).ok());
+  ASSERT_TRUE(batch.Put(primary_cf, EncodeSubkeyKeyForBatchExtractorTest("list_ns", "list", "subkey1"), "value1").ok());
+  ASSERT_TRUE(batch.PutLogData(linsert_log_data.Encode()).ok());
+  ASSERT_TRUE(batch.Put(primary_cf, EncodeSubkeyKeyForBatchExtractorTest("list_ns", "list", "subkey2"), "value2").ok());
+
+  WriteBatchExtractor extractor(false);
+  auto s = batch.Iterate(&extractor);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+
+  auto commands = extractor.GetRESPCommands();
+  auto iter = commands->find("list_ns");
+  ASSERT_NE(commands->end(), iter);
+  const auto &list_commands = iter->second;
+  ASSERT_EQ(2, list_commands.size());
+  EXPECT_EQ(redis::ArrayOfBulkStrings({"LINSERT", "list", "before", "pivot", "value"}), list_commands[0]);
+  EXPECT_EQ(redis::ArrayOfBulkStrings({"LINSERT", "list", "before", "pivot", "value"}), list_commands[1]);
+}
 
 TEST_F(WriteBatchExtractorTest, InvalidLogDataResetsXDelExDedupState) {
   rocksdb::WriteBatch batch;

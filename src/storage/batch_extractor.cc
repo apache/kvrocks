@@ -32,6 +32,7 @@
 
 void WriteBatchExtractor::LogData(const rocksdb::Slice &blob) {
   log_data_ = redis::WriteBatchLogData();
+  first_seen_ = true;
   seen_xdelex_entry_keys_.clear();
 
   // Currently, we only have two kinds of log data
@@ -478,6 +479,8 @@ rocksdb::Status WriteBatchExtractor::DeleteCF(uint32_t column_family_id, const S
       if ((*args)[0] == "XDELEX" && args->size() >= 2) {
         std::string dedup_key = ns + '\0' + user_key + '\0' + entry_id_str;
         if (seen_xdelex_entry_keys_.insert(std::move(dedup_key)).second) {
+          // Replay ACKED deletions as KEEPREF because the deletion has already been decided.
+          // Replaying ACKED would re-evaluate consumer-group state.
           std::string option = (*args)[1] == "ACKED" ? "KEEPREF" : (*args)[1];
           command_args = {(*args)[0], user_key, option, "IDS", "1", entry_id_str};
         }

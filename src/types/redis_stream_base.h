@@ -31,6 +31,7 @@
 #include "status.h"
 
 namespace redis {
+extern const char *kErrInvalidEntryIdSpecified;
 
 struct StreamEntryID {
   uint64_t ms = 0;

@@ -23,6 +23,7 @@
 #include <rocksdb/status.h>
 
 #include <memory>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -476,7 +477,7 @@ rocksdb::Status Stream::flushPendingNumberUpdates(
     }
     if (s.ok()) {
       auto group_meta = decodeStreamConsumerGroupMetadataValue(group_value);
-      group_meta.pending_number -= decrement;
+      group_meta.pending_number = group_meta.pending_number >= decrement ? group_meta.pending_number - decrement : 0;
       s = batch->Put(stream_cf_handle_, group_key, encodeStreamConsumerGroupMetadataValue(group_meta));
       if (!s.ok()) return s;
     }
@@ -492,7 +493,8 @@ rocksdb::Status Stream::flushPendingNumberUpdates(
       }
       if (s.ok()) {
         auto consumer_meta = decodeStreamConsumerMetadataValue(consumer_value);
-        consumer_meta.pending_number -= decrement;
+        consumer_meta.pending_number =
+            consumer_meta.pending_number >= decrement ? consumer_meta.pending_number - decrement : 0;
         s = batch->Put(stream_cf_handle_, consumer_key, encodeStreamConsumerMetadataValue(consumer_meta));
         if (!s.ok()) return s;
       }
@@ -601,8 +603,8 @@ rocksdb::Status Stream::DeleteEntriesWithOption(engine::Context &ctx, const Slic
   std::map<std::string, uint64_t> group_pending_decrements;
   std::map<std::string, std::map<std::string, uint64_t>> consumer_pending_decrements;
 
-  std::unordered_set<std::string> seen_entry_keys;
-  seen_entry_keys.reserve(ids.size());
+  std::unordered_map<std::string, int> seen_entry_results;
+  seen_entry_results.reserve(ids.size());
   std::unordered_set<std::string> deleted_entry_keys;
   deleted_entry_keys.reserve(ids.size());
   StreamEntryID original_first_entry_id = metadata.first_entry_id;
@@ -613,8 +615,11 @@ rocksdb::Status Stream::DeleteEntriesWithOption(engine::Context &ctx, const Slic
 
     std::string entry_key = internalKeyFromEntryID(ns_key, metadata, id);
 
-    if (!seen_entry_keys.insert(entry_key).second) {
-      (*results)[i] = static_cast<int>(StreamEntryDeleteResult::kEntryNotFound);
+    auto seen_result = seen_entry_results.find(entry_key);
+    if (seen_result != seen_entry_results.end()) {
+      (*results)[i] = seen_result->second == static_cast<int>(StreamEntryDeleteResult::kEntrySkipped)
+                          ? static_cast<int>(StreamEntryDeleteResult::kEntrySkipped)
+                          : static_cast<int>(StreamEntryDeleteResult::kEntryNotFound);
       continue;
     }
 
@@ -625,13 +630,23 @@ rocksdb::Status Stream::DeleteEntriesWithOption(engine::Context &ctx, const Slic
     }
 
     if (s.IsNotFound()) {
-      // DELREF cleans dangling PELs; ACKED preserves them without the entry.
+      // DELREF cleans dangling PELs; ACKED still checks group state without the entry.
       if (option == StreamDeleteOption::DelRef) {
         s = cleanPelFromAllGroups(ctx, ns_key, metadata, id, batch.Get(), &batch_modified, group_names,
                                   &group_pending_decrements, &consumer_pending_decrements);
         if (!s.ok()) return s;
+      } else if (option == StreamDeleteOption::Acked) {
+        bool all_acked = false;
+        s = isAckedByAllGroups(ctx, ns_key, metadata, id, group_names, last_delivered_ids_by_group, &all_acked);
+        if (!s.ok()) return s;
+        if (!all_acked) {
+          (*results)[i] = static_cast<int>(StreamEntryDeleteResult::kEntrySkipped);
+          seen_entry_results.emplace(entry_key, (*results)[i]);
+          continue;
+        }
       }
       (*results)[i] = static_cast<int>(StreamEntryDeleteResult::kEntryNotFound);
+      seen_entry_results.emplace(entry_key, (*results)[i]);
       continue;
     }
 
@@ -642,6 +657,7 @@ rocksdb::Status Stream::DeleteEntriesWithOption(engine::Context &ctx, const Slic
         batch_modified = true;
         deleted_entry_keys.insert(entry_key);
         (*results)[i] = static_cast<int>(StreamEntryDeleteResult::kEntryDeleted);
+        seen_entry_results.emplace(entry_key, (*results)[i]);
         break;
 
       case StreamDeleteOption::DelRef:
@@ -653,14 +669,10 @@ rocksdb::Status Stream::DeleteEntriesWithOption(engine::Context &ctx, const Slic
         batch_modified = true;
         deleted_entry_keys.insert(entry_key);
         (*results)[i] = static_cast<int>(StreamEntryDeleteResult::kEntryDeleted);
+        seen_entry_results.emplace(entry_key, (*results)[i]);
         break;
 
       case StreamDeleteOption::Acked: {
-        if (group_names.empty()) {
-          (*results)[i] = static_cast<int>(StreamEntryDeleteResult::kEntrySkipped);
-          break;
-        }
-
         bool all_acked = false;
         s = isAckedByAllGroups(ctx, ns_key, metadata, id, group_names, last_delivered_ids_by_group, &all_acked);
         if (!s.ok()) return s;
@@ -673,6 +685,7 @@ rocksdb::Status Stream::DeleteEntriesWithOption(engine::Context &ctx, const Slic
         } else {
           (*results)[i] = static_cast<int>(StreamEntryDeleteResult::kEntrySkipped);
         }
+        seen_entry_results.emplace(entry_key, (*results)[i]);
         break;
       }
     }

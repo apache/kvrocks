@@ -22,8 +22,15 @@
 #include <rocksdb/merge_operator.h>
 #include <rocksdb/write_batch.h>
 
+#include <string>
+
+#include "encoding.h"
+#include "server/redis_reply.h"
+#include "storage/batch_extractor.h"
 #include "storage/batch_indexer.h"
+#include "storage/redis_metadata.h"
 #include "test_base.h"
+#include "types/redis_stream_base.h"
 
 class WriteBatchIndexerTest : public TestBase {
  protected:
@@ -103,4 +110,45 @@ TEST_F(WriteBatchIndexerTest, SingleDelete) {
 
   s = ctx_->batch->GetFromBatchAndDB(storage_->GetDB(), rocksdb::ReadOptions(), "key", &value);
   EXPECT_TRUE(s.IsNotFound());
+}
+
+namespace {
+
+std::string EncodeStreamEntryKeyForBatchExtractorTest(const std::string &ns, const std::string &user_key,
+                                                      const redis::StreamEntryID &id) {
+  std::string sub_key;
+  PutFixed64(&sub_key, id.ms);
+  PutFixed64(&sub_key, id.seq);
+  auto ns_key = ComposeNamespaceKey(ns, user_key, false);
+  return InternalKey(ns_key, sub_key, 1, false).Encode();
+}
+
+}  // namespace
+
+class WriteBatchExtractorTest : public TestBase {};
+
+TEST_F(WriteBatchExtractorTest, InvalidLogDataResetsXDelExDedupState) {
+  rocksdb::WriteBatch batch;
+  auto stream_cf = storage_->GetCFHandle(ColumnFamilyID::Stream);
+  auto entry_key = EncodeStreamEntryKeyForBatchExtractorTest("stream_ns", "stream", redis::StreamEntryID{1, 0});
+
+  redis::WriteBatchLogData xdelex_log_data(kRedisStream, {"XDELEX", "KEEPREF"});
+  ASSERT_TRUE(batch.PutLogData(xdelex_log_data.Encode()).ok());
+  ASSERT_TRUE(batch.Delete(stream_cf, entry_key).ok());
+  ASSERT_TRUE(batch.Delete(stream_cf, entry_key).ok());
+  ASSERT_TRUE(batch.PutLogData("bad-log-data").ok());
+  ASSERT_TRUE(batch.Delete(stream_cf, entry_key).ok());
+
+  WriteBatchExtractor extractor(false);
+  auto s = batch.Iterate(&extractor);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+
+  auto commands = extractor.GetRESPCommands();
+  auto iter = commands->find("stream_ns");
+  ASSERT_NE(commands->end(), iter);
+  const auto &stream_commands = iter->second;
+  ASSERT_EQ(2, stream_commands.size());
+
+  EXPECT_EQ(redis::ArrayOfBulkStrings({"XDELEX", "stream", "KEEPREF", "IDS", "1", "1-0"}), stream_commands[0]);
+  EXPECT_EQ(redis::ArrayOfBulkStrings({"XDEL", "stream", "1-0"}), stream_commands[1]);
 }

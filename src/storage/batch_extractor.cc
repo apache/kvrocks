@@ -31,6 +31,9 @@
 #include "types/redis_stream_base.h"
 
 void WriteBatchExtractor::LogData(const rocksdb::Slice &blob) {
+  log_data_ = redis::WriteBatchLogData();
+  seen_xdelex_entry_keys_.clear();
+
   // Currently, we only have two kinds of log data
   if (ServerLogData::IsServerLogData(blob.data())) {
     ServerLogData server_log;
@@ -41,8 +44,6 @@ void WriteBatchExtractor::LogData(const rocksdb::Slice &blob) {
     // Redis type log data
     if (auto s = log_data_.Decode(blob); !s.IsOK()) {
       WARN("Failed to decode Redis type log: {}", s.Msg());
-    } else {
-      seen_xdelex_entry_keys_.clear();
     }
   }
 }
@@ -416,7 +417,9 @@ rocksdb::Status WriteBatchExtractor::DeleteCF(uint32_t column_family_id, const S
     InternalKey ikey(key, is_slot_id_encoded_);
     Slice encoded_id = ikey.GetSubKey();
     redis::StreamEntryID entry_id;
-    GetFixed64(&encoded_id, &entry_id.ms);
+    if (!GetFixed64(&encoded_id, &entry_id.ms)) {
+      return rocksdb::Status::OK();
+    }
 
     if (entry_id.ms == UINT64_MAX) {
       // DELREF may remove dangling PELs without a stream entry deletion.
@@ -458,7 +461,9 @@ rocksdb::Status WriteBatchExtractor::DeleteCF(uint32_t column_family_id, const S
       return rocksdb::Status::OK();
     }
 
-    GetFixed64(&encoded_id, &entry_id.seq);
+    if (!GetFixed64(&encoded_id, &entry_id.seq)) {
+      return rocksdb::Status::OK();
+    }
     std::string entry_id_str = entry_id.ToString();
     std::string user_key = ikey.GetKey().ToString();
 
@@ -473,7 +478,8 @@ rocksdb::Status WriteBatchExtractor::DeleteCF(uint32_t column_family_id, const S
       if ((*args)[0] == "XDELEX" && args->size() >= 2) {
         std::string dedup_key = ns + '\0' + user_key + '\0' + entry_id_str;
         if (seen_xdelex_entry_keys_.insert(std::move(dedup_key)).second) {
-          command_args = {(*args)[0], user_key, (*args)[1], "IDS", "1", entry_id_str};
+          std::string option = (*args)[1] == "ACKED" ? "KEEPREF" : (*args)[1];
+          command_args = {(*args)[0], user_key, option, "IDS", "1", entry_id_str};
         }
       } else {
         command_args = {"XDEL", user_key, entry_id_str};

@@ -20,6 +20,9 @@
 
 #include "redis_stream_base.h"
 
+#include <algorithm>
+#include <string_view>
+
 #include "encoding.h"
 #include "parse_util.h"
 #include "time_util.h"
@@ -35,6 +38,36 @@ const char *errSequenceNumberOverflow =
     "Elements are too large to be stored";  // Redis responds with exactly this message
 const char *errEntryIdOutOfRange = "The ID specified in XADD must be greater than 0-0";
 const char *errStreamExhaustedEntryID = "The stream has exhausted the last possible ID, unable to add more items";
+
+namespace {
+
+StatusOr<uint64_t> ParseStreamEntryIDComponent(std::string_view input, bool allow_negative_zero) {
+  if (input.empty()) {
+    return {Status::NotOK, kErrInvalidEntryIdSpecified};
+  }
+
+  if (input[0] == '+') {
+    input.remove_prefix(1);
+  } else if (input[0] == '-') {
+    if (!allow_negative_zero) {
+      return {Status::NotOK, kErrInvalidEntryIdSpecified};
+    }
+
+    input.remove_prefix(1);
+    if (input.empty() || !std::all_of(input.begin(), input.end(), [](char c) { return c == '0'; })) {
+      return {Status::NotOK, kErrInvalidEntryIdSpecified};
+    }
+    return 0;
+  }
+
+  auto parsed = ParseInt<uint64_t>(input, 10);
+  if (!parsed) {
+    return {Status::NotOK, kErrInvalidEntryIdSpecified};
+  }
+  return *parsed;
+}
+
+}  // namespace
 
 Status IncrementStreamEntryID(StreamEntryID *id) {
   if (id->seq == StreamEntryID::Maximum().seq) {
@@ -59,8 +92,8 @@ Status ParseStreamEntryID(const std::string &input, StreamEntryID *id) {
   if (pos != std::string::npos) {
     auto ms_str = input.substr(0, pos);
     auto seq_str = input.substr(pos + 1);
-    auto parse_ms = ParseInt<uint64_t>(ms_str, 10);
-    auto parse_seq = ParseInt<uint64_t>(seq_str, 10);
+    auto parse_ms = ParseStreamEntryIDComponent(ms_str, false);
+    auto parse_seq = ParseStreamEntryIDComponent(seq_str, true);
     if (!parse_ms || !parse_seq) {
       return {Status::RedisParseErr, kErrInvalidEntryIdSpecified};
     }
@@ -68,7 +101,7 @@ Status ParseStreamEntryID(const std::string &input, StreamEntryID *id) {
     id->ms = *parse_ms;
     id->seq = *parse_seq;
   } else {
-    auto parse_input = ParseInt<uint64_t>(input, 10);
+    auto parse_input = ParseStreamEntryIDComponent(input, false);
     if (!parse_input) {
       return {Status::RedisParseErr, kErrInvalidEntryIdSpecified};
     }

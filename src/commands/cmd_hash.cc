@@ -144,53 +144,25 @@ Status ParseHashExpireFields(const std::vector<std::string> &args, size_t start,
                              HashFieldExpireCondition *condition_out, std::vector<std::string> *fields) {
   *condition_out = HashFieldExpireCondition::kNone;
   fields->clear();
-  bool fields_seen = false;
 
-  for (size_t i = start; i < args.size();) {
-    if (util::EqualICase(args[i], "FIELDS")) {
-      if (fields_seen) {
+  size_t i = start;
+  if (i < args.size()) {
+    auto condition = ParseHashExpireCondition(args[i]);
+    if (condition) {
+      *condition_out = *condition;
+      i++;
+
+      if (i < args.size() && ParseHashExpireCondition(args[i])) {
         return {Status::RedisParseErr, errInvalidSyntax};
       }
-      fields_seen = true;
-      if (i + 1 >= args.size()) {
-        return {Status::RedisParseErr, errWrongNumOfArguments};
-      }
-
-      auto num_fields = ParseInt<int64_t>(args[i + 1], 10);
-      if (!num_fields || *num_fields < 1) {
-        return {Status::RedisParseErr, errValueNotInteger};
-      }
-
-      size_t first_field = i + 2;
-      auto field_count = static_cast<size_t>(*num_fields);
-      if (field_count > args.size() - first_field) {
-        return {Status::RedisParseErr, errWrongNumOfArguments};
-      }
-
-      fields->clear();
-      fields->reserve(field_count);
-      for (size_t j = 0; j < field_count; j++) {
-        fields->emplace_back(args[first_field + j]);
-      }
-      i = first_field + field_count;
-      continue;
     }
-
-    auto condition = ParseHashExpireCondition(args[i]);
-    if (!condition) {
-      return {Status::RedisParseErr, errInvalidSyntax};
-    }
-    if (*condition_out != HashFieldExpireCondition::kNone && *condition_out != *condition) {
-      return {Status::RedisParseErr, errInvalidSyntax};
-    }
-    *condition_out = *condition;
-    i++;
   }
 
-  if (!fields_seen) {
+  CommandParser parser(args, i);
+  if (!parser.EatEqICase("FIELDS")) {
     return {Status::RedisParseErr, errInvalidSyntax};
   }
-  return Status::OK();
+  return ParseHashFieldListTail(parser, fields);
 }
 
 int64_t FormatHashFieldExpireResult(int64_t expire_at, uint64_t now, HashFieldExpireTimeMode time_mode) {

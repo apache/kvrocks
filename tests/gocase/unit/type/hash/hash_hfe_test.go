@@ -1094,10 +1094,10 @@ func TestHashFieldExpirationParseErrors(t *testing.T) {
 					{name: "numfields is not an integer", args: []interface{}{command, key, 10, "FIELDS", "not-int", "a"}, errContains: "integer"},
 					{name: "numfields is out of range", args: []interface{}{command, key, 10, "FIELDS", "9223372036854775808", "a"}, errContains: "integer"},
 					{name: "has too few fields", args: []interface{}{command, key, 10, "FIELDS", 2, "a"}, errContains: "wrong number"},
-					{name: "has extra unknown token after fields", args: []interface{}{command, key, 10, "FIELDS", 1, "a", "BAD"}, errContains: "syntax"},
+					{name: "has extra unknown token after fields", args: []interface{}{command, key, 10, "FIELDS", 1, "a", "BAD"}, errContains: "wrong number"},
 					{name: "unknown option", args: []interface{}{command, key, 10, "UNKNOWN", "FIELDS", 1, "a"}, errContains: "syntax"},
 					{name: "mutually exclusive options", args: []interface{}{command, key, 10, "NX", "XX", "FIELDS", 1, "a"}, errContains: "syntax"},
-					{name: "mutually exclusive options after fields", args: []interface{}{command, key, 10, "FIELDS", 1, "a", "NX", "XX"}, errContains: "syntax"},
+					{name: "mutually exclusive options after fields", args: []interface{}{command, key, 10, "FIELDS", 1, "a", "NX", "XX"}, errContains: "wrong number"},
 					{name: "ttl is not an integer", args: []interface{}{command, key, "not-int", "FIELDS", 1, "a"}, errContains: "integer"},
 					{name: "ttl is negative", args: []interface{}{command, key, -1, "FIELDS", 1, "a"}, errContains: "invalid expire time"},
 					{name: "ttl has trailing characters", args: []interface{}{command, key, "10ms", "FIELDS", 1, "a"}, errContains: "integer"},
@@ -1189,18 +1189,35 @@ func TestHashFieldExpirationExpireCommandFamilyTimeBoundaries(t *testing.T) {
 	})
 }
 
-func TestHashFieldExpirationExpireCommandParserRedisCompatibleSuccess(t *testing.T) {
+func TestHashFieldExpirationExpireCommandParserRedisCompatibleErrors(t *testing.T) {
 	runWithFieldExpirationHash(t, func(t *testing.T, rdb *redis.Client, ctx context.Context) {
 		for _, command := range []string{"hexpire", "hpexpire", "hexpireat", "hpexpireat"} {
 			t.Run(command, func(t *testing.T) {
 				key := "hfe-expire-parser-" + command
 				require.Equal(t, int64(2), rdb.HSet(ctx, key, "a", "1", "b", "2").Val())
 
-				requireIntArray(t, rdb.Do(ctx, expireCommandArgs(command, key, time.Minute, "FIELDS", 1, "a", "NX")...).Val(),
-					[]int64{1})
-				requireIntArray(t, rdb.Do(ctx, expireCommandArgs(command, key, time.Minute, "NX", "NX", "FIELDS", 1, "b")...).Val(),
-					[]int64{1})
-				requireHashMetadata(t, util.GetKMetadata(t, rdb, ctx, key), 2, 0)
+				for _, test := range []struct {
+					name        string
+					args        []interface{}
+					errContains string
+				}{
+					{
+						name:        "condition after fields",
+						args:        expireCommandArgs(command, key, time.Minute, "FIELDS", 1, "a", "NX"),
+						errContains: "wrong number",
+					},
+					{
+						name:        "duplicate condition before fields",
+						args:        expireCommandArgs(command, key, time.Minute, "NX", "NX", "FIELDS", 1, "a"),
+						errContains: "syntax",
+					},
+				} {
+					t.Run(test.name, func(t *testing.T) {
+						require.ErrorContains(t, rdb.Do(ctx, test.args...).Err(), test.errContains)
+						require.Equal(t, map[string]string{"a": "1", "b": "2"}, rdb.HGetAll(ctx, key).Val())
+						requireHashMetadata(t, util.GetKMetadata(t, rdb, ctx, key), 2, 2)
+					})
+				}
 			})
 		}
 	})

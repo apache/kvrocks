@@ -22,6 +22,7 @@
 #include <limits>
 #include <memory>
 #include <stdexcept>
+#include <string_view>
 
 #include "command_parser.h"
 #include "commander.h"
@@ -48,6 +49,14 @@ CommandKeyRange ParseStreamReadRange(const std::vector<std::string> &args, uint3
   range.key_step = 1;
   range.last_key = range.first_key + stream_size - 1;
   return range;
+}
+
+bool IsXDelExNumIDs(std::string_view input) {
+  if (input.empty() || input[0] < '1' || input[0] > '9') {
+    return false;
+  }
+
+  return std::all_of(input.begin() + 1, input.end(), [](char c) { return c >= '0' && c <= '9'; });
 }
 }  // namespace
 
@@ -275,21 +284,34 @@ class CommandXDelEx : public Commander {
     stream_name_ = GET_OR_RET(parser.TakeStr());
 
     option_ = redis::StreamDeleteOption::KeepRef;
+    bool has_option = false;
     bool has_ids = false;
 
     while (parser.Good()) {
       if (parser.EatEqICase("KEEPREF")) {
-        option_ = redis::StreamDeleteOption::KeepRef;
-      } else if (parser.EatEqICase("DELREF")) {
-        option_ = redis::StreamDeleteOption::DelRef;
-      } else if (parser.EatEqICase("ACKED")) {
-        option_ = redis::StreamDeleteOption::Acked;
-      } else if (parser.EatEqICase("IDS")) {
-        if (has_ids) {
+        if (has_option) {
           return parser.InvalidSyntax();
         }
+        has_option = true;
+        option_ = redis::StreamDeleteOption::KeepRef;
+      } else if (parser.EatEqICase("DELREF")) {
+        if (has_option) {
+          return parser.InvalidSyntax();
+        }
+        has_option = true;
+        option_ = redis::StreamDeleteOption::DelRef;
+      } else if (parser.EatEqICase("ACKED")) {
+        if (has_option) {
+          return parser.InvalidSyntax();
+        }
+        has_option = true;
+        option_ = redis::StreamDeleteOption::Acked;
+      } else if (parser.EatEqICase("IDS")) {
         has_ids = true;
 
+        if (!parser.Good() || !IsXDelExNumIDs(parser.RawPeek())) {
+          return {Status::RedisParseErr, errValueNotInteger};
+        }
         auto numids_result = parser.TakeInt<int64_t>();
         if (!numids_result.IsOK()) {
           return {Status::RedisParseErr, errValueNotInteger};
@@ -299,13 +321,15 @@ class CommandXDelEx : public Commander {
           return {Status::RedisParseErr, "numids must be positive"};
         }
 
+        std::vector<redis::StreamEntryID> ids;
         for (int64_t i = 0; i < numids; i++) {
           auto id_str = GET_OR_RET(parser.TakeStr());
           redis::StreamEntryID id;
           auto s = ParseStreamEntryID(id_str, &id);
           if (!s.IsOK()) return s;
-          entry_ids_.emplace_back(id);
+          ids.emplace_back(id);
         }
+        entry_ids_ = std::move(ids);
       } else {
         return parser.InvalidSyntax();
       }

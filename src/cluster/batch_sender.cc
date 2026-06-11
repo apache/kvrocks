@@ -38,6 +38,7 @@ Status BatchSender::Put(rocksdb::ColumnFamilyHandle *cf, const rocksdb::Slice &k
     return {Status::NotOK, fmt::format("failed to put key value to migration batch, {}", s.ToString())};
   }
 
+  pending_logdata_only_ = false;
   pending_entries_++;
   entries_num_++;
   return Status::OK();
@@ -48,6 +49,7 @@ Status BatchSender::Delete(rocksdb::ColumnFamilyHandle *cf, const rocksdb::Slice
   if (!s.ok()) {
     return {Status::NotOK, fmt::format("failed to delete key from migration batch, {}", s.ToString())};
   }
+  pending_logdata_only_ = false;
   pending_entries_++;
   entries_num_++;
   return Status::OK();
@@ -58,6 +60,7 @@ Status BatchSender::PutLogData(const rocksdb::Slice &blob) {
   if (!s.ok()) {
     return {Status::NotOK, fmt::format("failed to put log data to migration batch, {}", s.ToString())};
   }
+  pending_logdata_only_ = true;
   pending_entries_++;
   entries_num_++;
   return Status::OK();
@@ -89,6 +92,7 @@ Status BatchSender::Send() {
   sent_bytes_ += write_batch_.GetDataSize();
   sent_batches_num_++;
   pending_entries_ = 0;
+  pending_logdata_only_ = false;
   write_batch_.Clear();
   return Status::OK();
 }

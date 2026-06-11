@@ -46,7 +46,9 @@ class BatchSender {
   void SetMaxBytes(size_t max_bytes) {
     if (max_bytes_ != max_bytes) max_bytes_ = max_bytes;
   }
-  bool IsFull() const { return write_batch_.GetDataSize() >= max_bytes_; }
+  // A log-data-only batch must wait for the first data record;
+  // otherwise the receiver would see metadata without matching writes.
+  bool IsFull() const { return !pending_logdata_only_ && write_batch_.GetDataSize() >= max_bytes_; }
   uint64_t GetSentBytes() const { return sent_bytes_; }
   uint32_t GetSentBatchesNum() const { return sent_batches_num_; }
   uint32_t GetEntriesNum() const { return entries_num_; }
@@ -62,6 +64,7 @@ class BatchSender {
   uint32_t sent_batches_num_ = 0;
   uint32_t entries_num_ = 0;
   uint32_t pending_entries_ = 0;
+  bool pending_logdata_only_ = false;
 
   int dst_fd_;
   size_t max_bytes_;

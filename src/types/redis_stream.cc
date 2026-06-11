@@ -28,6 +28,7 @@
 #include <vector>
 
 #include "db_util.h"
+#include "scope_exit.h"
 #include "string_util.h"
 #include "time_util.h"
 
@@ -466,6 +467,7 @@ rocksdb::Status Stream::flushPendingNumberUpdates(
     engine::Context &ctx, const std::string &ns_key, const StreamMetadata &metadata, rocksdb::WriteBatchBase *batch,
     const std::map<std::string, uint64_t> &group_pending_decrements,
     const std::map<std::string, std::map<std::string, uint64_t>> &consumer_pending_decrements) {
+  // Saturate pending counters to tolerate stale metadata without uint64_t underflow.
   for (const auto &[group_name, decrement] : group_pending_decrements) {
     auto group_key = internalKeyFromGroupName(ns_key, metadata, group_name);
     std::string group_value;
@@ -475,7 +477,7 @@ rocksdb::Status Stream::flushPendingNumberUpdates(
     }
     if (s.ok()) {
       auto group_meta = decodeStreamConsumerGroupMetadataValue(group_value);
-      group_meta.pending_number -= decrement;
+      group_meta.pending_number = group_meta.pending_number > decrement ? group_meta.pending_number - decrement : 0;
       s = batch->Put(stream_cf_handle_, group_key, encodeStreamConsumerGroupMetadataValue(group_meta));
       if (!s.ok()) return s;
     }
@@ -491,7 +493,8 @@ rocksdb::Status Stream::flushPendingNumberUpdates(
       }
       if (s.ok()) {
         auto consumer_meta = decodeStreamConsumerMetadataValue(consumer_value);
-        consumer_meta.pending_number -= decrement;
+        consumer_meta.pending_number =
+            consumer_meta.pending_number > decrement ? consumer_meta.pending_number - decrement : 0;
         s = batch->Put(stream_cf_handle_, consumer_key, encodeStreamConsumerMetadataValue(consumer_meta));
         if (!s.ok()) return s;
       }
@@ -560,6 +563,11 @@ rocksdb::Status Stream::DeleteEntriesAndAck(engine::Context &ctx, const Slice &s
   }
 
   auto batch = storage_->GetWriteBatchBase();
+  // PutLogData is added before knowing whether any ID mutates data;
+  // roll it back on no-op or error to avoid phantom replay.
+  batch->SetSavePoint();
+  auto rollback_batch = MakeScopeExit([&batch] { batch->RollbackToSavePoint().PermitUncheckedError(); });
+
   std::string option_str;
   switch (option) {
     case StreamDeleteOption::DelRef:
@@ -626,11 +634,21 @@ rocksdb::Status Stream::DeleteEntriesAndAck(engine::Context &ctx, const Slice &s
   StreamEntryID original_first_entry_id = metadata.first_entry_id;
   StreamEntryID original_last_entry_id = metadata.last_entry_id;
 
+  std::vector<std::string> other_groups;
+  if (need_groups) {
+    other_groups.reserve(all_groups.empty() ? 0 : all_groups.size() - 1);
+    for (const auto &candidate_group_name : all_groups) {
+      if (candidate_group_name != group_name) other_groups.push_back(candidate_group_name);
+    }
+  }
+
   for (size_t i = 0; i < ids.size(); i++) {
     const auto &id = ids[i];
 
     std::string entry_key = internalKeyFromEntryID(ns_key, metadata, id);
 
+    // Each ID can mutate the stream at most once per command;
+    // duplicates report not-found after the first attempt.
     if (!seen_entry_keys.insert(entry_key).second) {
       (*results)[i] = static_cast<int>(StreamEntryDeleteResult::kEntryNotFound);
       continue;
@@ -662,13 +680,6 @@ rocksdb::Status Stream::DeleteEntriesAndAck(engine::Context &ctx, const Slice &s
       return s;
     }
     bool stream_entry_exists = s.ok();
-
-    std::vector<std::string> other_groups;
-    if (need_groups) {
-      for (const auto &candidate_group_name : all_groups) {
-        if (candidate_group_name != group_name) other_groups.push_back(candidate_group_name);
-      }
-    }
 
     if (!stream_entry_exists) {
       if (option == StreamDeleteOption::DelRef && !other_groups.empty()) {
@@ -777,9 +788,11 @@ rocksdb::Status Stream::DeleteEntriesAndAck(engine::Context &ctx, const Slice &s
       if (!s.ok()) return s;
     }
 
+    // Saturate pending counters to tolerate stale metadata without uint64_t underflow.
     if (acknowledged_cnt > 0) {
       StreamConsumerGroupMetadata group_metadata = decodeStreamConsumerGroupMetadataValue(get_group_value);
-      group_metadata.pending_number -= acknowledged_cnt;
+      group_metadata.pending_number =
+          group_metadata.pending_number > acknowledged_cnt ? group_metadata.pending_number - acknowledged_cnt : 0;
       std::string group_value = encodeStreamConsumerGroupMetadataValue(group_metadata);
       s = batch->Put(stream_cf_handle_, group_key, group_value);
       if (!s.ok()) return s;
@@ -793,7 +806,8 @@ rocksdb::Status Stream::DeleteEntriesAndAck(engine::Context &ctx, const Slice &s
         }
         if (s.ok()) {
           auto consumer_metadata = decodeStreamConsumerMetadataValue(consumer_meta_original);
-          consumer_metadata.pending_number -= ack_count;
+          consumer_metadata.pending_number =
+              consumer_metadata.pending_number > ack_count ? consumer_metadata.pending_number - ack_count : 0;
           s = batch->Put(stream_cf_handle_, consumer_meta_key, encodeStreamConsumerMetadataValue(consumer_metadata));
           if (!s.ok()) return s;
         }
@@ -810,6 +824,10 @@ rocksdb::Status Stream::DeleteEntriesAndAck(engine::Context &ctx, const Slice &s
   if (!batch_modified) {
     return rocksdb::Status::OK();
   }
+
+  s = batch->PopSavePoint();
+  if (!s.ok()) return s;
+  rollback_batch.Disable();
 
   return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }

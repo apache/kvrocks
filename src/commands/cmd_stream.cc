@@ -22,6 +22,7 @@
 #include <limits>
 #include <memory>
 #include <stdexcept>
+#include <string_view>
 
 #include "command_parser.h"
 #include "commander.h"
@@ -48,6 +49,48 @@ CommandKeyRange ParseStreamReadRange(const std::vector<std::string> &args, uint3
   range.key_step = 1;
   range.last_key = range.first_key + stream_size - 1;
   return range;
+}
+
+// Redis accepts only canonical positive decimal numids here;
+// reject forms like +1 or 01 before integer parsing.
+bool IsXAckDelNumIDs(std::string_view input) {
+  if (input.empty() || input[0] < '1' || input[0] > '9') return false;
+
+  return std::all_of(input.begin() + 1, input.end(), [](char c) { return c >= '0' && c <= '9'; });
+}
+
+StatusOr<uint64_t> ParseXAckDelStreamEntryIDComponent(std::string_view input, bool allow_negative_zero) {
+  if (input.empty()) return {Status::RedisParseErr, redis::kErrInvalidEntryIdSpecified};
+
+  if (input[0] == '+') {
+    input.remove_prefix(1);
+  } else if (input[0] == '-') {
+    if (!allow_negative_zero) return {Status::RedisParseErr, redis::kErrInvalidEntryIdSpecified};
+    input.remove_prefix(1);
+    if (input.empty() || !std::all_of(input.begin(), input.end(), [](char c) { return c == '0'; })) {
+      return {Status::RedisParseErr, redis::kErrInvalidEntryIdSpecified};
+    }
+    return 0;
+  }
+
+  auto parsed = ParseInt<uint64_t>(input, 10);
+  if (!parsed) return {Status::RedisParseErr, redis::kErrInvalidEntryIdSpecified};
+  return *parsed;
+}
+
+Status ParseXAckDelStreamEntryID(const std::string &input, redis::StreamEntryID *id) {
+  auto pos = input.find('-');
+  if (pos != std::string::npos) {
+    auto ms = GET_OR_RET(ParseXAckDelStreamEntryIDComponent(std::string_view(input).substr(0, pos), false));
+    auto seq = GET_OR_RET(ParseXAckDelStreamEntryIDComponent(std::string_view(input).substr(pos + 1), true));
+    id->ms = ms;
+    id->seq = seq;
+  } else {
+    auto ms = GET_OR_RET(ParseXAckDelStreamEntryIDComponent(input, false));
+    id->ms = ms;
+    id->seq = 0;
+  }
+  return Status::OK();
 }
 }  // namespace
 
@@ -276,42 +319,55 @@ class CommandXAckDel : public Commander {
     group_name_ = GET_OR_RET(parser.TakeStr());
 
     option_ = redis::StreamDeleteOption::KeepRef;
+    bool has_option = false;
+    bool has_ids = false;
 
-    while (parser.Good() && !util::EqualICase(parser.RawPeek(), "IDS")) {
+    while (parser.Good()) {
       if (parser.EatEqICase("KEEPREF")) {
+        if (has_option) return parser.InvalidSyntax();
         option_ = redis::StreamDeleteOption::KeepRef;
+        has_option = true;
       } else if (parser.EatEqICase("DELREF")) {
+        if (has_option) return parser.InvalidSyntax();
         option_ = redis::StreamDeleteOption::DelRef;
+        has_option = true;
       } else if (parser.EatEqICase("ACKED")) {
+        if (has_option) return parser.InvalidSyntax();
         option_ = redis::StreamDeleteOption::Acked;
+        has_option = true;
+      } else if (parser.EatEqICase("IDS")) {
+        has_ids = true;
+
+        if (!parser.Good() || !IsXAckDelNumIDs(parser.RawPeek())) {
+          return {Status::RedisParseErr, "Number of IDs must be a positive integer"};
+        }
+        auto numids_result = parser.TakeInt<int64_t>();
+        if (!numids_result.IsOK()) {
+          return {Status::RedisParseErr, "Number of IDs must be a positive integer"};
+        }
+        int64_t numids = numids_result.GetValue();
+
+        if (parser.Remains() < static_cast<size_t>(numids)) {
+          return {Status::RedisParseErr, "The `numids` parameter must match the number of arguments"};
+        }
+
+        std::vector<redis::StreamEntryID> entry_ids;
+        entry_ids.reserve(static_cast<size_t>(numids));
+        for (int64_t i = 0; i < numids; i++) {
+          auto id_str = GET_OR_RET(parser.TakeStr());
+          redis::StreamEntryID id;
+          auto s = ParseXAckDelStreamEntryID(id_str, &id);
+          if (!s.IsOK()) return s;
+          entry_ids.emplace_back(id);
+        }
+        entry_ids_ = std::move(entry_ids);
       } else {
         return parser.InvalidSyntax();
       }
     }
 
-    if (!parser.EatEqICase("IDS")) {
+    if (!has_ids) {
       return {Status::RedisParseErr, "syntax error, expected IDS keyword"};
-    }
-
-    auto numids_result = parser.TakeInt<int64_t>();
-    if (!numids_result.IsOK()) {
-      return {Status::RedisParseErr, errValueNotInteger};
-    }
-    int64_t numids = numids_result.GetValue();
-    if (numids <= 0) {
-      return {Status::RedisParseErr, "numids must be positive"};
-    }
-
-    for (int64_t i = 0; i < numids; i++) {
-      auto id_str = GET_OR_RET(parser.TakeStr());
-      redis::StreamEntryID id;
-      auto s = ParseStreamEntryID(id_str, &id);
-      if (!s.IsOK()) return s;
-      entry_ids_.emplace_back(id);
-    }
-
-    if (parser.Good()) {
-      return {Status::RedisParseErr, "syntax error, unexpected trailing arguments after IDs"};
     }
 
     return Status::OK();

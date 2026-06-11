@@ -55,5 +55,6 @@ class WriteBatchExtractor : public rocksdb::WriteBatch::Handler {
   bool is_slot_id_encoded_ = false;
   SlotRange slot_range_;
   bool to_redis_;
-  std::unordered_set<std::string> seen_xackdel_entry_keys_;
+  std::unordered_set<std::string> seen_xackdel_xack_keys_;
+  std::unordered_set<std::string> seen_xackdel_xdel_keys_;
 };

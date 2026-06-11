@@ -32,6 +32,8 @@
 
 namespace redis {
 
+extern const char *kErrInvalidEntryIdSpecified;
+
 struct StreamEntryID {
   uint64_t ms = 0;
   uint64_t seq = 0;

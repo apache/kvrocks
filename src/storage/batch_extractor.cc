@@ -37,10 +37,13 @@ void WriteBatchExtractor::LogData(const rocksdb::Slice &blob) {
     }
   } else {
     // Redis type log data
+    // Reset state first so malformed log data cannot reuse XACKDEL dedup keys.
+    log_data_ = redis::WriteBatchLogData();
+    first_seen_ = true;
+    seen_xackdel_xack_keys_.clear();
+    seen_xackdel_xdel_keys_.clear();
     if (auto s = log_data_.Decode(blob); !s.IsOK()) {
       WARN("Failed to decode Redis type log: {}", s.Msg());
-    } else {
-      seen_xackdel_entry_keys_.clear();
     }
   }
 }
@@ -417,10 +420,11 @@ rocksdb::Status WriteBatchExtractor::DeleteCF(uint32_t column_family_id, const S
     GetFixed64(&encoded_id, &entry_id.ms);
 
     if (entry_id.ms == UINT64_MAX) {
-      // PEL / group / consumer metadata sub-key. Only PEL deletions
-      // produce XACKDEL commands for replication.
+      // XACKDEL physical replay emits XACK for each PEL deletion,
+      // using the actual group encoded in the PEL key.
       auto args = log_data_.GetArguments();
       if (!args->empty() && (*args)[0] == "XACKDEL" && args->size() >= 3) {
+        // Skip malformed internal stream keys instead of emitting partial replay commands.
         uint8_t type_delimiter = 0;
         if (!GetFixed8(&encoded_id, &type_delimiter)) {
           return rocksdb::Status::OK();
@@ -433,6 +437,7 @@ rocksdb::Status WriteBatchExtractor::DeleteCF(uint32_t column_family_id, const S
           if (group_name_len > encoded_id.size() || encoded_id.size() - group_name_len < 16) {
             return rocksdb::Status::OK();
           }
+          std::string group_name = encoded_id.ToString().substr(0, group_name_len);
           encoded_id.remove_prefix(group_name_len);
 
           if (!GetFixed64(&encoded_id, &entry_id.ms) || !GetFixed64(&encoded_id, &entry_id.seq)) {
@@ -446,9 +451,9 @@ rocksdb::Status WriteBatchExtractor::DeleteCF(uint32_t column_family_id, const S
             return rocksdb::Status::OK();
           }
           ns = ikey.GetNamespace().ToString();
-          std::string dedup_key = ns + '\0' + user_key + '\0' + (*args)[1] + '\0' + entry_id_str;
-          if (seen_xackdel_entry_keys_.insert(std::move(dedup_key)).second) {
-            command_args = {(*args)[0], user_key, (*args)[1], (*args)[2], "IDS", "1", entry_id_str};
+          std::string dedup_key = ns + '\0' + user_key + '\0' + group_name + '\0' + entry_id_str;
+          if (seen_xackdel_xack_keys_.insert(std::move(dedup_key)).second) {
+            command_args = {"XACK", user_key, group_name, entry_id_str};
             resp_commands_[ns].emplace_back(redis::ArrayOfBulkStrings(command_args));
           }
         }
@@ -469,9 +474,9 @@ rocksdb::Status WriteBatchExtractor::DeleteCF(uint32_t column_family_id, const S
     auto args = log_data_.GetArguments();
     if (!args->empty()) {
       if ((*args)[0] == "XACKDEL" && args->size() >= 3) {
-        std::string dedup_key = ns + '\0' + user_key + '\0' + (*args)[1] + '\0' + entry_id_str;
-        if (seen_xackdel_entry_keys_.insert(std::move(dedup_key)).second) {
-          command_args = {(*args)[0], user_key, (*args)[1], (*args)[2], "IDS", "1", entry_id_str};
+        std::string dedup_key = ns + '\0' + user_key + '\0' + entry_id_str;
+        if (seen_xackdel_xdel_keys_.insert(std::move(dedup_key)).second) {
+          command_args = {"XDEL", user_key, entry_id_str};
         }
       } else {
         command_args = {"XDEL", user_key, entry_id_str};

@@ -22,14 +22,113 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <fstream>
+#include <memory>
 
+#include "encoding.h"
 #include "search/index_info.h"
 #include "search/indexer.h"
+#include "storage/compact_filter.h"
 #include "storage/redis_metadata.h"
 #include "storage/storage.h"
+#include "time_util.h"
 #include "types/redis_hash.h"
 #include "types/redis_timeseries.h"
 #include "types/redis_zset.h"
+
+namespace {
+
+class CompactHashFieldExpirationTest : public ::testing::Test {
+ public:
+  CompactHashFieldExpirationTest(const CompactHashFieldExpirationTest &) = delete;
+  CompactHashFieldExpirationTest &operator=(const CompactHashFieldExpirationTest &) = delete;
+  CompactHashFieldExpirationTest(CompactHashFieldExpirationTest &&) = delete;
+  CompactHashFieldExpirationTest &operator=(CompactHashFieldExpirationTest &&) = delete;
+
+ protected:
+  CompactHashFieldExpirationTest() {
+    const char *path = "compact_hash_field_expiration.conf";
+    unlink(path);
+    std::ofstream output_file(path, std::ios::out);
+    output_file << "hash-encoding-mode field-expiration\n";
+    output_file.close();
+
+    auto s = config_.Load(CLIOptions(path));
+    assert(s.IsOK());
+    config_.db_dir = "compactdb_hash_field_expiration";
+    config_.slot_id_encoded = false;
+    config_.rocks_db.compression = rocksdb::CompressionType::kNoCompression;
+    config_.rocks_db.write_buffer_size = 1;
+    config_.rocks_db.block_size = 100;
+
+    storage_ = std::make_unique<engine::Storage>(&config_);
+    s = storage_->Open();
+    assert(s.IsOK());
+
+    ctx_ = std::make_unique<engine::Context>(storage_.get());
+    db_ = std::make_unique<redis::Database>(storage_.get(), ns_);
+    hash_ = std::make_unique<redis::Hash>(storage_.get(), ns_);
+  }
+
+  ~CompactHashFieldExpirationTest() override {
+    ctx_.reset();
+    db_.reset();
+    hash_.reset();
+    storage_.reset();
+
+    std::error_code ec;
+    std::filesystem::remove_all(config_.db_dir, ec);
+    unlink("compact_hash_field_expiration.conf");
+  }
+
+  HashMetadata hashMetadataOf(const std::string &key) {
+    HashMetadata metadata(false);
+    auto s = db_->GetMetadata(*ctx_, {kRedisHash}, db_->AppendNamespacePrefix(key), &metadata);
+    assert(s.ok());
+    return metadata;
+  }
+
+  std::string hashSubKey(const std::string &key, const std::string &field) {
+    HashMetadata metadata = hashMetadataOf(key);
+    return InternalKey(db_->AppendNamespacePrefix(key), field, metadata.version, storage_->IsSlotIdEncoded()).Encode();
+  }
+
+  rocksdb::Status getRawHashValue(const std::string &key, const std::string &field, std::string *value) {
+    return storage_->Get(*ctx_, ctx_->GetReadOptions(), hashSubKey(key, field), value);
+  }
+
+  rocksdb::Status getRawSubKeyValue(const std::string &sub_key, std::string *value) {
+    return storage_->Get(*ctx_, ctx_->GetReadOptions(), sub_key, value);
+  }
+
+  rocksdb::Status putRawHashValue(const std::string &key, const std::string &field, const std::string &value) {
+    auto batch = storage_->GetWriteBatchBase();
+    auto s = batch->Put(hashSubKey(key, field), value);
+    if (!s.ok()) return s;
+    return storage_->Write(*ctx_, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+  }
+
+  rocksdb::Status getRawMetadata(const std::string &key, std::string *value) {
+    return storage_->Get(*ctx_, ctx_->GetReadOptions(), storage_->GetCFHandle(ColumnFamilyID::Metadata),
+                         db_->AppendNamespacePrefix(key), value);
+  }
+
+  void compactTwice() {
+    auto s = storage_->Compact(nullptr, nullptr, nullptr);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    s = storage_->Compact(nullptr, nullptr, nullptr);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+  }
+
+  Config config_;
+  std::string ns_ = "test_compact_hfe";
+  std::unique_ptr<engine::Storage> storage_;
+  std::unique_ptr<engine::Context> ctx_;
+  std::unique_ptr<redis::Database> db_;
+  std::unique_ptr<redis::Hash> hash_;
+};
+
+}  // namespace
 
 TEST(Compact, Filter) {
   Config config;
@@ -61,7 +160,7 @@ TEST(Compact, Filter) {
   status = storage->Compact(nullptr, nullptr, nullptr);
   assert(status.ok());
 
-  rocksdb::DB* db = storage->GetDB();
+  rocksdb::DB *db = storage->GetDB();
   rocksdb::ReadOptions read_options;
   read_options.snapshot = db->GetSnapshot();
   read_options.fill_cache = false;
@@ -135,6 +234,211 @@ TEST(Compact, Filter) {
   if (ec) {
     std::cout << "Encounter filesystem error: " << ec << std::endl;
   }
+}
+
+TEST_F(CompactHashFieldExpirationTest, DropsExpiredTTLSubkeyWithoutChangingMetadata) {
+  const std::string key = "hfe_compact_hash";
+  uint64_t ret = 0;
+  auto s = hash_->MSet(*ctx_, key, {{"persistent", "1"}, {"live", "2"}, {"expired", "3"}}, false, &ret);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  ASSERT_EQ(ret, 3);
+
+  uint64_t now = util::GetTimeStampMS();
+  uint64_t expired_at = now + 200;
+  uint64_t live_expire_at = now + 60'000;
+  std::vector<int64_t> results;
+  s = hash_->ExpireFields(*ctx_, key, {"live"}, live_expire_at, HashFieldExpireCondition::kNone, &results);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  s = hash_->ExpireFields(*ctx_, key, {"expired"}, expired_at, HashFieldExpireCondition::kNone, &results);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+
+  HashMetadata before = hashMetadataOf(key);
+  ASSERT_EQ(before.size, 3);
+  ASSERT_EQ(before.persist, 1);
+  ASSERT_LT(before.lower, before.upper);
+  usleep(250 * 1000);
+  ASSERT_LT(expired_at, util::GetTimeStampMS());
+
+  std::string raw_value;
+  ASSERT_TRUE(getRawHashValue(key, "persistent", &raw_value).ok());
+  ASSERT_TRUE(getRawHashValue(key, "live", &raw_value).ok());
+  ASSERT_TRUE(getRawHashValue(key, "expired", &raw_value).ok());
+
+  engine::SubKeyFilter filter(storage_.get());
+  EXPECT_EQ(filter.FilterBlobByKey(0, hashSubKey(key, "expired"), nullptr, nullptr),
+            rocksdb::CompactionFilter::Decision::kUndetermined);
+
+  compactTwice();
+
+  EXPECT_TRUE(getRawHashValue(key, "persistent", &raw_value).ok());
+  EXPECT_TRUE(getRawHashValue(key, "live", &raw_value).ok());
+  EXPECT_TRUE(getRawHashValue(key, "expired", &raw_value).IsNotFound());
+
+  HashMetadata after = hashMetadataOf(key);
+  EXPECT_EQ(after.size, before.size);
+  EXPECT_EQ(after.persist, before.persist);
+  EXPECT_EQ(after.lower, before.lower);
+  EXPECT_EQ(after.upper, before.upper);
+  EXPECT_EQ(after.version, before.version);
+}
+
+TEST_F(CompactHashFieldExpirationTest, DropsWholeHashWhenAllTTLFieldsExpiredByBounds) {
+  const std::string key = "hfe_compact_whole_hash";
+  uint64_t ret = 0;
+  auto s = hash_->MSet(*ctx_, key, {{"first", "1"}, {"second", "2"}}, false, &ret);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  ASSERT_EQ(ret, 2);
+
+  uint64_t expire_at = util::GetTimeStampMS() + 200;
+  std::vector<int64_t> results;
+  s = hash_->ExpireFields(*ctx_, key, {"first", "second"}, expire_at, HashFieldExpireCondition::kNone, &results);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+
+  HashMetadata before = hashMetadataOf(key);
+  ASSERT_TRUE(before.IsFieldExpirationEncoding());
+  ASSERT_EQ(before.size, 2);
+  ASSERT_EQ(before.persist, 0);
+  ASSERT_EQ(before.lower, expire_at);
+  ASSERT_EQ(before.upper, expire_at);
+
+  usleep(250 * 1000);
+  ASSERT_LT(before.upper, util::GetTimeStampMS());
+
+  std::string raw_value;
+  std::string first_sub_key = hashSubKey(key, "first");
+  std::string second_sub_key = hashSubKey(key, "second");
+  ASSERT_TRUE(getRawMetadata(key, &raw_value).ok());
+  ASSERT_TRUE(getRawSubKeyValue(first_sub_key, &raw_value).ok());
+  ASSERT_TRUE(getRawSubKeyValue(second_sub_key, &raw_value).ok());
+
+  compactTwice();
+
+  EXPECT_TRUE(getRawMetadata(key, &raw_value).IsNotFound());
+  EXPECT_TRUE(getRawSubKeyValue(first_sub_key, &raw_value).IsNotFound());
+  EXPECT_TRUE(getRawSubKeyValue(second_sub_key, &raw_value).IsNotFound());
+}
+
+TEST_F(CompactHashFieldExpirationTest, KeepsHashMetadataWhenPersistentFieldExistsPastUpperBound) {
+  const std::string key = "hfe_compact_persistent_survivor";
+  uint64_t ret = 0;
+  auto s = hash_->MSet(*ctx_, key, {{"persistent", "1"}, {"expired", "2"}}, false, &ret);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  ASSERT_EQ(ret, 2);
+
+  uint64_t expire_at = util::GetTimeStampMS() + 200;
+  std::vector<int64_t> results;
+  s = hash_->ExpireFields(*ctx_, key, {"expired"}, expire_at, HashFieldExpireCondition::kNone, &results);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+
+  HashMetadata before = hashMetadataOf(key);
+  ASSERT_TRUE(before.IsFieldExpirationEncoding());
+  ASSERT_EQ(before.size, 2);
+  ASSERT_EQ(before.persist, 1);
+  ASSERT_EQ(before.lower, expire_at);
+  ASSERT_EQ(before.upper, expire_at);
+
+  usleep(250 * 1000);
+  ASSERT_LT(before.upper, util::GetTimeStampMS());
+
+  compactTwice();
+
+  std::string raw_value;
+  EXPECT_TRUE(getRawMetadata(key, &raw_value).ok());
+  EXPECT_TRUE(getRawHashValue(key, "persistent", &raw_value).ok());
+  EXPECT_TRUE(getRawHashValue(key, "expired", &raw_value).IsNotFound());
+
+  HashMetadata after = hashMetadataOf(key);
+  EXPECT_EQ(after.size, before.size);
+  EXPECT_EQ(after.persist, before.persist);
+  EXPECT_EQ(after.lower, before.lower);
+  EXPECT_EQ(after.upper, before.upper);
+  EXPECT_EQ(after.version, before.version);
+}
+
+TEST(Compact, KeepsLegacyHashSubkeyWithTTLLikePrefix) {
+  Config config;
+  config.db_dir = "compactdb_legacy_hash_ttl_like_prefix";
+  config.slot_id_encoded = false;
+  config.rocks_db.compression = rocksdb::CompressionType::kNoCompression;
+  config.rocks_db.write_buffer_size = 1;
+  config.rocks_db.block_size = 100;
+
+  auto storage = std::make_unique<engine::Storage>(&config);
+  Status s = storage->Open();
+  ASSERT_TRUE(s.IsOK()) << s.Msg();
+
+  std::string ns = "test_compact_legacy_hash";
+  engine::Context ctx(storage.get());
+  redis::Database db(storage.get(), ns);
+  redis::Hash hash(storage.get(), ns);
+
+  std::string key = "legacy_hash";
+  std::string field = "field";
+  std::string value;
+  PutFixed64(&value, 1);
+  value.append("legacy-value");
+  uint64_t ret = 0;
+  auto rs = hash.Set(ctx, key, field, value, &ret);
+  ASSERT_TRUE(rs.ok()) << rs.ToString();
+
+  HashMetadata metadata(false);
+  rs = db.GetMetadata(ctx, {kRedisHash}, db.AppendNamespacePrefix(key), &metadata);
+  ASSERT_TRUE(rs.ok()) << rs.ToString();
+  ASSERT_TRUE(metadata.IsLegacySubkeyEncoding());
+  std::string sub_key =
+      InternalKey(db.AppendNamespacePrefix(key), field, metadata.version, storage->IsSlotIdEncoded()).Encode();
+
+  engine::SubKeyFilter filter(storage.get());
+  EXPECT_EQ(filter.FilterBlobByKey(0, sub_key, nullptr, nullptr), rocksdb::CompactionFilter::Decision::kKeep);
+
+  auto status = storage->Compact(nullptr, nullptr, nullptr);
+  ASSERT_TRUE(status.ok()) << status.ToString();
+  status = storage->Compact(nullptr, nullptr, nullptr);
+  ASSERT_TRUE(status.ok()) << status.ToString();
+
+  std::string raw_value;
+  rs = storage->Get(ctx, ctx.GetReadOptions(), sub_key, &raw_value);
+  EXPECT_TRUE(rs.ok()) << rs.ToString();
+  EXPECT_EQ(raw_value, value);
+
+  storage.reset();
+  std::error_code ec;
+  std::filesystem::remove_all(config.db_dir, ec);
+  if (ec) {
+    std::cout << "Encounter filesystem error: " << ec << std::endl;
+  }
+}
+
+TEST_F(CompactHashFieldExpirationTest, KeepsMalformedFieldExpirationSubkeyValue) {
+  const std::string key = "hfe_compact_malformed";
+  uint64_t ret = 0;
+  auto s = hash_->MSet(*ctx_, key, {{"field", "value"}}, false, &ret);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  ASSERT_EQ(ret, 1);
+  std::vector<int64_t> results;
+  s = hash_->ExpireFields(*ctx_, key, {"field"}, util::GetTimeStampMS() + 60'000, HashFieldExpireCondition::kNone,
+                          &results);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+
+  HashMetadata before = hashMetadataOf(key);
+  ASSERT_TRUE(before.IsFieldExpirationEncoding());
+  ASSERT_EQ(before.persist, 0);
+
+  s = putRawHashValue(key, "field", "short");
+  ASSERT_TRUE(s.ok()) << s.ToString();
+
+  compactTwice();
+
+  std::string raw_value;
+  EXPECT_TRUE(getRawHashValue(key, "field", &raw_value).ok());
+  EXPECT_EQ(raw_value, "short");
+
+  HashMetadata after = hashMetadataOf(key);
+  EXPECT_EQ(after.size, before.size);
+  EXPECT_EQ(after.persist, before.persist);
+  EXPECT_EQ(after.lower, before.lower);
+  EXPECT_EQ(after.upper, before.upper);
+  EXPECT_EQ(after.version, before.version);
 }
 
 TEST(Compact, SearchFilter) {
@@ -276,7 +580,7 @@ TEST(Compact, TSRetention) {
   create_option.retention_time = 100;
   ASSERT_TRUE(timeseries->Create(ctx, ts_key, create_option).ok());
 
-  rocksdb::DB* db = storage->GetDB();
+  rocksdb::DB *db = storage->GetDB();
   rocksdb::ReadOptions read_options;
   read_options.fill_cache = false;
   auto get_all_chunks = [&]() {
@@ -343,7 +647,7 @@ TEST(Compact, TSDownstreamSubKey) {
   auto timeseries = std::make_unique<redis::TimeSeries>(storage.get(), ns);
   engine::Context ctx(storage.get());
 
-  rocksdb::DB* db = storage->GetDB();
+  rocksdb::DB *db = storage->GetDB();
   rocksdb::ReadOptions read_options;
   read_options.fill_cache = false;
   auto get_all_ds_key = [&]() {
@@ -380,7 +684,7 @@ TEST(Compact, TSDownstreamSubKey) {
   ASSERT_EQ(ds_keys[1], dst_key2);
 
   // Recreate the downstream key
-  ASSERT_TRUE(static_cast<redis::Database*>(timeseries.get())->Del(ctx, dst_key1).ok());
+  ASSERT_TRUE(static_cast<redis::Database *>(timeseries.get())->Del(ctx, dst_key1).ok());
   ASSERT_TRUE(timeseries->Create(ctx, dst_key1, create_option).ok());
   ASSERT_TRUE(storage->Compact(nullptr, nullptr, nullptr).ok());
   ds_keys = get_all_ds_key();

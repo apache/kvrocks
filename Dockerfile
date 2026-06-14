@@ -15,20 +15,21 @@
 # specific language governing permissions and limitations
 # under the License.
 
-FROM debian:bookworm-slim AS build
+FROM debian:trixie-slim AS build
 
 ARG MORE_BUILD_ARGS
+ENV DEBIAN_FRONTEND=noninteractive
 
-RUN DEBIAN_FRONTEND=noninteractive && apt-get update && apt-get upgrade -y && apt-get -y --no-install-recommends install git build-essential autoconf cmake libtool python3 libssl-dev clang && apt-get autoremove && apt-get clean
+RUN apt-get update && apt-get upgrade -y && apt-get -y --no-install-recommends install git build-essential autoconf cmake libtool python3 libssl-dev clang ca-certificates && apt-get autoremove && apt-get clean
 
 WORKDIR /kvrocks
 
 COPY . .
-RUN ./x.py build --compiler=clang -DENABLE_OPENSSL=ON -DPORTABLE=1 -DCMAKE_BUILD_TYPE=Release -j $(nproc) $MORE_BUILD_ARGS
+RUN ./x.py build --compiler=clang -DCMAKE_EXE_LINKER_FLAGS="-latomic" -DENABLE_OPENSSL=ON -DPORTABLE=1 -DCMAKE_BUILD_TYPE=Release -j $(nproc) $MORE_BUILD_ARGS
 
-FROM debian:bookworm-slim
+FROM debian:trixie-slim
 
-RUN DEBIAN_FRONTEND=noninteractive && apt-get update && apt-get upgrade -y && apt-get -y install openssl ca-certificates redis-tools binutils && apt-get clean
+RUN apt-get update && apt-get upgrade -y && apt-get -y install openssl ca-certificates redis-tools binutils && apt-get clean
 
 # Create a dedicated non-root user and group
 RUN groupadd --gid=999 -r kvrocks && useradd --uid=999 -r -g kvrocks kvrocks

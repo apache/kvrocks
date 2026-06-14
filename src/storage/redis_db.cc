@@ -558,7 +558,42 @@ rocksdb::Status Database::KeyExist(engine::Context &ctx, const std::string &key)
 rocksdb::Status SubKeyScanner::Scan(engine::Context &ctx, RedisType type, const Slice &user_key,
                                     const std::string &cursor, uint64_t limit, const std::string &subkey_prefix,
                                     std::vector<std::string> *keys, std::vector<std::string> *values) {
-  return scanSubkeys<Metadata>(ctx, type, user_key, cursor, limit, subkey_prefix, keys, values);
+  uint64_t cnt = 0;
+  std::string ns_key = AppendNamespacePrefix(user_key);
+  Metadata metadata(type, false);
+  rocksdb::Status s = GetMetadata(ctx, {type}, ns_key, &metadata);
+  if (!s.ok()) return s;
+
+  auto iter = util::UniqueIterator(ctx, ctx.DefaultScanOptions());
+  std::string match_prefix_key =
+      InternalKey(ns_key, subkey_prefix, metadata.version, storage_->IsSlotIdEncoded()).Encode();
+
+  std::string start_key;
+  if (!cursor.empty()) {
+    start_key = InternalKey(ns_key, cursor, metadata.version, storage_->IsSlotIdEncoded()).Encode();
+  } else {
+    start_key = match_prefix_key;
+  }
+  for (iter->Seek(start_key); iter->Valid(); iter->Next()) {
+    if (!cursor.empty() && iter->key() == start_key) {
+      // if cursor is not empty, then we need to skip start_key
+      // because we already return that key in the last scan
+      continue;
+    }
+    if (!iter->key().starts_with(match_prefix_key)) {
+      break;
+    }
+    InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
+    keys->emplace_back(ikey.GetSubKey().ToString());
+    if (values != nullptr) {
+      values->emplace_back(iter->value().ToString());
+    }
+    cnt++;
+    if (limit > 0 && cnt >= limit) {
+      break;
+    }
+  }
+  return iter->status();
 }
 
 RedisType WriteBatchLogData::GetRedisType() const { return type_; }

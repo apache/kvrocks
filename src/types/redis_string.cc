@@ -239,7 +239,7 @@ rocksdb::Status String::Set(engine::Context &ctx, const std::string &user_key, c
 }
 
 rocksdb::Status String::Set(engine::Context &ctx, const std::string &user_key, const std::string &value,
-                            StringSetArgs args, std::optional<std::string> &ret) {
+                            const StringSetArgs &args, std::optional<std::string> &ret) {
   uint64_t expire = 0;
   std::string ns_key = AppendNamespacePrefix(user_key);
 
@@ -249,6 +249,24 @@ rocksdb::Status String::Set(engine::Context &ctx, const std::string &user_key, c
     uint64_t old_expire = 0;
     auto s = getValueAndExpire(ctx, ns_key, &old_value, &old_expire);
     if (!s.ok() && !s.IsNotFound() && !s.IsInvalidArgument()) return s;
+    // If the existing key is not a string type, enforce expected behaviors:
+    if (s.IsInvalidArgument()) {
+      // For conditional comparisons (IFEQ/IFNE/IFDEQ/IFDNE), reading the old value is required,
+      // so return the underlying WRONGTYPE (InvalidArgument) error.
+      if (args.type == StringSetType::IFEQ || args.type == StringSetType::IFNE || args.type == StringSetType::IFDEQ ||
+          args.type == StringSetType::IFDNE) {
+        return s;
+      }
+      // For NX option, treat a wrong type as "key exists" so the condition is not met.
+      if (args.type == StringSetType::NX) {
+        // If GET is also specified, we need to return the WRONGTYPE error
+        // because GET requires reading the old value.
+        if (args.get) return s;
+        ret = std::nullopt;
+        return rocksdb::Status::OK();
+      }
+      // For other options, continue (e.g., XX may still proceed since key exists).
+    }
     // GET option
     if (args.get) {
       if (s.IsInvalidArgument()) {
@@ -271,6 +289,38 @@ rocksdb::Status String::Set(engine::Context &ctx, const std::string &user_key, c
       // if XX option given, the key didn't exist before: return nil
       if (!args.get) ret = std::nullopt;
       return rocksdb::Status::OK();
+    } else if (args.type == StringSetType::IFEQ) {
+      // condition met only when key exists AND value matches
+      bool matched = s.ok() && (old_value == args.cmp_value);
+      if (!matched) {
+        if (!args.get) ret = std::nullopt;
+        return rocksdb::Status::OK();
+      }
+      if (!args.get) ret = "";
+    } else if (args.type == StringSetType::IFNE) {
+      // condition not met when key exists AND value matches; key-not-found counts as met
+      bool matched = s.ok() && (old_value == args.cmp_value);
+      if (matched) {
+        if (!args.get) ret = std::nullopt;
+        return rocksdb::Status::OK();
+      }
+      if (!args.get) ret = "";
+    } else if (args.type == StringSetType::IFDEQ) {
+      // condition met only when key exists AND digest matches (case-insensitive)
+      bool matched = s.ok() && util::EqualICase(util::StringDigest(old_value), args.cmp_value);
+      if (!matched) {
+        if (!args.get) ret = std::nullopt;
+        return rocksdb::Status::OK();
+      }
+      if (!args.get) ret = "";
+    } else if (args.type == StringSetType::IFDNE) {
+      // condition not met when key exists AND digest matches (case-insensitive); key-not-found counts as met
+      bool matched = s.ok() && util::EqualICase(util::StringDigest(old_value), args.cmp_value);
+      if (matched) {
+        if (!args.get) ret = std::nullopt;
+        return rocksdb::Status::OK();
+      }
+      if (!args.get) ret = "";
     } else {
       // if GET option not given, make ret not nil
       if (!args.get) ret = "";

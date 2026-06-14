@@ -53,6 +53,18 @@ func TestCommand(t *testing.T) {
 		require.EqualValues(t, 1, v[5])
 	})
 
+	t.Run("acquire ZDIFFSTORE command info by COMMAND INFO", func(t *testing.T) {
+		r := rdb.Do(ctx, "COMMAND", "INFO", "ZDIFFSTORE")
+		vs, err := r.Slice()
+		require.NoError(t, err)
+		require.Len(t, vs, 1)
+		v := vs[0].([]interface{})
+		require.Len(t, v, 6)
+		require.Equal(t, "zdiffstore", v[0])
+		require.EqualValues(t, -3, v[1])
+		require.Equal(t, []interface{}{"write", "slow"}, v[2])
+	})
+
 	t.Run("acquire renamed command info by COMMAND INFO", func(t *testing.T) {
 		r := rdb.Do(ctx, "COMMAND", "INFO", "KEYS")
 		vs, err := r.Slice()

@@ -26,6 +26,7 @@ var workspace = flag.String("workspace", "", "directory of cases workspace")
 var deleteOnExit = flag.Bool("deleteOnExit", false, "whether to delete workspace on exit")
 var cliPath = flag.String("cliPath", "redis-cli", "path to redis-cli")
 var tlsEnable = flag.Bool("tlsEnable", false, "enable TLS-related test cases")
+var luaJITEnable = flag.Bool("luaJITEnable", true, "enable LuaJIT-specific test cases")
 
 func CLIPath() string {
 	return *cliPath
@@ -33,4 +34,8 @@ func CLIPath() string {
 
 func TLSEnable() bool {
 	return *tlsEnable
+}
+
+func LuaJITEnable() bool {
+	return *luaJITEnable
 }

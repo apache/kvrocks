@@ -36,6 +36,35 @@ namespace engine {
 
 using rocksdb::Slice;
 
+namespace {
+
+bool IsExpiredHashFieldSubkey(const HashMetadata &metadata, Slice value, uint64_t now, bool *expired) {
+  *expired = false;
+  if (!metadata.IsFieldExpirationEncoding()) {
+    return true;
+  }
+
+  uint64_t expire = 0;
+  auto s = metadata.DecodeSubkeyValue(&value, &expire);
+  if (!s.ok()) {
+    return false;
+  }
+
+  *expired = expire != 0 && expire < now;
+  return true;
+}
+
+bool HasHashFieldExpirationCandidates(const HashMetadata &metadata) {
+  return metadata.IsFieldExpirationEncoding() && metadata.size > metadata.persist;
+}
+
+bool IsHashFieldExpirationMetadataExpired(const HashMetadata &metadata, uint64_t now) {
+  return HasHashFieldExpirationCandidates(metadata) && metadata.persist == 0 && metadata.upper != 0 &&
+         metadata.upper < now;
+}
+
+}  // namespace
+
 bool MetadataFilter::Filter([[maybe_unused]] int level, const Slice &key, const Slice &value,
                             [[maybe_unused]] std::string *new_value, [[maybe_unused]] bool *modified) const {
   Metadata metadata(kRedisNone, false);
@@ -45,9 +74,22 @@ bool MetadataFilter::Filter([[maybe_unused]] int level, const Slice &key, const 
     WARN("[compact_filter/metadata] Failed to decode, namespace: {}, key: {}, err: {}", ns, user_key, s.ToString());
     return false;
   }
+
+  bool expired = metadata.Expired();
+  if (!expired && metadata.Type() == kRedisHash) {
+    HashMetadata hash_metadata(false);
+    Slice input(value);
+    if (s = hash_metadata.Decode(&input); !s.ok()) {
+      WARN("[compact_filter/metadata] Failed to decode hash metadata, namespace: {}, key: {}, err: {}", ns, user_key,
+           s.ToString());
+      return false;
+    }
+    expired = IsHashFieldExpirationMetadataExpired(hash_metadata, util::GetTimeStampMS());
+  }
+
   DEBUG("[compact_filter/metadata] namespace: {}, key: {}, result: {}", ns, user_key,
-        (metadata.Expired() ? "deleted" : "reserved"));
-  return metadata.Expired();
+        (expired ? "deleted" : "reserved"));
+  return expired;
 }
 
 Status SubKeyFilter::GetMetadata(const InternalKey &ikey, Metadata *metadata) const {
@@ -114,6 +156,26 @@ rocksdb::CompactionFilter::Decision SubKeyFilter::FilterBlobByKey([[maybe_unused
   if (metadata.Type() == kRedisBitmap || metadata.Type() == kRedisTimeSeries) {
     return rocksdb::CompactionFilter::Decision::kUndetermined;
   }
+  if (metadata.Type() == kRedisHash) {
+    if (IsMetadataExpired(ikey, metadata)) {
+      return rocksdb::CompactionFilter::Decision::kRemove;
+    }
+
+    HashMetadata hash_metadata(false);
+    Slice input(cached_metadata_);
+    if (auto s = hash_metadata.Decode(&input); !s.ok()) {
+      ERROR("[compact_filter/subkey] Failed to decode hash metadata, namespace: {}, key: {}, err: {}",
+            ikey.GetNamespace(), ikey.GetKey(), s.ToString());
+      return rocksdb::CompactionFilter::Decision::kKeep;
+    }
+    if (IsHashFieldExpirationMetadataExpired(hash_metadata, util::GetTimeStampMS())) {
+      return rocksdb::CompactionFilter::Decision::kRemove;
+    }
+    if (HasHashFieldExpirationCandidates(hash_metadata)) {
+      return rocksdb::CompactionFilter::Decision::kUndetermined;
+    }
+    return rocksdb::CompactionFilter::Decision::kKeep;
+  }
 
   bool result = IsMetadataExpired(ikey, metadata);
   return result ? rocksdb::CompactionFilter::Decision::kRemove : rocksdb::CompactionFilter::Decision::kKeep;
@@ -154,7 +216,38 @@ bool SubKeyFilter::Filter([[maybe_unused]] int level, const Slice &key, const Sl
     return expired;
   }
 
-  return IsMetadataExpired(ikey, metadata) || (metadata.Type() == kRedisBitmap && redis::Bitmap::IsEmptySegment(value));
+  bool metadata_expired = IsMetadataExpired(ikey, metadata);
+  if (metadata_expired) {
+    return true;
+  }
+
+  if (metadata.Type() == kRedisHash) {
+    HashMetadata hash_metadata(false);
+    Slice input(cached_metadata_);
+    auto s = hash_metadata.Decode(&input);
+    if (!s.ok()) {
+      ERROR("[compact_filter/subkey] Failed to decode hash metadata, namespace: {}, key: {}, err: {}",
+            ikey.GetNamespace(), ikey.GetKey(), s.ToString());
+      return false;
+    }
+    auto now = util::GetTimeStampMS();
+    if (IsHashFieldExpirationMetadataExpired(hash_metadata, now)) {
+      return true;
+    }
+    if (!HasHashFieldExpirationCandidates(hash_metadata)) {
+      return false;
+    }
+
+    bool field_expired = false;
+    if (!IsExpiredHashFieldSubkey(hash_metadata, value, now, &field_expired)) {
+      ERROR("[compact_filter/subkey] Failed to decode hash subkey value, namespace: {}, key: {}", ikey.GetNamespace(),
+            ikey.GetKey());
+      return false;
+    }
+    return field_expired;
+  }
+
+  return metadata.Type() == kRedisBitmap && redis::Bitmap::IsEmptySegment(value);
 }
 
 bool SearchFilter::Filter([[maybe_unused]] int level, const Slice &key, [[maybe_unused]] const Slice &value,

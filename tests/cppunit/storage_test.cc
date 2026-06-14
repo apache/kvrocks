@@ -26,6 +26,8 @@
 
 #include <filesystem>
 #include <fstream>
+#include <string>
+#include <vector>
 
 TEST(Storage, CreateBackup) {
   std::error_code ec;
@@ -128,4 +130,43 @@ TEST(Storage, RocksDBDictionaryCompressionOptions) {
   EXPECT_EQ(options.compression_opts.zstd_max_train_bytes, 262144U);
 
   unlink(path);
+}
+
+TEST(Storage, ReplDataManagerRejectsUnsafeFilenames) {
+  Config config;
+  config.db_dir = "test_repl_file_validation_dir/db";
+  config.checkpoint_dir = "test_repl_file_validation_dir/checkpoint";
+  config.slot_id_encoded = false;
+
+  std::error_code ec;
+  std::filesystem::remove_all("test_repl_file_validation_dir", ec);
+  ASSERT_FALSE(ec);
+
+  engine::Storage storage(&config);
+  auto base_dir = std::string("test_repl_file_validation_dir/sync_checkpoint");
+
+  auto valid_file = engine::Storage::ReplDataManager::NewTmpFile(&storage, base_dir, "meta/1");
+  ASSERT_TRUE(valid_file);
+  ASSERT_TRUE(valid_file->Close().ok());
+  ASSERT_TRUE(engine::Storage::ReplDataManager::SwapTmpFile(&storage, base_dir, "meta/1").IsOK());
+  EXPECT_TRUE(std::filesystem::exists("test_repl_file_validation_dir/sync_checkpoint/meta/1"));
+
+  const std::vector<std::string> unsafe_files = {
+      "../escape", "a/../../escape", "/tmp/escape", "a//b",      "a/",
+      ".",         "a/..",           "a\\b",        "C:/escape", std::string("bad\0name", 8),
+  };
+  for (const auto &file : unsafe_files) {
+    EXPECT_FALSE(engine::Storage::ReplDataManager::ValidateReplFileName(file).IsOK()) << file;
+    EXPECT_FALSE(engine::Storage::ReplDataManager::NewTmpFile(&storage, base_dir, file)) << file;
+    EXPECT_FALSE(engine::Storage::ReplDataManager::SwapTmpFile(&storage, base_dir, file).IsOK()) << file;
+    EXPECT_FALSE(engine::Storage::ReplDataManager::FileExists(&storage, base_dir, file, 0)) << file;
+    uint64_t file_size = 0;
+    EXPECT_LT(engine::Storage::ReplDataManager::OpenDataFile(&storage, file, &file_size), 0) << file;
+  }
+
+  EXPECT_FALSE(std::filesystem::exists("test_repl_file_validation_dir/escape.tmp"));
+  EXPECT_FALSE(std::filesystem::exists("test_repl_file_validation_dir/escape"));
+
+  std::filesystem::remove_all("test_repl_file_validation_dir", ec);
+  ASSERT_FALSE(ec);
 }

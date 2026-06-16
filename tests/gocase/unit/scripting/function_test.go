@@ -136,6 +136,11 @@ var testFunctions = func(t *testing.T, config util.KvrocksServerConfigs) {
 		require.Error(t, rdb.Do(ctx, "FUNCTION", "LOAD", code2).Err(), "ERR Library names can only contain letters, numbers, or underscores(_) and must be at least one character long")
 	})
 
+	t.Run("FCALL - numkeys can't be negative", func(t *testing.T) {
+		util.ErrorRegexp(t, rdb.Do(ctx, "FCALL", "inc", -1).Err(), ".*can't be negative.*")
+		util.ErrorRegexp(t, rdb.Do(ctx, "FCALL_RO", "inc", -1).Err(), ".*can't be negative.*")
+	})
+
 	t.Run("FUNCTION LOAD and FCALL mylib1", func(t *testing.T) {
 		util.ErrorRegexp(t, rdb.Do(ctx, "FCALL", "inc", 0, 1).Err(), ".*No such function name.*")
 		require.NoError(t, rdb.Do(ctx, "FUNCTION", "LOAD", luaMylib1).Err())

@@ -22,6 +22,7 @@
 
 #include <rocksdb/status.h>
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -39,6 +40,14 @@ struct FieldValue {
 
 enum class HashFetchType { kAll = 0, kOnlyKey = 1, kOnlyValue = 2 };
 
+enum class HashFieldExpireCondition {
+  kNone,
+  kNX,
+  kXX,
+  kGT,
+  kLT,
+};
+
 namespace redis {
 
 class Hash : public SubKeyScanner {
@@ -46,6 +55,7 @@ class Hash : public SubKeyScanner {
   Hash(engine::Storage *storage, const std::string &ns) : SubKeyScanner(storage, ns) {}
 
   rocksdb::Status Size(engine::Context &ctx, const Slice &user_key, uint64_t *size);
+  rocksdb::Status Size(engine::Context &ctx, const Slice &user_key, uint64_t *size, HashLengthMode length_mode);
   rocksdb::Status Get(engine::Context &ctx, const Slice &user_key, const Slice &field, std::string *value);
   rocksdb::Status Set(engine::Context &ctx, const Slice &user_key, const Slice &field, const Slice &value,
                       uint64_t *added_cnt);
@@ -68,12 +78,21 @@ class Hash : public SubKeyScanner {
                        std::vector<std::string> *values = nullptr);
   rocksdb::Status RandField(engine::Context &ctx, const Slice &user_key, int64_t command_count,
                             std::vector<FieldValue> *field_values, HashFetchType type = HashFetchType::kOnlyKey);
+  rocksdb::Status GetFieldsExpireTime(engine::Context &ctx, const Slice &user_key, const std::vector<Slice> &fields,
+                                      std::vector<int64_t> *results, std::optional<uint64_t> now_ms = std::nullopt);
+  rocksdb::Status ExpireFields(engine::Context &ctx, const Slice &user_key, const std::vector<Slice> &fields,
+                               uint64_t expire_at_ms, HashFieldExpireCondition condition, std::vector<int64_t> *results,
+                               std::optional<uint64_t> now_ms = std::nullopt);
+  rocksdb::Status PersistFields(engine::Context &ctx, const Slice &user_key, const std::vector<Slice> &fields,
+                                std::vector<int64_t> *results);
 
  private:
   [[nodiscard]] HashMetadata createMetadataForWrite(bool generate_version = true) const;
   rocksdb::Status getMetadata(engine::Context &ctx, const Slice &ns_key, HashMetadata *metadata);
   rocksdb::Status getRawValue(engine::Context &ctx, const std::string &sub_key, std::string *value);
   static rocksdb::Status decodeValue(const HashMetadata &metadata, Slice *value, uint64_t *expire = nullptr);
+  rocksdb::Status scanAndRepair(engine::Context &ctx, const Slice &ns_key, HashMetadata *metadata, uint64_t now,
+                                uint64_t *size);
 
   friend struct FieldValueRetriever;
 };

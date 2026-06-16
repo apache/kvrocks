@@ -609,7 +609,7 @@ class CommandKMetadata : public Commander {
 
       response.insert({redis::BulkString("mode"), redis::BulkString(HashSubkeyEncodingModeName(hash_metadata.mode))});
       if (hash_metadata.IsFieldExpirationEncoding()) {
-        response.insert({redis::BulkString("expsz"), redis::Integer(hash_metadata.expsz)});
+        response.insert({redis::BulkString("persist"), redis::Integer(hash_metadata.persist)});
         response.insert({redis::BulkString("lower"), redis::Integer(hash_metadata.lower)});
         response.insert({redis::BulkString("upper"), redis::Integer(hash_metadata.upper)});
       }

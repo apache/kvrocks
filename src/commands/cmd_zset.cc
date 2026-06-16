@@ -1594,6 +1594,6 @@ REDIS_REGISTER_COMMANDS(ZSet, MakeCmdAttr<CommandZAdd>("zadd", -4, "write", 1, 1
                         MakeCmdAttr<CommandZUnion>("zunion", -3, "read-only slow", CommandZUnion::Range),
                         MakeCmdAttr<CommandZRandMember>("zrandmember", -2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandZDiff>("zdiff", -3, "read-only slow", CommandZDiff::Range),
-                        MakeCmdAttr<CommandZDiffStore>("zdiffstore", -3, "read-only slow", CommandZDiffStore::Range), )
+                        MakeCmdAttr<CommandZDiffStore>("zdiffstore", -3, "write slow", CommandZDiffStore::Range), )
 
 }  // namespace redis

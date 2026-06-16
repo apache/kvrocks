@@ -45,11 +45,12 @@ StatusOr<std::vector<std::string>> IntSet::Entries() {
   pos_ += sizeof(uint32_t);
   memrev32ifbe(&len);
 
-  uint32_t record_size = encoding;
-  if (record_size == 0) {
+  if (encoding != IntSetEncInt16 && encoding != IntSetEncInt32 && encoding != IntSetEncInt64) {
     return {Status::NotOK, "invalid intset encoding"};
   }
-  if (IntSetHeaderSize + len * record_size != input_.size()) {
+  uint32_t record_size = encoding;
+  if (len != (input_.size() - IntSetHeaderSize) / record_size ||
+      (input_.size() - IntSetHeaderSize) % record_size != 0) {
     return {Status::NotOK, "invalid intset length"};
   }
 
@@ -57,6 +58,7 @@ StatusOr<std::vector<std::string>> IntSet::Entries() {
   for (uint32_t i = 0; i < len; i++) {
     switch (encoding) {
       case IntSetEncInt16: {
+        GET_OR_RET(peekOk(sizeof(uint16_t)));
         uint16_t v = 0;
         memcpy(&v, input_.data() + pos_, sizeof(uint16_t));
         pos_ += sizeof(uint16_t);
@@ -65,6 +67,7 @@ StatusOr<std::vector<std::string>> IntSet::Entries() {
         break;
       }
       case IntSetEncInt32: {
+        GET_OR_RET(peekOk(sizeof(uint32_t)));
         uint32_t v = 0;
         memcpy(&v, input_.data() + pos_, sizeof(uint32_t));
         pos_ += sizeof(uint32_t);
@@ -73,6 +76,7 @@ StatusOr<std::vector<std::string>> IntSet::Entries() {
         break;
       }
       case IntSetEncInt64: {
+        GET_OR_RET(peekOk(sizeof(uint64_t)));
         uint64_t v = 0;
         memcpy(&v, input_.data() + pos_, sizeof(uint64_t));
         pos_ += sizeof(uint64_t);

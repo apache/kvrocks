@@ -59,6 +59,10 @@ func (c *TCPClient) Close() error {
 	return c.c.Close()
 }
 
+func (c *TCPClient) LocalAddr() net.Addr {
+	return c.c.LocalAddr()
+}
+
 func (c *TCPClient) ReadLine() (string, error) {
 	r, err := c.r.ReadString('\n')
 	if err != nil {

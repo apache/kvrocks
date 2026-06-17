@@ -176,8 +176,17 @@ void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd, [[ma
   }
 #endif
   auto conn = new redis::Connection(bev, this);
+  if (srv->GetConfig()->requirepass.empty()) {
+    conn->BecomeAdmin();
+    conn->InitDefaultNamespace();
+  }
   conn->SetCB(bev);
   bufferevent_enable(bev, EV_READ);
+
+  if (auto s = util::GetPeerAddr(fd)) {
+    auto [ip, port] = std::move(*s);
+    conn->SetAddr(ip, port);
+  }
 
   s = AddConnection(conn);
   if (!s.IsOK()) {
@@ -188,11 +197,6 @@ void Worker::newTCPConnection(evconnlistener *listener, evutil_socket_t fd, [[ma
     }
     conn->Close();
     return;
-  }
-
-  if (auto s = util::GetPeerAddr(fd)) {
-    auto [ip, port] = std::move(*s);
-    conn->SetAddr(ip, port);
   }
 
   if (rate_limit_group_) {
@@ -210,6 +214,10 @@ void Worker::newUnixSocketConnection(evconnlistener *listener, evutil_socket_t f
   bufferevent *bev = bufferevent_socket_new(base, fd, ev_thread_safe_flags);
 
   auto conn = new redis::Connection(bev, this);
+  if (srv->GetConfig()->requirepass.empty()) {
+    conn->BecomeAdmin();
+    conn->InitDefaultNamespace();
+  }
   conn->SetCB(bev);
   bufferevent_enable(bev, EV_READ);
 

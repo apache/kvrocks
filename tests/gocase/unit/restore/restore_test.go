@@ -21,6 +21,8 @@ package restore
 
 import (
 	"context"
+	"encoding/binary"
+	"hash/crc64"
 	"testing"
 	"time"
 
@@ -246,6 +248,36 @@ func TestRestore_Set(t *testing.T) {
 		require.NoError(t, rdb.Restore(ctx, key, 0, value).Err())
 		require.EqualValues(t, []string{"55555555555", "55555555556", "55555555557"}, rdb.SMembers(ctx, key).Val())
 	})
+}
+
+func TestRestoreRejectsInvalidIntSetLength(t *testing.T) {
+	// Redis CRC64 reflected polynomial, used by the DUMP/RESTORE payload footer.
+	redisCRC64Table := crc64.MakeTable(0x95ac9329ac4bc9b5)
+	redisCRC64 := func(data []byte) uint64 {
+		return ^crc64.Update(^uint64(0), redisCRC64Table, data)
+	}
+
+	srv := util.StartServer(t, map[string]string{})
+	defer srv.Close()
+
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	// RDBTypeSetIntSet with an 8-byte string payload: int64 encoding and a length
+	// large enough to overflow the old intset size check.
+	body := []byte{0x0b, 0x08}
+	body = binary.LittleEndian.AppendUint32(body, 8)
+	body = binary.LittleEndian.AppendUint32(body, 0x20000000)
+	// RDB version 11 followed by the Redis CRC64 checksum.
+	body = binary.LittleEndian.AppendUint16(body, 11)
+	value := string(binary.LittleEndian.AppendUint64(body, redisCRC64(body)))
+
+	restoreCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	require.ErrorContains(t, rdb.Restore(restoreCtx, util.RandString(32, 64, util.Alpha), 0, value).Err(),
+		"ERR invalid intset length")
+	require.NoError(t, rdb.Ping(ctx).Err())
 }
 
 func TestRestoreWithTTL(t *testing.T) {

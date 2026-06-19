@@ -359,7 +359,9 @@ func TestReplicationWithLimitSpeed(t *testing.T) {
 		require.Eventually(t, func() bool {
 			return slave.LogFileMatches(t, ".*skip count: 1.*")
 		}, 50*time.Second, 1000*time.Millisecond)
-		util.WaitForSync(t, slaveClient)
+		require.Eventually(t, func() bool {
+			return util.FindInfoEntry(slaveClient, "master_link_status") == "up"
+		}, 30*time.Second, 100*time.Millisecond)
 		require.Equal(t, "b", slaveClient.Get(ctx, "a").Val())
 	})
 }

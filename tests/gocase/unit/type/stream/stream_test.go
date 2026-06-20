@@ -3301,7 +3301,7 @@ func TestStreamOffset(t *testing.T) {
 	})
 
 	t.Run("XACKDEL rejects invalid signed stream ID components", func(t *testing.T) {
-		for _, id := range []string{"-0-0", "-1-0", "1--1", "18446744073709551616-0", "1-18446744073709551616"} {
+		for _, id := range []string{"-0-0", "-1-0", "1--1", "18446744073709551615-0", "18446744073709551616-0", "1-18446744073709551616"} {
 			t.Run(id, func(t *testing.T) {
 				streamName := "xackdel_invalid_signed_id_" + strconv.Itoa(rand.Int())
 				groupName := "myGroup"

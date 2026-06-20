@@ -90,6 +90,9 @@ Status ParseXAckDelStreamEntryID(const std::string &input, redis::StreamEntryID 
     id->ms = ms;
     id->seq = 0;
   }
+  if (id->ms > redis::StreamEntryID::Maximum().ms) {
+    return {Status::RedisParseErr, redis::kErrInvalidEntryIdSpecified};
+  }
   return Status::OK();
 }
 }  // namespace

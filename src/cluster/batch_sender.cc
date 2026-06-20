@@ -60,7 +60,7 @@ Status BatchSender::PutLogData(const rocksdb::Slice &blob) {
   if (!s.ok()) {
     return {Status::NotOK, fmt::format("failed to put log data to migration batch, {}", s.ToString())};
   }
-  pending_logdata_only_ = true;
+  pending_logdata_only_ = pending_logdata_only_ || pending_entries_ == 0;
   pending_entries_++;
   entries_num_++;
   return Status::OK();

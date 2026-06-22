@@ -261,7 +261,7 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
         }
         break;
       }
-      // TODO: to implement the case of kRedisBloomFilter
+        // TODO: to implement the case of kRedisBloomFilter
       default:
         break;
     }

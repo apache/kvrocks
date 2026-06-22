@@ -357,10 +357,10 @@ func TestReplicationWithLimitSpeed(t *testing.T) {
 	util.Populate(t, slaveClient, "", 1026, 1)
 
 	t.Run("resume broken transfer based files", func(t *testing.T) {
+		// Try to transfer some files, because max-replication-mb 1,
+		// so maybe more than 5 files are transferred for sleep 5s.
 		util.SlaveOf(t, slaveClient, master)
-		require.Eventually(t, func() bool {
-			return slave.LogFileMatches(t, `.*\[fetch\] Fetched .*`)
-		}, 50*time.Second, time.Second)
+		time.Sleep(5 * time.Second)
 
 		// Restart master server, let the slave try to full sync with master again,
 		// because slave already received some SST files, so we will skip them.

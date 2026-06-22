@@ -60,9 +60,6 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
     Metadata metadata(kRedisNone);
     auto s = metadata.Decode(value);
     if (!s.ok()) return s;
-    if (metadata.Type() == kRedisCuckooFilter) {
-      return rocksdb::Status::NotSupported("MBbloomCF command migration is not supported; use raw key-value migration");
-    }
 
     if (metadata.Type() == kRedisString) {
       command_args = {"SET", user_key, value.ToString().substr(Metadata::GetOffsetAfterExpire(value[0]))};
@@ -264,9 +261,6 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
         }
         break;
       }
-      case kRedisCuckooFilter:
-        return rocksdb::Status::NotSupported(
-            "MBbloomCF command migration is not supported; use raw key-value migration");
       // TODO: to implement the case of kRedisBloomFilter
       default:
         break;

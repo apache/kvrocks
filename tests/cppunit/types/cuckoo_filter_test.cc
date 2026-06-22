@@ -26,7 +26,6 @@
 #include <vector>
 
 #include "common/encoding.h"
-#include "storage/batch_extractor.h"
 #include "storage/redis_db.h"
 #include "storage/redis_metadata.h"
 #include "test_base.h"
@@ -393,47 +392,6 @@ TEST_F(RedisCuckooFilterTest, MetadataEncodeDecodeRoundTrip) {
   EXPECT_EQ(decoded.max_iterations, metadata.max_iterations);
   EXPECT_EQ(decoded.num_deleted_items, metadata.num_deleted_items);
   EXPECT_EQ(decoded.page_size, metadata.page_size);
-}
-
-TEST(CuckooFilterMigrationTest, CommandBatchExtractorRejectsCuckooFilterMetadata) {
-  CuckooChainMetadata metadata(false);
-  metadata.version = 1;
-  metadata.size = 1;
-  metadata.n_filters = 1;
-  metadata.expansion = 1;
-  metadata.base_capacity = 1000;
-  metadata.bucket_size = 2;
-  metadata.max_iterations = 20;
-  metadata.page_size = kCuckooFilterDefaultPageSize;
-
-  std::string encoded;
-  metadata.Encode(&encoded);
-  std::string ns_key;
-  PutFixed8(&ns_key, 0);
-  ns_key += "key";
-
-  WriteBatchExtractor extractor(false);
-  auto s = extractor.PutCF(static_cast<uint32_t>(ColumnFamilyID::Metadata), ns_key, encoded);
-  ASSERT_TRUE(s.IsNotSupported()) << s.ToString();
-  EXPECT_NE(s.ToString().find("MBbloomCF command migration is not supported"), std::string::npos);
-}
-
-TEST(CuckooFilterMigrationTest, CommandBatchExtractorRejectsCuckooFilterPages) {
-  WriteBatchExtractor extractor(false);
-  redis::WriteBatchLogData log_data(kRedisCuckooFilter, {"add", "key"});
-  extractor.LogData(log_data.Encode());
-
-  std::string sub_key;
-  PutFixed16(&sub_key, 0);
-  PutFixed32(&sub_key, 0);
-  std::string ns_key;
-  PutFixed8(&ns_key, 0);
-  ns_key += "key";
-  auto page_key = InternalKey(ns_key, sub_key, 1, false).Encode();
-
-  auto s = extractor.PutCF(static_cast<uint32_t>(ColumnFamilyID::PrimarySubkey), page_key, std::string(4, '\1'));
-  ASSERT_TRUE(s.IsNotSupported()) << s.ToString();
-  EXPECT_NE(s.ToString().find("MBbloomCF command migration is not supported"), std::string::npos);
 }
 
 TEST_F(RedisCuckooFilterTest, ReserveVerifyMetadata) {

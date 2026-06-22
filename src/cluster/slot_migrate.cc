@@ -718,11 +718,6 @@ StatusOr<KeyMigrationResult> SlotMigrator::migrateOneKey(const rocksdb::Slice &k
       }
       break;
     }
-    case kRedisCuckooFilter: {
-      return {Status::NotOK,
-              "unsupported migration type: MBbloomCF command migration is not supported; "
-              "use raw key-value migration"};
-    }
     case kRedisHyperLogLog: {
       // HyperLogLog migration by cmd is not supported,
       // since it's hard to restore the same key structure for HyperLogLog

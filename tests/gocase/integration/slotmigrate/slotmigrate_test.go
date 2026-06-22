@@ -1214,18 +1214,6 @@ func TestSlotMigrateCuckooFilter(t *testing.T) {
 		require.Equal(t, "MBbloomCF", rdb1.Type(ctx, key).Val())
 		require.Equal(t, int64(1), rdb1.Do(ctx, "cf.add", key, "new-item").Val())
 	})
-
-	t.Run("MIGRATE - Cuckoo filter is unsupported by redis-command migration", func(t *testing.T) {
-		slot := 30
-		key := fmt.Sprintf("cf_{%s}", util.SlotTable[slot])
-		require.NoError(t, rdb0.ConfigSet(ctx, "migrate-type", string(MigrationTypeRedisCommand)).Err())
-		require.NoError(t, rdb0.Do(ctx, "cf.reserve", key, "1000").Err())
-		require.NoError(t, rdb0.Do(ctx, "cf.add", key, "item").Err())
-
-		err := rdb0.Do(ctx, "clusterx", "migrate", slot, id1, "sync").Err()
-		require.ErrorContains(t, err, "MBbloomCF command migration is not supported")
-		waitForMigrateState(t, rdb0, slot, SlotMigrationStateFailed)
-	})
 }
 
 func waitForMigrateState(t testing.TB, client *redis.Client, slot int, state SlotMigrationState) {

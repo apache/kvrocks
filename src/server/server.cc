@@ -1813,7 +1813,7 @@ std::string Server::GetClientsStr(const redis::Connection *conn) {
 
   // Slave (replication) connections live outside any tenant namespace, so
   // only admin (default-namespace) callers may enumerate them.
-  if (conn == nullptr || conn->IsAdmin()) {
+  if (conn->IsAdmin()) {
     std::shared_lock<std::shared_mutex> guard(slave_threads_mu_);
     for (const auto &st : slave_threads_) {
       clients.append(st->GetConn()->ToString());
@@ -1838,7 +1838,7 @@ void Server::KillClient(int64_t *killed, const std::string &addr, uint64_t id, u
   // Replication links (master / slave) are not tenant-owned; only admin
   // callers may terminate them, otherwise a non-admin tenant could
   // disrupt replication.
-  if (conn != nullptr && !conn->IsAdmin()) return;
+  if (!conn->IsAdmin()) return;
 
   // Slave clients
   {

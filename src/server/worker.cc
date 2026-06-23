@@ -544,7 +544,7 @@ std::string Worker::GetClientsStr(const redis::Connection *conn) {
     // Non-admin callers must only see clients in their own namespace. Admin
     // (default-namespace) callers see every client. Mirrors the namespace
     // filtering in Worker::FeedMonitorConns.
-    if (conn != nullptr && !conn->IsAdmin() && iter.second->GetNamespace() != conn->GetNamespace()) continue;
+    if (!conn->IsAdmin() && iter.second->GetNamespace() != conn->GetNamespace()) continue;
     output.append(iter.second->ToString());
   }
 
@@ -560,7 +560,7 @@ void Worker::KillClient(redis::Connection *self, uint64_t id, const std::string 
     if (skipme && self == conn) continue;
     // Non-admin callers may only target clients in their own namespace, to
     // prevent cross-tenant denial of service via CLIENT KILL.
-    if (self != nullptr && !self->IsAdmin() && conn->GetNamespace() != self->GetNamespace()) continue;
+    if (!self->IsAdmin() && conn->GetNamespace() != self->GetNamespace()) continue;
 
     // no need to kill the client again if the kCloseAfterReply flag is set
     if (conn->IsFlagEnabled(redis::Connection::kCloseAfterReply)) {

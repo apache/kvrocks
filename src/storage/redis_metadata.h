@@ -54,12 +54,13 @@ enum RedisType : uint8_t {
   kRedisHyperLogLog = 11,
   kRedisTDigest = 12,
   kRedisTimeSeries = 13,
+  kRedisTopK = 14,
   kRedisTypeMax
 };
 
 inline constexpr const std::array<std::string_view, kRedisTypeMax> RedisTypeNames = {
-    "none",      "string", "hash",      "list",      "set",         "zset",      "bitmap",
-    "sortedint", "stream", "MBbloom--", "ReJSON-RL", "hyperloglog", "TDIS-TYPE", "timeseries"};
+    "none",   "string",    "hash",      "list",        "set",       "zset",       "bitmap", "sortedint",
+    "stream", "MBbloom--", "ReJSON-RL", "hyperloglog", "TDIS-TYPE", "timeseries", "topk"};
 
 struct RedisTypes {
   RedisTypes(std::initializer_list<RedisType> list) {
@@ -433,6 +434,23 @@ class TimeSeriesMetadata : public Metadata {
         duplicate_policy(duplicate_policy) {}
 
   void SetSourceKey(Slice key);
+
+  void Encode(std::string *dst) const override;
+  rocksdb::Status Decode(Slice *input) override;
+};
+
+class TopKMetadata : public Metadata {
+ public:
+  uint32_t top_k;
+  uint16_t width;
+  uint32_t depth;
+  double decay;
+
+  explicit TopKMetadata(bool generate_version = true) : Metadata(kRedisTopK, generate_version) {}
+
+  explicit TopKMetadata(uint64_t top_k, uint64_t width = 7, uint64_t depth = 8, double decay = 0.9,
+                        bool generate_version = true)
+      : Metadata(kRedisTopK, generate_version), top_k(top_k), width(width), depth(depth), decay(decay) {}
 
   void Encode(std::string *dst) const override;
   rocksdb::Status Decode(Slice *input) override;

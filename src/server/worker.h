@@ -66,7 +66,7 @@ class Worker : EventCallbackBase<Worker>, EvconnlistenerBase<Worker> {
   void QuitMonitorConn(redis::Connection *conn);
   void FeedMonitorConns(redis::Connection *conn, const std::string &response);
 
-  std::string GetClientsStr();
+  std::string GetClientsStr(const redis::Connection *conn);
   void KillClient(redis::Connection *self, uint64_t id, const std::string &addr, uint64_t type, bool skipme,
                   int64_t *killed);
   void KickoutIdleClients(int timeout);

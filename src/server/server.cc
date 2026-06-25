@@ -1805,16 +1805,19 @@ void Server::SlowlogPushEntryIfNeeded(const std::vector<std::string> *args, uint
   slow_log_.PushEntry(std::move(entry));
 }
 
-std::string Server::GetClientsStr() {
+std::string Server::GetClientsStr(const redis::Connection *conn) {
   std::string clients;
   for (const auto &t : worker_threads_) {
-    clients.append(t->GetWorker()->GetClientsStr());
+    clients.append(t->GetWorker()->GetClientsStr(conn));
   }
 
-  std::shared_lock<std::shared_mutex> guard(slave_threads_mu_);
-
-  for (const auto &st : slave_threads_) {
-    clients.append(st->GetConn()->ToString());
+  // Slave (replication) connections live outside any tenant namespace, so
+  // only admin (default-namespace) callers may enumerate them.
+  if (conn->IsAdmin()) {
+    std::shared_lock<std::shared_mutex> guard(slave_threads_mu_);
+    for (const auto &st : slave_threads_) {
+      clients.append(st->GetConn()->ToString());
+    }
   }
 
   return clients;
@@ -1824,12 +1827,18 @@ void Server::KillClient(int64_t *killed, const std::string &addr, uint64_t id, u
                         redis::Connection *conn) {
   *killed = 0;
 
-  // Normal clients and pubsub clients
+  // Normal clients and pubsub clients (per-worker filtering applies the
+  // namespace check for non-admin callers).
   for (const auto &t : worker_threads_) {
     int64_t killed_in_worker = 0;
     t->GetWorker()->KillClient(conn, id, addr, type, skipme, &killed_in_worker);
     *killed += killed_in_worker;
   }
+
+  // Replication links (master / slave) are not tenant-owned; only admin
+  // callers may terminate them, otherwise a non-admin tenant could
+  // disrupt replication.
+  if (!conn->IsAdmin()) return;
 
   // Slave clients
   {

@@ -22,6 +22,7 @@
 
 #include "commander.h"
 #include "commands/ttl_util.h"
+#include "common/keyspace_events.h"
 #include "error_constants.h"
 #include "server/redis_reply.h"
 #include "server/server.h"
@@ -372,8 +373,26 @@ class CommandDel : public Commander {
     uint64_t cnt = 0;
     redis::Database redis(srv->storage, conn->GetNamespace());
 
+    const int notify_flags = srv->GetConfig()->notify_keyspace_events;
+    const bool notify_del = GetAttributes()->name == "del" && (notify_flags & kNotifyGeneric) &&
+                            (notify_flags & (kNotifyKeyspace | kNotifyKeyevent));
+    std::vector<std::string> deleted_keys;
+    if (notify_del) {
+      deleted_keys.reserve(keys.size());
+      for (size_t i = 1; i < args_.size(); i++) {
+        uint32_t exists = 0;
+        auto s = redis.Exists(ctx, {args_[i]}, &exists);
+        if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+        if (exists > 0) deleted_keys.emplace_back(args_[i]);
+      }
+    }
+
     auto s = redis.MDel(ctx, keys, &cnt);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+
+    for (const auto &key : deleted_keys) {
+      conn->QueueOrPublishKeyspaceEvent(kNotifyGeneric, "del", conn->GetNamespace(), key);
+    }
 
     *output = redis::Integer(cnt);
     return Status::OK();

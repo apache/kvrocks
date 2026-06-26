@@ -41,6 +41,7 @@
 
 #include "commands/command_parser.h"
 #include "commands/commander.h"
+#include "common/keyspace_events.h"
 #include "common/string_util.h"
 #include "config/config.h"
 #include "fmt/format.h"
@@ -476,6 +477,23 @@ int Server::PublishMessage(const std::string &channel, const std::string &msg) {
   }
 
   return cnt;
+}
+
+void Server::NotifyKeyspaceEvent(int type_flag, const std::string &event, const std::string &ns,
+                                 const std::string &key) {
+  const int flags = GetConfig()->notify_keyspace_events;
+  // Require the event class and a channel selector.
+  if (!(flags & type_flag)) return;
+  if (!(flags & (kNotifyKeyspace | kNotifyKeyevent))) return;
+
+  const std::string db = MapNamespaceToKeyspaceDB(ns);
+  // Publish keyspace before keyevent for each key.
+  if (flags & kNotifyKeyspace) {
+    PublishMessage("__keyspace@" + db + "__:" + key, event);
+  }
+  if (flags & kNotifyKeyevent) {
+    PublishMessage("__keyevent@" + db + "__:" + event, key);
+  }
 }
 
 void Server::SubscribeChannel(const std::string &channel, redis::Connection *conn) {

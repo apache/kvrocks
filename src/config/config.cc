@@ -35,6 +35,7 @@
 #include <utility>
 #include <vector>
 
+#include "common/keyspace_events.h"
 #include "common/string_util.h"
 #include "config_type.h"
 #include "config_util.h"
@@ -192,6 +193,7 @@ Config::Config() {
       {"compact-cron", false, new StringField(&compact_cron_str_, "")},
       {"bgsave-cron", false, new StringField(&bgsave_cron_str_, "")},
       {"dbsize-scan-cron", false, new StringField(&dbsize_scan_cron_str_, "")},
+      {"notify-keyspace-events", false, new StringField(&notify_keyspace_events_str_, "")},
       {"replica-announce-ip", false, new StringField(&replica_announce_ip, "")},
       {"replica-announce-port", false, new UInt32Field(&replica_announce_port, 0, 0, PORT_LIMIT)},
       {"compaction-checker-range", false, new StringField(&compaction_checker_range_str_, "")},
@@ -379,6 +381,11 @@ void Config::initFieldValidator() {
          }
          return Status::OK();
        }},
+      {"notify-keyspace-events",
+       []([[maybe_unused]] const std::string &k, const std::string &v) -> Status {
+         int flags = 0;
+         return ParseNotifyKeyspaceEventsFlags(v, &flags);
+       }},
       {"compact-cron",
        [this]([[maybe_unused]] const std::string &k, const std::string &v) -> Status {
          std::vector<std::string> args = util::Split(v, " \t");
@@ -555,6 +562,10 @@ void Config::initFieldCallback() {
              if (!srv) return Status::OK();
              srv->AdjustWorkerThreads();
              return Status::OK();
+           }},
+          {"notify-keyspace-events",
+           [this]([[maybe_unused]] Server *srv, [[maybe_unused]] const std::string &k, const std::string &v) -> Status {
+             return ParseNotifyKeyspaceEventsFlags(v, &notify_keyspace_events);
            }},
           {"dir",
            [this]([[maybe_unused]] Server *srv, [[maybe_unused]] const std::string &k,

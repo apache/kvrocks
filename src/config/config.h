@@ -219,6 +219,9 @@ struct Config {
   // Enable transactional mode in engine::Context
   bool txn_context_enabled = false;
 
+  // Parsed notify-keyspace-events flags.
+  int notify_keyspace_events = 0;
+
   bool skip_block_cache_deallocation_on_close = false;
 
   bool lua_strict_key_accessing = false;
@@ -315,6 +318,7 @@ struct Config {
   std::string compaction_checker_cron_str_;
   std::string profiling_sample_commands_str_;
   std::string client_output_buffer_limit_str_;
+  std::string notify_keyspace_events_str_;
   std::map<std::string, std::unique_ptr<ConfigField>> fields_;
   std::vector<std::string> rename_command_;
   std::string histogram_bucket_boundaries_str_;

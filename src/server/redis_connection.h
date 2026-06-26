@@ -208,6 +208,12 @@ class Connection : public EvbufCallbackBase<Connection> {
   void ResetMultiExec();
   std::deque<redis::CommandTokens> *GetMultiExecCommands() { return &multi_cmds_; }
 
+  // Publishes immediately, or queues events inside MULTI/EXEC.
+  void QueueOrPublishKeyspaceEvent(int type_flag, const std::string &event, const std::string &ns,
+                                   const std::string &key);
+  void FlushKeyspaceEvents();
+  void ClearKeyspaceEvents() { pending_keyspace_events_.clear(); }
+
   std::function<void(int)> close_cb = nullptr;
 
   std::set<std::string> watched_keys;
@@ -248,6 +254,14 @@ class Connection : public EvbufCallbackBase<Connection> {
   bool multi_error_ = false;
   std::atomic<bool> is_running_ = false;
   std::deque<redis::CommandTokens> multi_cmds_;
+
+  struct PendingKeyspaceEvent {
+    int type_flag;
+    std::string event;
+    std::string ns;
+    std::string key;
+  };
+  std::vector<PendingKeyspaceEvent> pending_keyspace_events_;
   bool in_script_ = false;
 
   bool importing_ = false;

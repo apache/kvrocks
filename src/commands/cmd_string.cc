@@ -24,6 +24,8 @@
 
 #include "commander.h"
 #include "commands/command_parser.h"
+#include "common/keyspace_events.h"
+#include "common/string_util.h"
 #include "error_constants.h"
 #include "server/redis_reply.h"
 #include "server/redis_request.h"
@@ -35,6 +37,37 @@
 #include "types/redis_string.h"
 
 namespace redis {
+namespace {
+
+bool IsSetNotificationEnabled(const Config *config) {
+  const int flags = config->notify_keyspace_events;
+  return (flags & kNotifyString) && (flags & (kNotifyKeyspace | kNotifyKeyevent));
+}
+
+bool WasSetApplied(const StringSetArgs &args, const std::optional<std::string> &ret) {
+  // Without GET, ret is a write sentinel; with GET, ret is the old value.
+  if (!args.get) return ret.has_value();
+
+  switch (args.type) {
+    case StringSetType::NONE:
+      return true;
+    case StringSetType::NX:
+      return !ret.has_value();
+    case StringSetType::XX:
+      return ret.has_value();
+    case StringSetType::IFEQ:
+      return ret.has_value() && *ret == args.cmp_value;
+    case StringSetType::IFNE:
+      return !ret.has_value() || *ret != args.cmp_value;
+    case StringSetType::IFDEQ:
+      return ret.has_value() && util::EqualICase(util::StringDigest(*ret), args.cmp_value);
+    case StringSetType::IFDNE:
+      return !ret.has_value() || !util::EqualICase(util::StringDigest(*ret), args.cmp_value);
+  }
+  return false;
+}
+
+}  // namespace
 
 class CommandGet : public Commander {
  public:
@@ -383,11 +416,16 @@ class CommandSet : public Commander {
   Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
     std::optional<std::string> ret;
     redis::String string_db(srv->storage, conn->GetNamespace());
+    const StringSetArgs set_args{expire_, set_flag_, get_, keep_ttl_, cmp_value_};
 
-    rocksdb::Status s = string_db.Set(ctx, args_[1], args_[2], {expire_, set_flag_, get_, keep_ttl_, cmp_value_}, ret);
+    rocksdb::Status s = string_db.Set(ctx, args_[1], args_[2], set_args, ret);
 
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
+    }
+
+    if (IsSetNotificationEnabled(srv->GetConfig()) && WasSetApplied(set_args, ret)) {
+      conn->QueueOrPublishKeyspaceEvent(kNotifyString, "set", conn->GetNamespace(), args_[1]);
     }
 
     if (get_) {

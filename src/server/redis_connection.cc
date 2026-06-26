@@ -709,10 +709,29 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
   }
 }
 
+void Connection::QueueOrPublishKeyspaceEvent(int type_flag, const std::string &event, const std::string &ns,
+                                             const std::string &key) {
+  if (in_exec_) {
+    // Queue transaction events until commit.
+    pending_keyspace_events_.push_back({type_flag, event, ns, key});
+  } else {
+    srv_->NotifyKeyspaceEvent(type_flag, event, ns, key);
+  }
+}
+
+void Connection::FlushKeyspaceEvents() {
+  for (const auto &e : pending_keyspace_events_) {
+    srv_->NotifyKeyspaceEvent(e.type_flag, e.event, e.ns, e.key);
+  }
+  pending_keyspace_events_.clear();
+}
+
 void Connection::ResetMultiExec() {
   in_exec_ = false;
   multi_error_ = false;
   multi_cmds_.clear();
+  // Drop events from failed or aborted transactions.
+  ClearKeyspaceEvents();
   DisableFlag(Connection::kMultiExec);
 }
 

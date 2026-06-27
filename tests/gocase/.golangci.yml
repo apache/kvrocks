@@ -61,3 +61,4 @@ linters-settings:
     checks:
       - all
       - '-QF1012' # disable the rule QF1012: Use fmt.Fprintf(...) instead of WriteString(fmt.Sprintf(...))
+      - '-SA1019' # disable the rule SA1019: redis command is deprecated

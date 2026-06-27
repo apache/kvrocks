@@ -91,7 +91,7 @@ func TestClusterNodes(t *testing.T) {
 		require.Equal(t, "0-100\n", fields[8])
 
 		// cluster slot command
-		slots := rdb.ClusterSlots(ctx).Val()
+		slots := rdb.ClusterShards(ctx).Val()
 		require.Len(t, slots, 1)
 		require.EqualValues(t, 0, slots[0].Start)
 		require.EqualValues(t, 100, slots[0].End)
@@ -263,7 +263,7 @@ func TestClusterDumpAndLoadClusterNodesInfo(t *testing.T) {
 	require.NoError(t, rdb2.Do(ctx, "clusterx", "SETNODES", clusterNodes, "1").Err())
 
 	srv1.Restart()
-	slots := rdb1.ClusterSlots(ctx).Val()
+	slots := rdb1.ClusterShards(ctx).Val()
 	require.Len(t, slots, 5)
 	require.EqualValues(t, 10000, slots[2].Start)
 	require.EqualValues(t, 10000, slots[2].End)
@@ -274,7 +274,7 @@ func TestClusterDumpAndLoadClusterNodesInfo(t *testing.T) {
 	newNodeID := "0123456789012345678901234567890123456789"
 	require.NoError(t, rdb2.Do(ctx, "clusterx", "SETNODEID", newNodeID).Err())
 	srv1.Restart()
-	slots = rdb1.ClusterSlots(ctx).Val()
+	slots = rdb1.ClusterShards(ctx).Val()
 	require.EqualValues(t, 10000, slots[2].Start)
 	require.EqualValues(t, 10000, slots[2].End)
 	nodes = rdb1.ClusterNodes(ctx).Val()
@@ -306,7 +306,7 @@ func TestClusterComplexTopology(t *testing.T) {
 	require.NoError(t, rdb.Do(ctx, "clusterx", "SETNODES", clusterNodes, "1").Err())
 	require.NoError(t, rdb.Do(ctx, "clusterx", "SETNODEID", nodeID).Err())
 
-	slots := rdb.ClusterSlots(ctx).Val()
+	slots := rdb.ClusterShards(ctx).Val()
 	require.Len(t, slots, 5)
 	require.EqualValues(t, 10000, slots[2].Start)
 	require.EqualValues(t, 10000, slots[2].End)
@@ -316,7 +316,7 @@ func TestClusterComplexTopology(t *testing.T) {
 	require.Contains(t, nodes, "0-2 4-8193 10000 10002-11002 16381-16383")
 }
 
-func TestClusterSlotSet(t *testing.T) {
+func TestClusterShardSet(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 
@@ -347,8 +347,8 @@ func TestClusterSlotSet(t *testing.T) {
 	require.NoError(t, rdb1.Do(ctx, "clusterx", "setslot", "0", "node", nodeID2, "3").Err())
 	require.EqualValues(t, "3", rdb2.Do(ctx, "clusterx", "version").Val())
 	require.EqualValues(t, "3", rdb1.Do(ctx, "clusterx", "version").Val())
-	slots := rdb2.ClusterSlots(ctx).Val()
-	require.EqualValues(t, slots, rdb1.ClusterSlots(ctx).Val())
+	slots := rdb2.ClusterShards(ctx).Val()
+	require.EqualValues(t, slots, rdb1.ClusterShards(ctx).Val())
 	require.Len(t, slots, 2)
 	require.EqualValues(t, 0, slots[0].Start)
 	require.EqualValues(t, 0, slots[0].End)
@@ -361,8 +361,8 @@ func TestClusterSlotSet(t *testing.T) {
 	util.ErrorRegexp(t, rdb1.Set(ctx, slotKey, 0, 0).Err(), fmt.Sprintf("MOVED 0.*%d.*", srv2.Port()))
 	require.NoError(t, rdb2.Do(ctx, "clusterx", "setslot", "1-3 4", "node", nodeID2, "4").Err())
 	require.NoError(t, rdb1.Do(ctx, "clusterx", "setslot", "1-3 4", "node", nodeID2, "4").Err())
-	slots = rdb2.ClusterSlots(ctx).Val()
-	require.EqualValues(t, slots, rdb1.ClusterSlots(ctx).Val())
+	slots = rdb2.ClusterShards(ctx).Val()
+	require.EqualValues(t, slots, rdb1.ClusterShards(ctx).Val())
 	require.Len(t, slots, 2)
 	require.EqualValues(t, 0, slots[0].Start)
 	require.EqualValues(t, 4, slots[0].End)

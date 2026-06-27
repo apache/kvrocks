@@ -79,7 +79,7 @@ func TestRSIDMasterAndReplicaYes(t *testing.T) {
 	})
 
 	t.Run("replica can partially re-sync after changing master but having the same history", func(t *testing.T) {
-		require.NoError(t, rdbA.SlaveOf(ctx, "127.0.0.1", "1025").Err())
+		require.NoError(t, rdbA.ReplicaOf(ctx, "127.0.0.1", "1025").Err())
 		time.Sleep(time.Second)
 
 		// now topology is:

@@ -62,7 +62,7 @@ func WaitForOffsetSync(t testing.TB, master, slave *redis.Client, waitFor time.D
 }
 
 func SlaveOf(t testing.TB, slave *redis.Client, master *KvrocksServer) {
-	require.NoError(t, slave.SlaveOf(context.Background(), master.Host(), fmt.Sprintf("%d", master.Port())).Err())
+	require.NoError(t, slave.ReplicaOf(context.Background(), master.Host(), fmt.Sprintf("%d", master.Port())).Err())
 }
 
 func Populate(t testing.TB, rdb *redis.Client, prefix string, n, size int) {

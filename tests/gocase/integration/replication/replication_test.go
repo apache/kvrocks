@@ -105,7 +105,7 @@ func TestReplicationWithHostname(t *testing.T) {
 	defer func() { require.NoError(t, rdbB.Close()) }()
 
 	t.Run("Set instance A as slave of B with localhost, for issue #1182", func(t *testing.T) {
-		require.NoError(t, rdbA.SlaveOf(context.Background(), "localhost", fmt.Sprintf("%d", srvB.Port())).Err())
+		require.NoError(t, rdbA.ReplicaOf(context.Background(), "localhost", fmt.Sprintf("%d", srvB.Port())).Err())
 		util.SlaveOf(t, rdbA, srvB)
 		util.WaitForSync(t, rdbA)
 		ctx := context.Background()
@@ -537,7 +537,7 @@ func TestShouldNotReplicate(t *testing.T) {
 	defer func() { require.NoError(t, slaveClient.Close()) }()
 
 	t.Run("Setting server as replica of itself should throw error", func(t *testing.T) {
-		err := slaveClient.SlaveOf(ctx, slave.Host(), fmt.Sprintf("%d", slave.Port())).Err()
+		err := slaveClient.ReplicaOf(ctx, slave.Host(), fmt.Sprintf("%d", slave.Port())).Err()
 		require.Equal(t, "ERR can't replicate itself", err.Error())
 		require.Equal(t, "master", util.FindInfoEntry(slaveClient, "role"))
 	})
@@ -546,7 +546,7 @@ func TestShouldNotReplicate(t *testing.T) {
 		util.SlaveOf(t, slaveClient, master)
 		util.WaitForSync(t, slaveClient)
 		require.Equal(t, "slave", util.FindInfoEntry(slaveClient, "role"))
-		err := masterClient.SlaveOf(ctx, slave.Host(), fmt.Sprintf("%d", slave.Port())).Err()
+		err := masterClient.ReplicaOf(ctx, slave.Host(), fmt.Sprintf("%d", slave.Port())).Err()
 		require.EqualErrorf(t, err, "ERR can't replicate your own replicas", err.Error())
 		require.Equal(t, "master", util.FindInfoEntry(masterClient, "role"))
 	})

@@ -68,7 +68,7 @@ func TestSlowConsumerBug(t *testing.T) {
 	defer func() { require.NoError(t, slaveClient.Close()) }()
 
 	// Connect slave through proxy
-	require.NoError(t, slaveClient.SlaveOf(ctx, "127.0.0.1", fmt.Sprintf("%d", proxyPort)).Err())
+	require.NoError(t, slaveClient.ReplicaOf(ctx, "127.0.0.1", fmt.Sprintf("%d", proxyPort)).Err())
 
 	// Wait for initial sync
 	require.Eventually(t, func() bool {
@@ -194,7 +194,7 @@ func TestSlowConsumerBlocksIndefinitely(t *testing.T) {
 	defer func() { require.NoError(t, slaveClient.Close()) }()
 
 	// Connect and sync
-	require.NoError(t, slaveClient.SlaveOf(ctx, "127.0.0.1", fmt.Sprintf("%d", proxyPort)).Err())
+	require.NoError(t, slaveClient.ReplicaOf(ctx, "127.0.0.1", fmt.Sprintf("%d", proxyPort)).Err())
 	require.Eventually(t, func() bool {
 		return util.FindInfoEntry(slaveClient, "master_link_status") == "up"
 	}, 10*time.Second, 100*time.Millisecond)

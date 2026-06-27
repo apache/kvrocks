@@ -161,7 +161,7 @@ func TestMulti(t *testing.T) {
 				rdb := newSrv.NewClient()
 				defer func() { require.NoError(t, rdb.Close()) }()
 				require.NoError(t, rdb.Do(ctx, "MULTI").Err())
-				require.NoError(t, rdb.SlaveOf(ctx, "NO", "ONE").Err())
+				require.NoError(t, rdb.ReplicaOf(ctx, "NO", "ONE").Err())
 				require.NoError(t, rdb.ConfigRewrite(ctx).Err())
 				require.NoError(t, rdb.Do(ctx, "CLIENT", "KILL", "TYPE", "normal").Err())
 				require.NoError(t, rdb.Do(ctx, "CLIENT", "KILL", "TYPE", "PUBSUB").Err())

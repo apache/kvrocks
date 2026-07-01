@@ -20,6 +20,8 @@
 
 #include "keyspace_events.h"
 
+#include <cstring>
+
 #include "config/config.h"
 #include "fmt/format.h"
 
@@ -67,9 +69,12 @@ std::string PercentEncode(const std::string &input) {
 }
 }  // namespace
 
-std::string MapNamespaceToKeyspaceDB(const std::string &ns) {
+std::string MapNamespaceToKeyspaceDB(const std::string &ns, int redis_databases) {
   if (ns == kDefaultNamespace) {
     return "0";
+  }
+  if (redis_databases > 0 && ns.rfind(kDatabaseNamespacePrefix, 0) == 0) {
+    return ns.substr(strlen(kDatabaseNamespacePrefix));
   }
   return "ns:" + PercentEncode(ns);
 }

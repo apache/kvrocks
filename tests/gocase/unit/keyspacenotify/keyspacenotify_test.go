@@ -186,3 +186,28 @@ func TestKeyspaceNotifyDisabled(t *testing.T) {
 	require.Error(t, rdb.ConfigSet(ctx, "notify-keyspace-events", "Kx").Err())
 	require.Error(t, rdb.ConfigSet(ctx, "notify-keyspace-events", "KEl").Err())
 }
+
+func TestKeyspaceNotifyRedisDatabases(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{"notify-keyspace-events": "KEA", "redis-databases": "16"})
+	defer srv.Close()
+
+	ctx := context.Background()
+	sub := srv.NewClient()
+	defer func() { require.NoError(t, sub.Close()) }()
+	writer := srv.NewClient()
+	defer func() { require.NoError(t, writer.Close()) }()
+
+	pubsub := sub.PSubscribe(ctx, "__keyspace@1__:*", "__keyevent@1__:*")
+	defer func() { require.NoError(t, pubsub.Close()) }()
+	drainSubscribeConfirms(t, ctx, pubsub, 2)
+
+	require.NoError(t, writer.Do(ctx, "SELECT", 1).Err())
+	require.NoError(t, writer.Set(ctx, "db-key", "v", 0).Err())
+	expectMessage(t, ctx, pubsub, "__keyspace@1__:db-key", "set")
+	expectMessage(t, ctx, pubsub, "__keyevent@1__:set", "db-key")
+
+	require.EqualValues(t, 1, writer.Del(ctx, "db-key").Val())
+	expectMessage(t, ctx, pubsub, "__keyspace@1__:db-key", "del")
+	expectMessage(t, ctx, pubsub, "__keyevent@1__:del", "db-key")
+	expectNoMessage(t, ctx, pubsub)
+}

@@ -38,5 +38,6 @@ enum NotifyKeyspaceEventFlag {
 Status ParseNotifyKeyspaceEventsFlags(const std::string &input, int *flags);
 
 // Maps namespaces to notification db names.
-// Default namespace maps to 0; others map to ns:encoded-name.
-std::string MapNamespaceToKeyspaceDB(const std::string &ns);
+// Default namespace maps to 0; database namespaces map back to db indexes when redis-databases is enabled.
+// Other namespaces map to ns:encoded-name.
+std::string MapNamespaceToKeyspaceDB(const std::string &ns, int redis_databases);

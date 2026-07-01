@@ -70,14 +70,20 @@ TEST(KeyspaceEvents, ParseFlagsRejectsUnsupported) {
 
 TEST(KeyspaceEvents, MapNamespaceToKeyspaceDB) {
   // Default namespace maps to db 0.
-  EXPECT_EQ(MapNamespaceToKeyspaceDB(kDefaultNamespace), "0");
+  EXPECT_EQ(MapNamespaceToKeyspaceDB(kDefaultNamespace, 0), "0");
+  EXPECT_EQ(MapNamespaceToKeyspaceDB(kDefaultNamespace, 16), "0");
 
   // Non-default namespaces are encoded and prefixed.
-  EXPECT_EQ(MapNamespaceToKeyspaceDB("0"), "ns:0");
-  EXPECT_EQ(MapNamespaceToKeyspaceDB("tenantA"), "ns:tenantA");
-  EXPECT_EQ(MapNamespaceToKeyspaceDB("a.b-c_d"), "ns:a.b-c_d");
+  EXPECT_EQ(MapNamespaceToKeyspaceDB("0", 0), "ns:0");
+  EXPECT_EQ(MapNamespaceToKeyspaceDB("tenantA", 0), "ns:tenantA");
+  EXPECT_EQ(MapNamespaceToKeyspaceDB("a.b-c_d", 0), "ns:a.b-c_d");
+  EXPECT_EQ(MapNamespaceToKeyspaceDB("db1", 0), "ns:db1");
   // Unsafe bytes are escaped.
-  EXPECT_EQ(MapNamespaceToKeyspaceDB("a b"), "ns:a%20b");
-  EXPECT_EQ(MapNamespaceToKeyspaceDB("a:b"), "ns:a%3Ab");
-  EXPECT_EQ(MapNamespaceToKeyspaceDB("100%"), "ns:100%25");
+  EXPECT_EQ(MapNamespaceToKeyspaceDB("a b", 0), "ns:a%20b");
+  EXPECT_EQ(MapNamespaceToKeyspaceDB("a:b", 0), "ns:a%3Ab");
+  EXPECT_EQ(MapNamespaceToKeyspaceDB("100%", 0), "ns:100%25");
+
+  // Redis database namespaces map back to numeric database names when redis-databases is enabled.
+  EXPECT_EQ(MapNamespaceToKeyspaceDB("db1", 16), "1");
+  EXPECT_EQ(MapNamespaceToKeyspaceDB("db15", 16), "15");
 }

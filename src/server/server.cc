@@ -486,7 +486,7 @@ void Server::NotifyKeyspaceEvent(int type_flag, const std::string &event, const 
   if (!(flags & type_flag)) return;
   if (!(flags & (kNotifyKeyspace | kNotifyKeyevent))) return;
 
-  const std::string db = MapNamespaceToKeyspaceDB(ns);
+  const std::string db = MapNamespaceToKeyspaceDB(ns, GetConfig()->redis_databases);
   // Publish keyspace before keyevent for each key.
   if (flags & kNotifyKeyspace) {
     PublishMessage("__keyspace@" + db + "__:" + key, event);

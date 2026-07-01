@@ -239,7 +239,9 @@ rocksdb::Status String::Set(engine::Context &ctx, const std::string &user_key, c
 }
 
 rocksdb::Status String::Set(engine::Context &ctx, const std::string &user_key, const std::string &value,
-                            const StringSetArgs &args, std::optional<std::string> &ret) {
+                            const StringSetArgs &args, std::optional<std::string> &ret, bool *applied) {
+  if (applied != nullptr) *applied = false;
+
   uint64_t expire = 0;
   std::string ns_key = AppendNamespacePrefix(user_key);
 
@@ -345,7 +347,9 @@ rocksdb::Status String::Set(engine::Context &ctx, const std::string &user_key, c
   metadata.expire = expire;
   metadata.Encode(&new_raw_value);
   new_raw_value.append(value);
-  return updateRawValue(ctx, ns_key, new_raw_value);
+  auto s = updateRawValue(ctx, ns_key, new_raw_value);
+  if (s.ok() && applied != nullptr) *applied = true;
+  return s;
 }
 
 rocksdb::Status String::SetEX(engine::Context &ctx, const std::string &user_key, const std::string &value,

@@ -44,29 +44,6 @@ bool IsSetNotificationEnabled(const Config *config) {
   return (flags & kNotifyString) && (flags & (kNotifyKeyspace | kNotifyKeyevent));
 }
 
-bool WasSetApplied(const StringSetArgs &args, const std::optional<std::string> &ret) {
-  // Without GET, ret is a write sentinel; with GET, ret is the old value.
-  if (!args.get) return ret.has_value();
-
-  switch (args.type) {
-    case StringSetType::NONE:
-      return true;
-    case StringSetType::NX:
-      return !ret.has_value();
-    case StringSetType::XX:
-      return ret.has_value();
-    case StringSetType::IFEQ:
-      return ret.has_value() && *ret == args.cmp_value;
-    case StringSetType::IFNE:
-      return !ret.has_value() || *ret != args.cmp_value;
-    case StringSetType::IFDEQ:
-      return ret.has_value() && util::EqualICase(util::StringDigest(*ret), args.cmp_value);
-    case StringSetType::IFDNE:
-      return !ret.has_value() || !util::EqualICase(util::StringDigest(*ret), args.cmp_value);
-  }
-  return false;
-}
-
 }  // namespace
 
 class CommandGet : public Commander {
@@ -417,14 +394,15 @@ class CommandSet : public Commander {
     std::optional<std::string> ret;
     redis::String string_db(srv->storage, conn->GetNamespace());
     const StringSetArgs set_args{expire_, set_flag_, get_, keep_ttl_, cmp_value_};
+    bool set_applied = false;
 
-    rocksdb::Status s = string_db.Set(ctx, args_[1], args_[2], set_args, ret);
+    rocksdb::Status s = string_db.Set(ctx, args_[1], args_[2], set_args, ret, &set_applied);
 
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    if (IsSetNotificationEnabled(srv->GetConfig()) && WasSetApplied(set_args, ret)) {
+    if (IsSetNotificationEnabled(srv->GetConfig()) && set_applied) {
       conn->QueueOrPublishKeyspaceEvent(kNotifyString, "set", conn->GetNamespace(), args_[1]);
     }
 

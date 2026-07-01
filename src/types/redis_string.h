@@ -105,7 +105,7 @@ class String : public Database {
   rocksdb::Status GetDel(engine::Context &ctx, const std::string &user_key, std::string *value);
   rocksdb::Status Set(engine::Context &ctx, const std::string &user_key, const std::string &value);
   rocksdb::Status Set(engine::Context &ctx, const std::string &user_key, const std::string &value,
-                      const StringSetArgs &args, std::optional<std::string> &ret);
+                      const StringSetArgs &args, std::optional<std::string> &ret, bool *applied = nullptr);
   rocksdb::Status SetEX(engine::Context &ctx, const std::string &user_key, const std::string &value,
                         uint64_t expire_ms);
   rocksdb::Status SetNX(engine::Context &ctx, const std::string &user_key, const std::string &value, uint64_t expire_ms,

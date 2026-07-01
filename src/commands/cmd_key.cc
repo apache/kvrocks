@@ -377,17 +377,9 @@ class CommandDel : public Commander {
     const bool notify_del = GetAttributes()->name == "del" && (notify_flags & kNotifyGeneric) &&
                             (notify_flags & (kNotifyKeyspace | kNotifyKeyevent));
     std::vector<std::string> deleted_keys;
-    if (notify_del) {
-      deleted_keys.reserve(keys.size());
-      for (size_t i = 1; i < args_.size(); i++) {
-        uint32_t exists = 0;
-        auto s = redis.Exists(ctx, {args_[i]}, &exists);
-        if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
-        if (exists > 0) deleted_keys.emplace_back(args_[i]);
-      }
-    }
+    if (notify_del) deleted_keys.reserve(keys.size());
 
-    auto s = redis.MDel(ctx, keys, &cnt);
+    auto s = redis.MDel(ctx, keys, &cnt, notify_del ? &deleted_keys : nullptr);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
     for (const auto &key : deleted_keys) {

@@ -21,6 +21,7 @@
 #include "redis_db.h"
 
 #include <ctime>
+#include <unordered_set>
 #include <utility>
 
 #include "cluster/redis_slot.h"
@@ -188,6 +189,8 @@ rocksdb::Status Database::MDel(engine::Context &ctx, const std::vector<Slice> &k
   storage_->MultiGet(ctx, ctx.DefaultMultiGetOptions(), metadata_cf_handle_, slice_keys.size(), slice_keys.data(),
                      pin_values.data(), statuses.data());
 
+  std::unordered_set<std::string> deleted_ns_keys;
+  deleted_ns_keys.reserve(keys.size());
   for (size_t i = 0; i < slice_keys.size(); i++) {
     if (!statuses[i].ok() && !statuses[i].IsNotFound()) return statuses[i];
     if (statuses[i].IsNotFound()) continue;
@@ -198,6 +201,7 @@ rocksdb::Status Database::MDel(engine::Context &ctx, const std::vector<Slice> &k
     auto s = metadata.Decode(rocksdb::Slice(pin_values[i].data(), pin_values[i].size()));
     if (!s.ok()) continue;
     if (metadata.Expired()) continue;
+    if (!deleted_ns_keys.emplace(ns_keys[i]).second) continue;
 
     s = batch->Delete(metadata_cf_handle_, ns_keys[i]);
     if (!s.ok()) return s;

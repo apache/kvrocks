@@ -128,9 +128,18 @@ func TestKeyspaceNotify(t *testing.T) {
 		expectMessage(t, ctx, pubsub, "__keyevent@0__:set", "d1")
 
 		// Only d1 is deleted.
-		require.NoError(t, rdb.Del(ctx, "d1", "d2").Err())
+		require.EqualValues(t, 1, rdb.Del(ctx, "d1", "d2").Val())
 		expectMessage(t, ctx, pubsub, "__keyspace@0__:d1", "del")
 		expectMessage(t, ctx, pubsub, "__keyevent@0__:del", "d1")
+		expectNoMessage(t, ctx, pubsub)
+
+		require.NoError(t, rdb.Set(ctx, "ddup", "x", 0).Err())
+		expectMessage(t, ctx, pubsub, "__keyspace@0__:ddup", "set")
+		expectMessage(t, ctx, pubsub, "__keyevent@0__:set", "ddup")
+
+		require.EqualValues(t, 1, rdb.Del(ctx, "ddup", "ddup").Val())
+		expectMessage(t, ctx, pubsub, "__keyspace@0__:ddup", "del")
+		expectMessage(t, ctx, pubsub, "__keyevent@0__:del", "ddup")
 		expectNoMessage(t, ctx, pubsub)
 	})
 

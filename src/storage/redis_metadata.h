@@ -54,12 +54,13 @@ enum RedisType : uint8_t {
   kRedisHyperLogLog = 11,
   kRedisTDigest = 12,
   kRedisTimeSeries = 13,
+  kRedisCuckooFilter = 14,
   kRedisTypeMax
 };
 
 inline constexpr const std::array<std::string_view, kRedisTypeMax> RedisTypeNames = {
-    "none",      "string", "hash",      "list",      "set",         "zset",      "bitmap",
-    "sortedint", "stream", "MBbloom--", "ReJSON-RL", "hyperloglog", "TDIS-TYPE", "timeseries"};
+    "none",   "string",    "hash",      "list",        "set",       "zset",       "bitmap",   "sortedint",
+    "stream", "MBbloom--", "ReJSON-RL", "hyperloglog", "TDIS-TYPE", "timeseries", "MBbloomCF"};
 
 struct RedisTypes {
   RedisTypes(std::initializer_list<RedisType> list) {
@@ -332,6 +333,50 @@ class BloomChainMetadata : public Metadata {
   uint32_t GetCapacity() const;
 
   bool IsScaling() const { return expansion != 0; };
+};
+
+constexpr uint32_t kCuckooFilterDefaultPageSize = 2048;  // bytes
+
+class CuckooChainMetadata : public Metadata {
+ public:
+  /// The number of sub-filters in the chain
+  uint16_t n_filters;
+
+  /// Expansion factor for new filters
+  /// When a filter is full, a new one is created with capacity = base_capacity * expansion^n
+  uint16_t expansion;
+
+  /// The capacity of the first filter.
+  uint64_t base_capacity;
+
+  /// Number of fingerprints per bucket
+  uint8_t bucket_size;
+
+  /// Maximum number of cuckoo kicks before considering filter full
+  uint16_t max_iterations;
+
+  /// Track number of deleted items for maintenance
+  uint64_t num_deleted_items;
+
+  /// Target maximum payload size for each persisted Cuckoo Filter page, in bytes
+  uint32_t page_size;
+
+  explicit CuckooChainMetadata(bool generate_version = true)
+      : Metadata(kRedisCuckooFilter, generate_version),
+        n_filters(0),
+        expansion(0),
+        base_capacity(0),
+        bucket_size(0),
+        max_iterations(0),
+        num_deleted_items(0),
+        page_size(kCuckooFilterDefaultPageSize) {}
+
+  void Encode(std::string *dst) const override;
+  using Metadata::Decode;
+  rocksdb::Status Decode(Slice *input) override;
+
+  uint64_t GetTotalCapacity() const;
+  bool IsScaling() const { return expansion > 0; }
 };
 
 enum class JsonStorageFormat : uint8_t {

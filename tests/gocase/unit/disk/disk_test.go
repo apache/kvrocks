@@ -135,6 +135,17 @@ func TestDisk(t *testing.T) {
 		require.LessOrEqual(t, val, int(float64(approximateSize)/estimationFactor))
 	})
 
+	t.Run("Disk usage Cuckoo Filter", func(t *testing.T) {
+		key := "cuckoo_filter_key"
+		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "1000").Err())
+		_, err := rdb.Do(ctx, "Disk", "usage", key).Int()
+		require.NoError(t, err)
+
+		require.NoError(t, rdb.Do(ctx, "cf.add", key, "item").Err())
+		_, err = rdb.Do(ctx, "Disk", "usage", key).Int()
+		require.NoError(t, err)
+	})
+
 	t.Run("Disk usage with typo ", func(t *testing.T) {
 		require.ErrorContains(t, rdb.Do(ctx, "Disk", "usa", "sortedintkey").Err(), "Unknown operation")
 	})

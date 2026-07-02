@@ -310,7 +310,7 @@ class Server {
   int DecrMonitorClientNum();
   int IncrBlockedClientNum();
   int DecrBlockedClientNum();
-  std::string GetClientsStr();
+  std::string GetClientsStr(const redis::Connection *conn);
   uint64_t GetClientID();
   void KillClient(int64_t *killed, const std::string &addr, uint64_t id, uint64_t type, bool skipme,
                   redis::Connection *conn);

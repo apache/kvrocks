@@ -335,7 +335,7 @@ bool Metadata::IsSingleKVType() const { return Type() == kRedisString || Type() 
 
 bool Metadata::IsEmptyableType() const {
   return IsSingleKVType() || Type() == kRedisStream || Type() == kRedisBloomFilter || Type() == kRedisHyperLogLog ||
-         Type() == kRedisTDigest || Type() == kRedisTimeSeries;
+         Type() == kRedisTDigest || Type() == kRedisTimeSeries || Type() == kRedisCuckooFilter;
 }
 
 bool Metadata::Expired() const { return ExpireAt(util::GetTimeStampMS()); }
@@ -643,4 +643,51 @@ rocksdb::Status TimeSeriesMetadata::Decode(Slice *input) {
   GetFixed64(input, &last_timestamp);
 
   return rocksdb::Status::OK();
+}
+
+void CuckooChainMetadata::Encode(std::string *dst) const {
+  Metadata::Encode(dst);
+
+  PutFixed16(dst, n_filters);
+  PutFixed16(dst, expansion);
+  PutFixed64(dst, base_capacity);
+  PutFixed8(dst, bucket_size);
+  PutFixed16(dst, max_iterations);
+  PutFixed64(dst, num_deleted_items);
+  PutFixed32(dst, page_size);
+}
+
+rocksdb::Status CuckooChainMetadata::Decode(Slice *input) {
+  if (auto s = Metadata::Decode(input); !s.ok()) {
+    return s;
+  }
+
+  if (input->size() < sizeof(uint16_t) * 3 + sizeof(uint64_t) * 2 + sizeof(uint32_t) + sizeof(uint8_t)) {
+    return rocksdb::Status::InvalidArgument(kErrMetadataTooShort);
+  }
+
+  GetFixed16(input, &n_filters);
+  GetFixed16(input, &expansion);
+  GetFixed64(input, &base_capacity);
+  GetFixed8(input, &bucket_size);
+  GetFixed16(input, &max_iterations);
+  GetFixed64(input, &num_deleted_items);
+  GetFixed32(input, &page_size);
+
+  return rocksdb::Status::OK();
+}
+
+uint64_t CuckooChainMetadata::GetTotalCapacity() const {
+  if (expansion == 0 || n_filters == 1) {
+    return base_capacity;
+  }
+
+  // Calculate total capacity across all filters
+  uint64_t total = 0;
+  uint64_t filter_capacity = base_capacity;
+  for (uint16_t i = 0; i < n_filters; i++) {
+    total += filter_capacity;
+    filter_capacity *= expansion;
+  }
+  return total;
 }

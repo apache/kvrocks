@@ -1179,6 +1179,43 @@ func TestSlotMigrateTypeFallback(t *testing.T) {
 	})
 }
 
+func TestSlotMigrateCuckooFilter(t *testing.T) {
+	ctx := context.Background()
+
+	srv0 := util.StartServer(t, map[string]string{"cluster-enabled": "yes"})
+	defer srv0.Close()
+	rdb0 := srv0.NewClient()
+	defer func() { require.NoError(t, rdb0.Close()) }()
+	id0 := "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx00"
+	require.NoError(t, rdb0.Do(ctx, "clusterx", "setnodeid", id0).Err())
+
+	srv1 := util.StartServer(t, map[string]string{"cluster-enabled": "yes"})
+	defer srv1.Close()
+	rdb1 := srv1.NewClient()
+	defer func() { require.NoError(t, rdb1.Close()) }()
+	id1 := "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx01"
+	require.NoError(t, rdb1.Do(ctx, "clusterx", "setnodeid", id1).Err())
+
+	clusterNodes := fmt.Sprintf("%s %s %d master - 0-10000\n", id0, srv0.Host(), srv0.Port())
+	clusterNodes += fmt.Sprintf("%s %s %d master - 10001-16383", id1, srv1.Host(), srv1.Port())
+	require.NoError(t, rdb0.Do(ctx, "clusterx", "setnodes", clusterNodes, "1").Err())
+	require.NoError(t, rdb1.Do(ctx, "clusterx", "setnodes", clusterNodes, "1").Err())
+
+	t.Run("MIGRATE - Cuckoo filter is preserved by raw-key-value migration", func(t *testing.T) {
+		slot := 31
+		key := fmt.Sprintf("cf_{%s}", util.SlotTable[slot])
+		require.NoError(t, rdb0.ConfigSet(ctx, "migrate-type", string(MigrationTypeRawKeyValue)).Err())
+		require.NoError(t, rdb0.Do(ctx, "cf.reserve", key, "1000").Err())
+		for i := 0; i < 20; i++ {
+			require.NoError(t, rdb0.Do(ctx, "cf.add", key, fmt.Sprintf("item_%d", i)).Err())
+		}
+
+		require.Equal(t, "OK", rdb0.Do(ctx, "clusterx", "migrate", slot, id1, "sync").Val())
+		require.Equal(t, "MBbloomCF", rdb1.Type(ctx, key).Val())
+		require.Equal(t, int64(1), rdb1.Do(ctx, "cf.add", key, "new-item").Val())
+	})
+}
+
 func waitForMigrateState(t testing.TB, client *redis.Client, slot int, state SlotMigrationState) {
 	waitForMigrateStateInDuration(t, client, slot, state, 5*time.Second)
 }

@@ -633,7 +633,7 @@ class CommandClient : public Commander {
 
   Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
     if (subcommand_ == "list") {
-      *output = conn->VerbatimString("txt", srv->GetClientsStr());
+      *output = conn->VerbatimString("txt", srv->GetClientsStr(conn));
       return Status::OK();
     } else if (subcommand_ == "info") {
       *output = conn->VerbatimString("txt", conn->ToString());

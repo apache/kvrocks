@@ -352,7 +352,7 @@ jobs:
         if: ${{ matrix.sonarcloud }}
 
       - name: Install Build Wrapper
-        uses: SonarSource/sonarqube-scan-action/install-build-wrapper@a31c9398be7ace6bbfaf30c0bd5d415f843d45e9
+        uses: SonarSource/sonarqube-scan-action/install-build-wrapper@713881670b6b3676cda39549040e2d88c70d582e # v8.2.0
         if: ${{ matrix.sonarcloud }}
 
       - name: Build Kvrocks

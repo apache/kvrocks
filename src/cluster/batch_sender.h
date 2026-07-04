@@ -50,6 +50,7 @@ class BatchSender {
   uint64_t GetSentBytes() const { return sent_bytes_; }
   uint32_t GetSentBatchesNum() const { return sent_batches_num_; }
   uint32_t GetEntriesNum() const { return entries_num_; }
+  uint32_t GetPendingEntries() const { return pending_entries_; }
   void SetBytesPerSecond(size_t bytes_per_sec);
   double GetRate(uint64_t since) const;
 

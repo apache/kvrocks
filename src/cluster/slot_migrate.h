@@ -56,6 +56,35 @@ enum class SlotMigrationStage { kNone, kStart, kSnapshot, kWAL, kSuccess, kFaile
 
 enum class KeyMigrationResult { kMigrated, kExpired, kUnderlyingStructEmpty };
 
+/// Statistics of the current migration task, used to expose the migration
+/// progress via the CLUSTER INFO command. They are reset when a new task is submitted.
+struct MigrationJobStats {
+  /// The timestamp in milliseconds when the migration task was submitted.
+  std::atomic<uint64_t> start_time_ms = 0;
+  /// Keys migrated/expired/empty during the snapshot stage, only counted
+  /// by the redis-command migration type.
+  std::atomic<uint64_t> keys_migrated = 0;
+  std::atomic<uint64_t> keys_expired = 0;
+  std::atomic<uint64_t> keys_empty = 0;
+  /// Bytes/batches/entries sent to the destination node. For the redis-command
+  /// migration type, a batch is a pipeline of commands and an entry is a command.
+  /// For the raw-key-value migration type, a batch is an APPLYBATCH write batch
+  /// and an entry is a write batch operation.
+  std::atomic<uint64_t> sent_bytes = 0;
+  std::atomic<uint64_t> sent_batches = 0;
+  std::atomic<uint64_t> sent_entries = 0;
+
+  void Reset(uint64_t now_ms) {
+    start_time_ms = now_ms;
+    keys_migrated = 0;
+    keys_expired = 0;
+    keys_empty = 0;
+    sent_bytes = 0;
+    sent_batches = 0;
+    sent_entries = 0;
+  }
+};
+
 struct SlotMigrationJob {
   SlotMigrationJob(const SlotRange &slot_range_in, std::string dst_ip, int dst_port, int speed, int pipeline_size,
                    int seq_gap)
@@ -174,7 +203,7 @@ class SlotMigrator : public redis::Database {
   std::atomic<size_t> migrate_batch_bytes_per_sec_ = 1 * GiB;
   std::atomic<size_t> migrate_batch_size_bytes_;
 
-  SlotMigrationStage current_stage_ = SlotMigrationStage::kNone;
+  std::atomic<SlotMigrationStage> current_stage_ = SlotMigrationStage::kNone;
   ParserState parser_state_ = ParserState::ArrayLen;
   std::atomic<ThreadState> thread_state_ = ThreadState::Uninitialized;
   std::atomic<MigrationState> migration_state_ = MigrationState::kNone;
@@ -201,7 +230,8 @@ class SlotMigrator : public redis::Database {
 
   std::atomic<bool> stop_migration_ = false;  // if is true migration will be stopped but the thread won't be destroyed
   const rocksdb::Snapshot *slot_snapshot_ = nullptr;
-  uint64_t wal_begin_seq_ = 0;
+  std::atomic<uint64_t> wal_begin_seq_ = 0;
+  MigrationJobStats job_stats_;
 
   std::mutex blocking_mutex_;
   SyncMigrateContext *blocking_context_ = nullptr;

@@ -1133,6 +1133,75 @@ func TestSlotMigrateDataType(t *testing.T) {
 		require.EqualValues(t, []string{"element985", "element986", "element987", "element988", "element989"},
 			rdb1.LRange(ctx, srcListName, -5, -1).Val())
 	})
+
+	t.Run("MIGRATE - Migration progress is exposed in CLUSTER INFO", func(t *testing.T) {
+		require.NoError(t, rdb0.ConfigSet(ctx, "migrate-type", string(MigrationTypeRedisCommand)).Err())
+		require.NoError(t, rdb0.ConfigSet(ctx, "migrate-speed", "64").Err())
+		defer func() {
+			require.NoError(t, rdb0.ConfigSet(ctx, "migrate-speed", "4096").Err())
+		}()
+
+		testSlot += 1
+		cnt := 300
+		for i := 0; i < cnt; i++ {
+			key := fmt.Sprintf("{%s}_%d", util.SlotTable[testSlot], i)
+			require.NoError(t, rdb0.Set(ctx, key, "value", 0).Err())
+		}
+
+		require.Equal(t, "OK", rdb0.Do(ctx, "clusterx", "migrate", testSlot, id1).Val())
+		require.Eventually(t, func() bool {
+			info := rdb0.ClusterInfo(ctx).Val()
+			if !strings.Contains(info, "migrating_stage: ") {
+				return false
+			}
+			keysMigrated, ok := clusterInfoIntField(info, "migrating_keys_migrated")
+			if !ok {
+				return false
+			}
+			sentBytes, ok := clusterInfoIntField(info, "migrating_sent_bytes")
+			if !ok {
+				return false
+			}
+			return keysMigrated > 0 && sentBytes > 0
+		}, 5*time.Second, 50*time.Millisecond)
+
+		waitForMigrateStateInDuration(t, rdb0, testSlot, SlotMigrationStateSuccess, time.Minute)
+		// The progress fields are only exposed while the migration task is ongoing
+		require.NotContains(t, rdb0.ClusterInfo(ctx).Val(), "migrating_stage: ")
+	})
+
+	t.Run("MIGRATE - Migration progress is exposed in CLUSTER INFO with raw-key-value type", func(t *testing.T) {
+		require.NoError(t, rdb0.ConfigSet(ctx, "migrate-type", string(MigrationTypeRawKeyValue)).Err())
+		require.NoError(t, rdb0.ConfigSet(ctx, "migrate-batch-rate-limit-mb", "1").Err())
+		defer func() {
+			require.NoError(t, rdb0.ConfigSet(ctx, "migrate-batch-rate-limit-mb", "16").Err())
+		}()
+
+		testSlot += 1
+		value := strings.Repeat("a", 1024)
+		pipe := rdb0.Pipeline()
+		for i := 0; i < 3072; i++ {
+			pipe.Set(ctx, fmt.Sprintf("{%s}_%d", util.SlotTable[testSlot], i), value, 0)
+		}
+		_, err := pipe.Exec(ctx)
+		require.NoError(t, err)
+
+		require.Equal(t, "OK", rdb0.Do(ctx, "clusterx", "migrate", testSlot, id1).Val())
+		require.Eventually(t, func() bool {
+			info := rdb0.ClusterInfo(ctx).Val()
+			sentBatches, ok := clusterInfoIntField(info, "migrating_sent_batches")
+			if !ok {
+				return false
+			}
+			sentEntries, ok := clusterInfoIntField(info, "migrating_sent_entries")
+			if !ok {
+				return false
+			}
+			return sentBatches > 0 && sentEntries > 0
+		}, 5*time.Second, 50*time.Millisecond)
+
+		waitForMigrateStateInDuration(t, rdb0, testSlot, SlotMigrationStateSuccess, time.Minute)
+	})
 }
 
 func TestSlotMigrateTypeFallback(t *testing.T) {
@@ -1242,6 +1311,19 @@ func waitForMigrateSlotRangeStateInDuration(t testing.TB, client *redis.Client, 
 		return strings.Contains(i, fmt.Sprintf("migrating_slot(s): %s", slotRange)) &&
 			strings.Contains(i, fmt.Sprintf("migrating_state: %s", state))
 	}, d, 100*time.Millisecond)
+}
+
+func clusterInfoIntField(info, field string) (int64, bool) {
+	for _, line := range strings.Split(info, "\r\n") {
+		if strings.HasPrefix(line, field+": ") {
+			v, err := strconv.ParseInt(strings.TrimPrefix(line, field+": "), 10, 64)
+			if err != nil {
+				return 0, false
+			}
+			return v, true
+		}
+	}
+	return 0, false
 }
 
 func requireMigrateState(t testing.TB, client *redis.Client, slot int, state SlotMigrationState) {

@@ -90,6 +90,7 @@ Status SlotMigrator::PerformSlotRangeMigration(const std::string &node_id, std::
     return {Status::NotOK, "Can't migrate slot which has been migrated"};
   }
   migration_state_ = MigrationState::kStarted;
+  job_stats_.Reset(util::GetTimeStampMS());
 
   auto speed = srv_->GetConfig()->migrate_speed;
   auto seq_gap = srv_->GetConfig()->sequence_gap;
@@ -249,7 +250,7 @@ void SlotMigrator::runMigrationProcess() {
         return;
       }
       default:
-        ERROR("[migrate] Unexpected state for the state machine: {}", static_cast<int>(current_stage_));
+        ERROR("[migrate] Unexpected state for the state machine: {}", static_cast<int>(current_stage_.load()));
         clean();
         return;
     }
@@ -324,9 +325,6 @@ Status SlotMigrator::syncWAL() {
 }
 
 Status SlotMigrator::sendSnapshotByCmd() {
-  uint64_t migrated_key_cnt = 0;
-  uint64_t expired_key_cnt = 0;
-  uint64_t empty_key_cnt = 0;
   std::string restore_cmds;
   SlotRange slot_range = slot_range_;
   INFO("[migrate] Start migrating snapshot of slot(s): {}", slot_range.String());
@@ -371,13 +369,13 @@ Status SlotMigrator::sendSnapshotByCmd() {
 
     if (*result == KeyMigrationResult::kMigrated) {
       INFO("[migrate] The key {} successfully migrated", user_key);
-      migrated_key_cnt++;
+      job_stats_.keys_migrated++;
     } else if (*result == KeyMigrationResult::kExpired) {
       INFO("[migrate] The key {} is expired", user_key);
-      expired_key_cnt++;
+      job_stats_.keys_expired++;
     } else if (*result == KeyMigrationResult::kUnderlyingStructEmpty) {
       INFO("[migrate] The key {} has no elements", user_key);
-      empty_key_cnt++;
+      job_stats_.keys_empty++;
     } else {
       ERROR("[migrate] Migrated a key {} with unexpected result: {}", user_key, static_cast<int>(*result));
       return {Status::NotOK};
@@ -398,7 +396,8 @@ Status SlotMigrator::sendSnapshotByCmd() {
   }
   INFO(
       "[migrate] Succeed to migrate slot(s) snapshot, slot(s): {}, Migrated keys: {}, Expired keys: {}, Empty keys: {}",
-      slot_range.String(), migrated_key_cnt, expired_key_cnt, empty_key_cnt);
+      slot_range.String(), job_stats_.keys_migrated.load(), job_stats_.keys_expired.load(),
+      job_stats_.keys_empty.load());
 
   return Status::OK();
 }
@@ -1024,6 +1023,10 @@ Status SlotMigrator::sendCmdsPipelineIfNeed(std::string *commands, bool need) {
     return s.Prefixed("wrong response from the destination node");
   }
 
+  job_stats_.sent_bytes += commands->size();
+  job_stats_.sent_batches++;
+  job_stats_.sent_entries += current_pipeline_size_;
+
   // Clear commands and running pipeline
   commands->clear();
   current_pipeline_size_ = 0;
@@ -1122,7 +1125,7 @@ Status SlotMigrator::migrateIncrementData(std::unique_ptr<rocksdb::TransactionLo
 
     next_seq = batch.sequence + batch.writeBatchPtr->Count();
     if (next_seq > end_seq) {
-      INFO("[migrate] Migrate incremental data an epoch OK, seq from {}, to {}", wal_begin_seq_, end_seq);
+      INFO("[migrate] Migrate incremental data an epoch OK, seq from {}, to {}", wal_begin_seq_.load(), end_seq);
       break;
     }
 
@@ -1232,6 +1235,65 @@ void SlotMigrator::GetMigrationInfo(std::string *info) const {
 
   *info = fmt::format("migrating_slot(s): {}\r\ndestination_node: {}\r\nmigrating_state: {}\r\n", slot_range.String(),
                       dst_node_, task_state);
+
+  // Expose the detailed progress of the ongoing migration task
+  if (migration_state_.load() == MigrationState::kStarted) {
+    std::string stage;
+    switch (current_stage_.load()) {
+      case SlotMigrationStage::kStart:
+        stage = "start";
+        break;
+      case SlotMigrationStage::kSnapshot:
+        stage = "snapshot";
+        break;
+      case SlotMigrationStage::kWAL:
+        stage = "wal";
+        break;
+      case SlotMigrationStage::kSuccess:
+        stage = "success";
+        break;
+      case SlotMigrationStage::kFailed:
+        stage = "failed";
+        break;
+      case SlotMigrationStage::kClean:
+        stage = "clean";
+        break;
+      default:
+        stage = "none";
+        break;
+    }
+
+    uint64_t elapsed_ms = 0;
+    uint64_t start_time_ms = job_stats_.start_time_ms;
+    uint64_t now_ms = util::GetTimeStampMS();
+    if (start_time_ms > 0 && now_ms > start_time_ms) {
+      elapsed_ms = now_ms - start_time_ms;
+    }
+
+    uint64_t sent_bytes = job_stats_.sent_bytes;
+    double rate_kbps =
+        elapsed_ms > 0 ? (static_cast<double>(sent_bytes) / 1024.0) / (static_cast<double>(elapsed_ms) / 1000.0) : 0;
+
+    // The gap between the latest sequence number and the WAL sequence number
+    // where the migration has caught up, i.e. the pending incremental data.
+    uint64_t wal_sequence_gap = 0;
+    uint64_t begin_seq = wal_begin_seq_;
+    if (begin_seq > 0) {
+      uint64_t latest_seq = storage_->GetDB()->GetLatestSequenceNumber();
+      if (latest_seq > begin_seq) {
+        wal_sequence_gap = latest_seq - begin_seq;
+      }
+    }
+
+    *info += fmt::format(
+        "migrating_stage: {}\r\nmigrating_elapsed_ms: {}\r\nmigrating_keys_migrated: {}\r\n"
+        "migrating_keys_expired: {}\r\nmigrating_keys_empty: {}\r\nmigrating_sent_bytes: {}\r\n"
+        "migrating_sent_batches: {}\r\nmigrating_sent_entries: {}\r\nmigrating_rate_kbps: {:.2f}\r\n"
+        "migrating_wal_sequence_gap: {}\r\n",
+        stage, elapsed_ms, job_stats_.keys_migrated.load(), job_stats_.keys_expired.load(),
+        job_stats_.keys_empty.load(), sent_bytes, job_stats_.sent_batches.load(), job_stats_.sent_entries.load(),
+        rate_kbps, wal_sequence_gap);
+  }
 }
 
 void SlotMigrator::CancelSyncCtx() {
@@ -1252,7 +1314,19 @@ Status SlotMigrator::sendMigrationBatch(BatchSender *batch) {
   // user may dynamically change some configs, apply it when send data
   batch->SetMaxBytes(migrate_batch_size_bytes_);
   batch->SetBytesPerSecond(migrate_batch_bytes_per_sec_);
-  return batch->Send();
+
+  // The batch sender counters are accumulated across sends, so only the delta
+  // of this send should be added to the job statistics.
+  auto sent_bytes = batch->GetSentBytes();
+  auto sent_batches = batch->GetSentBatchesNum();
+  auto pending_entries = batch->GetPendingEntries();
+  auto s = batch->Send();
+  if (s.IsOK()) {
+    job_stats_.sent_bytes += batch->GetSentBytes() - sent_bytes;
+    job_stats_.sent_batches += batch->GetSentBatchesNum() - sent_batches;
+    job_stats_.sent_entries += pending_entries;
+  }
+  return s;
 }
 
 Status SlotMigrator::sendSnapshotByRawKV() {
@@ -1352,7 +1426,7 @@ Status SlotMigrator::syncWALByRawKV() {
     if (!s.IsOK()) {
       return {Status::NotOK, fmt::format("migrate incremental data failed, {}", s.Msg())};
     }
-    INFO("[migrate] Migrated incremental data, epoch: {}, seq from {} to {}", epoch, wal_begin_seq_,
+    INFO("[migrate] Migrated incremental data, epoch: {}, seq from {} to {}", epoch, wal_begin_seq_.load(),
          wal_incremental_seq);
     wal_begin_seq_ = wal_incremental_seq;
     epoch++;
@@ -1366,7 +1440,7 @@ Status SlotMigrator::syncWALByRawKV() {
     if (!s.IsOK()) {
       return {Status::NotOK, fmt::format("migrate last incremental data failed, {}", s.Msg())};
     }
-    INFO("[migrate] Migrated last incremental data after set forbidden slot, seq from {} to {}", wal_begin_seq_,
+    INFO("[migrate] Migrated last incremental data after set forbidden slot, seq from {} to {}", wal_begin_seq_.load(),
          wal_incremental_seq);
   }
 

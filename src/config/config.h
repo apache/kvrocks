@@ -37,7 +37,6 @@
 
 // forward declaration
 class Server;
-enum class MigrationType;
 namespace engine {
 class Storage;
 }
@@ -169,10 +168,7 @@ struct Config {
   bool slot_id_encoded = false;
   bool cluster_enabled = false;
 
-  int migrate_speed;
-  int pipeline_size;
   int sequence_gap;
-  MigrationType migrate_type;
   int migrate_batch_size_kb;
   int migrate_batch_rate_limit_mb;
 

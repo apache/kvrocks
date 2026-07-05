@@ -576,9 +576,11 @@ func TestClusterReset(t *testing.T) {
 		slotNum := 2
 		// slow down the migration speed to ensure we can observe the "start" state
 		// before migration completes (especially on fast hardware like macOS ARM)
-		require.NoError(t, rdb0.ConfigSet(ctx, "migrate-speed", "64").Err())
-		for i := 0; i < 2048; i++ {
-			require.NoError(t, rdb0.RPush(ctx, "my-list", fmt.Sprintf("element%d", i)).Err())
+		require.NoError(t, rdb0.ConfigSet(ctx, "migrate-batch-size-kb", "1").Err())
+		require.NoError(t, rdb0.ConfigSet(ctx, "migrate-batch-rate-limit-mb", "1").Err())
+		value := strings.Repeat("a", 512)
+		for i := 0; i < 4096; i++ {
+			require.NoError(t, rdb0.RPush(ctx, "my-list", value).Err())
 		}
 
 		require.Equal(t, "OK", rdb0.Do(ctx, "clusterx", "migrate", slotNum, id1).Val())

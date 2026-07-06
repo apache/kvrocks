@@ -38,6 +38,7 @@
 #include <vector>
 
 #include "cluster/cluster_defs.h"
+#include "common/keyspace_events.h"
 #include "config/config.h"
 #include "error_constants.h"
 #include "logging.h"
@@ -134,11 +135,19 @@ class Commander {
     return {Status::RedisExecErr, errNotImplemented};
   }
 
+  // Begins a per-command keyspace event collection scope.
+  void BeginKeyspaceEventCollection(std::string ns, int notify_flags) {
+    keyspace_event_collector_.Begin(std::move(ns), notify_flags);
+  }
+
+  std::vector<KeyspaceEvent> TakeKeyspaceEvents() { return keyspace_event_collector_.Take(); }
+
   virtual ~Commander() = default;
 
  protected:
   std::vector<std::string> args_;
   const CommandAttributes *attributes_ = nullptr;
+  KeyspaceEventCollector keyspace_event_collector_;
 };
 
 class CommanderWithParseMove : Commander {

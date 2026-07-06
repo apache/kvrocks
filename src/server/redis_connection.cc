@@ -466,7 +466,12 @@ Status Connection::ExecuteCommand(engine::Context &ctx, const std::string &cmd_n
 
   auto start = std::chrono::high_resolution_clock::now();
   bool is_profiling = IsProfilingEnabled(cmd_name);
+  current_cmd->BeginKeyspaceEventCollection(GetNamespace(), srv_->GetConfig()->notify_keyspace_events);
   auto s = current_cmd->Execute(ctx, srv_, this, reply);
+  auto events = current_cmd->TakeKeyspaceEvents();
+  if (s.IsOK()) {
+    QueueOrPublishKeyspaceEvents(std::move(events));
+  }
   auto end = std::chrono::high_resolution_clock::now();
   uint64_t duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
   if (is_profiling) RecordProfilingSampleIfNeed(cmd_name, duration);
@@ -709,13 +714,20 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
   }
 }
 
-void Connection::QueueOrPublishKeyspaceEvent(int type_flag, const std::string &event, const std::string &ns,
-                                             const std::string &key) {
+void Connection::QueueOrPublishKeyspaceEvents(std::vector<KeyspaceEvent> &&events) {
+  if (events.empty()) return;
+
   if (in_exec_) {
     // Queue transaction events until commit.
-    pending_keyspace_events_.push_back({type_flag, event, ns, key});
-  } else {
-    srv_->NotifyKeyspaceEvent(type_flag, event, ns, key);
+    pending_keyspace_events_.reserve(pending_keyspace_events_.size() + events.size());
+    for (auto &event : events) {
+      pending_keyspace_events_.emplace_back(std::move(event));
+    }
+    return;
+  }
+
+  for (const auto &event : events) {
+    srv_->NotifyKeyspaceEvent(event.type_flag, event.event, event.ns, event.key);
   }
 }
 

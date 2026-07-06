@@ -21,9 +21,27 @@
 #include "keyspace_events.h"
 
 #include <cstring>
+#include <utility>
 
 #include "config/config.h"
 #include "fmt/format.h"
+
+void KeyspaceEventCollector::Begin(std::string ns, int notify_flags) {
+  ns_ = std::move(ns);
+  notify_flags_ = notify_flags;
+  events_.clear();
+}
+
+bool KeyspaceEventCollector::IsEnabled(int type_flag) const {
+  return (notify_flags_ & type_flag) != 0 && (notify_flags_ & (kNotifyKeyspace | kNotifyKeyevent)) != 0;
+}
+
+void KeyspaceEventCollector::Add(int type_flag, std::string_view event, std::string_view key) {
+  if (!IsEnabled(type_flag)) return;
+  events_.emplace_back(KeyspaceEvent{type_flag, std::string(event), ns_, std::string(key)});
+}
+
+std::vector<KeyspaceEvent> KeyspaceEventCollector::Take() { return std::move(events_); }
 
 Status ParseNotifyKeyspaceEventsFlags(const std::string &input, int *flags) {
   int result = 0;

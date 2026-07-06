@@ -160,7 +160,7 @@ rocksdb::Status Database::Del(engine::Context &ctx, const Slice &user_key) {
 }
 
 rocksdb::Status Database::MDel(engine::Context &ctx, const std::vector<Slice> &keys, uint64_t *deleted_cnt,
-                               std::vector<std::string> *deleted_user_keys) {
+                               std::vector<Slice> *deleted_user_keys) {
   *deleted_cnt = 0;
   if (deleted_user_keys != nullptr) deleted_user_keys->clear();
 
@@ -207,7 +207,7 @@ rocksdb::Status Database::MDel(engine::Context &ctx, const std::vector<Slice> &k
     if (!s.ok()) return s;
     *deleted_cnt += 1;
     if (deleted_user_keys != nullptr) {
-      deleted_user_keys->emplace_back(keys[i].ToString());
+      deleted_user_keys->emplace_back(keys[i]);
     }
   }
 

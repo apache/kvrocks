@@ -21,6 +21,8 @@
 #pragma once
 
 #include <string>
+#include <string_view>
+#include <vector>
 
 #include "status.h"
 
@@ -32,6 +34,30 @@ enum NotifyKeyspaceEventFlag {
   kNotifyString = 1 << 3,    // $, emits set
   // A, supported data classes without K or E.
   kNotifyAll = kNotifyGeneric | kNotifyString,
+};
+
+struct KeyspaceEvent {
+  // Event class flag such as g/$, not K/E channel selectors.
+  int type_flag;
+  std::string event;
+  std::string ns;
+  std::string key;
+};
+
+// Collects semantic keyspace events for one command; Connection owns publish timing.
+class KeyspaceEventCollector {
+ public:
+  // Sets namespace/config for the next command and drops any previous events.
+  void Begin(std::string ns, int notify_flags);
+  bool IsEnabled(int type_flag) const;
+  void Add(int type_flag, std::string_view event, std::string_view key);
+  // Moves out events collected during Execute.
+  std::vector<KeyspaceEvent> Take();
+
+ private:
+  int notify_flags_ = 0;
+  std::string ns_;
+  std::vector<KeyspaceEvent> events_;
 };
 
 // Parses notify-keyspace-events flags.

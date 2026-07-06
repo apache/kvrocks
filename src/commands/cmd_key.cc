@@ -19,6 +19,7 @@
  */
 
 #include <cstdint>
+#include <string_view>
 
 #include "commander.h"
 #include "commands/ttl_util.h"
@@ -373,17 +374,15 @@ class CommandDel : public Commander {
     uint64_t cnt = 0;
     redis::Database redis(srv->storage, conn->GetNamespace());
 
-    const int notify_flags = srv->GetConfig()->notify_keyspace_events;
-    const bool notify_del = GetAttributes()->name == "del" && (notify_flags & kNotifyGeneric) &&
-                            (notify_flags & (kNotifyKeyspace | kNotifyKeyevent));
-    std::vector<std::string> deleted_keys;
+    const bool notify_del = GetAttributes()->name == "del" && keyspace_event_collector_.IsEnabled(kNotifyGeneric);
+    std::vector<rocksdb::Slice> deleted_keys;
     if (notify_del) deleted_keys.reserve(keys.size());
 
     auto s = redis.MDel(ctx, keys, &cnt, notify_del ? &deleted_keys : nullptr);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
     for (const auto &key : deleted_keys) {
-      conn->QueueOrPublishKeyspaceEvent(kNotifyGeneric, "del", conn->GetNamespace(), key);
+      keyspace_event_collector_.Add(kNotifyGeneric, "del", std::string_view(key.data(), key.size()));
     }
 
     *output = redis::Integer(cnt);

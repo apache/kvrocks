@@ -37,14 +37,6 @@
 #include "types/redis_string.h"
 
 namespace redis {
-namespace {
-
-bool IsSetNotificationEnabled(const Config *config) {
-  const int flags = config->notify_keyspace_events;
-  return (flags & kNotifyString) && (flags & (kNotifyKeyspace | kNotifyKeyevent));
-}
-
-}  // namespace
 
 class CommandGet : public Commander {
  public:
@@ -402,9 +394,7 @@ class CommandSet : public Commander {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    if (IsSetNotificationEnabled(srv->GetConfig()) && set_applied) {
-      conn->QueueOrPublishKeyspaceEvent(kNotifyString, "set", conn->GetNamespace(), args_[1]);
-    }
+    if (set_applied) keyspace_event_collector_.Add(kNotifyString, "set", args_[1]);
 
     if (get_) {
       if (ret.has_value()) {

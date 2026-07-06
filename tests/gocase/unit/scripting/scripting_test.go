@@ -958,3 +958,31 @@ func TestLuaJITBytecodeDoS(t *testing.T) {
 	require.Equal(t, []interface{}{"load_failed:attempt to load chunk with wrong mode"}, r.Val())
 	require.NoError(t, rdb.Ping(ctx).Err())
 }
+
+// TestScriptEvalDeeplyNestedTableReply is a regression test for CWE-674: a
+// self-nested Lua table used to recurse ReplyToRedisReply() until the worker
+// stack overflowed and crashed the server. It must now fail gracefully.
+func TestScriptEvalDeeplyNestedTableReply(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{})
+	defer srv.Close()
+
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	require.Equal(t, "PONG", rdb.Ping(ctx).Val())
+
+	// Depth well beyond the Lua stack budget so the conversion hits the guard.
+	const depth = 200000
+	script := fmt.Sprintf(`local t={} for i=1,%d do t={t} end return t`, depth)
+
+	err := rdb.Eval(ctx, script, nil).Err()
+	require.Error(t, err)
+	// Same as Redis; a dropped connection (EOF/reset) would mean it crashed.
+	require.Contains(t, err.Error(), "reached lua stack limit")
+
+	// The server must still serve other clients afterwards.
+	require.Eventually(t, func() bool {
+		return rdb.Ping(ctx).Val() == "PONG"
+	}, 5*time.Second, 100*time.Millisecond)
+}

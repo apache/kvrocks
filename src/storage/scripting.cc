@@ -1278,6 +1278,12 @@ std::string ReplyToRedisReply(redis::Connection *conn, lua_State *lua) {
   size_t obj_len = 0;
   int j = 0, mbulklen = 0;
 
+  // Reserve stack room before the recursive reply conversion so a deeply
+  // nested table can't overflow the stack (a map reply needs up to 4 slots).
+  if (!lua_checkstack(lua, 4)) {
+    return redis::Error({Status::RedisErrorNoPrefix, "reached lua stack limit"});
+  }
+
   int t = lua_type(lua, -1);
   switch (t) {
     case LUA_TSTRING:

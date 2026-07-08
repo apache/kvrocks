@@ -265,11 +265,11 @@ class Server {
   std::string GetRoleInfo();
 
   // An INFO entry holds its value with its original type in a variant, so each output format can
-  // render it appropriately: GetInfo emits the Redis-compatible text (e.g. a bool as 0/1, numbers via
-  // std::to_string) while FORMAT JSON emits the native JSON type (a bool as true/false, numbers
-  // unquoted). The type is captured here at construction, where it is statically known.
+  // render it appropriately: the text format (ToString) emits the Redis-compatible representation
+  // (e.g. a bool as 0/1, numbers via std::to_string) while FORMAT JSON emits the native JSON type
+  // (a bool as true/false, numbers unquoted). The type is captured here at construction.
   struct InfoEntry {
-    using Value = std::variant<std::string, int64_t, uint64_t, double, bool>;
+    using Value = std::variant<std::string, int64_t, double, bool>;
     std::string name;
     Value val;
 
@@ -279,14 +279,24 @@ class Server {
     InfoEntry(std::string name, bool v) : name(std::move(name)), val(v) {}
     // Floating-point values (incl. float, which widens to double) are stored as double.
     InfoEntry(std::string name, double v) : name(std::move(name)), val(v) {}
-    // Integers are stored as int64_t/uint64_t according to their signedness (bool handled above).
+    // Integers (bool handled above) are stored as int64_t.
     template <typename T, std::enable_if_t<std::is_integral_v<T> && !std::is_same_v<T, bool>, int> = 0>
-    InfoEntry(std::string name, T v) : name(std::move(name)) {
-      if constexpr (std::is_signed_v<T>) {
-        val = static_cast<int64_t>(v);
-      } else {
-        val = static_cast<uint64_t>(v);
-      }
+    InfoEntry(std::string name, T v) : name(std::move(name)), val(static_cast<int64_t>(v)) {}
+
+    // Redis-compatible text form: strings verbatim, booleans as 0/1, numbers via std::to_string.
+    std::string ToString() const {
+      return std::visit(
+          [](const auto &v) -> std::string {
+            using T = std::decay_t<decltype(v)>;
+            if constexpr (std::is_same_v<T, std::string>) {
+              return v;
+            } else if constexpr (std::is_same_v<T, bool>) {
+              return v ? "1" : "0";
+            } else {
+              return std::to_string(v);
+            }
+          },
+          val);
     }
   };
   using InfoEntries = std::vector<InfoEntry>;

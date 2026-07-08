@@ -1548,7 +1548,7 @@ std::string Server::GetInfo(const std::string &ns, const std::vector<std::string
   };
 
   std::string info_str;
-  jsoncons::ojson json_obj;
+  jsoncons::json json_obj;
 
   bool all = sections.empty() || util::FindICase(sections.begin(), sections.end(), "all") != sections.end();
 
@@ -1557,17 +1557,17 @@ std::string Server::GetInfo(const std::string &ns, const std::vector<std::string
     if (all || util::FindICase(sections.begin(), sections.end(), sec) != sections.end()) {
       auto entries = fn(this);
       if (format == InfoFormat::Json) {
-        jsoncons::ojson sec_obj;
+        jsoncons::json sec_obj;
         for (const auto &entry : entries) {
           std::visit(
               [&](const auto &v) {
                 using T = std::decay_t<decltype(v)>;
                 if constexpr (std::is_same_v<T, double>) {
-                  // Serialize via the same %f text form used above so the JSON number stays consistent
-                  // with the text output (and free of float-to-double widening noise).
+                  // Serialize via the same %f text form used by ToString so the JSON number stays
+                  // consistent with the text output (and free of float-to-double widening noise).
                   sec_obj[entry.name] = std::stod(std::to_string(v));
                 } else {
-                  // string -> JSON string, int64/uint64 -> JSON number, bool -> JSON true/false.
+                  // string -> JSON string, int64 -> JSON number, bool -> JSON true/false.
                   sec_obj[entry.name] = v;
                 }
               },
@@ -1583,21 +1583,7 @@ std::string Server::GetInfo(const std::string &ns, const std::vector<std::string
         info_str.append("# " + sec + "\r\n");
 
         for (const auto &entry : entries) {
-          // Render the typed value as Redis-compatible text: strings verbatim, booleans as 0/1,
-          // numbers via std::to_string.
-          std::string value = std::visit(
-              [](const auto &v) -> std::string {
-                using T = std::decay_t<decltype(v)>;
-                if constexpr (std::is_same_v<T, std::string>) {
-                  return v;
-                } else if constexpr (std::is_same_v<T, bool>) {
-                  return v ? "1" : "0";
-                } else {
-                  return std::to_string(v);
-                }
-              },
-              entry.val);
-          info_str.append(fmt::format("{}:{}\r\n", entry.name, value));
+          info_str.append(fmt::format("{}:{}\r\n", entry.name, entry.ToString()));
         }
       }
     }

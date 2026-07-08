@@ -284,7 +284,7 @@ class Server {
     InfoEntry(std::string name, T v) : name(std::move(name)), val(static_cast<int64_t>(v)) {}
 
     // Redis-compatible text form: strings verbatim, booleans as 0/1, numbers via std::to_string.
-    std::string ToString() const {
+    std::string ValueToString() const {
       return std::visit(
           [](const auto &v) -> std::string {
             using T = std::decay_t<decltype(v)>;

@@ -1571,7 +1571,7 @@ std::string Server::GetInfo(const std::string &ns, const std::vector<std::string
         info_str.append("# " + sec + "\r\n");
 
         for (const auto &entry : entries) {
-          info_str.append(fmt::format("{}:{}\r\n", entry.name, entry.ToString()));
+          info_str.append(fmt::format("{}:{}\r\n", entry.name, entry.ValueToString()));
         }
       }
     }

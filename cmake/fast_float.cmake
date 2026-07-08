@@ -20,8 +20,8 @@ include_guard()
 include(cmake/utils.cmake)
 
 FetchContent_DeclareGitHubWithMirror(fast_float
-  fastfloat/fast_float v8.2.5
-  MD5=bccfd5f1338be8a02a2ffc553aecce98
+  fastfloat/fast_float v8.2.7
+  MD5=d2bdc4e0af1755f6fe0e58fd8c9d8a3c
 )
 
 FetchContent_MakeAvailableWithArgs(fast_float

@@ -1537,7 +1537,7 @@ Server::InfoEntries Server::GetKeyspaceInfo(const std::string &ns) {
 // DB is closed and the pointer is invalid. Server may crash if we access DB during loading.
 // If you add new fields which access DB into INFO command output, make sure
 // this section can't be shown when loading(i.e. !is_loading_).
-std::string Server::GetInfo(const std::string &ns, const std::vector<std::string> &sections) {
+std::string Server::GetInfo(const std::string &ns, const std::vector<std::string> &sections, InfoFormat format) {
   std::vector<std::pair<std::string, std::function<InfoEntries(Server *)>>> info_funcs = {
       {"Server", &Server::GetServerInfo},   {"Clients", &Server::GetClientsInfo},
       {"Memory", &Server::GetMemoryInfo},   {"Persistence", &Server::GetPersistenceInfo},
@@ -1548,25 +1548,64 @@ std::string Server::GetInfo(const std::string &ns, const std::vector<std::string
   };
 
   std::string info_str;
+  jsoncons::ojson json_obj;
 
   bool all = sections.empty() || util::FindICase(sections.begin(), sections.end(), "all") != sections.end();
 
   bool first = true;
   for (const auto &[sec, fn] : info_funcs) {
     if (all || util::FindICase(sections.begin(), sections.end(), sec) != sections.end()) {
-      if (first)
-        first = false;
-      else
-        info_str.append("\r\n");
+      auto entries = fn(this);
+      if (format == InfoFormat::Json) {
+        jsoncons::ojson sec_obj;
+        for (const auto &entry : entries) {
+          std::visit(
+              [&](const auto &v) {
+                using T = std::decay_t<decltype(v)>;
+                if constexpr (std::is_same_v<T, double>) {
+                  // Serialize via the same %f text form used above so the JSON number stays consistent
+                  // with the text output (and free of float-to-double widening noise).
+                  sec_obj[entry.name] = std::stod(std::to_string(v));
+                } else {
+                  // string -> JSON string, int64/uint64 -> JSON number, bool -> JSON true/false.
+                  sec_obj[entry.name] = v;
+                }
+              },
+              entry.val);
+        }
+        json_obj[sec] = std::move(sec_obj);
+      } else {
+        if (first)
+          first = false;
+        else
+          info_str.append("\r\n");
 
-      info_str.append("# " + sec + "\r\n");
+        info_str.append("# " + sec + "\r\n");
 
-      for (const auto &entry : fn(this)) {
-        info_str.append(fmt::format("{}:{}\r\n", entry.name, entry.val));
+        for (const auto &entry : entries) {
+          // Render the typed value as Redis-compatible text: strings verbatim, booleans as 0/1,
+          // numbers via std::to_string.
+          std::string value = std::visit(
+              [](const auto &v) -> std::string {
+                using T = std::decay_t<decltype(v)>;
+                if constexpr (std::is_same_v<T, std::string>) {
+                  return v;
+                } else if constexpr (std::is_same_v<T, bool>) {
+                  return v ? "1" : "0";
+                } else {
+                  return std::to_string(v);
+                }
+              },
+              entry.val);
+          info_str.append(fmt::format("{}:{}\r\n", entry.name, value));
+        }
       }
     }
   }
 
+  if (format == InfoFormat::Json) {
+    return json_obj.to_string();
+  }
   return info_str;
 }
 

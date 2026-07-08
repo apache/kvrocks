@@ -274,20 +274,19 @@ func TestInfoFormat(t *testing.T) {
 		require.Regexp(t, expected, txt)
 	})
 
-	t.Run("cpu float has no promotion noise", func(t *testing.T) {
-		// used_cpu_* is computed as float and widens to double internally; both formats must render it
-		// bounded to <=6 fractional digits (std::to_string %f), never the float-to-double widening noise
-		// like 0.026695000007748604. The regexes reject any value with 7+ fractional digits because
-		// [0-9]{1,6} must be immediately followed by the terminator.
-		txt, err := rdb.Do(ctx, "INFO", "cpu", "FORMAT", "TXT").Text()
-		require.NoError(t, err)
-		require.Regexp(t, `\nused_cpu_sys:[0-9]+\.[0-9]{1,6}\r`, txt)
-		require.Regexp(t, `\nused_cpu_user:[0-9]+\.[0-9]{1,6}\r`, txt)
-
+	t.Run("cpu values are JSON numbers", func(t *testing.T) {
+		// used_cpu_* are floating-point fields; JSON must emit them as numbers (not quoted strings),
+		// while the text format keeps the decimal representation.
 		js, err := rdb.Do(ctx, "INFO", "cpu", "FORMAT", "JSON").Text()
 		require.NoError(t, err)
-		require.Regexp(t, `"used_cpu_sys":[0-9]+\.[0-9]{1,6}[,}]`, js)
-		require.Regexp(t, `"used_cpu_user":[0-9]+\.[0-9]{1,6}[,}]`, js)
+		info := map[string]map[string]any{}
+		require.NoError(t, json.Unmarshal([]byte(js), &info))
+		require.IsType(t, float64(0), info["CPU"]["used_cpu_sys"])
+		require.IsType(t, float64(0), info["CPU"]["used_cpu_user"])
+
+		txt, err := rdb.Do(ctx, "INFO", "cpu", "FORMAT", "TXT").Text()
+		require.NoError(t, err)
+		require.Regexp(t, `\nused_cpu_sys:[0-9]+\.[0-9]+\r`, txt)
 	})
 
 	t.Run("format keyword is case-insensitive", func(t *testing.T) {

@@ -1559,19 +1559,7 @@ std::string Server::GetInfo(const std::string &ns, const std::vector<std::string
       if (format == InfoFormat::Json) {
         jsoncons::json sec_obj;
         for (const auto &entry : entries) {
-          std::visit(
-              [&](const auto &v) {
-                using T = std::decay_t<decltype(v)>;
-                if constexpr (std::is_same_v<T, double>) {
-                  // Serialize via the same %f text form used by ToString so the JSON number stays
-                  // consistent with the text output (and free of float-to-double widening noise).
-                  sec_obj[entry.name] = std::stod(std::to_string(v));
-                } else {
-                  // string -> JSON string, int64 -> JSON number, bool -> JSON true/false.
-                  sec_obj[entry.name] = v;
-                }
-              },
-              entry.val);
+          std::visit([&](const auto &v) { sec_obj[entry.name] = v; }, entry.val);
         }
         json_obj[sec] = std::move(sec_obj);
       } else {

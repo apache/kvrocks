@@ -271,15 +271,36 @@ class CommandConfig : public Commander {
 
 class CommandInfo : public Commander {
  public:
-  Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
-    std::vector<std::string> sections;
-    for (size_t i = 1; i < args_.size(); ++i) {
-      sections.push_back(args_[i]);
+  Status Parse(const std::vector<std::string> &args) override {
+    for (size_t i = 1; i < args.size(); ++i) {
+      if (util::EqualICase(args[i], "format")) {
+        if (i + 1 >= args.size()) {
+          return {Status::RedisParseErr, errInvalidSyntax};
+        }
+        const auto &fmt = args[++i];
+        if (util::EqualICase(fmt, "json")) {
+          format_ = Server::InfoFormat::Json;
+        } else if (util::EqualICase(fmt, "txt")) {
+          format_ = Server::InfoFormat::Text;
+        } else {
+          return {Status::RedisParseErr, errInvalidSyntax};
+        }
+      } else {
+        sections_.push_back(args[i]);
+      }
     }
-    auto info = srv->GetInfo(conn->GetNamespace(), sections);
+    return Status::OK();
+  }
+
+  Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    auto info = srv->GetInfo(conn->GetNamespace(), sections_, format_);
     *output = conn->VerbatimString("txt", info);
     return Status::OK();
   }
+
+ private:
+  std::vector<std::string> sections_;
+  Server::InfoFormat format_ = Server::InfoFormat::Text;
 };
 
 class CommandDisk : public Commander {

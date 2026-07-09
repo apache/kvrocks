@@ -1537,7 +1537,7 @@ Server::InfoEntries Server::GetKeyspaceInfo(const std::string &ns) {
 // DB is closed and the pointer is invalid. Server may crash if we access DB during loading.
 // If you add new fields which access DB into INFO command output, make sure
 // this section can't be shown when loading(i.e. !is_loading_).
-std::string Server::GetInfo(const std::string &ns, const std::vector<std::string> &sections) {
+std::string Server::GetInfo(const std::string &ns, const std::vector<std::string> &sections, InfoFormat format) {
   std::vector<std::pair<std::string, std::function<InfoEntries(Server *)>>> info_funcs = {
       {"Server", &Server::GetServerInfo},   {"Clients", &Server::GetClientsInfo},
       {"Memory", &Server::GetMemoryInfo},   {"Persistence", &Server::GetPersistenceInfo},
@@ -1548,25 +1548,38 @@ std::string Server::GetInfo(const std::string &ns, const std::vector<std::string
   };
 
   std::string info_str;
+  jsoncons::json json_obj;
 
   bool all = sections.empty() || util::FindICase(sections.begin(), sections.end(), "all") != sections.end();
 
   bool first = true;
   for (const auto &[sec, fn] : info_funcs) {
     if (all || util::FindICase(sections.begin(), sections.end(), sec) != sections.end()) {
-      if (first)
-        first = false;
-      else
-        info_str.append("\r\n");
+      auto entries = fn(this);
+      if (format == InfoFormat::Json) {
+        jsoncons::json sec_obj;
+        for (const auto &entry : entries) {
+          std::visit([&](const auto &v) { sec_obj[entry.name] = v; }, entry.val);
+        }
+        json_obj[sec] = std::move(sec_obj);
+      } else {
+        if (first)
+          first = false;
+        else
+          info_str.append("\r\n");
 
-      info_str.append("# " + sec + "\r\n");
+        info_str.append("# " + sec + "\r\n");
 
-      for (const auto &entry : fn(this)) {
-        info_str.append(fmt::format("{}:{}\r\n", entry.name, entry.val));
+        for (const auto &entry : entries) {
+          info_str.append(fmt::format("{}:{}\r\n", entry.name, entry.ValueToString()));
+        }
       }
     }
   }
 
+  if (format == InfoFormat::Json) {
+    return json_obj.to_string();
+  }
   return info_str;
 }
 

@@ -496,8 +496,18 @@ Status Worker::Reply(int fd, const std::string &reply) {
   std::unique_lock<std::mutex> lock(conns_mu_);
   auto iter = conns_.find(fd);
   if (iter != conns_.end()) {
+    if (iter->second->IsFlagEnabled(redis::Connection::kCloseAsync)) {
+      return {Status::NotOK, "connection is closing"};
+    }
     iter->second->SetLastInteraction();
     redis::Reply(iter->second->Output(), reply);
+    if (iter->second->IsExceedOutputBufferLimit()) {
+      WARN("[worker] Client {} (id={}) scheduled to be closed ASAP for overcoming of output buffer limits, obuf: {}",
+           iter->second->GetAddr(), iter->second->GetID(), evbuffer_get_length(iter->second->Output()));
+      srv->stats.IncrClientOutputBufferLimitDisconnections();
+      iter->second->Close(true /* is_async */);
+      return {Status::NotOK, "client output buffer limit reached"};
+    }
     return Status::OK();
   }
 

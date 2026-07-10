@@ -466,11 +466,18 @@ Status Connection::ExecuteCommand(engine::Context &ctx, const std::string &cmd_n
 
   auto start = std::chrono::high_resolution_clock::now();
   bool is_profiling = IsProfilingEnabled(cmd_name);
-  current_cmd->BeginKeyspaceEventCollection(GetNamespace(), srv_->GetConfig()->notify_keyspace_events);
+  const int notify_flags = srv_->GetConfig()->notify_keyspace_events;
+  const bool collect_keyspace_events =
+      (notify_flags & kNotifyAll) != 0 && (notify_flags & (kNotifyKeyspace | kNotifyKeyevent)) != 0;
+  if (collect_keyspace_events) {
+    current_cmd->BeginKeyspaceEventCollection(GetNamespace(), notify_flags);
+  }
   auto s = current_cmd->Execute(ctx, srv_, this, reply);
-  auto events = current_cmd->TakeKeyspaceEvents();
-  if (s.IsOK()) {
-    QueueOrPublishKeyspaceEvents(std::move(events));
+  if (collect_keyspace_events) {
+    auto events = current_cmd->TakeKeyspaceEvents();
+    if (s.IsOK()) {
+      QueueOrPublishKeyspaceEvents(std::move(events));
+    }
   }
   auto end = std::chrono::high_resolution_clock::now();
   uint64_t duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();

@@ -140,6 +140,8 @@ class Commander {
     keyspace_event_collector_.Begin(std::move(ns), notify_flags);
   }
 
+  bool IsKeyspaceEventEnabled(int type_flag) const { return keyspace_event_collector_.IsEnabled(type_flag); }
+
   std::vector<KeyspaceEvent> TakeKeyspaceEvents() { return keyspace_event_collector_.Take(); }
 
   virtual ~Commander() = default;

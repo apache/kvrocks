@@ -52,6 +52,14 @@ Status RdbFileStream::Open() {
     return {Status::NotOK, fmt::format("failed to open rdb file: '{}': {}", file_name_, strerror(errno))};
   }
 
+  ifs_.seekg(0, std::ifstream::end);
+  auto file_size = ifs_.tellg();
+  if (file_size < 0) {
+    return {Status::NotOK, fmt::format("failed to get the size of rdb file: '{}': {}", file_name_, strerror(errno))};
+  }
+  ifs_.seekg(0, std::ifstream::beg);
+  file_size_ = static_cast<uint64_t>(file_size);
+
   return Status::OK();
 }
 

@@ -292,58 +292,10 @@ rocksdb::Status CuckooChain::commitSubFilterAndMetadata(engine::Context &ctx, co
 }
 
 rocksdb::Status CuckooChain::Exists(engine::Context &ctx, const Slice &user_key, const Slice &item, bool *exists) {
-  std::string ns_key = AppendNamespacePrefix(user_key);
-
-  CuckooChainMetadata metadata(false);
-  auto s = getCuckooChainMetadata(ctx, ns_key, &metadata);
+  std::vector<bool> result;
+  auto s = MExists(ctx, user_key, std::vector<std::string>{item.ToString()}, &result);
   if (!s.ok()) return s;
-
-  s = validateMetadata(metadata);
-  if (!s.ok()) return s;
-
-  uint64_t hash = CuckooFilter::Hash(item.data(), item.size());
-  uint8_t fingerprint = CuckooFilter::GenerateFingerprint(hash);
-
-  for (uint16_t filter_idx = 0; filter_idx < metadata.n_filters; ++filter_idx) {
-    uint64_t filter_capacity = 0;
-    if (!CalculateFilterCapacity(metadata.base_capacity, metadata.expansion, filter_idx, &filter_capacity) ||
-        !CuckooFilter::IsCapacitySupported(filter_capacity, metadata.bucket_size)) {
-      return rocksdb::Status::Corruption("invalid metadata: filter capacity is too large");
-    }
-    uint32_t num_buckets = 0;
-    s = CuckooFilter::OptimalNumBuckets(filter_capacity, metadata.bucket_size, &num_buckets);
-    if (!s.ok()) return s;
-
-    uint32_t bucket1_idx = hash % num_buckets;
-    uint64_t alt_hash = CuckooFilter::GetAltHash(fingerprint, hash);
-    uint32_t bucket2_idx = alt_hash % num_buckets;
-
-    CuckooPageSet pages(storage_, ctx, ns_key, metadata, storage_->IsSlotIdEncoded());
-
-    uint8_t slot = 0;
-    s = pages.GetBucketSlot(filter_idx, num_buckets, bucket1_idx, 0, &slot);
-    if (!s.ok()) return s;
-    for (size_t i = 0; i < metadata.bucket_size; ++i) {
-      s = pages.GetBucketSlot(filter_idx, num_buckets, bucket1_idx, static_cast<uint32_t>(i), &slot);
-      if (!s.ok()) return s;
-      if (slot == fingerprint) {
-        *exists = true;
-        return rocksdb::Status::OK();
-      }
-    }
-
-    if (bucket1_idx == bucket2_idx) continue;
-    for (size_t i = 0; i < metadata.bucket_size; ++i) {
-      s = pages.GetBucketSlot(filter_idx, num_buckets, bucket2_idx, static_cast<uint32_t>(i), &slot);
-      if (!s.ok()) return s;
-      if (slot == fingerprint) {
-        *exists = true;
-        return rocksdb::Status::OK();
-      }
-    }
-  }
-
-  *exists = false;
+  *exists = result[0];
   return rocksdb::Status::OK();
 }
 
@@ -354,6 +306,7 @@ rocksdb::Status CuckooChain::MExists(engine::Context &ctx, const Slice &user_key
 
   CuckooChainMetadata metadata(false);
   auto s = getCuckooChainMetadata(ctx, ns_key, &metadata);
+  if (s.IsNotFound()) return rocksdb::Status::OK();
   if (!s.ok()) return s;
 
   s = validateMetadata(metadata);
@@ -362,49 +315,27 @@ rocksdb::Status CuckooChain::MExists(engine::Context &ctx, const Slice &user_key
   std::vector<uint64_t> hashes(items.size());
   std::vector<uint8_t> fingerprints(items.size());
   for (size_t i = 0; i < items.size(); ++i) {
-    hashes[i] = CuckooFilter::Hash(items[i].data(), items[i].size());
-    fingerprints[i] = CuckooFilter::GenerateFingerprint(hashes[i]);
+    hashes[i] = CuckooFilterHelper::Hash(items[i].data(), items[i].size());
+    fingerprints[i] = CuckooFilterHelper::GenerateFingerprint(hashes[i]);
     CHECK(fingerprints[i] != 0);
   }
 
-  for (uint16_t filter_idx = 0; filter_idx < metadata.n_filters; ++filter_idx) {
-    uint64_t filter_capacity = 0;
-    if (!CalculateFilterCapacity(metadata.base_capacity, metadata.expansion, filter_idx, &filter_capacity) ||
-        !CuckooFilter::IsCapacitySupported(filter_capacity, metadata.bucket_size)) {
-      return rocksdb::Status::Corruption("invalid metadata: filter capacity is too large");
-    }
+  for (int filter_idx = static_cast<int>(metadata.n_filters) - 1; filter_idx >= 0; --filter_idx) {
+    auto current_filter_idx = static_cast<uint16_t>(filter_idx);
     uint32_t num_buckets = 0;
-    s = CuckooFilter::OptimalNumBuckets(filter_capacity, metadata.bucket_size, &num_buckets);
+    s = CuckooFilterHelper::GetFilterNumBuckets(metadata.base_capacity, metadata.expansion, metadata.bucket_size,
+                                                current_filter_idx, &num_buckets);
     if (!s.ok()) return s;
 
-    CuckooPageSet pages(storage_, ctx, ns_key, metadata, storage_->IsSlotIdEncoded());
-
+    CuckooSubFilter sub_filter(storage_, ctx, ns_key, storage_->IsSlotIdEncoded(), metadata.version,
+                               metadata.bucket_size, metadata.page_size, current_filter_idx, num_buckets);
     for (size_t i = 0; i < items.size(); ++i) {
-      if ((*exists)[i] || fingerprints[i] == 0) continue;
+      if ((*exists)[i]) continue;
 
-      uint32_t bucket1_idx = hashes[i] % num_buckets;
-      uint64_t alt_hash = CuckooFilter::GetAltHash(fingerprints[i], hashes[i]);
-      uint32_t bucket2_idx = alt_hash % num_buckets;
-
-      uint8_t slot = 0;
-      for (size_t slot_idx = 0; slot_idx < metadata.bucket_size; ++slot_idx) {
-        s = pages.GetBucketSlot(filter_idx, num_buckets, bucket1_idx, static_cast<uint32_t>(slot_idx), &slot);
-        if (!s.ok()) return s;
-        if (slot == fingerprints[i]) {
-          (*exists)[i] = true;
-          break;
-        }
-      }
-
-      if ((*exists)[i] || bucket1_idx == bucket2_idx) continue;
-      for (size_t slot_idx = 0; slot_idx < metadata.bucket_size; ++slot_idx) {
-        s = pages.GetBucketSlot(filter_idx, num_buckets, bucket2_idx, static_cast<uint32_t>(slot_idx), &slot);
-        if (!s.ok()) return s;
-        if (slot == fingerprints[i]) {
-          (*exists)[i] = true;
-          break;
-        }
-      }
+      bool item_exists = false;
+      s = sub_filter.Contains(hashes[i], fingerprints[i], &item_exists);
+      if (!s.ok()) return s;
+      if (item_exists) (*exists)[i] = true;
     }
   }
 

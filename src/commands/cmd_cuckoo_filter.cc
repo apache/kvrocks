@@ -136,7 +136,7 @@ class CommandCFExists : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     // CF.EXISTS key item
     if (args.size() != 3) {
-      return {Status::RedisParseErr, "wrong number of arguments"};
+      return {Status::RedisParseErr, errWrongNumOfArguments};
     }
     return Commander::Parse(args);
   }
@@ -147,12 +147,7 @@ class CommandCFExists : public Commander {
     auto s = cuckoo_db.Exists(ctx, args_[1], args_[2], &exists);
 
     if (!s.ok()) {
-      if (s.IsNotFound()) {
-        // Return 0 if key doesn't exist, not an error
-        *output = redis::Integer(0);
-        return Status::OK();
-      }
-      return {Status::RedisExecErr, "failed to check item existence in cuckoo filter"};
+      return {Status::RedisExecErr, s.ToString()};
     }
 
     // Return 1 if exists (might exist), 0 if doesn't exist (definitely not)
@@ -166,31 +161,33 @@ class CommandCFMExists : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     // CF.MEXISTS key item [item ...]
     if (args.size() < 3) {
-      return {Status::RedisParseErr, "wrong number of arguments"};
+      return {Status::RedisParseErr, errWrongNumOfArguments};
+    }
+    items_.reserve(args.size() - 2);
+    for (size_t i = 2; i < args.size(); ++i) {
+      items_.emplace_back(args[i]);
     }
     return Commander::Parse(args);
   }
 
   Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
     redis::CuckooChain cuckoo_db(srv->storage, conn->GetNamespace());
-    std::vector<std::string> items(args_.begin() + 2, args_.end());
-    std::vector<bool> exists;
-    auto s = cuckoo_db.MExists(ctx, args_[1], items, &exists);
+    std::vector<bool> exists(items_.size(), false);
+    auto s = cuckoo_db.MExists(ctx, args_[1], items_, &exists);
 
     if (!s.ok()) {
-      if (s.IsNotFound()) {
-        exists.assign(items.size(), false);
-      } else {
-        return {Status::RedisExecErr, "failed to check items existence in cuckoo filter"};
-      }
+      return {Status::RedisExecErr, s.ToString()};
     }
 
-    *output = redis::MultiLen(exists.size());
+    *output = redis::MultiLen(items_.size());
     for (bool exist : exists) {
-      output->append(redis::Integer(exist ? 1 : 0));
+      *output += redis::Integer(exist ? 1 : 0);
     }
     return Status::OK();
   }
+
+ private:
+  std::vector<std::string> items_;
 };
 
 // Register the CF.RESERVE, CF.ADD, CF.EXISTS, and CF.MEXISTS commands

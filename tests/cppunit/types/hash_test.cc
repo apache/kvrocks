@@ -1867,8 +1867,7 @@ TEST_F(RedisHashFieldExpirationEncodingTest, SetFieldsWithExpireRetainsConservat
   metadata.expire = key_expire;
   s = putHashMetadata(key, metadata);
   ASSERT_TRUE(s.ok()) << s.ToString();
-  const uint64_t version = metadata.version;
-  const uint8_t flags = metadata.flags;
+  const HashMetadata original_metadata = hashMetadata(key);
 
   bool applied = false;
   auto options = setExOptions(HashSetExOptions::TTLAction::kDiscard);
@@ -1880,15 +1879,15 @@ TEST_F(RedisHashFieldExpirationEncodingTest, SetFieldsWithExpireRetainsConservat
   EXPECT_EQ(metadata.persist, 1);
   EXPECT_EQ(metadata.lower, short_expire);
   EXPECT_EQ(metadata.upper, long_expire);
-  EXPECT_EQ(metadata.expire, key_expire);
-  EXPECT_EQ(metadata.version, version);
-  EXPECT_EQ(metadata.flags, flags);
+  EXPECT_EQ(metadata.expire, original_metadata.expire);
+  EXPECT_EQ(metadata.version, original_metadata.version);
+  EXPECT_EQ(metadata.flags, original_metadata.flags);
   EXPECT_EQ(decodedHashValue(key, "new"), (std::pair<std::string, uint64_t>{"value", 0}));
 }
 
 TEST_F(RedisHashFieldExpirationEncodingTest, SetFieldsWithExpireRecreatesExpiredKeyOrLeavesFXXMissing) {
   const uint64_t now = util::GetTimeStampMS();
-  const uint64_t key_expired_at = now - 1;
+  const uint64_t key_expired_at = now - 1'000;
 
   {
     const std::string key = "hsetex-recreate-expired-key";

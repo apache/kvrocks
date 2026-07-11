@@ -123,12 +123,26 @@ Status ConvertHashFieldExpireAtMs(int64_t expire_arg, HashFieldExpireTimeMode ti
   return Status::OK();
 }
 
-std::optional<HashFieldExpireTimeMode> ParseHashFieldExpireTimeMode(std::string_view token) {
-  if (util::EqualICase(token, "EX")) return HashFieldExpireTimeMode::kRelativeSeconds;
-  if (util::EqualICase(token, "PX")) return HashFieldExpireTimeMode::kRelativeMilliseconds;
-  if (util::EqualICase(token, "EXAT")) return HashFieldExpireTimeMode::kAbsoluteSeconds;
-  if (util::EqualICase(token, "PXAT")) return HashFieldExpireTimeMode::kAbsoluteMilliseconds;
+template <typename Parser>
+std::optional<HashFieldExpireTimeMode> ParseHashFieldExpireTimeMode(Parser &parser) {
+  if (parser.EatEqICase("EX")) return HashFieldExpireTimeMode::kRelativeSeconds;
+  if (parser.EatEqICase("PX")) return HashFieldExpireTimeMode::kRelativeMilliseconds;
+  if (parser.EatEqICase("EXAT")) return HashFieldExpireTimeMode::kAbsoluteSeconds;
+  if (parser.EatEqICase("PXAT")) return HashFieldExpireTimeMode::kAbsoluteMilliseconds;
   return std::nullopt;
+}
+
+template <typename Parser>
+Status TakeHashFieldExpireArgument(Parser &parser, int64_t *expire_arg) {
+  auto parsed = parser.template TakeInt<int64_t>(10);
+  if (!parsed) {
+    return {Status::RedisParseErr, errValueNotInteger};
+  }
+  if (*parsed < 0) {
+    return {Status::RedisParseErr, "invalid expire time, must be >= 0"};
+  }
+  *expire_arg = *parsed;
+  return Status::OK();
 }
 
 Status ConvertHashFieldExpireAtMsForCommand(int64_t expire_arg, HashFieldExpireTimeMode time_mode, uint64_t now_ms,
@@ -143,103 +157,113 @@ Status ConvertHashFieldExpireAtMsForCommand(int64_t expire_arg, HashFieldExpireT
   return {Status::RedisParseErr, "invalid expire time"};
 }
 
+template <bool IsHSetEx, typename Parser>
+Status ParseHashFieldExpireFieldsBlock(Parser &parser, HashFieldExpireCommandArgs *parsed) {
+  if (!parser.Good()) {
+    return {Status::RedisParseErr, errWrongNumOfArguments};
+  }
+
+  auto count = parser.template TakeInt<int64_t>(10);
+  if (!count || *count < 1 || *count > std::numeric_limits<int>::max()) {
+    return {Status::RedisParseErr, "invalid number of fields"};
+  }
+
+  constexpr size_t args_per_field = IsHSetEx ? 2 : 1;
+  auto field_count = static_cast<size_t>(*count);
+  if (field_count > parser.Remains() / args_per_field) {
+    return {Status::RedisParseErr, errWrongNumOfArguments};
+  }
+
+  if constexpr (IsHSetEx) {
+    parsed->field_values.reserve(field_count);
+    for (size_t i = 0; i < field_count; ++i) {
+      auto field = GET_OR_RET(parser.TakeStr());
+      auto value = GET_OR_RET(parser.TakeStr());
+      parsed->field_values.emplace_back(std::move(field), std::move(value));
+    }
+  } else {
+    parsed->fields.reserve(field_count);
+    for (size_t i = 0; i < field_count; ++i) {
+      parsed->fields.emplace_back(GET_OR_RET(parser.TakeStr()));
+    }
+  }
+
+  return Status::OK();
+}
+
+template <bool IsHSetEx>
+Status HashFieldExpireTTLConflict() {
+  auto option = IsHSetEx ? "KEEPTTL" : "PERSIST";
+  return {Status::RedisParseErr,
+          "Only one of EX, PX, EXAT, PXAT or " + std::string(option) + " arguments can be specified"};
+}
+
 template <bool IsHSetEx>
 Status ParseHashFieldExpireCommandArgs(const std::vector<std::string> &args, uint64_t now_ms,
                                        HashFieldExpireCommandArgs *result) {
+  CommandParser parser(args, 2);
   HashFieldExpireCommandArgs parsed;
   bool fields_seen = false;
-  bool expiration_seen = false;
-  constexpr size_t args_per_field = IsHSetEx ? 2 : 1;
 
-  for (size_t i = 2; i < args.size();) {
-    if (util::EqualICase(args[i], "FIELDS")) {
+  while (parser.Good()) {
+    if (parser.EatEqICase("FIELDS")) {
       if (fields_seen) {
         return {Status::RedisParseErr, "FIELDS keyword specified multiple times"};
       }
       fields_seen = true;
-      if (i + 1 >= args.size()) {
-        return {Status::RedisParseErr, errWrongNumOfArguments};
-      }
-
-      auto count = ParseInt<int64_t>(args[i + 1], 10);
-      if (!count || *count < 1 || *count > std::numeric_limits<int>::max()) {
-        return {Status::RedisParseErr, "invalid number of fields"};
-      }
-
-      size_t first_field = i + 2;
-      auto field_count = static_cast<size_t>(*count);
-      if (field_count > (args.size() - first_field) / args_per_field) {
-        return {Status::RedisParseErr, errWrongNumOfArguments};
-      }
-
-      if constexpr (IsHSetEx) {
-        parsed.field_values.reserve(field_count);
-        for (size_t j = 0; j < field_count; ++j) {
-          parsed.field_values.emplace_back(args[first_field + j * 2], args[first_field + j * 2 + 1]);
-        }
-      } else {
-        parsed.fields.reserve(field_count);
-        for (size_t j = 0; j < field_count; ++j) {
-          parsed.fields.emplace_back(args[first_field + j]);
-        }
-      }
-      i = first_field + field_count * args_per_field;
+      GET_OR_RET(ParseHashFieldExpireFieldsBlock<IsHSetEx>(parser, &parsed));
       continue;
     }
 
-    auto time_mode = ParseHashFieldExpireTimeMode(args[i]);
+    auto time_mode = ParseHashFieldExpireTimeMode(parser);
     if (time_mode) {
-      if (expiration_seen) {
-        auto option = IsHSetEx ? "KEEPTTL" : "PERSIST";
-        return {Status::RedisParseErr,
-                "Only one of EX, PX, EXAT, PXAT or " + std::string(option) + " arguments can be specified"};
+      if (parsed.ttl_action != HashFieldExpireCommandTTLAction::kNone) {
+        return HashFieldExpireTTLConflict<IsHSetEx>();
       }
-      if (i + 1 >= args.size()) {
+      if (!parser.Good()) {
         return {Status::RedisParseErr, "missing expire time"};
       }
 
-      expiration_seen = true;
       int64_t expire_arg = 0;
-      GET_OR_RET(ParseHashFieldExpireArgument(args[i + 1], &expire_arg));
+      GET_OR_RET(TakeHashFieldExpireArgument(parser, &expire_arg));
       GET_OR_RET(ConvertHashFieldExpireAtMsForCommand(expire_arg, *time_mode, now_ms, &parsed.expire_at_ms));
       parsed.ttl_action = HashFieldExpireCommandTTLAction::kSet;
-      i += 2;
       continue;
     }
 
     if constexpr (IsHSetEx) {
-      if (util::EqualICase(args[i], "KEEPTTL")) {
-        if (expiration_seen) {
-          return {Status::RedisParseErr, "Only one of EX, PX, EXAT, PXAT or KEEPTTL arguments can be specified"};
+      if (parser.EatEqICase("KEEPTTL")) {
+        if (parsed.ttl_action != HashFieldExpireCommandTTLAction::kNone) {
+          return HashFieldExpireTTLConflict<true>();
         }
-        expiration_seen = true;
         parsed.ttl_action = HashFieldExpireCommandTTLAction::kKeep;
-        ++i;
         continue;
       }
 
-      if (util::EqualICase(args[i], "FXX") || util::EqualICase(args[i], "FNX")) {
+      HashFieldSetCommandCondition condition = HashFieldSetCommandCondition::kNone;
+      if (parser.EatEqICase("FXX")) {
+        condition = HashFieldSetCommandCondition::kFXX;
+      } else if (parser.EatEqICase("FNX")) {
+        condition = HashFieldSetCommandCondition::kFNX;
+      }
+      if (condition != HashFieldSetCommandCondition::kNone) {
         if (parsed.condition != HashFieldSetCommandCondition::kNone) {
           return {Status::RedisParseErr, "Only one of FXX or FNX arguments can be specified"};
         }
-        parsed.condition =
-            util::EqualICase(args[i], "FXX") ? HashFieldSetCommandCondition::kFXX : HashFieldSetCommandCondition::kFNX;
-        ++i;
+        parsed.condition = condition;
         continue;
       }
     } else {
-      if (util::EqualICase(args[i], "PERSIST")) {
-        if (expiration_seen) {
-          return {Status::RedisParseErr, "Only one of EX, PX, EXAT, PXAT or PERSIST arguments can be specified"};
+      if (parser.EatEqICase("PERSIST")) {
+        if (parsed.ttl_action != HashFieldExpireCommandTTLAction::kNone) {
+          return HashFieldExpireTTLConflict<false>();
         }
-        expiration_seen = true;
         parsed.ttl_action = HashFieldExpireCommandTTLAction::kPersist;
-        ++i;
         continue;
       }
     }
 
-    return {Status::RedisParseErr, "unknown argument: " + args[i]};
+    return {Status::RedisParseErr, "unknown argument: " + parser.RawPeek()};
   }
 
   if (!fields_seen) {

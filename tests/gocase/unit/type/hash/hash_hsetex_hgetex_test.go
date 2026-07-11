@@ -336,13 +336,25 @@ func TestHashFieldExpirationHSetExHGetExParserCompatibility(t *testing.T) {
 			{name: "hgetex fields integer overflow", args: []interface{}{"hgetex", key, "FIELDS", "9223372036854775808", "a"}, errContains: "invalid number of fields"},
 			{name: "hsetex short block", args: []interface{}{"hsetex", key, "FIELDS", 2, "a", "x"}, errContains: "wrong number of arguments"},
 			{name: "hgetex short block", args: []interface{}{"hgetex", key, "FIELDS", 2, "a"}, errContains: "wrong number of arguments"},
+			{name: "hsetex int max short block", args: []interface{}{"hsetex", key, "FIELDS", 2147483647, "a", "x"}, errContains: "wrong number of arguments"},
+			{name: "hgetex int max short block", args: []interface{}{"hgetex", key, "FIELDS", 2147483647, "a"}, errContains: "wrong number of arguments"},
+			{name: "hsetex fields above int max", args: []interface{}{"hsetex", key, "FIELDS", "2147483648", "a", "x"}, errContains: "invalid number of fields"},
+			{name: "hgetex fields above int max", args: []interface{}{"hgetex", key, "FIELDS", "2147483648", "a"}, errContains: "invalid number of fields"},
 			{name: "hsetex missing field count", args: []interface{}{"hsetex", key, "FNX", "EX", 10, "FIELDS"}, exactError: "ERR wrong number of arguments"},
 			{name: "hgetex missing field count", args: []interface{}{"hgetex", key, "EX", 10, "FIELDS"}, exactError: "ERR wrong number of arguments"},
+			{name: "hsetex duplicate fields before missing count", args: []interface{}{"hsetex", key, "FIELDS", 1, "a", "x", "FIELDS"}, errContains: "FIELDS keyword specified multiple times"},
+			{name: "hgetex duplicate fields before missing count", args: []interface{}{"hgetex", key, "FIELDS", 1, "a", "FIELDS"}, errContains: "FIELDS keyword specified multiple times"},
 			{name: "hsetex unknown trailing token", args: []interface{}{"hsetex", key, "FIELDS", 1, "a", "x", "unknown"}, errContains: "unknown argument: unknown"},
 			{name: "hgetex unknown trailing token", args: []interface{}{"hgetex", key, "FIELDS", 1, "a", "unknown"}, errContains: "unknown argument: unknown"},
 			{name: "hsetex condition conflict", args: []interface{}{"hsetex", key, "FXX", "FNX", "FIELDS", 1, "a", "x"}, errContains: "Only one of FXX or FNX"},
+			{name: "hsetex repeated fxx", args: []interface{}{"hsetex", key, "FXX", "FXX", "FIELDS", 1, "a", "x"}, errContains: "Only one of FXX or FNX"},
+			{name: "hsetex repeated fnx", args: []interface{}{"hsetex", key, "FNX", "FNX", "FIELDS", 1, "missing", "x"}, errContains: "Only one of FXX or FNX"},
 			{name: "hsetex expiration conflict", args: []interface{}{"hsetex", key, "EX", 10, "KEEPTTL", "FIELDS", 1, "a", "x"}, errContains: "Only one of EX, PX, EXAT, PXAT or KEEPTTL"},
+			{name: "hsetex repeated expiration", args: []interface{}{"hsetex", key, "EX", 10, "EX", 20, "FIELDS", 1, "a", "x"}, errContains: "Only one of EX, PX, EXAT, PXAT or KEEPTTL"},
+			{name: "hsetex repeated keepttl", args: []interface{}{"hsetex", key, "KEEPTTL", "KEEPTTL", "FIELDS", 1, "a", "x"}, errContains: "Only one of EX, PX, EXAT, PXAT or KEEPTTL"},
 			{name: "hgetex expiration conflict", args: []interface{}{"hgetex", key, "PERSIST", "PX", 10, "FIELDS", 1, "a"}, errContains: "Only one of EX, PX, EXAT, PXAT or PERSIST"},
+			{name: "hgetex repeated expiration", args: []interface{}{"hgetex", key, "PX", 10, "PX", 20, "FIELDS", 1, "a"}, errContains: "Only one of EX, PX, EXAT, PXAT or PERSIST"},
+			{name: "hgetex repeated persist", args: []interface{}{"hgetex", key, "PERSIST", "PERSIST", "FIELDS", 1, "a"}, errContains: "Only one of EX, PX, EXAT, PXAT or PERSIST"},
 			{name: "hsetex missing fields", args: []interface{}{"hsetex", key, "EX", 10, "UNKNOWN", "x"}, errContains: "unknown argument: UNKNOWN"},
 			{name: "hgetex missing fields", args: []interface{}{"hgetex", key, "EX", 10, "UNKNOWN"}, errContains: "unknown argument: UNKNOWN"},
 			{name: "hsetex missing expire", args: []interface{}{"hsetex", key, "FIELDS", 1, "a", "x", "EX"}, errContains: "missing expire time"},
@@ -376,7 +388,14 @@ func TestHashFieldExpirationHSetExHGetExParserCompatibility(t *testing.T) {
 		}
 
 		t.Run("flexible ordering and option-like data", func(t *testing.T) {
-			requireIntegerReply(t, rdb, ctx, 1, "hsetex", key, "FXX", "FIELDS", 1, "a", "3", "KEEPTTL")
+			expireAt := time.Now().Add(10 * time.Minute).UnixMilli()
+			requireIntegerReply(t, rdb, ctx, 1, "hsetex", key, "PXAT", expireAt, "FIELDS", 1, "a", "3")
+			requireIntegerReply(t, rdb, ctx, 1, "hsetex", key, "FIELDS", 1, "a", "5", "FXX", "KEEPTTL")
+			requireIntArray(t, rdb.Do(ctx, "hpexpiretime", key, "FIELDS", 1, "a").Val(), []int64{expireAt})
+
+			requireIntegerReply(t, rdb, ctx, 0, "hsetex", key, "FIELDS", 1, "missing-after-fields", "x", "FXX")
+			require.False(t, rdb.HExists(ctx, key, "missing-after-fields").Val())
+
 			requireIntegerReply(t, rdb, ctx, 1, "hsetex", key, "FIELDS", 2, "EX", "60", "FIELDS", "value")
 			require.Equal(t, "60", rdb.HGet(ctx, key, "EX").Val())
 			require.Equal(t, "value", rdb.HGet(ctx, key, "FIELDS").Val())
@@ -384,13 +403,28 @@ func TestHashFieldExpirationHSetExHGetExParserCompatibility(t *testing.T) {
 			got, err := rdb.Do(ctx, "hgetex", key, "FIELDS", 2, "EX", "FIELDS", "PERSIST").Result()
 			require.NoError(t, err)
 			requireOptionalStringArray(t, got, "60", "value")
+
+			expireAt = time.Now().Add(20 * time.Minute).UnixMilli()
+			got, err = rdb.Do(ctx, "hgetex", key, "FIELDS", 1, "a", "PXAT", expireAt).Result()
+			require.NoError(t, err)
+			requireOptionalStringArray(t, got, "5")
+			requireIntArray(t, rdb.Do(ctx, "hpexpiretime", key, "FIELDS", 1, "a").Val(), []int64{expireAt})
+
+			requireIntegerReply(t, rdb, ctx, 1, "hsetex", key, "FIELDS", 2,
+				"ordinary", "FIELDS", "another", "EX")
+			require.Equal(t, "FIELDS", rdb.HGet(ctx, key, "ordinary").Val())
+			require.Equal(t, "EX", rdb.HGet(ctx, key, "another").Val())
 		})
 
 		t.Run("keywords are case insensitive", func(t *testing.T) {
+			expireAt := time.Now().Add(30 * time.Minute).UnixMilli()
+			requireIntegerReply(t, rdb, ctx, 1, "HsEtEx", key, "pXaT", expireAt, "fIeLdS", 1, "a", "case")
 			requireIntegerReply(t, rdb, ctx, 1, "HsEtEx", key, "fXx", "fIeLdS", 1, "a", "4", "kEePtTl")
+			requireIntArray(t, rdb.Do(ctx, "hpexpiretime", key, "FIELDS", 1, "a").Val(), []int64{expireAt})
 			got, err := rdb.Do(ctx, "HgEtEx", key, "fIeLdS", 1, "a", "pErSiSt").Result()
 			require.NoError(t, err)
 			requireOptionalStringArray(t, got, "4")
+			requireIntArray(t, rdb.Do(ctx, "hpexpiretime", key, "FIELDS", 1, "a").Val(), []int64{-1})
 		})
 	})
 }

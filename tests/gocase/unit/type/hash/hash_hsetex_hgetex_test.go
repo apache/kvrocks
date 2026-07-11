@@ -395,7 +395,7 @@ func TestHashFieldExpirationHSetExHGetExParserCompatibility(t *testing.T) {
 	})
 }
 
-func TestHashFieldExpirationHSetExHGetExErrorPriorityAndCommandFlags(t *testing.T) {
+func TestHashFieldExpirationHSetExHGetExParsingAndCommandFlags(t *testing.T) {
 	runWithFieldExpirationHash(t, func(t *testing.T, rdb *redis.Client, ctx context.Context) {
 		require.EqualError(t, rdb.Do(ctx, "hsetex", "key").Err(),
 			"ERR wrong number of arguments")
@@ -410,7 +410,22 @@ func TestHashFieldExpirationHSetExHGetExErrorPriorityAndCommandFlags(t *testing.
 		require.NotContains(t, hsetErr.Error(), "WRONGTYPE")
 
 		hgetErr := rdb.Do(ctx, "hgetex", wrongTypeKey, "FIELDS", 0, "a").Err()
-		require.ErrorContains(t, hgetErr, "WRONGTYPE")
+		require.ErrorContains(t, hgetErr, "invalid number of fields")
+		require.NotContains(t, hgetErr.Error(), "WRONGTYPE")
+
+		require.ErrorContains(t, rdb.Do(ctx, "hsetex", wrongTypeKey, "FIELDS", 1, "a", "x").Err(), "WRONGTYPE")
+		require.ErrorContains(t, rdb.Do(ctx, "hgetex", wrongTypeKey, "FIELDS", 1, "a").Err(), "WRONGTYPE")
+
+		t.Run("parse error aborts multi", func(t *testing.T) {
+			key := "hgetex-parse-error-multi"
+			require.NoError(t, rdb.Del(ctx, key).Err())
+			require.NoError(t, rdb.Do(ctx, "MULTI").Err())
+			require.Equal(t, "QUEUED", rdb.Do(ctx, "SET", key, "value").Val())
+			require.ErrorContains(t, rdb.Do(ctx, "HGETEX", wrongTypeKey, "FIELDS", 0, "a").Err(),
+				"invalid number of fields")
+			require.EqualError(t, rdb.Do(ctx, "EXEC").Err(), "EXECABORT Transaction discarded")
+			require.Zero(t, rdb.Exists(ctx, key).Val())
+		})
 
 		for _, test := range []struct {
 			command string

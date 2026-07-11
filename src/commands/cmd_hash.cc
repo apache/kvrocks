@@ -257,23 +257,6 @@ Status HashCommandStatus(const rocksdb::Status &status) {
   return {Status::RedisExecErr, status.ToString()};
 }
 
-Status ProbeHashTypeForHGetEx(engine::Context &ctx, Server *srv, Connection *conn, const Slice &key, uint64_t now_ms) {
-  redis::Database redis_db(srv->storage, conn->GetNamespace());
-  std::string raw_metadata;
-  auto status = redis_db.GetRawMetadata(ctx, redis_db.AppendNamespacePrefix(key), &raw_metadata);
-  if (status.IsNotFound()) return Status::OK();
-  if (!status.ok()) return {Status::RedisExecErr, status.ToString()};
-
-  Metadata metadata(kRedisNone, false);
-  status = metadata.Decode(raw_metadata);
-  if (!status.ok()) return {Status::RedisExecErr, status.ToString()};
-  if (metadata.ExpireAt(now_ms)) return Status::OK();
-  if (metadata.Type() != kRedisHash) {
-    return {Status::RedisWrongType, "Operation against a key holding the wrong kind of value"};
-  }
-  return Status::OK();
-}
-
 std::optional<HashFieldExpireCondition> ParseHashExpireCondition(std::string_view token) {
   if (util::EqualICase(token, "NX")) return HashFieldExpireCondition::kNX;
   if (util::EqualICase(token, "XX")) return HashFieldExpireCondition::kXX;
@@ -929,15 +912,15 @@ class CommandHSetEx : public Commander {
 
 class CommandHGetEx : public Commander {
  public:
+  Status Parse(const std::vector<std::string> &args) override {
+    now_ms_ = util::GetTimeStampMS();
+    GET_OR_RET(ParseHashFieldExpireCommandArgs<false>(args, now_ms_, &parsed_));
+    return Commander::Parse(args);
+  }
+
   Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
-    uint64_t now_ms = util::GetTimeStampMS();
-    GET_OR_RET(ProbeHashTypeForHGetEx(ctx, srv, conn, args_[1], now_ms));
-
-    HashFieldExpireCommandArgs parsed;
-    GET_OR_RET(ParseHashFieldExpireCommandArgs<false>(args_, now_ms, &parsed));
-
     HashGetExOptions options;
-    switch (parsed.ttl_action) {
+    switch (parsed_.ttl_action) {
       case HashFieldExpireCommandTTLAction::kNone:
         options.ttl_action = HashGetExOptions::TTLAction::kNone;
         break;
@@ -946,7 +929,7 @@ class CommandHGetEx : public Commander {
         break;
       case HashFieldExpireCommandTTLAction::kSet:
         options.ttl_action = HashGetExOptions::TTLAction::kSet;
-        options.expire_at_ms = parsed.expire_at_ms;
+        options.expire_at_ms = parsed_.expire_at_ms;
         break;
       case HashFieldExpireCommandTTLAction::kKeep:
         return {Status::RedisExecErr, errInvalidSyntax};
@@ -954,9 +937,9 @@ class CommandHGetEx : public Commander {
 
     std::vector<std::string> values;
     std::vector<rocksdb::Status> statuses;
-    auto fields = ToSlices(parsed.fields);
+    auto fields = ToSlices(parsed_.fields);
     redis::Hash hash_db(srv->storage, conn->GetNamespace());
-    auto status = hash_db.GetFieldsWithExpire(ctx, args_[1], fields, options, &values, &statuses, now_ms);
+    auto status = hash_db.GetFieldsWithExpire(ctx, args_[1], fields, options, &values, &statuses, now_ms_);
     if (status.IsNotFound()) {
       values.resize(fields.size());
       statuses.resize(fields.size(), rocksdb::Status::NotFound());
@@ -967,6 +950,10 @@ class CommandHGetEx : public Commander {
     *output = conn->MultiBulkString(values, statuses);
     return Status::OK();
   }
+
+ private:
+  uint64_t now_ms_ = 0;
+  HashFieldExpireCommandArgs parsed_;
 };
 
 template <HashFieldExpireTimeMode kTimeMode>

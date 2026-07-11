@@ -224,7 +224,7 @@ class HashBatchWriter {
   explicit HashBatchWriter(rocksdb::WriteBatchBase *batch) : batch_(batch) {}
 
   rocksdb::Status Put(const Slice &key, const Slice &value) {
-    auto s = EnsureLogData();
+    auto s = ensureLogData();
     if (!s.ok()) return s;
     s = batch_->Put(key, value);
     if (s.ok()) storage_mutated_ = true;
@@ -232,7 +232,7 @@ class HashBatchWriter {
   }
 
   rocksdb::Status Put(rocksdb::ColumnFamilyHandle *column_family, const Slice &key, const Slice &value) {
-    auto s = EnsureLogData();
+    auto s = ensureLogData();
     if (!s.ok()) return s;
     s = batch_->Put(column_family, key, value);
     if (s.ok()) storage_mutated_ = true;
@@ -240,7 +240,7 @@ class HashBatchWriter {
   }
 
   rocksdb::Status Delete(const Slice &key) {
-    auto s = EnsureLogData();
+    auto s = ensureLogData();
     if (!s.ok()) return s;
     s = batch_->Delete(key);
     if (s.ok()) storage_mutated_ = true;
@@ -248,7 +248,7 @@ class HashBatchWriter {
   }
 
   rocksdb::Status Delete(rocksdb::ColumnFamilyHandle *column_family, const Slice &key) {
-    auto s = EnsureLogData();
+    auto s = ensureLogData();
     if (!s.ok()) return s;
     s = batch_->Delete(column_family, key);
     if (s.ok()) storage_mutated_ = true;
@@ -258,7 +258,7 @@ class HashBatchWriter {
   bool HasStorageMutation() const { return storage_mutated_; }
 
  private:
-  rocksdb::Status EnsureLogData() {
+  rocksdb::Status ensureLogData() {
     if (has_log_data_) return rocksdb::Status::OK();
     WriteBatchLogData log_data(kRedisHash);
     auto s = batch_->PutLogData(log_data.Encode());

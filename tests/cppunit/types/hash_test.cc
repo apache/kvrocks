@@ -217,8 +217,8 @@ class RedisHashFieldExpirationEncodingTest : public ::testing::Test {
     assert(s.ok());
   }
 
-  void expectGetResults(const std::vector<std::string> &values, const std::vector<rocksdb::Status> &statuses,
-                        const std::vector<std::optional<std::string>> &expected) {
+  static void expectGetResults(const std::vector<std::string> &values, const std::vector<rocksdb::Status> &statuses,
+                               const std::vector<std::optional<std::string>> &expected) {
     ASSERT_EQ(values.size(), expected.size());
     ASSERT_EQ(statuses.size(), expected.size());
     for (size_t i = 0; i < expected.size(); ++i) {
@@ -231,8 +231,8 @@ class RedisHashFieldExpirationEncodingTest : public ::testing::Test {
     }
   }
 
-  HashSetExOptions setExOptions(HashSetExOptions::TTLAction action, uint64_t expire_at = 0,
-                                HashFieldSetCondition condition = HashFieldSetCondition::kNone) {
+  static HashSetExOptions setExOptions(HashSetExOptions::TTLAction action, uint64_t expire_at = 0,
+                                       HashFieldSetCondition condition = HashFieldSetCondition::kNone) {
     HashSetExOptions options;
     options.ttl_action = action;
     options.expire_at_ms = expire_at;
@@ -240,7 +240,7 @@ class RedisHashFieldExpirationEncodingTest : public ::testing::Test {
     return options;
   }
 
-  HashGetExOptions getExOptions(HashGetExOptions::TTLAction action, uint64_t expire_at = 0) {
+  static HashGetExOptions getExOptions(HashGetExOptions::TTLAction action, uint64_t expire_at = 0) {
     HashGetExOptions options;
     options.ttl_action = action;
     options.expire_at_ms = expire_at;

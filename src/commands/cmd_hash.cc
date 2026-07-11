@@ -42,6 +42,32 @@ enum class HashFieldExpireTimeMode {
   kAbsoluteMilliseconds,
 };
 
+enum class HashFieldExpireCommandType {
+  kHGetEx,
+  kHSetEx,
+};
+
+enum class HashFieldExpireCommandTTLAction {
+  kNone,
+  kKeep,
+  kPersist,
+  kSet,
+};
+
+enum class HashFieldSetCommandCondition {
+  kNone,
+  kFNX,
+  kFXX,
+};
+
+struct HashFieldExpireCommandArgs {
+  HashFieldExpireCommandTTLAction ttl_action = HashFieldExpireCommandTTLAction::kNone;
+  HashFieldSetCommandCondition condition = HashFieldSetCommandCondition::kNone;
+  uint64_t expire_at_ms = 0;
+  std::vector<std::string> fields;
+  std::vector<FieldValue> field_values;
+};
+
 std::vector<Slice> ToSlices(const std::vector<std::string> &values) {
   std::vector<Slice> slices;
   slices.reserve(values.size());
@@ -99,6 +125,162 @@ Status ConvertHashFieldExpireAtMs(int64_t expire_arg, HashFieldExpireTimeMode ti
   }
 
   *expire_at_ms = value;
+  return Status::OK();
+}
+
+std::optional<HashFieldExpireTimeMode> ParseHashFieldExpireTimeMode(std::string_view token) {
+  if (util::EqualICase(token, "EX")) return HashFieldExpireTimeMode::kRelativeSeconds;
+  if (util::EqualICase(token, "PX")) return HashFieldExpireTimeMode::kRelativeMilliseconds;
+  if (util::EqualICase(token, "EXAT")) return HashFieldExpireTimeMode::kAbsoluteSeconds;
+  if (util::EqualICase(token, "PXAT")) return HashFieldExpireTimeMode::kAbsoluteMilliseconds;
+  return std::nullopt;
+}
+
+std::string_view HashFieldExpireCommandName(HashFieldExpireCommandType command_type) {
+  return command_type == HashFieldExpireCommandType::kHSetEx ? "hsetex" : "hgetex";
+}
+
+Status ConvertHashFieldExpireAtMsForCommand(int64_t expire_arg, HashFieldExpireTimeMode time_mode, uint64_t now_ms,
+                                            HashFieldExpireCommandType command_type, uint64_t *expire_at_ms) {
+  bool relative = time_mode == HashFieldExpireTimeMode::kRelativeSeconds ||
+                  time_mode == HashFieldExpireTimeMode::kRelativeMilliseconds;
+  if ((!relative || now_ms <= kMaxHashFieldExpireAtMs) &&
+      ConvertHashFieldExpireAtMs(expire_arg, time_mode, now_ms, expire_at_ms).IsOK()) {
+    return Status::OK();
+  }
+
+  return {Status::RedisParseErr,
+          "invalid expire time in '" + std::string(HashFieldExpireCommandName(command_type)) + "' command"};
+}
+
+Status ParseHashFieldExpireCommandArgs(const std::vector<std::string> &args, HashFieldExpireCommandType command_type,
+                                       uint64_t now_ms, HashFieldExpireCommandArgs *result) {
+  HashFieldExpireCommandArgs parsed;
+  bool fields_seen = false;
+  bool expiration_seen = false;
+  const size_t args_per_field = command_type == HashFieldExpireCommandType::kHSetEx ? 2 : 1;
+
+  for (size_t i = 2; i < args.size();) {
+    if (util::EqualICase(args[i], "FIELDS")) {
+      if (fields_seen) {
+        return {Status::RedisParseErr, "FIELDS keyword specified multiple times"};
+      }
+      fields_seen = true;
+      if (i + 1 >= args.size()) {
+        return {Status::RedisParseErr, "wrong number of arguments for '" +
+                                           std::string(HashFieldExpireCommandName(command_type)) + "' command"};
+      }
+
+      auto count = ParseInt<int64_t>(args[i + 1], 10);
+      if (!count || *count < 1 || *count > std::numeric_limits<int>::max()) {
+        return {Status::RedisParseErr, "invalid number of fields"};
+      }
+
+      size_t first_field = i + 2;
+      auto field_count = static_cast<size_t>(*count);
+      if (field_count > (args.size() - first_field) / args_per_field) {
+        return {Status::RedisParseErr, errWrongNumOfArguments};
+      }
+
+      if (command_type == HashFieldExpireCommandType::kHSetEx) {
+        parsed.field_values.reserve(field_count);
+        for (size_t j = 0; j < field_count; ++j) {
+          parsed.field_values.emplace_back(args[first_field + j * 2], args[first_field + j * 2 + 1]);
+        }
+      } else {
+        parsed.fields.reserve(field_count);
+        for (size_t j = 0; j < field_count; ++j) {
+          parsed.fields.emplace_back(args[first_field + j]);
+        }
+      }
+      i = first_field + field_count * args_per_field;
+      continue;
+    }
+
+    auto time_mode = ParseHashFieldExpireTimeMode(args[i]);
+    if (time_mode) {
+      if (expiration_seen) {
+        auto option = command_type == HashFieldExpireCommandType::kHSetEx ? "KEEPTTL" : "PERSIST";
+        return {Status::RedisParseErr,
+                "Only one of EX, PX, EXAT, PXAT or " + std::string(option) + " arguments can be specified"};
+      }
+      if (i + 1 >= args.size()) {
+        return {Status::RedisParseErr, "missing expire time"};
+      }
+
+      expiration_seen = true;
+      int64_t expire_arg = 0;
+      GET_OR_RET(ParseHashFieldExpireArgument(args[i + 1], &expire_arg));
+      GET_OR_RET(
+          ConvertHashFieldExpireAtMsForCommand(expire_arg, *time_mode, now_ms, command_type, &parsed.expire_at_ms));
+      parsed.ttl_action = HashFieldExpireCommandTTLAction::kSet;
+      i += 2;
+      continue;
+    }
+
+    if (command_type == HashFieldExpireCommandType::kHGetEx && util::EqualICase(args[i], "PERSIST")) {
+      if (expiration_seen) {
+        return {Status::RedisParseErr, "Only one of EX, PX, EXAT, PXAT or PERSIST arguments can be specified"};
+      }
+      expiration_seen = true;
+      parsed.ttl_action = HashFieldExpireCommandTTLAction::kPersist;
+      ++i;
+      continue;
+    }
+
+    if (command_type == HashFieldExpireCommandType::kHSetEx && util::EqualICase(args[i], "KEEPTTL")) {
+      if (expiration_seen) {
+        return {Status::RedisParseErr, "Only one of EX, PX, EXAT, PXAT or KEEPTTL arguments can be specified"};
+      }
+      expiration_seen = true;
+      parsed.ttl_action = HashFieldExpireCommandTTLAction::kKeep;
+      ++i;
+      continue;
+    }
+
+    if (command_type == HashFieldExpireCommandType::kHSetEx &&
+        (util::EqualICase(args[i], "FXX") || util::EqualICase(args[i], "FNX"))) {
+      if (parsed.condition != HashFieldSetCommandCondition::kNone) {
+        return {Status::RedisParseErr, "Only one of FXX or FNX arguments can be specified"};
+      }
+      parsed.condition =
+          util::EqualICase(args[i], "FXX") ? HashFieldSetCommandCondition::kFXX : HashFieldSetCommandCondition::kFNX;
+      ++i;
+      continue;
+    }
+
+    return {Status::RedisParseErr, "unknown argument: " + args[i]};
+  }
+
+  if (!fields_seen) {
+    return {Status::RedisParseErr, "missing FIELDS argument"};
+  }
+
+  *result = std::move(parsed);
+  return Status::OK();
+}
+
+Status HashCommandStatus(const rocksdb::Status &status) {
+  if (status.IsInvalidArgument() && status.ToString().find("WRONGTYPE") != std::string::npos) {
+    return {Status::RedisWrongType, "Operation against a key holding the wrong kind of value"};
+  }
+  return {Status::RedisExecErr, status.ToString()};
+}
+
+Status ProbeHashTypeForHGetEx(engine::Context &ctx, Server *srv, Connection *conn, const Slice &key, uint64_t now_ms) {
+  redis::Database redis_db(srv->storage, conn->GetNamespace());
+  std::string raw_metadata;
+  auto status = redis_db.GetRawMetadata(ctx, redis_db.AppendNamespacePrefix(key), &raw_metadata);
+  if (status.IsNotFound()) return Status::OK();
+  if (!status.ok()) return {Status::RedisExecErr, status.ToString()};
+
+  Metadata metadata(kRedisNone, false);
+  status = metadata.Decode(raw_metadata);
+  if (!status.ok()) return {Status::RedisExecErr, status.ToString()};
+  if (metadata.ExpireAt(now_ms)) return Status::OK();
+  if (metadata.Type() != kRedisHash) {
+    return {Status::RedisWrongType, "Operation against a key holding the wrong kind of value"};
+  }
   return Status::OK();
 }
 
@@ -704,6 +886,99 @@ class CommandHRandField : public Commander {
   bool no_parameters_ = true;
 };
 
+class CommandHSetEx : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    now_ms_ = util::GetTimeStampMS();
+    GET_OR_RET(ParseHashFieldExpireCommandArgs(args, HashFieldExpireCommandType::kHSetEx, now_ms_, &parsed_));
+    return Commander::Parse(args);
+  }
+
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    HashSetExOptions options;
+    switch (parsed_.condition) {
+      case HashFieldSetCommandCondition::kNone:
+        options.condition = HashFieldSetCondition::kNone;
+        break;
+      case HashFieldSetCommandCondition::kFNX:
+        options.condition = HashFieldSetCondition::kFNX;
+        break;
+      case HashFieldSetCommandCondition::kFXX:
+        options.condition = HashFieldSetCondition::kFXX;
+        break;
+    }
+
+    switch (parsed_.ttl_action) {
+      case HashFieldExpireCommandTTLAction::kNone:
+        options.ttl_action = HashSetExOptions::TTLAction::kDiscard;
+        break;
+      case HashFieldExpireCommandTTLAction::kKeep:
+        options.ttl_action = HashSetExOptions::TTLAction::kKeep;
+        break;
+      case HashFieldExpireCommandTTLAction::kSet:
+        options.ttl_action = HashSetExOptions::TTLAction::kSet;
+        options.expire_at_ms = parsed_.expire_at_ms;
+        break;
+      case HashFieldExpireCommandTTLAction::kPersist:
+        return {Status::RedisExecErr, errInvalidSyntax};
+    }
+
+    bool applied = false;
+    redis::Hash hash_db(srv->storage, conn->GetNamespace());
+    auto status = hash_db.SetFieldsWithExpire(ctx, args_[1], parsed_.field_values, options, &applied, now_ms_);
+    if (!status.ok()) return HashCommandStatus(status);
+
+    *output = redis::Integer(applied ? 1 : 0);
+    return Status::OK();
+  }
+
+ private:
+  uint64_t now_ms_ = 0;
+  HashFieldExpireCommandArgs parsed_;
+};
+
+class CommandHGetEx : public Commander {
+ public:
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    uint64_t now_ms = util::GetTimeStampMS();
+    GET_OR_RET(ProbeHashTypeForHGetEx(ctx, srv, conn, args_[1], now_ms));
+
+    HashFieldExpireCommandArgs parsed;
+    GET_OR_RET(ParseHashFieldExpireCommandArgs(args_, HashFieldExpireCommandType::kHGetEx, now_ms, &parsed));
+
+    HashGetExOptions options;
+    switch (parsed.ttl_action) {
+      case HashFieldExpireCommandTTLAction::kNone:
+        options.ttl_action = HashGetExOptions::TTLAction::kNone;
+        break;
+      case HashFieldExpireCommandTTLAction::kPersist:
+        options.ttl_action = HashGetExOptions::TTLAction::kPersist;
+        break;
+      case HashFieldExpireCommandTTLAction::kSet:
+        options.ttl_action = HashGetExOptions::TTLAction::kSet;
+        options.expire_at_ms = parsed.expire_at_ms;
+        break;
+      case HashFieldExpireCommandTTLAction::kKeep:
+        return {Status::RedisExecErr, errInvalidSyntax};
+    }
+
+    std::vector<std::string> values;
+    std::vector<rocksdb::Status> statuses;
+    auto fields = ToSlices(parsed.fields);
+    redis::Hash hash_db(srv->storage, conn->GetNamespace());
+    auto status = hash_db.GetFieldsWithExpire(ctx, args_[1], fields, options, &values, &statuses, now_ms);
+    if (status.IsNotFound()) {
+      values.resize(fields.size());
+      statuses.resize(fields.size(), rocksdb::Status::NotFound());
+    } else if (!status.ok()) {
+      return HashCommandStatus(status);
+    }
+
+    *output = conn->MultiBulkString(values, statuses);
+    return Status::OK();
+  }
+};
+
 template <HashFieldExpireTimeMode kTimeMode>
 class CommandHExpireGeneric : public Commander {
  public:
@@ -809,6 +1084,8 @@ REDIS_REGISTER_COMMANDS(
     MakeCmdAttr<CommandHScan>("hscan", -3, "read-only", 1, 1, 1),
     MakeCmdAttr<CommandHRangeByLex>("hrangebylex", -4, "read-only", 1, 1, 1),
     MakeCmdAttr<CommandHRandField>("hrandfield", -2, "read-only slow", 1, 1, 1),
+    MakeCmdAttr<CommandHSetEx>("hsetex", -6, "write", 1, 1, 1),
+    MakeCmdAttr<CommandHGetEx>("hgetex", -5, "write no-dbsize-check", 1, 1, 1),
     MakeCmdAttr<CommandHExpireGeneric<HashFieldExpireTimeMode::kRelativeSeconds>>("hexpire", -6, "write", 1, 1, 1),
     MakeCmdAttr<CommandHExpireGeneric<HashFieldExpireTimeMode::kRelativeMilliseconds>>("hpexpire", -6, "write", 1, 1,
                                                                                        1),

@@ -326,6 +326,7 @@ func TestHashFieldExpirationHSetExHGetExParserCompatibility(t *testing.T) {
 			name        string
 			args        []interface{}
 			errContains string
+			exactError  string
 		}{
 			{name: "hsetex repeated fields", args: []interface{}{"hsetex", key, "FIELDS", 1, "a", "x", "FIELDS", 1, "b", "y"}, errContains: "FIELDS keyword specified multiple times"},
 			{name: "hgetex repeated fields", args: []interface{}{"hgetex", key, "FIELDS", 1, "a", "FIELDS", 1, "b"}, errContains: "FIELDS keyword specified multiple times"},
@@ -335,6 +336,8 @@ func TestHashFieldExpirationHSetExHGetExParserCompatibility(t *testing.T) {
 			{name: "hgetex fields integer overflow", args: []interface{}{"hgetex", key, "FIELDS", "9223372036854775808", "a"}, errContains: "invalid number of fields"},
 			{name: "hsetex short block", args: []interface{}{"hsetex", key, "FIELDS", 2, "a", "x"}, errContains: "wrong number of arguments"},
 			{name: "hgetex short block", args: []interface{}{"hgetex", key, "FIELDS", 2, "a"}, errContains: "wrong number of arguments"},
+			{name: "hsetex missing field count", args: []interface{}{"hsetex", key, "FNX", "EX", 10, "FIELDS"}, exactError: "ERR wrong number of arguments"},
+			{name: "hgetex missing field count", args: []interface{}{"hgetex", key, "EX", 10, "FIELDS"}, exactError: "ERR wrong number of arguments"},
 			{name: "hsetex unknown trailing token", args: []interface{}{"hsetex", key, "FIELDS", 1, "a", "x", "unknown"}, errContains: "unknown argument: unknown"},
 			{name: "hgetex unknown trailing token", args: []interface{}{"hgetex", key, "FIELDS", 1, "a", "unknown"}, errContains: "unknown argument: unknown"},
 			{name: "hsetex condition conflict", args: []interface{}{"hsetex", key, "FXX", "FNX", "FIELDS", 1, "a", "x"}, errContains: "Only one of FXX or FNX"},
@@ -351,7 +354,8 @@ func TestHashFieldExpirationHSetExHGetExParserCompatibility(t *testing.T) {
 			{name: "hsetex negative expire", args: []interface{}{"hsetex", key, "EX", -1, "FIELDS", 1, "a", "x"}, errContains: "invalid expire time, must be >= 0"},
 			{name: "hgetex negative expire", args: []interface{}{"hgetex", key, "PX", -1, "FIELDS", 1, "a"}, errContains: "invalid expire time, must be >= 0"},
 			{name: "hsetex expire integer overflow", args: []interface{}{"hsetex", key, "PXAT", "9223372036854775808", "FIELDS", 1, "a", "x"}, errContains: "value is not an integer or out of range"},
-			{name: "hgetex absolute expire too large", args: []interface{}{"hgetex", key, "PXAT", hfeMaxAbsTimeMs + 1, "FIELDS", 1, "a"}, errContains: "invalid expire time in 'hgetex' command"},
+			{name: "hsetex absolute expire too large", args: []interface{}{"hsetex", key, "PXAT", hfeMaxAbsTimeMs + 1, "FIELDS", 1, "a", "x"}, exactError: "ERR invalid expire time"},
+			{name: "hgetex absolute expire too large", args: []interface{}{"hgetex", key, "PXAT", hfeMaxAbsTimeMs + 1, "FIELDS", 1, "a"}, exactError: "ERR invalid expire time"},
 			{name: "hsetex option from hgetex", args: []interface{}{"hsetex", key, "PERSIST", "FIELDS", 1, "a", "x"}, errContains: "unknown argument: PERSIST"},
 			{name: "hgetex option from hsetex", args: []interface{}{"hgetex", key, "KEEPTTL", "FIELDS", 1, "a"}, errContains: "unknown argument: KEEPTTL"},
 		}
@@ -360,7 +364,12 @@ func TestHashFieldExpirationHSetExHGetExParserCompatibility(t *testing.T) {
 			t.Run(test.name, func(t *testing.T) {
 				before := util.GetKMetadata(t, rdb, ctx, key)
 				valuesBefore := rdb.HGetAll(ctx, key).Val()
-				require.ErrorContains(t, rdb.Do(ctx, test.args...).Err(), test.errContains)
+				err := rdb.Do(ctx, test.args...).Err()
+				if test.exactError != "" {
+					require.EqualError(t, err, test.exactError)
+				} else {
+					require.ErrorContains(t, err, test.errContains)
+				}
 				require.Equal(t, valuesBefore, rdb.HGetAll(ctx, key).Val())
 				require.Equal(t, before, util.GetKMetadata(t, rdb, ctx, key))
 			})

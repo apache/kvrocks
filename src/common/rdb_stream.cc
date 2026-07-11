@@ -20,6 +20,9 @@
 
 #include "rdb_stream.h"
 
+#include <filesystem>
+#include <system_error>
+
 #include "fmt/format.h"
 #include "vendor/crc64.h"
 
@@ -50,6 +53,12 @@ Status RdbFileStream::Open() {
   ifs_.open(file_name_, std::ifstream::in | std::ifstream::binary);
   if (!ifs_.is_open()) {
     return {Status::NotOK, fmt::format("failed to open rdb file: '{}': {}", file_name_, strerror(errno))};
+  }
+
+  std::error_code ec;
+  file_size_ = std::filesystem::file_size(file_name_, ec);
+  if (ec) {
+    return {Status::NotOK, fmt::format("failed to get the size of rdb file: '{}': {}", file_name_, ec.message())};
   }
 
   return Status::OK();

@@ -22,7 +22,6 @@ package restore
 import (
 	"context"
 	"encoding/binary"
-	"hash/crc64"
 	"testing"
 	"time"
 
@@ -251,12 +250,6 @@ func TestRestore_Set(t *testing.T) {
 }
 
 func TestRestoreRejectsInvalidIntSetLength(t *testing.T) {
-	// Redis CRC64 reflected polynomial, used by the DUMP/RESTORE payload footer.
-	redisCRC64Table := crc64.MakeTable(0x95ac9329ac4bc9b5)
-	redisCRC64 := func(data []byte) uint64 {
-		return ^crc64.Update(^uint64(0), redisCRC64Table, data)
-	}
-
 	srv := util.StartServer(t, map[string]string{})
 	defer srv.Close()
 
@@ -271,12 +264,61 @@ func TestRestoreRejectsInvalidIntSetLength(t *testing.T) {
 	body = binary.LittleEndian.AppendUint32(body, 0x20000000)
 	// RDB version 11 followed by the Redis CRC64 checksum.
 	body = binary.LittleEndian.AppendUint16(body, 11)
-	value := string(binary.LittleEndian.AppendUint64(body, redisCRC64(body)))
+	value := string(binary.LittleEndian.AppendUint64(body, util.RedisCRC64(body)))
 
 	restoreCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	require.ErrorContains(t, rdb.Restore(restoreCtx, util.RandString(32, 64, util.Alpha), 0, value).Err(),
 		"ERR invalid intset length")
+	require.NoError(t, rdb.Ping(ctx).Err())
+}
+
+func TestRestoreRejectsOversizedLength(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{})
+	defer srv.Close()
+
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	// RDBTypeString declaring a 1 TiB length with no actual string bytes.
+	body := []byte{0x00, 0x81} // RDBTypeString, RDB64BitLen
+	body = binary.BigEndian.AppendUint64(body, 1<<40)
+	body = binary.LittleEndian.AppendUint16(body, 11) // RDB version
+	value := string(binary.LittleEndian.AppendUint64(body, util.RedisCRC64(body)))
+
+	restoreCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	require.ErrorContains(t, rdb.Restore(restoreCtx, util.RandString(32, 64, util.Alpha), 0, value).Err(),
+		"invalid RDB payload")
+	require.NoError(t, rdb.Ping(ctx).Err())
+}
+
+func TestRestoreRejectsOversizedLzfLength(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{})
+	defer srv.Close()
+
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	// LZF-encoded RDBTypeString: a 1-byte compressed body declaring a 1 TiB
+	// decompressed size, which the stream bound alone can't catch.
+	body := []byte{
+		0x00, // RDBTypeString
+		0xc3, // RDBEncVal | RDBEncLzf -> LZF-encoded string
+		0x01, // compressed length = 1
+		0x81, // RDB64BitLen marker for the decompressed length
+	}
+	body = binary.BigEndian.AppendUint64(body, 1<<40) // decompressed length = 1 TiB
+	body = append(body, 0x00)                         // 1 byte of compressed data
+	body = binary.LittleEndian.AppendUint16(body, 11) // RDB version
+	value := string(binary.LittleEndian.AppendUint64(body, util.RedisCRC64(body)))
+
+	restoreCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	require.ErrorContains(t, rdb.Restore(restoreCtx, util.RandString(32, 64, util.Alpha), 0, value).Err(),
+		"invalid RDB payload")
 	require.NoError(t, rdb.Ping(ctx).Err())
 }
 

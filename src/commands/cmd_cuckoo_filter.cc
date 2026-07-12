@@ -189,9 +189,34 @@ class CommandCFMExists : public Commander {
   std::vector<std::string> items_;
 };
 
-// Register the CF.RESERVE, CF.ADD, CF.EXISTS, and CF.MEXISTS commands
+class CommandCFDel : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    // CF.DEL key item
+    if (args.size() != 3) {
+      return {Status::RedisParseErr, errWrongNumOfArguments};
+    }
+    return Commander::Parse(args);
+  }
+
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    redis::CuckooChain cuckoo_db(srv->storage, conn->GetNamespace());
+    bool deleted = false;
+    auto s = cuckoo_db.Delete(ctx, args_[1], args_[2], &deleted);
+
+    if (!s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+
+    *output = redis::Integer(deleted ? 1 : 0);
+    return Status::OK();
+  }
+};
+
+// Register the CF.RESERVE, CF.ADD, CF.DEL, CF.EXISTS, and CF.MEXISTS commands
 REDIS_REGISTER_COMMANDS(CuckooFilter, MakeCmdAttr<CommandCFReserve>("cf.reserve", -3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandCFAdd>("cf.add", 3, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandCFDel>("cf.del", 3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandCFExists>("cf.exists", 3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandCFMExists>("cf.mexists", -3, "read-only", 1, 1, 1))
 

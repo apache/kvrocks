@@ -175,7 +175,7 @@ class Connection : public EvbufCallbackBase<Connection> {
   evbuffer *Input() { return bufferevent_get_input(bev_); }
   evbuffer *Output() { return bufferevent_get_output(bev_); }
   bufferevent *GetBufferEvent() { return bev_; }
-  void ExecuteCommands(std::deque<CommandTokens> *to_process_cmds);
+  Status ExecuteCommands(std::deque<CommandTokens> *to_process_cmds);
   Status ExecuteCommand(engine::Context &ctx, const std::string &cmd_name, const std::vector<std::string> &cmd_tokens,
                         Commander *current_cmd, std::string *reply);
   bool IsProfilingEnabled(const std::string &cmd);
@@ -194,6 +194,7 @@ class Connection : public EvbufCallbackBase<Connection> {
   bool IsInExec() const { return in_exec_; }
   bool IsInScript() const { return in_script_; }
   bool IsMultiError() const { return multi_error_; }
+  void SetExecError(Status status) { exec_error_ = std::move(status); }
   void ResetMultiExec();
   std::deque<redis::CommandTokens> *GetMultiExecCommands() { return &multi_cmds_; }
 
@@ -235,6 +236,8 @@ class Connection : public EvbufCallbackBase<Connection> {
   Server *srv_;
   bool in_exec_ = false;
   bool multi_error_ = false;
+  // Fatal EXEC error from nested paths (e.g. script savepoint failure); aborts the whole EXEC.
+  Status exec_error_;
   std::atomic<bool> is_running_ = false;
   std::deque<redis::CommandTokens> multi_cmds_;
   bool in_script_ = false;

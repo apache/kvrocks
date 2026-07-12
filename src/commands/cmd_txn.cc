@@ -78,16 +78,25 @@ class CommandExec : public Commander {
     }
 
     auto storage = srv->storage;
+    // If EXEC stops early, some commands may not have replies yet.
+    // Use the queued command count to keep the error array length correct.
+    auto command_count = conn->GetMultiExecCommands()->size();
     // Execute multi-exec commands
     conn->SetInExec();
     auto s = storage->BeginTxn();
     if (s.IsOK()) {
-      conn->ExecuteCommands(conn->GetMultiExecCommands());
+      s = conn->ExecuteCommands(conn->GetMultiExecCommands());
       // In Redis, errors happening after EXEC instead are not handled in a special way:
       // all the other commands will be executed even if some command fails during
       // the transaction.
       // So, if conn->IsMultiError(), the transaction should still be committed.
-      s = storage->CommitTxn();
+      // Only fatal internal errors make ExecuteCommands return a non-OK status
+      // (e.g. savepoint failures) and abort the shared batch.
+      if (s.IsOK()) {
+        s = storage->CommitTxn();
+      } else if (auto abort_s = storage->AbortTxn(); !abort_s.IsOK()) {
+        s = abort_s;
+      }
     }
 
     conn->ResetMultiExec();
@@ -96,7 +105,7 @@ class CommandExec : public Commander {
     if (s) {
       conn->Reply(Array(conn->GetQueuedReplies()));
     } else {
-      conn->Reply(Array(std::vector<std::string>(conn->GetQueuedReplies().size(), redis::Error(s))));
+      conn->Reply(Array(std::vector<std::string>(command_count, redis::Error(s))));
     }
 
     conn->ClearQueuedReplies();

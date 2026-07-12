@@ -311,6 +311,10 @@ class Storage {
 
   Status BeginTxn();
   Status CommitTxn();
+  Status AbortTxn();
+  Status SetTxnSavePoint();
+  Status PopTxnSavePoint();
+  Status RollbackTxnToSavePoint();
   ObserverOrUniquePtr<rocksdb::WriteBatchBase> GetWriteBatchBase();
 
   Storage(const Storage &) = delete;

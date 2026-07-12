@@ -48,6 +48,7 @@
 #include "rocksdb/write_batch.h"
 #include "rocksdb_crc32c.h"
 #include "server/server.h"
+#include "status.h"
 #include "storage/batch_indexer.h"
 #include "string_util.h"
 #include "table_properties_collector.h"
@@ -997,6 +998,45 @@ Status Storage::CommitTxn() {
     return Status::OK();
   }
   return {Status::NotOK, s.ToString()};
+}
+
+Status Storage::AbortTxn() {
+  if (!is_txn_mode_) {
+    return Status{Status::NotOK, "cannot abort while not in transaction mode"};
+  }
+  is_txn_mode_ = false;
+  txn_write_batch_.reset();
+  return Status::OK();
+}
+
+Status Storage::SetTxnSavePoint() {
+  if (!is_txn_mode_) {
+    return Status{Status::NotOK, "cannot set savepoint while not in transaction mode"};
+  }
+  txn_write_batch_->SetSavePoint();
+  return Status::OK();
+}
+
+Status Storage::PopTxnSavePoint() {
+  if (!is_txn_mode_) {
+    return Status{Status::NotOK, "cannot pop savepoint while not in transaction mode"};
+  }
+  auto s = txn_write_batch_->PopSavePoint();
+  if (!s.ok()) {
+    return Status{Status::NotOK, s.ToString()};
+  }
+  return Status::OK();
+}
+
+Status Storage::RollbackTxnToSavePoint() {
+  if (!is_txn_mode_) {
+    return Status{Status::NotOK, "cannot rollback savepoint while not in transaction mode"};
+  }
+  auto s = txn_write_batch_->RollbackToSavePoint();
+  if (!s.ok()) {
+    return Status{Status::NotOK, s.ToString()};
+  }
+  return Status::OK();
 }
 
 ObserverOrUniquePtr<rocksdb::WriteBatchBase> Storage::GetWriteBatchBase() {

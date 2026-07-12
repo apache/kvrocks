@@ -89,6 +89,8 @@ enum CommandFlags : uint64_t {
   kCmdAdmin = 1ULL << 11,
   // "skip-monitor" flag, for commands that should skip monitor feed
   kCmdSkipMonitor = 1ULL << 12,
+  // "skip-txn-savepoint" flag, for commands that should skip savepoint
+  kCmdSkipTxnSavepoint = 1ULL << 13,
 };
 
 enum class CommandCategory : uint8_t {

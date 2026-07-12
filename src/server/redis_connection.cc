@@ -113,7 +113,11 @@ void Connection::OnRead([[maybe_unused]] struct bufferevent *bev) {
     return;
   }
 
-  ExecuteCommands(req_.GetCommands());
+  s = ExecuteCommands(req_.GetCommands());
+  if (!s.IsOK()) {
+    Reply(redis::Error(s));
+    return;
+  }
   if (IsFlagEnabled(kCloseAsync)) {
     Close();
   }
@@ -423,7 +427,7 @@ static bool IsCmdAllowedInStaleData(const std::string &cmd_name) {
   return cmd_name == "info" || cmd_name == "slaveof" || cmd_name == "config";
 }
 
-void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
+Status Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
   const Config *config = srv_->GetConfig();
   std::string reply;
   const std::string &password = config->requirepass;
@@ -447,7 +451,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
             "[connection] A likely HTTP request is detected in the RESP connection, indicating a potential "
             "Cross-Protocol Scripting attack. Connection aborted.");
         EnableFlag(kCloseAsync);
-        return;
+        return Status::OK();
       }
       Reply(redis::Error(
           {Status::NotOK,
@@ -473,7 +477,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     if (srv_->PauseConnIfNeeded(this, cmd_name, cmd_flags)) {
       multi_error_exit.Disable();  // Don't mark transaction as failed - we're deferring, not erroring
       to_process_cmds->push_front(std::move(cmd_tokens));
-      return;
+      return Status::OK();
     }
 
     if (GetNamespace().empty()) {
@@ -589,6 +593,12 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
       }
       engine::Context ctx(srv_->storage);
 
+      bool use_txn_savepoint = in_exec_ && (cmd_flags & kCmdWrite) && !(cmd_flags & kCmdSkipTxnSavepoint);
+      if (use_txn_savepoint) {
+        s = srv_->storage->SetTxnSavePoint();
+        if (!s.IsOK()) return s.Prefixed("failed to set transaction command savepoint");
+      }
+
       std::vector<GlobalIndexer::RecordResult> index_records;
       if (!srv_->index_mgr.index_map.empty() && IsCmdForIndexing(cmd_flags, attributes->category) &&
           !config->cluster_enabled) {
@@ -609,12 +619,38 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
       }
 
       s = ExecuteCommand(ctx, cmd_name, cmd_tokens, current_cmd.get(), &reply);
-      for (const auto &record : index_records) {
-        auto s = GlobalIndexer::Update(ctx, record);
-        if (!s.IsOK() && !s.Is<Status::TypeMismatched>()) {
-          WARN("[connection] index updating failed for key: {}", record.key);
+
+      if (use_txn_savepoint) {
+        if (s.IsOK()) {
+          for (const auto &record : index_records) {
+            auto index_s = GlobalIndexer::Update(ctx, record);
+            if (index_s.IsOK() || index_s.Is<Status::TypeMismatched>()) continue;
+
+            WARN("[connection] index updating failed for key: {}", record.key);
+            s = index_s;
+            break;
+          }
+        }
+
+        if (s.IsOK()) {
+          auto pop_s = srv_->storage->PopTxnSavePoint();
+          if (!pop_s.IsOK()) return pop_s.Prefixed("failed to pop transaction command savepoint");
+        } else {
+          auto rollback_s = srv_->storage->RollbackTxnToSavePoint();
+          if (!rollback_s.IsOK()) {
+            return rollback_s.Prefixed("failed to rollback transaction command savepoint");
+          }
+        }
+      } else {
+        for (const auto &record : index_records) {
+          auto index_s = GlobalIndexer::Update(ctx, record);
+          if (!index_s.IsOK() && !index_s.Is<Status::TypeMismatched>()) {
+            WARN("[connection] index updating failed for key: {}", record.key);
+          }
         }
       }
+
+      if (!exec_error_.IsOK()) return exec_error_;
     }
 
     if (!(cmd_flags & redis::kCmdSkipMonitor)) {
@@ -643,11 +679,13 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     if (!reply.empty()) Reply(reply);
     reply.clear();
   }
+  return Status::OK();
 }
 
 void Connection::ResetMultiExec() {
   in_exec_ = false;
   multi_error_ = false;
+  exec_error_ = Status::OK();
   multi_cmds_.clear();
   DisableFlag(Connection::kMultiExec);
 }

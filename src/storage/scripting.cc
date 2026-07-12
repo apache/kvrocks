@@ -889,11 +889,11 @@ int RedisGenericCommand(lua_State *lua, int raise_error) {
 
   bool use_txn_savepoint = conn->IsInExec() && (cmd_flags & redis::kCmdWrite);
   if (use_txn_savepoint) {
-    auto savepoint_status = srv->storage->SetTxnSavePoint();
-    if (!savepoint_status.IsOK()) {
-      auto error = savepoint_status.Prefixed("failed to set script command savepoint");
-      PushError(lua, error.Msg().c_str());
-      conn->SetExecError(std::move(error));
+    auto savepoint_s = srv->storage->SetTxnSavePoint();
+    if (!savepoint_s.IsOK()) {
+      auto err = savepoint_s.Prefixed("failed to set script command savepoint");
+      PushError(lua, err.Msg().c_str());
+      conn->SetExecError(std::move(err));
       return RaiseError(lua);
     }
   }
@@ -901,12 +901,12 @@ int RedisGenericCommand(lua_State *lua, int raise_error) {
   std::string output;
   s = conn->ExecuteCommand(*script_run_ctx->ctx, cmd_name, args, cmd.get(), &output);
   if (use_txn_savepoint) {
-    auto savepoint_status = s.IsOK() ? srv->storage->PopTxnSavePoint() : srv->storage->RollbackTxnToSavePoint();
-    if (!savepoint_status.IsOK()) {
-      auto error = savepoint_status.Prefixed(s.IsOK() ? "failed to pop script command savepoint"
-                                                      : "failed to rollback script command savepoint");
-      PushError(lua, error.Msg().c_str());
-      conn->SetExecError(std::move(error));
+    auto savepoint_s = s.IsOK() ? srv->storage->PopTxnSavePoint() : srv->storage->RollbackTxnToSavePoint();
+    if (!savepoint_s.IsOK()) {
+      auto err = savepoint_s.Prefixed(s.IsOK() ? "failed to pop script command savepoint"
+                                               : "failed to rollback script command savepoint");
+      PushError(lua, err.Msg().c_str());
+      conn->SetExecError(std::move(err));
       return RaiseError(lua);
     }
   }

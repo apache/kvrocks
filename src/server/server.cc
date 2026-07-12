@@ -1872,18 +1872,12 @@ ReplState Server::GetReplicationState() {
   return kReplConnecting;
 }
 
-StatusOr<std::unique_ptr<redis::Commander>> Server::LookupAndCreateCommand(const std::string &cmd_name) {
-  if (cmd_name.empty()) return {Status::RedisUnknownCmd};
+StatusOr<std::unique_ptr<redis::Commander>> Server::LookupAndCreateCommand(const std::vector<std::string> &cmd_tokens) {
+  auto resolved = GET_OR_RET(redis::CommandTable::Resolve(cmd_tokens));
 
-  auto commands = redis::CommandTable::Get();
-  auto cmd_iter = commands->find(util::ToLower(cmd_name));
-  if (cmd_iter == commands->end()) {
-    return {Status::RedisUnknownCmd};
-  }
-
-  auto cmd_attr = cmd_iter->second;
-  auto cmd = cmd_attr->factory();
-  cmd->SetAttributes(cmd_attr);
+  auto cmd = resolved.attributes->factory();
+  cmd->SetAttributes(resolved.attributes);
+  cmd->SetRootName(std::move(resolved.root));
 
   return std::move(cmd);
 }

@@ -107,6 +107,42 @@ func TestCuckooFilter(t *testing.T) {
 		require.Error(t, rdb.Do(ctx, "cf.add", "key", "item1", "item2").Err())
 	})
 
+	t.Run("Del wrong number of arguments", func(t *testing.T) {
+		require.Error(t, rdb.Do(ctx, "cf.del").Err())
+		require.Error(t, rdb.Do(ctx, "cf.del", "key_only").Err())
+		require.Error(t, rdb.Do(ctx, "cf.del", "key", "item1", "item2").Err())
+	})
+
+	t.Run("Del missing key", func(t *testing.T) {
+		key := "test_cuckoo_filter_del_missing"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.Equal(t, int64(0), rdb.Do(ctx, "cf.del", key, "item").Val())
+	})
+
+	t.Run("Del wrong type", func(t *testing.T) {
+		key := "test_cuckoo_filter_del_wrong_type"
+		require.NoError(t, rdb.Set(ctx, key, "value", 0).Err())
+		require.ErrorContains(t, rdb.Do(ctx, "cf.del", key, "item").Err(), "WRONGTYPE")
+	})
+
+	t.Run("Del basic", func(t *testing.T) {
+		key := "test_cuckoo_filter_del_basic"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.Equal(t, int64(1), rdb.Do(ctx, "cf.add", key, "item").Val())
+		require.Equal(t, int64(1), rdb.Do(ctx, "cf.del", key, "item").Val())
+		require.Equal(t, int64(0), rdb.Do(ctx, "cf.del", key, "item").Val())
+	})
+
+	t.Run("Del duplicate item", func(t *testing.T) {
+		key := "test_cuckoo_filter_del_dup"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.Equal(t, int64(1), rdb.Do(ctx, "cf.add", key, "same_item").Val())
+		require.Equal(t, int64(1), rdb.Do(ctx, "cf.add", key, "same_item").Val())
+		require.Equal(t, int64(1), rdb.Do(ctx, "cf.del", key, "same_item").Val())
+		require.Equal(t, int64(1), rdb.Do(ctx, "cf.del", key, "same_item").Val())
+		require.Equal(t, int64(0), rdb.Do(ctx, "cf.del", key, "same_item").Val())
+	})
+
 	t.Run("Add many items", func(t *testing.T) {
 		key := "test_cuckoo_filter_add_many"
 		require.NoError(t, rdb.Del(ctx, key).Err())

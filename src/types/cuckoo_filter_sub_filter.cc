@@ -45,6 +45,46 @@ rocksdb::Status CuckooSubFilter::TryInsert(uint64_t hash, uint8_t fingerprint, b
   return pages_.TryInsertInBucket(filter_index_, num_buckets_, bucket2_idx, fingerprint, inserted);
 }
 
+rocksdb::Status CuckooSubFilter::Delete(uint64_t hash, uint8_t fingerprint, bool *deleted) {
+  *deleted = false;
+  uint32_t bucket1_idx = getPrimaryBucketIndex(hash);
+  uint32_t bucket2_idx = getSecondaryBucketIndex(hash, fingerprint);
+  auto s = pages_.PrefetchBuckets(filter_index_, num_buckets_, bucket1_idx, bucket2_idx);
+  if (!s.ok()) return s;
+
+  for (uint32_t slot_idx = 0; slot_idx < bucket_size_; ++slot_idx) {
+    uint8_t current_fingerprint = 0;
+    s = pages_.GetBucketSlot(filter_index_, num_buckets_, bucket1_idx, slot_idx, &current_fingerprint);
+    if (!s.ok()) return s;
+    if (current_fingerprint != fingerprint) continue;
+
+    *deleted = true;
+    return pages_.SetBucketSlot(filter_index_, num_buckets_, bucket1_idx, slot_idx, 0);
+  }
+
+  if (bucket1_idx == bucket2_idx) return rocksdb::Status::OK();
+
+  for (uint32_t slot_idx = 0; slot_idx < bucket_size_; ++slot_idx) {
+    uint8_t current_fingerprint = 0;
+    s = pages_.GetBucketSlot(filter_index_, num_buckets_, bucket2_idx, slot_idx, &current_fingerprint);
+    if (!s.ok()) return s;
+    if (current_fingerprint != fingerprint) continue;
+
+    *deleted = true;
+    return pages_.SetBucketSlot(filter_index_, num_buckets_, bucket2_idx, slot_idx, 0);
+  }
+
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status CuckooSubFilter::GetBucketSlot(uint32_t bucket_index, uint32_t slot_index, uint8_t *fingerprint) {
+  return pages_.GetBucketSlot(filter_index_, num_buckets_, bucket_index, slot_index, fingerprint);
+}
+
+rocksdb::Status CuckooSubFilter::SetBucketSlot(uint32_t bucket_index, uint32_t slot_index, uint8_t fingerprint) {
+  return pages_.SetBucketSlot(filter_index_, num_buckets_, bucket_index, slot_index, fingerprint);
+}
+
 rocksdb::Status CuckooSubFilter::TryKickOutInsert(uint64_t hash, uint8_t fingerprint, uint16_t max_iterations,
                                                   bool *inserted) {
   *inserted = false;

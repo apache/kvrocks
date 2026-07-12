@@ -32,6 +32,10 @@
 
 namespace redis {
 
+uint32_t GetCuckooPageCount(uint32_t num_buckets, uint32_t page_size, uint8_t bucket_size);
+std::string GetCuckooPageKey(const Slice &ns_key, uint64_t version, bool slot_id_encoded, uint16_t filter_index,
+                             uint32_t page_index);
+
 class CuckooPageCache {
  public:
   CuckooPageCache(engine::Storage *storage, engine::Context &ctx, const Slice &ns_key, bool slot_id_encoded,

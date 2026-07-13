@@ -18,10 +18,7 @@
  *
  */
 
-#include <range/v3/action/sort.hpp>
 #include <range/v3/range/conversion.hpp>
-#include <range/v3/view/enumerate.hpp>
-#include <range/v3/view/map.hpp>
 #include <range/v3/view/transform.hpp>
 
 #include "command_parser.h"
@@ -563,7 +560,7 @@ class CommandTDigestCDF : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     if (args.size() == 2) return {Status::RedisParseErr, errWrongNumOfArguments};
     key_name_ = args[1];
-    std::map<double, std::vector<size_t>> unique_inputs;
+    inputs_.reserve(args.size() - 2);
     for (size_t i = 2; i < args.size(); i++) {
       auto value = ParseFloat(args[i]);
       if (!value) {
@@ -572,25 +569,15 @@ class CommandTDigestCDF : public Commander {
       if (std::isnan(*value)) {
         return {Status::RedisParseErr, errValueIsNotFloat};
       }
-      if (unique_inputs.find(*value) == unique_inputs.cend()) {
-        unique_inputs[*value] = std::vector<size_t>{i - 2};
-      } else {
-        unique_inputs[*value].push_back(i - 2);
-      }
+      inputs_.push_back(*value);
     }
-    sorted_unique_inputs_with_idx_ =
-        ranges::views::transform(unique_inputs,
-                                 [](const auto &pair) { return std::make_pair(pair.first, pair.second); }) |
-        ranges::to_vector;
-    num_inputs_ = args.size() - 2;
     return Status::OK();
   }
 
   Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
     TDigest tdigest(srv->storage, conn->GetNamespace());
     TDigestCDFResult result;
-    std::vector<double> uniq_cdfs = sorted_unique_inputs_with_idx_ | ranges::views::keys | ranges::to_vector;
-    auto s = tdigest.CDFUniqSorted(ctx, key_name_, uniq_cdfs, &result);
+    auto s = tdigest.CDF(ctx, key_name_, inputs_, &result);
     if (!s.ok()) {
       if (s.IsNotFound()) {
         return {Status::RedisExecErr, errKeyNotFound};
@@ -598,24 +585,14 @@ class CommandTDigestCDF : public Commander {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    std::vector<std::pair<size_t, std::string>> cdf_uniq_results_with_idx =
-        ranges::views::transform(result.cdf_values, util::Float2String) | ranges::views::enumerate | ranges::to_vector;
-    std::vector<std::string> cdf_result(num_inputs_, kNan);
-
-    for (const auto &[idx, result_str] : cdf_uniq_results_with_idx) {
-      for (const auto &origin_idx : sorted_unique_inputs_with_idx_[idx].second) {
-        cdf_result[origin_idx] = result_str;
-      }
-    }
-
-    *output = conn->MultiBulkString(cdf_result);
+    *output =
+        conn->MultiBulkString(result.cdf_values | ranges::views::transform(util::Float2String) | ranges::to_vector);
     return Status::OK();
   }
 
  private:
   std::string key_name_;
-  size_t num_inputs_;
-  std::vector<std::pair<double, std::vector<size_t>>> sorted_unique_inputs_with_idx_;
+  std::vector<double> inputs_;
 };
 
 std::vector<CommandKeyRange> GetMergeKeyRange(const std::vector<std::string> &args) {

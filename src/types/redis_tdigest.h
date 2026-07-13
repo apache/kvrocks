@@ -96,8 +96,9 @@ class TDigest : public SubKeyScanner {
   rocksdb::Status TrimmedMean(engine::Context& ctx, const Slice& digest_name, double low_cut_quantile,
                               double high_cut_quantile, TDigestTrimmedMeanResult* result);
   rocksdb::Status GetMetaData(engine::Context& context, const Slice& digest_name, TDigestMetadata* metadata);
-  rocksdb::Status CDFUniqSorted(engine::Context& ctx, const Slice& digest_name, const std::vector<double>& inputs,
-                                TDigestCDFResult* result);
+
+  rocksdb::Status CDF(engine::Context& ctx, const Slice& digest_name, const std::vector<double>& inputs,
+                      TDigestCDFResult* result);
 
  private:
   enum class SegmentType : uint8_t { kBuffer = 0, kCentroids = 1, kGuardFlag = 0xFF };
@@ -166,5 +167,8 @@ class TDigest : public SubKeyScanner {
                                              Centroid* centroid) const;
   rocksdb::Status prepareRankData(engine::Context& ctx, const Slice& digest_name, TDigestMetadata& metadata,
                                   std::vector<Centroid>& centroids);
+
+  rocksdb::Status cdfUniqSorted(engine::Context& ctx, const Slice& digest_name, const std::vector<double>& inputs,
+                                std::vector<double>* values);
 };
 }  // namespace redis

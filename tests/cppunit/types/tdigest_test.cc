@@ -964,7 +964,7 @@ TEST_F(RedisTDigestTest, CDF_Test) {
   std::vector<double> cdf_vals = {0, 1, 2, 3, 4, 5, 6};
   redis::TDigestCDFResult result;
 
-  status = tdigest_->CDFUniqSorted(*ctx_, cdf_tdigest_name, cdf_vals, &result);
+  status = tdigest_->CDF(*ctx_, cdf_tdigest_name, cdf_vals, &result);
   ASSERT_TRUE(status.ok()) << status.ToString();
 
   std::vector<double> expected = {0.00, 0.03, 0.13, 0.29, 0.53, 0.83, 1.00};
@@ -986,7 +986,7 @@ TEST_F(RedisTDigestTest, CDF_returns_nan_on_empty_tdigest) {
   std::vector<double> values = {0.0, 1.0, 2.0, 3.0};
   redis::TDigestCDFResult result;
 
-  status = tdigest_->CDFUniqSorted(*ctx_, test_digest_name, values, &result);
+  status = tdigest_->CDF(*ctx_, test_digest_name, values, &result);
   ASSERT_TRUE(status.ok()) << status.ToString();
   ASSERT_EQ(result.cdf_values.size(), values.size());
   for (const auto cdf : result.cdf_values) {
@@ -1007,7 +1007,7 @@ TEST_F(RedisTDigestTest, CDF_duplicate_values) {
 
   std::vector<double> cdf_vals = {5, 10, 20, 25};
   redis::TDigestCDFResult result;
-  status = tdigest_->CDFUniqSorted(*ctx_, test_digest_name, cdf_vals, &result);
+  status = tdigest_->CDF(*ctx_, test_digest_name, cdf_vals, &result);
   ASSERT_TRUE(status.ok()) << status.ToString();
 
   std::vector<double> expected = {0, 0.3, 0.8, 1};
@@ -1015,6 +1015,27 @@ TEST_F(RedisTDigestTest, CDF_duplicate_values) {
   for (size_t i = 0; i < cdf_vals.size(); i++) {
     EXPECT_NEAR(result.cdf_values[i], expected[i], 0.001) << fmt::format("Mismatch at index {}", i);
   }
+}
+
+TEST_F(RedisTDigestTest, CDF_signed_zero_queries) {
+  std::string test_digest_name = "test_cdf_signed_zero" + std::to_string(util::GetTimeStampMS());
+
+  bool exists = false;
+  auto status = tdigest_->Create(*ctx_, test_digest_name, {100}, &exists);
+  ASSERT_FALSE(exists);
+  ASSERT_TRUE(status.ok());
+
+  status = tdigest_->Add(*ctx_, test_digest_name, {-1, 0, 1});
+  ASSERT_TRUE(status.ok());
+
+  std::vector<double> cdf_vals = {-0.0, 0.0};
+  redis::TDigestCDFResult result;
+  status = tdigest_->CDF(*ctx_, test_digest_name, cdf_vals, &result);
+  ASSERT_TRUE(status.ok()) << status.ToString();
+
+  ASSERT_EQ(result.cdf_values.size(), cdf_vals.size());
+  EXPECT_NEAR(result.cdf_values[0], 0.5, 0.001);
+  EXPECT_NEAR(result.cdf_values[1], 0.5, 0.001);
 }
 
 TEST_F(RedisTDigestTest, CDF_uniform_distribution) {
@@ -1033,7 +1054,7 @@ TEST_F(RedisTDigestTest, CDF_uniform_distribution) {
 
   std::vector<double> cdf_vals = {1, 25, 50, 75, 100};
   redis::TDigestCDFResult result;
-  status = tdigest_->CDFUniqSorted(*ctx_, test_digest_name, cdf_vals, &result);
+  status = tdigest_->CDF(*ctx_, test_digest_name, cdf_vals, &result);
   ASSERT_TRUE(status.ok()) << status.ToString();
 
   std::vector<double> expected = {0.01, 0.25, 0.50, 0.75, 1.00};
@@ -1061,7 +1082,7 @@ TEST_F(RedisTDigestTest, CDF_multiple_adds) {
 
   std::vector<double> cdf_vals = {1, 5, 7, 10};
   redis::TDigestCDFResult result;
-  status = tdigest_->CDFUniqSorted(*ctx_, test_digest_name, cdf_vals, &result);
+  status = tdigest_->CDF(*ctx_, test_digest_name, cdf_vals, &result);
   ASSERT_TRUE(status.ok());
 
   std::vector<double> expected = {0.10, 0.50, 0.70, 1.00};
@@ -1092,7 +1113,7 @@ TEST_F(RedisTDigestTest, CDF_skewed_distribution) {
 
   std::vector<double> cdf_vals = {0, 1, 5, 10};
   redis::TDigestCDFResult result;
-  status = tdigest_->CDFUniqSorted(*ctx_, test_digest_name, cdf_vals, &result);
+  status = tdigest_->CDF(*ctx_, test_digest_name, cdf_vals, &result);
   ASSERT_TRUE(status.ok());
 
   std::vector<double> expected = {0.4545, 0.91, 0.95, 1.00};

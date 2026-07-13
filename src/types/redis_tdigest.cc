@@ -28,12 +28,14 @@
 #include <rocksdb/status.h>
 
 #include <algorithm>
+#include <cstdint>
 #include <iterator>
 #include <limits>
 #include <memory>
 #include <range/v3/algorithm/minmax.hpp>
 #include <range/v3/range/conversion.hpp>
 #include <range/v3/view/join.hpp>
+#include <range/v3/view/map.hpp>
 #include <range/v3/view/transform.hpp>
 #include <set>
 #include <vector>
@@ -571,17 +573,32 @@ rocksdb::Status TDigest::Merge(engine::Context& ctx, const Slice& dest_digest,
   return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
-rocksdb::Status TDigest::CDFUniqSorted(engine::Context& ctx, const Slice& digest_name,
-                                       const std::vector<double>& inputs, TDigestCDFResult* result) {
-  if (!std::is_sorted(inputs.cbegin(), inputs.cend())) {
-    return rocksdb::Status::InvalidArgument(
-        "Internal error: inputs must be sorted in ascending order for CDF computation.");
+rocksdb::Status TDigest::CDF(engine::Context& ctx, const Slice& digest_name, const std::vector<double>& inputs,
+                             TDigestCDFResult* result) {
+  std::map<double, std::vector<size_t>> sorted_unique_inputs_with_idx;
+  for (size_t i = 0; i < inputs.size(); ++i) {
+    sorted_unique_inputs_with_idx[inputs[i]].push_back(i);
   }
 
-  if (std::set<double>(inputs.cbegin(), inputs.cend()).size() != inputs.size()) {
-    return rocksdb::Status::InvalidArgument("Internal error: inputs must be unique for CDF computation.");
+  std::vector<double> cdf_values;
+  if (auto status = cdfUniqSorted(ctx, digest_name, sorted_unique_inputs_with_idx | ranges::views::keys | ranges::to_vector, &cdf_values); !status.ok()) {
+    return status;
+  }
+  result->cdf_values.resize(inputs.size(), std::numeric_limits<double>::quiet_NaN());
+
+  auto idx = 0;
+  for (auto iter = sorted_unique_inputs_with_idx.cbegin(); iter != sorted_unique_inputs_with_idx.cend(); ++iter) {
+    for (auto original_idx : iter->second) {
+      result->cdf_values[original_idx] = cdf_values[idx];
+    }
+    ++idx;
   }
 
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status TDigest::cdfUniqSorted(engine::Context& ctx, const Slice& digest_name,
+                                       const std::vector<double>& inputs, std::vector<double>* values) {
   auto ns_key = AppendNamespacePrefix(digest_name);
   TDigestMetadata metadata;
   {
@@ -592,7 +609,7 @@ rocksdb::Status TDigest::CDFUniqSorted(engine::Context& ctx, const Slice& digest
     }
 
     if (metadata.total_observations == 0) {
-      result->cdf_values = std::vector<double>(inputs.size(), std::numeric_limits<double>::quiet_NaN());
+      *values = std::vector<double>(inputs.size(), std::numeric_limits<double>::quiet_NaN());
       return rocksdb::Status::OK();
     }
 
@@ -655,7 +672,7 @@ rocksdb::Status TDigest::CDFUniqSorted(engine::Context& ctx, const Slice& digest
     double cdf_val = (weight / total_weight);
     results.push_back(cdf_val);
   }
-  result->cdf_values = results;
+  *values = std::move(results);
   return rocksdb::Status::OK();
 }
 

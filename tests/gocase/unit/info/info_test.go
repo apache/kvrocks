@@ -305,3 +305,72 @@ func TestInfoFormat(t *testing.T) {
 		require.ErrorContains(t, rdb.Do(ctx, "INFO", "server", "FORMAT").Err(), "syntax error")
 	})
 }
+
+func TestNamespaceStats(t *testing.T) {
+	password := "adminpass"
+	srv := util.StartServer(t, map[string]string{
+		"requirepass":                 password,
+		"histogram-bucket-boundaries": "10,20,30",
+	})
+	defer srv.Close()
+
+	ctx := context.Background()
+	// admin is scoped to the default namespace; user authenticates with a namespace token.
+	admin := srv.NewClientWithOption(&redis.Options{Password: password})
+	defer func() { require.NoError(t, admin.Close()) }()
+
+	require.NoError(t, admin.Do(ctx, "NAMESPACE", "ADD", "ns1", "tok1").Err())
+	user := srv.NewClientWithOption(&redis.Options{Password: "tok1"})
+	defer func() { require.NoError(t, user.Close()) }()
+
+	// GET is the only command that increments cmdstat_get, so the count is exact per namespace.
+	// The keys don't exist, but a lookup still counts as a command call.
+	const nsGets = 5
+	const adminGets = 2
+	for i := 0; i < nsGets; i++ {
+		require.ErrorIs(t, user.Get(ctx, fmt.Sprintf("k%d", i)).Err(), redis.Nil)
+	}
+	for i := 0; i < adminGets; i++ {
+		require.ErrorIs(t, admin.Get(ctx, fmt.Sprintf("a%d", i)).Err(), redis.Nil)
+	}
+
+	getCalls := func(rdb *redis.Client, section string) string {
+		v := util.FindInfoEntry(rdb, "cmdstat_get", section)
+		return v // e.g. "calls=5,usec=...,usec_per_call=..."
+	}
+
+	t.Run("commandstats are scoped to the caller namespace", func(t *testing.T) {
+		require.True(t, strings.HasPrefix(getCalls(user, "commandstats"), fmt.Sprintf("calls=%d,", nsGets)))
+	})
+
+	t.Run("admin sees the aggregate across all namespaces", func(t *testing.T) {
+		require.True(t, strings.HasPrefix(getCalls(admin, "commandstats"), fmt.Sprintf("calls=%d,", nsGets+adminGets)))
+	})
+
+	t.Run("total_commands_processed is namespace-scoped, admin is the aggregate", func(t *testing.T) {
+		mustAtoi := func(s string) int {
+			n, err := strconv.Atoi(s)
+			require.NoError(t, err)
+			return n
+		}
+		nsTotal := mustAtoi(util.FindInfoEntry(user, "total_commands_processed", "stats"))
+		adminTotal := mustAtoi(util.FindInfoEntry(admin, "total_commands_processed", "stats"))
+		require.GreaterOrEqual(t, nsTotal, nsGets)
+		// the aggregate also includes the admin/default namespace's own commands
+		require.Greater(t, adminTotal, nsTotal)
+	})
+
+	t.Run("admin LATENCY HISTOGRAM reflects the aggregate", func(t *testing.T) {
+		// LATENCY is an admin-only command; the admin view aggregates all namespaces, so it must include
+		// the get command issued by ns1. (This also guards that the histogram source is the per-namespace
+		// map, since the global command histogram is no longer written.)
+		res, err := admin.Do(ctx, "LATENCY", "HISTOGRAM", "get").Result()
+		require.NoError(t, err)
+		require.Contains(t, fmt.Sprintf("%v", res), "get")
+	})
+
+	t.Run("deleting a namespace drops it from the aggregate", func(t *testing.T) {
+		require.NoError(t, admin.Do(ctx, "NAMESPACE", "DEL", "ns1").Err())
+		require.True(t, strings.HasPrefix(getCalls(admin, "commandstats"), fmt.Sprintf("calls=%d,", adminGets)))
+	})
+}

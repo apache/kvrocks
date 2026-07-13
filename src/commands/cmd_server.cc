@@ -104,6 +104,7 @@ class CommandNamespace : public Commander {
       WARN("New namespace: {} with token: {}, addr: {}, result: {}", args_[2], args_[3], conn->GetAddr(), s.Msg());
     } else if (args_.size() == 3 && sub_command == "del") {
       Status s = srv->GetNamespace()->Del(args_[2]);
+      if (s.IsOK()) srv->ClearNamespaceStats(args_[2]);
       *output = s.IsOK() ? redis::RESP_OK : redis::Error(s);
       WARN("Deleted namespace: {}, addr: {}, result: {}", args_[2], conn->GetAddr(), s.Msg());
     } else if (args_.size() == 2 && sub_command == "current") {
@@ -1722,16 +1723,23 @@ class CommandLatency : public Commander {
       return Status::OK();
     }
 
+    // Histograms are per-namespace: use the caller's namespace stats, or the aggregate for the
+    // admin/default namespace. Hold the shared_ptr for the duration of the response build.
+    auto stats_holder = conn->GetNamespace() == kDefaultNamespace
+                            ? srv->AggregateNamespaceStats()
+                            : srv->GetOrCreateNamespaceStats(conn->GetNamespace());
+    const Stats &cmd_stats = *stats_holder;
+
     std::vector<const std::pair<const std::string, CommandHistogram> *> target_histograms;
     if (args_.size() > 2) {
       for (size_t i = 2; i < args_.size(); i++) {
-        auto it = srv->stats.commands_histogram.find(util::ToLower(args_[i]));
-        if (it != srv->stats.commands_histogram.end() && it->second.calls > 0) {
+        auto it = cmd_stats.commands_histogram.find(util::ToLower(args_[i]));
+        if (it != cmd_stats.commands_histogram.end() && it->second.calls > 0) {
           target_histograms.push_back(&(*it));
         }
       }
     } else {
-      for (const auto &iter : srv->stats.commands_histogram) {
+      for (const auto &iter : cmd_stats.commands_histogram) {
         if (iter.second.calls > 0) {
           target_histograms.push_back(&iter);
         }
@@ -1750,8 +1758,8 @@ class CommandLatency : public Commander {
         if (cumulative == 0) continue;
 
         int64_t boundary = 0;
-        if (i < srv->stats.bucket_boundaries.size()) {
-          boundary = static_cast<int64_t>(srv->stats.bucket_boundaries[i]);
+        if (i < cmd_stats.bucket_boundaries.size()) {
+          boundary = static_cast<int64_t>(cmd_stats.bucket_boundaries[i]);
         } else {
           boundary = -1;
         }

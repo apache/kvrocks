@@ -66,21 +66,7 @@ Server::Server(engine::Storage *storage, Config *config)
       config_(config),
       namespace_(storage) {
   // init commands stats here to prevent concurrent insert, and cause core
-  auto commands = redis::CommandTable::GetOriginal();
-
-  for (const auto &iter : *commands) {
-    stats.commands_stats[iter.first].calls = 0;
-    stats.commands_stats[iter.first].latency = 0;
-
-    if (stats.bucket_boundaries.size() > 0) {
-      // NB: Extra index for the last bucket (Inf)
-      for (std::size_t i{0}; i <= stats.bucket_boundaries.size(); ++i) {
-        stats.commands_histogram[iter.first].buckets.push_back(std::make_unique<std::atomic<uint64_t>>(0));
-      }
-      stats.commands_histogram[iter.first].calls = 0;
-      stats.commands_histogram[iter.first].sum = 0;
-    }
-  }
+  initCommandStats(&stats);
 
   // init cursor_dict_
   cursor_dict_ = std::make_unique<CursorDictType>();
@@ -872,7 +858,18 @@ uint64_t Server::GetClientID() { return client_id_.fetch_add(1, std::memory_orde
 
 void Server::recordInstantaneousMetrics() {
   auto rocksdb_stats = storage->GetDB()->GetDBOptions().statistics;
-  stats.TrackInstantaneousMetric(STATS_METRIC_COMMAND, stats.total_calls);
+  // Sample each namespace's command metric, and feed the sum into the global metric so the
+  // admin/default view reports aggregate ops/sec without keeping a global command counter on the hot path.
+  uint64_t total_calls = 0;
+  {
+    std::shared_lock<std::shared_mutex> lock(ns_stats_mu_);
+    for (const auto &[ns, ns_stats] : ns_stats_) {
+      auto calls = ns_stats->total_calls.load();
+      ns_stats->TrackInstantaneousMetric(STATS_METRIC_COMMAND, calls);
+      total_calls += calls;
+    }
+  }
+  stats.TrackInstantaneousMetric(STATS_METRIC_COMMAND, total_calls);
   stats.TrackInstantaneousMetric(STATS_METRIC_NET_INPUT, stats.in_bytes);
   stats.TrackInstantaneousMetric(STATS_METRIC_NET_OUTPUT, stats.out_bytes);
   stats.TrackInstantaneousMetric(STATS_METRIC_ROCKSDB_PUT,
@@ -1392,11 +1389,82 @@ int64_t Server::GetLastBgsaveTime() {
   return last_bgsave_timestamp_secs_ == -1 ? start_time_secs_ : last_bgsave_timestamp_secs_;
 }
 
-Server::InfoEntries Server::GetStatsInfo() {
+void Server::initCommandStats(Stats *stats) {
+  auto commands = redis::CommandTable::GetOriginal();
+  for (const auto &iter : *commands) {
+    stats->commands_stats[iter.first].calls = 0;
+    stats->commands_stats[iter.first].latency = 0;
+
+    if (stats->bucket_boundaries.size() > 0) {
+      // NB: Extra index for the last bucket (Inf)
+      for (std::size_t i{0}; i <= stats->bucket_boundaries.size(); ++i) {
+        stats->commands_histogram[iter.first].buckets.push_back(std::make_unique<std::atomic<uint64_t>>(0));
+      }
+      stats->commands_histogram[iter.first].calls = 0;
+      stats->commands_histogram[iter.first].sum = 0;
+    }
+  }
+}
+
+std::shared_ptr<Stats> Server::GetOrCreateNamespaceStats(const std::string &ns) {
+  {
+    std::shared_lock<std::shared_mutex> lock(ns_stats_mu_);
+    if (auto it = ns_stats_.find(ns); it != ns_stats_.end()) {
+      return it->second;
+    }
+  }
+
+  std::unique_lock<std::shared_mutex> lock(ns_stats_mu_);
+  if (auto it = ns_stats_.find(ns); it != ns_stats_.end()) {
+    return it->second;
+  }
+  auto ns_stats = std::make_shared<Stats>(config_->histogram_bucket_boundaries);
+  initCommandStats(ns_stats.get());
+  ns_stats_[ns] = ns_stats;
+  return ns_stats;
+}
+
+std::shared_ptr<Stats> Server::AggregateNamespaceStats() {
+  auto agg = std::make_shared<Stats>(config_->histogram_bucket_boundaries);
+  initCommandStats(agg.get());
+
+  std::shared_lock<std::shared_mutex> lock(ns_stats_mu_);
+  for (const auto &[ns, ns_stats] : ns_stats_) {
+    agg->total_calls.fetch_add(ns_stats->total_calls.load(), std::memory_order_relaxed);
+    for (const auto &[cmd, stat] : ns_stats->commands_stats) {
+      agg->commands_stats[cmd].calls.fetch_add(stat.calls.load(), std::memory_order_relaxed);
+      agg->commands_stats[cmd].latency.fetch_add(stat.latency.load(), std::memory_order_relaxed);
+    }
+    for (const auto &[cmd, hist] : ns_stats->commands_histogram) {
+      auto &agg_hist = agg->commands_histogram[cmd];
+      agg_hist.calls.fetch_add(hist.calls.load(), std::memory_order_relaxed);
+      agg_hist.sum.fetch_add(hist.sum.load(), std::memory_order_relaxed);
+      for (std::size_t i = 0; i < hist.buckets.size(); ++i) {
+        agg_hist.buckets[i]->fetch_add(hist.buckets[i]->load(), std::memory_order_relaxed);
+      }
+    }
+  }
+  return agg;
+}
+
+void Server::ClearNamespaceStats(const std::string &ns) {
+  std::unique_lock<std::shared_mutex> lock(ns_stats_mu_);
+  ns_stats_.erase(ns);
+}
+
+Server::InfoEntries Server::GetStatsInfo(const std::string &ns) {
+  // Command stats are per namespace; the admin/default namespace sees the aggregate across all of them.
+  auto cmd_stats_ptr = ns == kDefaultNamespace ? AggregateNamespaceStats() : GetOrCreateNamespaceStats(ns);
+  const Stats &cmd_stats = *cmd_stats_ptr;
+
   Server::InfoEntries entries;
   entries.emplace_back("total_connections_received", total_clients_.load());
-  entries.emplace_back("total_commands_processed", stats.total_calls.load());
-  entries.emplace_back("instantaneous_ops_per_sec", stats.GetInstantaneousMetric(STATS_METRIC_COMMAND));
+  entries.emplace_back("total_commands_processed", cmd_stats.total_calls.load());
+  // Per-namespace ops/sec comes from the namespace's own sampled metric; the admin/default view uses
+  // the global metric, which the sampler feeds with the sum across all namespaces.
+  auto ops_per_sec = ns == kDefaultNamespace ? stats.GetInstantaneousMetric(STATS_METRIC_COMMAND)
+                                             : cmd_stats.GetInstantaneousMetric(STATS_METRIC_COMMAND);
+  entries.emplace_back("instantaneous_ops_per_sec", ops_per_sec);
   entries.emplace_back("total_net_input_bytes", stats.in_bytes.load());
   entries.emplace_back("total_net_output_bytes", stats.out_bytes.load());
   entries.emplace_back("instantaneous_input_kbps",
@@ -1420,10 +1488,13 @@ Server::InfoEntries Server::GetStatsInfo() {
   return entries;
 }
 
-Server::InfoEntries Server::GetCommandsStatsInfo() {
+Server::InfoEntries Server::GetCommandsStatsInfo(const std::string &ns) {
+  auto cmd_stats_ptr = ns == kDefaultNamespace ? AggregateNamespaceStats() : GetOrCreateNamespaceStats(ns);
+  const Stats &cmd_stats = *cmd_stats_ptr;
+
   InfoEntries entries;
 
-  for (const auto &cmd_stat : stats.commands_stats) {
+  for (const auto &cmd_stat : cmd_stats.commands_stats) {
     auto calls = cmd_stat.second.calls.load();
     if (calls == 0) continue;
 
@@ -1433,18 +1504,18 @@ Server::InfoEntries Server::GetCommandsStatsInfo() {
                                      static_cast<double>(latency) / static_cast<double>(calls)));
   }
 
-  for (const auto &cmd_hist : stats.commands_histogram) {
+  for (const auto &cmd_hist : cmd_stats.commands_histogram) {
     auto command_name = cmd_hist.first;
-    auto calls = stats.commands_histogram[command_name].calls.load();
+    auto calls = cmd_hist.second.calls.load();
     if (calls == 0) continue;
 
-    auto sum = stats.commands_histogram[command_name].sum.load();
+    auto sum = cmd_hist.second.sum.load();
     std::string result;
-    for (std::size_t i{0}; i < stats.commands_histogram[command_name].buckets.size(); ++i) {
-      auto bucket_value = stats.commands_histogram[command_name].buckets[i]->load();
+    for (std::size_t i{0}; i < cmd_hist.second.buckets.size(); ++i) {
+      auto bucket_value = cmd_hist.second.buckets[i]->load();
       auto bucket_bound = std::numeric_limits<double>::infinity();
-      if (i < stats.bucket_boundaries.size()) {
-        bucket_bound = stats.bucket_boundaries[i];
+      if (i < cmd_stats.bucket_boundaries.size()) {
+        bucket_bound = cmd_stats.bucket_boundaries[i];
       }
 
       result.append(fmt::format("{}={},", bucket_bound, bucket_value));
@@ -1539,11 +1610,16 @@ Server::InfoEntries Server::GetKeyspaceInfo(const std::string &ns) {
 // this section can't be shown when loading(i.e. !is_loading_).
 std::string Server::GetInfo(const std::string &ns, const std::vector<std::string> &sections, InfoFormat format) {
   std::vector<std::pair<std::string, std::function<InfoEntries(Server *)>>> info_funcs = {
-      {"Server", &Server::GetServerInfo},   {"Clients", &Server::GetClientsInfo},
-      {"Memory", &Server::GetMemoryInfo},   {"Persistence", &Server::GetPersistenceInfo},
-      {"Stats", &Server::GetStatsInfo},     {"Replication", &Server::GetReplicationInfo},
-      {"CPU", &Server::GetCpuInfo},         {"CommandStats", &Server::GetCommandsStatsInfo},
-      {"Cluster", &Server::GetClusterInfo}, {"Keyspace", [&ns](Server *srv) { return srv->GetKeyspaceInfo(ns); }},
+      {"Server", &Server::GetServerInfo},
+      {"Clients", &Server::GetClientsInfo},
+      {"Memory", &Server::GetMemoryInfo},
+      {"Persistence", &Server::GetPersistenceInfo},
+      {"Stats", [&ns](Server *srv) { return srv->GetStatsInfo(ns); }},
+      {"Replication", &Server::GetReplicationInfo},
+      {"CPU", &Server::GetCpuInfo},
+      {"CommandStats", [&ns](Server *srv) { return srv->GetCommandsStatsInfo(ns); }},
+      {"Cluster", &Server::GetClusterInfo},
+      {"Keyspace", [&ns](Server *srv) { return srv->GetKeyspaceInfo(ns); }},
       {"RocksDB", &Server::GetRocksDBInfo},
   };
 

@@ -33,6 +33,7 @@
 #include "event_util.h"
 #include "redis_request.h"
 #include "server/redis_reply.h"
+#include "stats/stats.h"
 
 class Worker;
 
@@ -163,7 +164,7 @@ class Connection : public EvbufCallbackBase<Connection> {
   void BecomeAdmin() { is_admin_ = true; }
   void BecomeUser() { is_admin_ = false; }
   std::string GetNamespace() const { return ns_; }
-  void SetNamespace(std::string ns) { ns_ = std::move(ns); }
+  void SetNamespace(std::string ns);
 
   void NeedFreeBufferEvent(bool need_free = true) { need_free_bev_ = need_free; }
   void NeedNotFreeBufferEvent() { NeedFreeBufferEvent(false); }
@@ -210,6 +211,8 @@ class Connection : public EvbufCallbackBase<Connection> {
   uint64_t id_ = 0;
   std::atomic<int> flags_ = 0;
   std::string ns_;
+  // Cache of this connection's per-namespace command stats, refreshed by SetNamespace.
+  std::shared_ptr<Stats> cached_ns_stats_;
   std::string name_;
   SetInfo set_info_;
   std::string ip_;

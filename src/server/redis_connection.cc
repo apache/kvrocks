@@ -52,6 +52,12 @@ Connection::Connection(bufferevent *bev, Worker *owner)
   int64_t now = util::GetTimeStamp();
   create_time_ = now;
   last_interaction_ = now;
+  cached_ns_stats_ = srv_->GetOrCreateNamespaceStats(kDefaultNamespace);
+}
+
+void Connection::SetNamespace(std::string ns) {
+  ns_ = std::move(ns);
+  cached_ns_stats_ = srv_->GetOrCreateNamespaceStats(ns_);
 }
 
 Connection::~Connection() {
@@ -399,7 +405,10 @@ void Connection::RecordProfilingSampleIfNeed(const std::string &cmd, uint64_t du
 Status Connection::ExecuteCommand(engine::Context &ctx, const std::string &cmd_name,
                                   const std::vector<std::string> &cmd_tokens, Commander *current_cmd,
                                   std::string *reply) {
-  srv_->stats.IncrCalls(cmd_name);
+  // Attribute command stats to this connection's namespace. Hold the cached pointer locally so calls
+  // and latency stay consistent even if the command (e.g. AUTH/SELECT/RESET) changes the namespace.
+  auto ns_stats = cached_ns_stats_;
+  ns_stats->IncrCalls(cmd_name);
 
   auto start = std::chrono::high_resolution_clock::now();
   bool is_profiling = IsProfilingEnabled(cmd_name);
@@ -409,7 +418,7 @@ Status Connection::ExecuteCommand(engine::Context &ctx, const std::string &cmd_n
   if (is_profiling) RecordProfilingSampleIfNeed(cmd_name, duration);
 
   srv_->SlowlogPushEntryIfNeeded(&cmd_tokens, duration, this);
-  srv_->stats.IncrLatency(static_cast<uint64_t>(duration), cmd_name);
+  ns_stats->IncrLatency(static_cast<uint64_t>(duration), cmd_name);
   return s;
 }
 

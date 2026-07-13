@@ -301,17 +301,23 @@ class Server {
   };
   using InfoEntries = std::vector<InfoEntry>;
 
-  InfoEntries GetStatsInfo();
+  InfoEntries GetStatsInfo(const std::string &ns);
   InfoEntries GetServerInfo();
   InfoEntries GetMemoryInfo();
   InfoEntries GetRocksDBInfo();
   InfoEntries GetClientsInfo();
   InfoEntries GetReplicationInfo();
-  InfoEntries GetCommandsStatsInfo();
+  InfoEntries GetCommandsStatsInfo(const std::string &ns);
   InfoEntries GetClusterInfo();
   InfoEntries GetPersistenceInfo();
   InfoEntries GetCpuInfo();
   InfoEntries GetKeyspaceInfo(const std::string &ns);
+
+  // Per-namespace command statistics. Command calls/latency are tracked per namespace (keyed by the
+  // connection's namespace); the admin/default namespace view is the sum over all namespaces.
+  std::shared_ptr<Stats> GetOrCreateNamespaceStats(const std::string &ns);
+  std::shared_ptr<Stats> AggregateNamespaceStats();
+  void ClearNamespaceStats(const std::string &ns);
 
   enum class InfoFormat { Text, Json };
   std::string GetInfo(const std::string &ns, const std::vector<std::string> &sections,
@@ -443,6 +449,13 @@ class Server {
   int64_t last_bgsave_duration_secs_ = -1;
 
   std::map<std::string, DBScanInfo> db_scan_infos_;
+
+  // Per-namespace command statistics (keyed by namespace name), guarded by ns_stats_mu_. The global
+  // `stats` keeps the non-namespaced counters (net bytes, replication) and the sampled aggregate ops/sec.
+  std::unordered_map<std::string, std::shared_ptr<Stats>> ns_stats_;
+  std::shared_mutex ns_stats_mu_;
+  // Pre-populate a Stats' per-command maps so no runtime map insertion (and thus no data race) happens.
+  static void initCommandStats(Stats *stats);
 
   LogCollector<SlowEntry> slow_log_;
   LogCollector<PerfEntry> perf_log_;

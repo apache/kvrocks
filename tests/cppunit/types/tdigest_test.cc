@@ -30,13 +30,14 @@
 #include <range/v3/algorithm/shuffle.hpp>
 #include <range/v3/range.hpp>
 #include <range/v3/view/chunk.hpp>
+#include <range/v3/view/concat.hpp>
 #include <range/v3/view/iota.hpp>
 #include <range/v3/view/join.hpp>
+#include <range/v3/view/repeat.hpp>
 #include <range/v3/view/transform.hpp>
 #include <string>
 #include <vector>
 
-#include "logging.h"
 #include "storage/redis_metadata.h"
 #include "test_base.h"
 #include "time_util.h"
@@ -947,4 +948,158 @@ TEST_F(RedisTDigestTest, MergeWithUserSpecifiedCompression) {
 
   // Verify total observations: dest(1) + src(1) = 2
   EXPECT_EQ(metadata.total_observations, 2);
+}
+
+TEST_F(RedisTDigestTest, CDF_Test) {
+  std::string cdf_tdigest_name = "test_cdf_digest" + std::to_string(util::GetTimeStampMS());
+  bool exists = false;
+  auto status = tdigest_->Create(*ctx_, cdf_tdigest_name, {100}, &exists);
+  ASSERT_FALSE(exists);
+  ASSERT_TRUE(status.ok());
+
+  std::vector<double> samples = {1, 2, 2, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 5};
+  status = tdigest_->Add(*ctx_, cdf_tdigest_name, samples);
+  ASSERT_TRUE(status.ok());
+
+  std::vector<double> cdf_vals = {0, 1, 2, 3, 4, 5, 6};
+  redis::TDigestCDFResult result;
+
+  status = tdigest_->CDFUniqSorted(*ctx_, cdf_tdigest_name, cdf_vals, &result);
+  ASSERT_TRUE(status.ok()) << status.ToString();
+
+  std::vector<double> expected = {0.00, 0.03, 0.13, 0.29, 0.53, 0.83, 1.00};
+  ASSERT_EQ(result.cdf_values.size(), cdf_vals.size());
+
+  for (size_t i = 0; i < cdf_vals.size(); i++) {
+    EXPECT_NEAR(result.cdf_values[i], expected[i], 0.015) << fmt::format("Mismatch at index {}", i);
+  }
+}
+
+TEST_F(RedisTDigestTest, CDF_returns_nan_on_empty_tdigest) {
+  std::string test_digest_name = "test_digest_cdf_nan" + std::to_string(util::GetTimeStampMS());
+
+  bool exists = false;
+  auto status = tdigest_->Create(*ctx_, test_digest_name, {100}, &exists);
+  ASSERT_FALSE(exists);
+  ASSERT_TRUE(status.ok());
+
+  std::vector<double> values = {0.0, 1.0, 2.0, 3.0};
+  redis::TDigestCDFResult result;
+
+  status = tdigest_->CDFUniqSorted(*ctx_, test_digest_name, values, &result);
+  ASSERT_TRUE(status.ok()) << status.ToString();
+  ASSERT_EQ(result.cdf_values.size(), values.size());
+  for (const auto cdf : result.cdf_values) {
+    EXPECT_TRUE(std::isnan(cdf));
+  }
+}
+
+TEST_F(RedisTDigestTest, CDF_duplicate_values) {
+  std::string test_digest_name = "test_cdf_duplicates" + std::to_string(util::GetTimeStampMS());
+
+  bool exists = false;
+  auto status = tdigest_->Create(*ctx_, test_digest_name, {100}, &exists);
+  ASSERT_FALSE(exists);
+  ASSERT_TRUE(status.ok());
+
+  status = tdigest_->Add(*ctx_, test_digest_name, {10, 10, 10, 20, 20});
+  ASSERT_TRUE(status.ok());
+
+  std::vector<double> cdf_vals = {5, 10, 20, 25};
+  redis::TDigestCDFResult result;
+  status = tdigest_->CDFUniqSorted(*ctx_, test_digest_name, cdf_vals, &result);
+  ASSERT_TRUE(status.ok()) << status.ToString();
+
+  std::vector<double> expected = {0, 0.3, 0.8, 1};
+  ASSERT_EQ(result.cdf_values.size(), cdf_vals.size());
+  for (size_t i = 0; i < cdf_vals.size(); i++) {
+    EXPECT_NEAR(result.cdf_values[i], expected[i], 0.001) << fmt::format("Mismatch at index {}", i);
+  }
+}
+
+TEST_F(RedisTDigestTest, CDF_uniform_distribution) {
+  std::string test_digest_name = "test_cdf_uniform" + std::to_string(util::GetTimeStampMS());
+
+  bool exists = false;
+  auto status = tdigest_->Create(*ctx_, test_digest_name, {200}, &exists);
+  ASSERT_FALSE(exists);
+  ASSERT_TRUE(status.ok());
+
+  std::vector<double> samples = ranges::views::iota(1, 101) |
+                                ranges::views::transform([](int i) { return (double)i; }) |
+                                ranges::to<std::vector<double>>();
+  status = tdigest_->Add(*ctx_, test_digest_name, samples);
+  ASSERT_TRUE(status.ok());
+
+  std::vector<double> cdf_vals = {1, 25, 50, 75, 100};
+  redis::TDigestCDFResult result;
+  status = tdigest_->CDFUniqSorted(*ctx_, test_digest_name, cdf_vals, &result);
+  ASSERT_TRUE(status.ok()) << status.ToString();
+
+  std::vector<double> expected = {0.01, 0.25, 0.50, 0.75, 1.00};
+  ASSERT_EQ(result.cdf_values.size(), cdf_vals.size());
+
+  for (size_t i = 0; i < cdf_vals.size(); i++) {
+    EXPECT_NEAR(result.cdf_values[i], expected[i], 0.02) << fmt::format("Mismatch at index {}, val={}", i, cdf_vals[i]);
+  }
+}
+
+TEST_F(RedisTDigestTest, CDF_multiple_adds) {
+  std::string test_digest_name = "test_cdf_multiadd" + std::to_string(util::GetTimeStampMS());
+
+  bool exists = false;
+  auto status = tdigest_->Create(*ctx_, test_digest_name, {100}, &exists);
+  ASSERT_FALSE(exists);
+  ASSERT_TRUE(status.ok());
+
+  std::vector<double> samples1 = {1, 2, 3, 4, 5};
+  std::vector<double> samples2 = {6, 7, 8, 9, 10};
+  status = tdigest_->Add(*ctx_, test_digest_name, samples1);
+  ASSERT_TRUE(status.ok());
+  status = tdigest_->Add(*ctx_, test_digest_name, samples2);
+  ASSERT_TRUE(status.ok());
+
+  std::vector<double> cdf_vals = {1, 5, 7, 10};
+  redis::TDigestCDFResult result;
+  status = tdigest_->CDFUniqSorted(*ctx_, test_digest_name, cdf_vals, &result);
+  ASSERT_TRUE(status.ok());
+
+  std::vector<double> expected = {0.10, 0.50, 0.70, 1.00};
+  ASSERT_EQ(result.cdf_values.size(), cdf_vals.size());
+
+  for (size_t i = 0; i < cdf_vals.size(); i++) {
+    EXPECT_NEAR((result.cdf_values)[i], expected[i], 0.06)
+        << fmt::format("Mismatch at index {}, val={}", i, cdf_vals[i]);
+  }
+}
+
+TEST_F(RedisTDigestTest, CDF_skewed_distribution) {
+  std::string test_digest_name = "test_cdf_skewed" + std::to_string(util::GetTimeStampMS());
+
+  bool exists = false;
+  auto status = tdigest_->Create(*ctx_, test_digest_name, {200}, &exists);
+  ASSERT_FALSE(exists);
+  ASSERT_TRUE(status.ok());
+
+  std::vector<double> samples =
+      ranges::views::concat(
+          ranges::views::repeat(0.0) | ranges::views::take(100),
+          ranges::views::iota(1, 11) | ranges::views::transform([](int i) { return static_cast<double>(i); })) |
+      ranges::to<std::vector<double>>();
+
+  status = tdigest_->Add(*ctx_, test_digest_name, samples);
+  ASSERT_TRUE(status.ok());
+
+  std::vector<double> cdf_vals = {0, 1, 5, 10};
+  redis::TDigestCDFResult result;
+  status = tdigest_->CDFUniqSorted(*ctx_, test_digest_name, cdf_vals, &result);
+  ASSERT_TRUE(status.ok());
+
+  std::vector<double> expected = {0.4545, 0.91, 0.95, 1.00};
+  ASSERT_EQ(result.cdf_values.size(), cdf_vals.size());
+
+  for (size_t i = 0; i < cdf_vals.size(); i++) {
+    EXPECT_NEAR((result.cdf_values)[i], expected[i], 0.03)
+        << fmt::format("Mismatch at index {}, val={}", i, cdf_vals[i]);
+  }
 }

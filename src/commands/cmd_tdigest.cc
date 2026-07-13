@@ -18,7 +18,10 @@
  *
  */
 
+#include <range/v3/action/sort.hpp>
 #include <range/v3/range/conversion.hpp>
+#include <range/v3/view/enumerate.hpp>
+#include <range/v3/view/map.hpp>
 #include <range/v3/view/transform.hpp>
 
 #include "command_parser.h"
@@ -556,6 +559,65 @@ class CommandTDigestTrimmedMean : public Commander {
   double high_cut_quantile_;
 };
 
+class CommandTDigestCDF : public Commander {
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() == 2) return {Status::RedisParseErr, errWrongNumOfArguments};
+    key_name_ = args[1];
+    std::map<double, std::vector<size_t>> unique_inputs;
+    for (size_t i = 2; i < args.size(); i++) {
+      auto value = ParseFloat(args[i]);
+      if (!value) {
+        return {Status::RedisParseErr, errValueIsNotFloat};
+      }
+      if (std::isnan(*value)) {
+        return {Status::RedisParseErr, errValueIsNotFloat};
+      }
+      if (unique_inputs.find(*value) == unique_inputs.cend()) {
+        unique_inputs[*value] = std::vector<size_t>{i - 2};
+      } else {
+        unique_inputs[*value].push_back(i - 2);
+      }
+    }
+    sorted_unique_inputs_with_idx_ =
+        ranges::views::transform(unique_inputs,
+                                 [](const auto &pair) { return std::make_pair(pair.first, pair.second); }) |
+        ranges::to_vector;
+    num_inputs_ = args.size() - 2;
+    return Status::OK();
+  }
+
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    TDigest tdigest(srv->storage, conn->GetNamespace());
+    TDigestCDFResult result;
+    std::vector<double> uniq_cdfs = sorted_unique_inputs_with_idx_ | ranges::views::keys | ranges::to_vector;
+    auto s = tdigest.CDFUniqSorted(ctx, key_name_, uniq_cdfs, &result);
+    if (!s.ok()) {
+      if (s.IsNotFound()) {
+        return {Status::RedisExecErr, errKeyNotFound};
+      }
+      return {Status::RedisExecErr, s.ToString()};
+    }
+
+    std::vector<std::pair<size_t, std::string>> cdf_uniq_results_with_idx =
+        ranges::views::transform(result.cdf_values, util::Float2String) | ranges::views::enumerate | ranges::to_vector;
+    std::vector<std::string> cdf_result(num_inputs_, kNan);
+
+    for (const auto &[idx, result_str] : cdf_uniq_results_with_idx) {
+      for (const auto &origin_idx : sorted_unique_inputs_with_idx_[idx].second) {
+        cdf_result[origin_idx] = result_str;
+      }
+    }
+
+    *output = conn->MultiBulkString(cdf_result);
+    return Status::OK();
+  }
+
+ private:
+  std::string key_name_;
+  size_t num_inputs_;
+  std::vector<std::pair<double, std::vector<size_t>>> sorted_unique_inputs_with_idx_;
+};
+
 std::vector<CommandKeyRange> GetMergeKeyRange(const std::vector<std::string> &args) {
   auto numkeys = ParseInt<int>(args[2], 10).ValueOr(0);
   return {{1, 1, 1}, {3, 2 + numkeys, 1}};
@@ -573,5 +635,6 @@ REDIS_REGISTER_COMMANDS(TDigest, MakeCmdAttr<CommandTDigestCreate>("tdigest.crea
                         MakeCmdAttr<CommandTDigestQuantile>("tdigest.quantile", -3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandTDigestTrimmedMean>("tdigest.trimmed_mean", 4, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandTDigestReset>("tdigest.reset", 2, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandTDigestMerge>("tdigest.merge", -4, "write", GetMergeKeyRange));
+                        MakeCmdAttr<CommandTDigestMerge>("tdigest.merge", -4, "write", GetMergeKeyRange),
+                        MakeCmdAttr<CommandTDigestCDF>("tdigest.cdf", -3, "read-only", 1, 1, 1));
 }  // namespace redis

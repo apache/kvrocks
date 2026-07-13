@@ -581,7 +581,9 @@ rocksdb::Status TDigest::CDF(engine::Context& ctx, const Slice& digest_name, con
   }
 
   std::vector<double> cdf_values;
-  if (auto status = cdfUniqSorted(ctx, digest_name, sorted_unique_inputs_with_idx | ranges::views::keys | ranges::to_vector, &cdf_values); !status.ok()) {
+  if (auto status = cdfUniqSorted(ctx, digest_name,
+                                  sorted_unique_inputs_with_idx | ranges::views::keys | ranges::to_vector, &cdf_values);
+      !status.ok()) {
     return status;
   }
   result->cdf_values.resize(inputs.size(), std::numeric_limits<double>::quiet_NaN());

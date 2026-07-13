@@ -588,7 +588,7 @@ rocksdb::Status TDigest::CDF(engine::Context& ctx, const Slice& digest_name, con
   }
   result->cdf_values.resize(inputs.size(), std::numeric_limits<double>::quiet_NaN());
 
-  auto idx = 0;
+  size_t idx = 0;
   for (auto iter = sorted_unique_inputs_with_idx.cbegin(); iter != sorted_unique_inputs_with_idx.cend(); ++iter) {
     for (auto original_idx : iter->second) {
       result->cdf_values[original_idx] = cdf_values[idx];
@@ -615,27 +615,8 @@ rocksdb::Status TDigest::cdfUniqSorted(engine::Context& ctx, const Slice& digest
       return rocksdb::Status::OK();
     }
 
-    if (metadata.unmerged_nodes > 0) {
-      auto batch = storage_->GetWriteBatchBase();
-      WriteBatchLogData log_data(kRedisTDigest);
-      if (auto status = batch->PutLogData(log_data.Encode()); !status.ok()) {
-        return status;
-      }
-
-      if (auto status = mergeCurrentBuffer(ctx, ns_key, batch, &metadata); !status.ok()) {
-        return status;
-      }
-
-      std::string metadata_bytes;
-      metadata.Encode(&metadata_bytes);
-      if (auto status = batch->Put(metadata_cf_handle_, ns_key, metadata_bytes); !status.ok()) {
-        return status;
-      }
-
-      if (auto status = storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch()); !status.ok()) {
-        return status;
-      }
-      ctx.RefreshLatestSnapshot();
+    if (auto status = mergeNodes(ctx, ns_key, &metadata); !status.ok()) {
+      return status;
     }
   }
 
@@ -658,18 +639,18 @@ rocksdb::Status TDigest::cdfUniqSorted(engine::Context& ctx, const Slice& digest
         return rocksdb::Status::InvalidArgument(current_centroid_result.Msg());
       }
       auto& current_centroid = *current_centroid_result;
-      if (val < current_centroid.mean) {
+
+      const int cmp = DoubleCompare(val, current_centroid.mean);
+
+      if (cmp < 0) {
         break;
       }
       accum_weight += current_centroid.weight;
-      if (val > current_centroid.mean) {
+      if (cmp > 0) {
         weight += current_centroid.weight;
         continue;
       }
-      if (val == current_centroid.mean) {
-        weight += current_centroid.weight / 2;
-        continue;
-      }
+      weight += current_centroid.weight / 2;
     }
     double cdf_val = (weight / total_weight);
     results.push_back(cdf_val);

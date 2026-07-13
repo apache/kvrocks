@@ -950,7 +950,7 @@ TEST_F(RedisTDigestTest, MergeWithUserSpecifiedCompression) {
   EXPECT_EQ(metadata.total_observations, 2);
 }
 
-TEST_F(RedisTDigestTest, CDF_Test) {
+TEST_F(RedisTDigestTest, CDFTest) {
   std::string cdf_tdigest_name = "test_cdf_digest" + std::to_string(util::GetTimeStampMS());
   bool exists = false;
   auto status = tdigest_->Create(*ctx_, cdf_tdigest_name, {100}, &exists);
@@ -975,7 +975,7 @@ TEST_F(RedisTDigestTest, CDF_Test) {
   }
 }
 
-TEST_F(RedisTDigestTest, CDF_returns_nan_on_empty_tdigest) {
+TEST_F(RedisTDigestTest, CDFReturnsNaNOnEmptyTDigest) {
   std::string test_digest_name = "test_digest_cdf_nan" + std::to_string(util::GetTimeStampMS());
 
   bool exists = false;
@@ -994,7 +994,7 @@ TEST_F(RedisTDigestTest, CDF_returns_nan_on_empty_tdigest) {
   }
 }
 
-TEST_F(RedisTDigestTest, CDF_duplicate_values) {
+TEST_F(RedisTDigestTest, CDFDuplicateValues) {
   std::string test_digest_name = "test_cdf_duplicates" + std::to_string(util::GetTimeStampMS());
 
   bool exists = false;
@@ -1017,7 +1017,7 @@ TEST_F(RedisTDigestTest, CDF_duplicate_values) {
   }
 }
 
-TEST_F(RedisTDigestTest, CDF_signed_zero_queries) {
+TEST_F(RedisTDigestTest, CDFSignedZeroQueries) {
   std::string test_digest_name = "test_cdf_signed_zero" + std::to_string(util::GetTimeStampMS());
 
   bool exists = false;
@@ -1038,7 +1038,7 @@ TEST_F(RedisTDigestTest, CDF_signed_zero_queries) {
   EXPECT_NEAR(result.cdf_values[1], 0.5, 0.001);
 }
 
-TEST_F(RedisTDigestTest, CDF_uniform_distribution) {
+TEST_F(RedisTDigestTest, CDFUniformDistribution) {
   std::string test_digest_name = "test_cdf_uniform" + std::to_string(util::GetTimeStampMS());
 
   bool exists = false;
@@ -1065,7 +1065,7 @@ TEST_F(RedisTDigestTest, CDF_uniform_distribution) {
   }
 }
 
-TEST_F(RedisTDigestTest, CDF_multiple_adds) {
+TEST_F(RedisTDigestTest, CDFMultipleAdds) {
   std::string test_digest_name = "test_cdf_multiadd" + std::to_string(util::GetTimeStampMS());
 
   bool exists = false;
@@ -1094,7 +1094,7 @@ TEST_F(RedisTDigestTest, CDF_multiple_adds) {
   }
 }
 
-TEST_F(RedisTDigestTest, CDF_skewed_distribution) {
+TEST_F(RedisTDigestTest, CDFSkewedDistribution) {
   std::string test_digest_name = "test_cdf_skewed" + std::to_string(util::GetTimeStampMS());
 
   bool exists = false;

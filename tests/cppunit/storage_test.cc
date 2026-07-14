@@ -248,6 +248,9 @@ TEST(Storage, TryPurgeCheckpoint) {
   s = storage->TryPurgeCheckpoint(/*fetch_file_threads=*/0);
   ASSERT_TRUE(s.IsOK()) << s.Msg();
   EXPECT_FALSE(storage->ExistCheckpoint());
+  EXPECT_FALSE(std::filesystem::exists(config.checkpoint_dir + ".trash"));
+  EXPECT_EQ(storage->GetCheckpointCreateTimeSecs(), 0);
+  EXPECT_EQ(storage->GetCheckpointAccessTimeSecs(), 0);
 
   files.clear();
   s = engine::Storage::ReplDataManager::GetFullReplDataInfo(storage.get(), &files);

@@ -90,9 +90,6 @@ const std::vector<ConfigEnum<BlockCacheType>> cache_types{[] {
   return res;
 }()};
 
-const std::vector<ConfigEnum<MigrationType>> migration_types{{"redis-command", MigrationType::kRedisCommand},
-                                                             {"raw-key-value", MigrationType::kRawKeyValue}};
-
 const std::vector<ConfigEnum<HashSubkeyEncodingMode>> hash_subkey_encoding_modes{
     {"legacy", HashSubkeyEncodingMode::kLegacy},
     {"field-expiration", HashSubkeyEncodingMode::kFieldExpiration},
@@ -140,7 +137,13 @@ Status SetRocksdbCompression(Server *srv, const rocksdb::CompressionType compres
 };
 
 Config::Config() {
-  deprecated_fields_ = {"rocksdb.row_cache_size"};
+  // The `migrate-type` config was deprecated after removing the `redis-command` migration type,
+  // and the server will always migrate slots in the way of the raw key-value.
+  // The `migrate-speed` and `migrate-pipeline-size` configs only took effect in the
+  // `redis-command` migration type, so they were deprecated as well. Use the
+  // `migrate-batch-rate-limit-mb` and `migrate-batch-size-kb` configs to control the
+  // migration speed instead.
+  deprecated_fields_ = {"rocksdb.row_cache_size", "migrate-type", "migrate-speed", "migrate-pipeline-size"};
 
   struct FieldWrapper {
     std::string name;
@@ -233,11 +236,7 @@ Config::Config() {
       {"rename-command", true, new MultiStringField(&rename_command_, std::vector<std::string>{})},
       {"fullsync-recv-file-delay", false, new IntField(&fullsync_recv_file_delay, 0, 0, INT_MAX)},
       {"cluster-enabled", true, new YesNoField(&cluster_enabled, false)},
-      {"migrate-speed", false, new IntField(&migrate_speed, 4096, 0, INT_MAX)},
-      {"migrate-pipeline-size", false, new IntField(&pipeline_size, 16, 1, INT_MAX)},
       {"migrate-sequence-gap", false, new IntField(&sequence_gap, 10000, 1, INT_MAX)},
-      {"migrate-type", false,
-       new EnumField<MigrationType>(&migrate_type, migration_types, MigrationType::kRawKeyValue)},
       {"migrate-batch-size-kb", false, new IntField(&migrate_batch_size_kb, 16, 1, INT_MAX)},
       {"migrate-batch-rate-limit-mb", false, new IntField(&migrate_batch_rate_limit_mb, 16, 1, INT_MAX)},
       {"unixsocket", true, new StringField(&unixsocket, "")},
@@ -601,18 +600,6 @@ void Config::initFieldCallback() {
            [this](Server *srv, [[maybe_unused]] const std::string &k, [[maybe_unused]] const std::string &v) -> Status {
              if (!srv) return Status::OK();
              srv->GetPerfLog()->SetMaxEntries(profiling_sample_record_max_len);
-             return Status::OK();
-           }},
-          {"migrate-speed",
-           [this](Server *srv, [[maybe_unused]] const std::string &k, [[maybe_unused]] const std::string &v) -> Status {
-             if (!srv) return Status::OK();
-             if (cluster_enabled) srv->slot_migrator->SetMaxMigrationSpeed(migrate_speed);
-             return Status::OK();
-           }},
-          {"migrate-pipeline-size",
-           [this](Server *srv, [[maybe_unused]] const std::string &k, [[maybe_unused]] const std::string &v) -> Status {
-             if (!srv) return Status::OK();
-             if (cluster_enabled) srv->slot_migrator->SetMaxPipelineSize(pipeline_size);
              return Status::OK();
            }},
           {"migrate-sequence-gap",

@@ -38,6 +38,7 @@
 #include <type_traits>
 #include <unordered_map>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "cluster/cluster.h"
@@ -263,15 +264,40 @@ class Server {
   int64_t GetLastBgsaveTime();
   std::string GetRoleInfo();
 
+  // An INFO entry holds its value with its original type in a variant, so each output format can
+  // render it appropriately: the text format (ToString) emits the Redis-compatible representation
+  // (e.g. a bool as 0/1, numbers via std::to_string) while FORMAT JSON emits the native JSON type
+  // (a bool as true/false, numbers unquoted). The type is captured here at construction.
   struct InfoEntry {
+    using Value = std::variant<std::string, int64_t, double, bool>;
     std::string name;
-    std::string val;
+    Value val;
 
     InfoEntry(std::string name, std::string val) : name(std::move(name)), val(std::move(val)) {}
-    InfoEntry(std::string name, std::string_view val) : name(std::move(name)), val(val.begin(), val.end()) {}
-    InfoEntry(std::string name, const char *val) : name(std::move(name)), val(val) {}
-    template <typename T, std::enable_if_t<std::is_integral_v<T> || std::is_floating_point_v<T>, int> = 0>
-    InfoEntry(std::string name, T v) : name(std::move(name)), val(std::to_string(v)) {}
+    InfoEntry(std::string name, std::string_view val) : name(std::move(name)), val(std::string(val)) {}
+    InfoEntry(std::string name, const char *val) : name(std::move(name)), val(std::string(val)) {}
+    InfoEntry(std::string name, bool v) : name(std::move(name)), val(v) {}
+    // Floating-point values (incl. float, which widens to double) are stored as double.
+    InfoEntry(std::string name, double v) : name(std::move(name)), val(v) {}
+    // Integers (bool handled above) are stored as int64_t.
+    template <typename T, std::enable_if_t<std::is_integral_v<T> && !std::is_same_v<T, bool>, int> = 0>
+    InfoEntry(std::string name, T v) : name(std::move(name)), val(static_cast<int64_t>(v)) {}
+
+    // Redis-compatible text form: strings verbatim, booleans as 0/1, numbers via std::to_string.
+    std::string ValueToString() const {
+      return std::visit(
+          [](const auto &v) -> std::string {
+            using T = std::decay_t<decltype(v)>;
+            if constexpr (std::is_same_v<T, std::string>) {
+              return v;
+            } else if constexpr (std::is_same_v<T, bool>) {
+              return v ? "1" : "0";
+            } else {
+              return std::to_string(v);
+            }
+          },
+          val);
+    }
   };
   using InfoEntries = std::vector<InfoEntry>;
 
@@ -287,7 +313,9 @@ class Server {
   InfoEntries GetCpuInfo();
   InfoEntries GetKeyspaceInfo(const std::string &ns);
 
-  std::string GetInfo(const std::string &ns, const std::vector<std::string> &sections);
+  enum class InfoFormat { Text, Json };
+  std::string GetInfo(const std::string &ns, const std::vector<std::string> &sections,
+                      InfoFormat format = InfoFormat::Text);
   std::string GetRocksDBStatsJson() const;
   ReplState GetReplicationState();
 

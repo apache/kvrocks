@@ -986,6 +986,14 @@ Status Cluster::Reset() {
   migrated_slots_.clear();
   imported_slots_.clear();
 
+  // The migrator's forbidden slot range persists past a successful migration
+  // and is only harmless while slots_nodes_[slot] no longer points at us.
+  // A subsequent SETNODES after reset can reassign that slot back here and
+  // spuriously reject writes with TRYAGAIN, so drop it explicitly.
+  if (srv_->slot_migrator) {
+    srv_->slot_migrator->ReleaseForbiddenSlotRange();
+  }
+
   // unlink the cluster nodes file if exists
   unlink(srv_->GetConfig()->NodesFilePath().data());
   return Status::OK();

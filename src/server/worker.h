@@ -44,7 +44,7 @@ class Server;
 
 class Worker : EventCallbackBase<Worker>, EvconnlistenerBase<Worker> {
  public:
-  Worker(Server *srv, Config *config);
+  Worker(Server *srv, Config *config, const std::vector<int> &tcp_listen_fds = {});
   ~Worker();
   Worker(const Worker &) = delete;
   Worker(Worker &&) = delete;
@@ -78,8 +78,10 @@ class Worker : EventCallbackBase<Worker>, EvconnlistenerBase<Worker> {
   lua_State *Lua() { return lua_; }
   void LuaReset();
   int64_t GetLuaMemorySize();
+  void PollEventLoop();
 
   std::map<int, redis::Connection *> GetConnections() const { return conns_; }
+  std::vector<int> GetTCPListenFDs() const { return tcp_listen_fds_; }
   Server *srv;
 
  private:
@@ -102,6 +104,7 @@ class Worker : EventCallbackBase<Worker>, EvconnlistenerBase<Worker> {
   struct ev_token_bucket_cfg *rate_limit_group_cfg_ = nullptr;
   std::atomic<lua_State *> lua_;
   std::atomic<bool> is_terminated_ = false;
+  std::vector<int> tcp_listen_fds_;
 };
 
 class WorkerThread {

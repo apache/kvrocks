@@ -201,6 +201,8 @@ struct Config {
 
   bool lua_strict_key_accessing = false;
 
+  int lua_time_limit = 0;
+
   std::vector<double> histogram_bucket_boundaries;
 
   struct RocksDB {

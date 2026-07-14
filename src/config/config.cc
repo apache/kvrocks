@@ -262,6 +262,7 @@ Config::Config() {
       {"skip-block-cache-deallocation-on-close", false, new YesNoField(&skip_block_cache_deallocation_on_close, false)},
       {"histogram-bucket-boundaries", true, new StringField(&histogram_bucket_boundaries_str_, "")},
       {"lua-strict-key-accessing", false, new YesNoField(&lua_strict_key_accessing, false)},
+      {"lua-time-limit", false, new IntField(&lua_time_limit, 5000, -1, INT_MAX)},
 
       /* rocksdb options */
       {"rocksdb.compression", false,
@@ -819,6 +820,12 @@ void Config::initFieldCallback() {
              if (!std::is_sorted(histogram_bucket_boundaries.begin(), histogram_bucket_boundaries.end())) {
                return {Status::NotOK, "The values for the histogram must be sorted."};
              }
+             return Status::OK();
+           }},
+          {"lua-time-limit",
+           [](Server *srv, [[maybe_unused]] const std::string &k, [[maybe_unused]] const std::string &v) -> Status {
+             if (!srv) return Status::OK();
+             srv->ReevaluateScriptTimeout();
              return Status::OK();
            }},
       };

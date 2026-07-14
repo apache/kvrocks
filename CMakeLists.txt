@@ -254,6 +254,10 @@ if ((CMAKE_CXX_COMPILER_ID STREQUAL "GNU") OR (CMAKE_CXX_COMPILER_ID STREQUAL "C
     endif()
 endif()
 
+if (APPLE AND ENABLE_LUAJIT)
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-no_deduplicate")
+endif()
+
 # kvrocks objects target
 file(GLOB_RECURSE KVROCKS_SRCS src/*.cc)
 list(FILTER KVROCKS_SRCS EXCLUDE REGEX src/cli/main.cc)
@@ -285,6 +289,9 @@ target_link_libraries(kvrocks_objs PUBLIC ${EXTERNAL_LIBS})
 target_compile_definitions(kvrocks_objs PUBLIC KVROCKS_STORAGE_ENGINE=RocksDB)
 if(ENABLE_OPENSSL)
     target_compile_definitions(kvrocks_objs PUBLIC ENABLE_OPENSSL)
+endif()
+if(ENABLE_LUAJIT)
+    target_compile_definitions(kvrocks_objs PUBLIC ENABLE_LUAJIT)
 endif()
 if(ENABLE_NEW_ENCODING)
     target_compile_definitions(kvrocks_objs PUBLIC METADATA_ENCODING_VERSION=1)

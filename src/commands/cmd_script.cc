@@ -68,7 +68,7 @@ class CommandScript : public Commander {
     // There's a little tricky here since the script command was the write type
     // command but some subcommands like `exists` were readonly, so we want to allow
     // executing on slave here. Maybe we should find other way to do this.
-    if (srv->IsSlave() && subcommand_ != "exists") {
+    if (srv->IsSlave() && subcommand_ != "exists" && subcommand_ != "kill") {
       return {Status::RedisReadOnly, "You can't write against a read only slave"};
     }
 
@@ -81,6 +81,12 @@ class CommandScript : public Commander {
       s = srv->Propagate(engine::kPropagateScriptCommand, args_);
       if (!s) {
         ERROR("Failed to propagate script command: {}", s.Msg());
+        return s;
+      }
+      *output = redis::RESP_OK;
+    } else if (args_.size() == 2 && subcommand_ == "kill") {
+      auto s = srv->ScriptKill();
+      if (!s) {
         return s;
       }
       *output = redis::RESP_OK;

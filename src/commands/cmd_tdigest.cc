@@ -585,8 +585,10 @@ class CommandTDigestCDF : public Commander {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    *output =
-        conn->MultiBulkString(result.cdf_values | ranges::views::transform(util::Float2String) | ranges::to_vector);
+    output->append(redis::MultiLen(result.cdf_values.size()));
+    for (auto const value : result.cdf_values) {
+      output->append(conn->Double(value));
+    }
     return Status::OK();
   }
 

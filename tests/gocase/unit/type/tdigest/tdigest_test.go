@@ -1313,6 +1313,7 @@ func tdigestTestsByRankAndByRevRank(t *testing.T, configs util.KvrocksServerConf
 
 	t.Run("tdigest.cdf with different arguments", func(t *testing.T) {
 		keyPrefix := "tdigest_cdf_"
+		isRESP3 := configs["resp3-enabled"] == "yes"
 
 		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.CDF").Err(), errMsgWrongNumberArg)
 		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.CDF", keyPrefix+"key1").Err(), errMsgWrongNumberArg)
@@ -1343,7 +1344,7 @@ func tdigestTestsByRankAndByRevRank(t *testing.T, configs util.KvrocksServerConf
 		require.NoError(t, err)
 		require.Len(t, vals, 4)
 
-		// empty tdigest should return "nan"
+		// empty tdigest should return NaN
 		emptyKey := keyPrefix + "empty"
 		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", emptyKey).Err())
 		rsp = rdb.Do(ctx, "TDIGEST.CDF", emptyKey, "1.0")
@@ -1351,7 +1352,13 @@ func tdigestTestsByRankAndByRevRank(t *testing.T, configs util.KvrocksServerConf
 		vals, err = rsp.Slice()
 		require.NoError(t, err)
 		require.Len(t, vals, 1)
-		require.Equal(t, "nan", vals[0])
+		if isRESP3 {
+			cdf, ok := vals[0].(float64)
+			require.True(t, ok, "expected float64 but got %T", vals[0])
+			require.True(t, math.IsNaN(cdf), "expected NaN but got %v", cdf)
+		} else {
+			require.Equal(t, "nan", vals[0])
+		}
 
 		// Test with an empty digest and multi-valued CDF.
 		rsp = rdb.Do(ctx, "TDIGEST.CDF", emptyKey, "0.5", "1.0", "1.5", "2.2")
@@ -1359,7 +1366,15 @@ func tdigestTestsByRankAndByRevRank(t *testing.T, configs util.KvrocksServerConf
 		vals, err = rsp.Slice()
 		require.NoError(t, err)
 		require.Len(t, vals, 4)
-		require.Equal(t, []interface{}{"nan", "nan", "nan", "nan"}, vals)
+		if isRESP3 {
+			for i, v := range vals {
+				cdf, ok := v.(float64)
+				require.True(t, ok, "expected float64 but got %T at index %d", v, i)
+				require.True(t, math.IsNaN(cdf), "expected NaN but got %v at index %d", cdf, i)
+			}
+		} else {
+			require.Equal(t, []interface{}{"nan", "nan", "nan", "nan"}, vals)
+		}
 
 		{
 			// test with samples, these data are generated from redis tdigest.cdf command
@@ -1443,10 +1458,17 @@ func tdigestTestsByRankAndByRevRank(t *testing.T, configs util.KvrocksServerConf
 			require.NoError(t, err)
 			require.Len(t, vals, len(cdfArgs))
 			for i, v := range vals {
-				str, ok := v.(string)
-				require.True(t, ok, "expected string but got %T at index %d", v, i)
-				cdf, err := strconv.ParseFloat(str, 64)
-				require.NoError(t, err)
+				var cdf float64
+				if isRESP3 {
+					var ok bool
+					cdf, ok = v.(float64)
+					require.True(t, ok, "expected float64 but got %T at index %d", v, i)
+				} else {
+					str, ok := v.(string)
+					require.True(t, ok, "expected string but got %T at index %d", v, i)
+					cdf, err = strconv.ParseFloat(str, 64)
+					require.NoError(t, err)
+				}
 				require.InDelta(t, expectedCdfs[i], cdf, 0.01, "CDF mismatch at index %d", i)
 			}
 		}

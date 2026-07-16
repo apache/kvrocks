@@ -360,10 +360,14 @@ func TestNamespaceStats(t *testing.T) {
 		require.Greater(t, adminTotal, nsTotal)
 	})
 
+	t.Run("namespace user can read its own LATENCY HISTOGRAM", func(t *testing.T) {
+		// LATENCY is no longer admin-only; a namespace user gets its own histogram.
+		res, err := user.Do(ctx, "LATENCY", "HISTOGRAM", "get").Result()
+		require.NoError(t, err)
+		require.Contains(t, fmt.Sprintf("%v", res), "get")
+	})
+
 	t.Run("admin LATENCY HISTOGRAM reflects the aggregate", func(t *testing.T) {
-		// LATENCY is an admin-only command; the admin view aggregates all namespaces, so it must include
-		// the get command issued by ns1. (This also guards that the histogram source is the per-namespace
-		// map, since the global command histogram is no longer written.)
 		res, err := admin.Do(ctx, "LATENCY", "HISTOGRAM", "get").Result()
 		require.NoError(t, err)
 		require.Contains(t, fmt.Sprintf("%v", res), "get")

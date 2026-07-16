@@ -1723,8 +1723,7 @@ class CommandLatency : public Commander {
       return Status::OK();
     }
 
-    // Histograms are per-namespace: use the caller's namespace stats, or the aggregate for the
-    // admin/default namespace. Hold the shared_ptr for the duration of the response build.
+    // Report the caller's namespace histogram; the admin/default namespace sees the aggregate.
     auto stats_holder = conn->GetNamespace() == kDefaultNamespace
                             ? srv->AggregateNamespaceStats()
                             : srv->GetOrCreateNamespaceStats(conn->GetNamespace());
@@ -1832,5 +1831,5 @@ REDIS_REGISTER_COMMANDS(
     MakeCmdAttr<CommandSST>("sst", -3, "write exclusive admin", 1, 1, 1),
     MakeCmdAttr<CommandFlushMemTable>("flushmemtable", -1, "exclusive write", NO_KEY),
     MakeCmdAttr<CommandFlushBlockCache>("flushblockcache", 1, "exclusive write", NO_KEY),
-    MakeCmdAttr<CommandLatency>("latency", -2, "read-only admin", NO_KEY), )
+    MakeCmdAttr<CommandLatency>("latency", -2, "read-only", NO_KEY), )
 }  // namespace redis

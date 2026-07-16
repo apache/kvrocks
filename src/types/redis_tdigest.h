@@ -167,8 +167,5 @@ class TDigest : public SubKeyScanner {
                                              Centroid* centroid) const;
   rocksdb::Status prepareRankData(engine::Context& ctx, const Slice& digest_name, TDigestMetadata& metadata,
                                   std::vector<Centroid>& centroids);
-
-  rocksdb::Status cdfUniqSorted(engine::Context& ctx, const Slice& digest_name, const std::vector<double>& inputs,
-                                std::vector<double>* values);
 };
 }  // namespace redis

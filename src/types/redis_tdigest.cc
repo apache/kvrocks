@@ -37,7 +37,6 @@
 #include <range/v3/view/join.hpp>
 #include <range/v3/view/map.hpp>
 #include <range/v3/view/transform.hpp>
-#include <set>
 #include <vector>
 
 #include "commands/error_constants.h"
@@ -575,32 +574,6 @@ rocksdb::Status TDigest::Merge(engine::Context& ctx, const Slice& dest_digest,
 
 rocksdb::Status TDigest::CDF(engine::Context& ctx, const Slice& digest_name, const std::vector<double>& inputs,
                              TDigestCDFResult* result) {
-  std::map<double, std::vector<size_t>> sorted_unique_inputs_with_idx;
-  for (size_t i = 0; i < inputs.size(); ++i) {
-    sorted_unique_inputs_with_idx[inputs[i]].push_back(i);
-  }
-
-  std::vector<double> cdf_values;
-  if (auto status = cdfUniqSorted(ctx, digest_name,
-                                  sorted_unique_inputs_with_idx | ranges::views::keys | ranges::to_vector, &cdf_values);
-      !status.ok()) {
-    return status;
-  }
-  result->cdf_values.resize(inputs.size(), std::numeric_limits<double>::quiet_NaN());
-
-  size_t idx = 0;
-  for (auto iter = sorted_unique_inputs_with_idx.cbegin(); iter != sorted_unique_inputs_with_idx.cend(); ++iter) {
-    for (auto original_idx : iter->second) {
-      result->cdf_values[original_idx] = cdf_values[idx];
-    }
-    ++idx;
-  }
-
-  return rocksdb::Status::OK();
-}
-
-rocksdb::Status TDigest::cdfUniqSorted(engine::Context& ctx, const Slice& digest_name,
-                                       const std::vector<double>& inputs, std::vector<double>* values) {
   auto ns_key = AppendNamespacePrefix(digest_name);
   TDigestMetadata metadata;
   {
@@ -611,7 +584,7 @@ rocksdb::Status TDigest::cdfUniqSorted(engine::Context& ctx, const Slice& digest
     }
 
     if (metadata.total_observations == 0) {
-      *values = std::vector<double>(inputs.size(), std::numeric_limits<double>::quiet_NaN());
+      result->cdf_values = std::vector<double>(inputs.size(), std::numeric_limits<double>::quiet_NaN());
       return rocksdb::Status::OK();
     }
 
@@ -626,36 +599,11 @@ rocksdb::Status TDigest::cdfUniqSorted(engine::Context& ctx, const Slice& digest
   }
 
   auto dump_centroids = DummyCentroids<false>(metadata, centroids);
-  auto total_weight = dump_centroids.TotalWeight();
-  auto iter = dump_centroids.Begin();
-  double accum_weight = 0.;
-  std::vector<double> results;
-  results.reserve(inputs.size());
-  for (const auto val : inputs) {
-    double weight = accum_weight;
-    for (; iter->Valid(); iter->Next()) {
-      auto current_centroid_result = iter->GetCentroid();
-      if (!current_centroid_result) {
-        return rocksdb::Status::InvalidArgument(current_centroid_result.Msg());
-      }
-      auto& current_centroid = *current_centroid_result;
-
-      const int cmp = DoubleCompare(val, current_centroid.mean);
-
-      if (cmp < 0) {
-        break;
-      }
-      accum_weight += current_centroid.weight;
-      if (cmp > 0) {
-        weight += current_centroid.weight;
-        continue;
-      }
-      weight += current_centroid.weight / 2;
-    }
-    double cdf_val = (weight / total_weight);
-    results.push_back(cdf_val);
+  if (auto status = TDigestCDF(centroids, dump_centroids.Min(), dump_centroids.Max(), dump_centroids.TotalWeight(),
+                               inputs, &result->cdf_values);
+      !status.IsOK()) {
+    return rocksdb::Status::InvalidArgument(status.Msg());
   }
-  *values = std::move(results);
   return rocksdb::Status::OK();
 }
 

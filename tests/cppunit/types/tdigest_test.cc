@@ -1065,6 +1065,53 @@ TEST_F(RedisTDigestTest, CDFUniformDistribution) {
   }
 }
 
+TEST_F(RedisTDigestTest, CDFInterpolatesCompressedCentroids) {
+  std::string test_digest_name = "test_cdf_compressed" + std::to_string(util::GetTimeStampMS());
+
+  bool exists = false;
+  auto status = tdigest_->Create(*ctx_, test_digest_name, {.compression = 10}, &exists);
+  ASSERT_FALSE(exists);
+  ASSERT_TRUE(status.ok());
+
+  std::vector<double> samples = ranges::views::iota(0, 100) |
+                                ranges::views::transform([](int i) { return static_cast<double>(i); }) |
+                                ranges::to<std::vector<double>>();
+  status = tdigest_->Add(*ctx_, test_digest_name, samples);
+  ASSERT_TRUE(status.ok());
+
+  std::vector<double> cdf_vals = {20, 40, 50, 60, 80};
+  redis::TDigestCDFResult result;
+  status = tdigest_->CDF(*ctx_, test_digest_name, cdf_vals, &result);
+  ASSERT_TRUE(status.ok()) << status.ToString();
+
+  std::vector<double> expected = {0.205, 0.405, 0.505, 0.605, 0.805};
+  ASSERT_EQ(result.cdf_values.size(), cdf_vals.size());
+  for (size_t i = 0; i < cdf_vals.size(); i++) {
+    EXPECT_NEAR(result.cdf_values[i], expected[i], 0.001)
+        << fmt::format("Mismatch at index {}, val={}", i, cdf_vals[i]);
+  }
+}
+
+TEST_F(RedisTDigestTest, CDFDoesNotInterpolateBetweenSingletonCentroids) {
+  std::string test_digest_name = "test_cdf_singletons" + std::to_string(util::GetTimeStampMS());
+
+  bool exists = false;
+  auto status = tdigest_->Create(*ctx_, test_digest_name, {.compression = 100}, &exists);
+  ASSERT_FALSE(exists);
+  ASSERT_TRUE(status.ok());
+
+  status = tdigest_->Add(*ctx_, test_digest_name, {0, 10, 20});
+  ASSERT_TRUE(status.ok());
+
+  std::vector<double> cdf_vals = {11};
+  redis::TDigestCDFResult result;
+  status = tdigest_->CDF(*ctx_, test_digest_name, cdf_vals, &result);
+  ASSERT_TRUE(status.ok()) << status.ToString();
+
+  ASSERT_EQ(result.cdf_values.size(), cdf_vals.size());
+  EXPECT_NEAR(result.cdf_values[0], 2.0 / 3, 0.001);
+}
+
 TEST_F(RedisTDigestTest, CDFMultipleAdds) {
   std::string test_digest_name = "test_cdf_multiadd" + std::to_string(util::GetTimeStampMS());
 

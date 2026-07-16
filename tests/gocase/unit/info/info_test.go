@@ -373,8 +373,13 @@ func TestNamespaceStats(t *testing.T) {
 		require.Contains(t, fmt.Sprintf("%v", res), "get")
 	})
 
-	t.Run("deleting a namespace drops it from the aggregate", func(t *testing.T) {
+	t.Run("deleting a namespace keeps its stats and its connection working", func(t *testing.T) {
+		// Stats are not erased on NAMESPACE DEL, so the aggregate is unchanged and a connection still
+		// scoped to the deleted namespace keeps updating the same (still-aggregated) stats.
 		require.NoError(t, admin.Do(ctx, "NAMESPACE", "DEL", "ns1").Err())
-		require.True(t, strings.HasPrefix(getCalls(admin, "commandstats"), fmt.Sprintf("calls=%d,", adminGets)))
+		require.True(t, strings.HasPrefix(getCalls(admin, "commandstats"), fmt.Sprintf("calls=%d,", nsGets+adminGets)))
+
+		require.ErrorIs(t, user.Get(ctx, "k0").Err(), redis.Nil)
+		require.True(t, strings.HasPrefix(getCalls(admin, "commandstats"), fmt.Sprintf("calls=%d,", nsGets+adminGets+1)))
 	})
 }

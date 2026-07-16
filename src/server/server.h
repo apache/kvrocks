@@ -313,11 +313,8 @@ class Server {
   InfoEntries GetCpuInfo();
   InfoEntries GetKeyspaceInfo(const std::string &ns);
 
-  // Per-namespace command statistics. Command calls/latency are tracked per namespace (keyed by the
-  // connection's namespace); the admin/default namespace view is the sum over all namespaces.
   std::shared_ptr<Stats> GetOrCreateNamespaceStats(const std::string &ns);
   std::shared_ptr<Stats> AggregateNamespaceStats();
-  void ClearNamespaceStats(const std::string &ns);
 
   enum class InfoFormat { Text, Json };
   std::string GetInfo(const std::string &ns, const std::vector<std::string> &sections,

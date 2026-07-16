@@ -104,7 +104,6 @@ class CommandNamespace : public Commander {
       WARN("New namespace: {} with token: {}, addr: {}, result: {}", args_[2], args_[3], conn->GetAddr(), s.Msg());
     } else if (args_.size() == 3 && sub_command == "del") {
       Status s = srv->GetNamespace()->Del(args_[2]);
-      if (s.IsOK()) srv->ClearNamespaceStats(args_[2]);
       *output = s.IsOK() ? redis::RESP_OK : redis::Error(s);
       WARN("Deleted namespace: {}, addr: {}, result: {}", args_[2], conn->GetAddr(), s.Msg());
     } else if (args_.size() == 2 && sub_command == "current") {

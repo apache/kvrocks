@@ -1447,11 +1447,6 @@ std::shared_ptr<Stats> Server::AggregateNamespaceStats() {
   return agg;
 }
 
-void Server::ClearNamespaceStats(const std::string &ns) {
-  std::unique_lock<std::shared_mutex> lock(ns_stats_mu_);
-  ns_stats_.erase(ns);
-}
-
 Server::InfoEntries Server::GetStatsInfo(const std::string &ns) {
   // Command stats are per namespace; the admin/default namespace sees the aggregate across all of them.
   auto cmd_stats_ptr = ns == kDefaultNamespace ? AggregateNamespaceStats() : GetOrCreateNamespaceStats(ns);
@@ -1460,8 +1455,6 @@ Server::InfoEntries Server::GetStatsInfo(const std::string &ns) {
   Server::InfoEntries entries;
   entries.emplace_back("total_connections_received", total_clients_.load());
   entries.emplace_back("total_commands_processed", cmd_stats.total_calls.load());
-  // Per-namespace ops/sec comes from the namespace's own sampled metric; the admin/default view uses
-  // the global metric, which the sampler feeds with the sum across all namespaces.
   auto ops_per_sec = ns == kDefaultNamespace ? stats.GetInstantaneousMetric(STATS_METRIC_COMMAND)
                                              : cmd_stats.GetInstantaneousMetric(STATS_METRIC_COMMAND);
   entries.emplace_back("instantaneous_ops_per_sec", ops_per_sec);

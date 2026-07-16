@@ -405,8 +405,7 @@ void Connection::RecordProfilingSampleIfNeed(const std::string &cmd, uint64_t du
 Status Connection::ExecuteCommand(engine::Context &ctx, const std::string &cmd_name,
                                   const std::vector<std::string> &cmd_tokens, Commander *current_cmd,
                                   std::string *reply) {
-  // Attribute command stats to this connection's namespace. Hold the cached pointer locally so calls
-  // and latency stay consistent even if the command (e.g. AUTH/SELECT/RESET) changes the namespace.
+  // Local copy so calls and latency hit the same namespace even if the command changes it (e.g. AUTH).
   auto ns_stats = cached_ns_stats_;
   ns_stats->IncrCalls(cmd_name);
 

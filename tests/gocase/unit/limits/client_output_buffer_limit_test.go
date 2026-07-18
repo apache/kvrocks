@@ -134,7 +134,12 @@ func TestClientOutputBufferLimitPubsubHardLimit(t *testing.T) {
 		// much bigger than the limit so that the kernel socket buffers cannot
 		// concurrently drain the output buffer below it.
 		payload := strings.Repeat("x", 8*1024*1024)
-		require.NoError(t, rdb.Publish(ctx, "ch", payload).Err())
+		res := rdb.Publish(ctx, "ch", payload)
+		require.NoError(t, res.Err())
+		// The message was already appended to the output buffer of the
+		// subscriber before it was scheduled to close, so the subscriber is
+		// still counted as a receiver of the message, the same as Redis.
+		require.EqualValues(t, 1, res.Val())
 
 		require.Eventually(t, func() bool {
 			return getClientOutputBufferLimitDisconnections(t, srv) == 1

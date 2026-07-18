@@ -182,6 +182,56 @@ func TestClientOutputBufferLimitPubsubSoftLimit(t *testing.T) {
 	})
 }
 
+func TestBlockedClientOutputBufferLimit(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{
+		"client-output-buffer-limit": "normal 0 0 0 slave 0 0 0 pubsub 1m 0 0",
+	})
+	defer srv.Close()
+
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	t.Run("subscriber blocked on BLPOP is disconnected once the hard limit is reached", func(t *testing.T) {
+		sub := srv.NewTCPClient()
+		defer func() { require.NoError(t, sub.Close()) }()
+		require.NoError(t, sub.WriteArgs("SUBSCRIBE", "ch"))
+		sub.MustRead(t, "*3")
+		sub.MustRead(t, "$9")
+		sub.MustRead(t, "subscribe")
+		sub.MustRead(t, "$2")
+		sub.MustRead(t, "ch")
+		sub.MustRead(t, ":1")
+
+		// Block the subscriber on a key that will never be written, so that the
+		// blocking command replaces the bufferevent callbacks of the connection.
+		require.NoError(t, sub.WriteArgs("BLPOP", "blocked-key", "0"))
+		require.Eventually(t, func() bool {
+			return strings.Contains(rdb.ClientList(ctx).Val(), "cmd=blpop")
+		}, 5*time.Second, 100*time.Millisecond)
+		require.Equal(t, "1", util.FindInfoEntry(rdb, "blocked_clients"))
+
+		// The blocked client must be closed instead of only being counted as
+		// disconnected while lingering with a full output buffer.
+		payload := strings.Repeat("x", 8*1024*1024)
+		require.NoError(t, rdb.Publish(ctx, "ch", payload).Err())
+
+		require.Eventually(t, func() bool {
+			return !strings.Contains(rdb.ClientList(ctx).Val(), "cmd=blpop")
+		}, 5*time.Second, 100*time.Millisecond)
+		require.Equal(t, 1, getClientOutputBufferLimitDisconnections(t, srv))
+
+		// The disconnected client must be unblocked as well, so it should no
+		// longer be counted as a blocked client.
+		require.Equal(t, "0", util.FindInfoEntry(rdb, "blocked_clients"))
+
+		// The stale registration of the disconnected client should not consume
+		// the pushed element: it must still be delivered to a new consumer.
+		require.NoError(t, rdb.LPush(ctx, "blocked-key", "value").Err())
+		require.Equal(t, []string{"blocked-key", "value"}, rdb.BLPop(ctx, time.Second, "blocked-key").Val())
+	})
+}
+
 func TestNormalClientOutputBufferLimit(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{
 		"client-output-buffer-limit": "normal 1m 0 0 slave 0 0 0 pubsub 0 0 0",

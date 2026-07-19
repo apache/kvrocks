@@ -141,6 +141,15 @@ StatusOr<std::string> RDB::LoadStringObject() { return loadEncodedString(); }
 StatusOr<std::string> RDB::loadLzfString() {
   auto compression_len = GET_OR_RET(loadObjectLen(nullptr));
   auto len = GET_OR_RET(loadObjectLen(nullptr));
+  // The compressed bytes must actually be present in the stream.
+  GET_OR_RET(stream_->EnsureRemainingBytes(compression_len));
+  // The decompressed size can legitimately exceed the remaining stream (that's
+  // what compression does), so it can't be bounded by the stream; cap it against
+  // proto-max-bulk-len so a tiny payload can't declare a huge output allocation.
+  if (uint64_t max_len = storage_->GetConfig()->proto_max_bulk_len; len > max_len) {
+    return {Status::NotOK, fmt::format("invalid RDB payload: required {} bytes exceeds the proto-max-bulk-len limit {}",
+                                       len, max_len)};
+  }
   std::string out_buf(len, 0);
   std::vector<char> vec(compression_len);
   GET_OR_RET(stream_->Read(vec.data(), compression_len));
@@ -180,6 +189,7 @@ StatusOr<std::string> RDB::loadEncodedString() {
   if (len == 0) {
     return "";
   }
+  GET_OR_RET(stream_->EnsureRemainingBytes(len));
   std::string read_string;
   read_string.resize(len);
   GET_OR_RET(stream_->Read(read_string.data(), len));
@@ -192,6 +202,7 @@ StatusOr<std::vector<std::string>> RDB::LoadListWithQuickList(int type) {
   if (len == 0) {
     return list;
   }
+  GET_OR_RET(stream_->EnsureRemainingBytes(len));
 
   uint64_t container = QuickListNodeContainerPacked;
   for (size_t i = 0; i < len; i++) {
@@ -228,6 +239,7 @@ StatusOr<std::vector<std::string>> RDB::LoadListObject() {
   if (len == 0) {
     return list;
   }
+  GET_OR_RET(stream_->EnsureRemainingBytes(len));
   for (size_t i = 0; i < len; i++) {
     auto element = GET_OR_RET(loadEncodedString());
     list.push_back(std::move(element));
@@ -247,6 +259,7 @@ StatusOr<std::vector<std::string>> RDB::LoadSetObject() {
   if (len == 0) {
     return set;
   }
+  GET_OR_RET(stream_->EnsureRemainingBytes(len));
   for (size_t i = 0; i < len; i++) {
     auto element = GET_OR_RET(LoadStringObject());
     set.push_back(std::move(element));
@@ -272,6 +285,7 @@ StatusOr<std::map<std::string, std::string>> RDB::LoadHashObject() {
   if (len == 0) {
     return hash;
   }
+  GET_OR_RET(stream_->EnsureRemainingBytes(len));
 
   for (size_t i = 0; i < len; i++) {
     auto field = GET_OR_RET(LoadStringObject());
@@ -344,6 +358,7 @@ StatusOr<std::vector<MemberScore>> RDB::LoadZSetObject(int type) {
   if (len == 0) {
     return zset;
   }
+  GET_OR_RET(stream_->EnsureRemainingBytes(len));
 
   for (size_t i = 0; i < len; i++) {
     auto member = GET_OR_RET(LoadStringObject());

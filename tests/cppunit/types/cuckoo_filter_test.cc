@@ -834,6 +834,7 @@ TEST_F(RedisCuckooFilterTest, ExistsAfterExpansion) {
   reserveAndVerify(key_, 10, 2, 500, 2);
 
   std::vector<std::string> items;
+  items.reserve(30);
   for (int i = 0; i < 30; ++i) {
     items.push_back("item_" + std::to_string(i));
   }

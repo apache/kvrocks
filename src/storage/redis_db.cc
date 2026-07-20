@@ -21,6 +21,7 @@
 #include "redis_db.h"
 
 #include <ctime>
+#include <set>
 #include <utility>
 
 #include "cluster/redis_slot.h"
@@ -458,17 +459,27 @@ rocksdb::Status Database::FlushDB(engine::Context &ctx) {
 
 rocksdb::Status Database::FlushAll(engine::Context &ctx) {
   auto iter = util::UniqueIterator(ctx, ctx.GetReadOptions(), metadata_cf_handle_);
-  iter->SeekToFirst();
-  if (!iter->Valid()) {
+  std::set<std::string> namespaces;
+  for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+    auto [ns_slice, _] = ExtractNamespaceKey(iter->key(), storage_->IsSlotIdEncoded());
+    namespaces.emplace(ns_slice.ToString());
+  }
+  if (auto s = iter->status(); !s.ok()) {
+    return s;
+  }
+  if (namespaces.empty()) {
     return rocksdb::Status::OK();
   }
-  auto first_key = iter->key().ToString();
-  iter->SeekToLast();
-  if (!iter->Valid()) {
-    return rocksdb::Status::OK();
+
+  auto batch = storage_->GetWriteBatchBase();
+  for (const auto &ns : namespaces) {
+    std::string begin_key = ComposeNamespaceKey(ns, "", false);
+    std::string end_key = util::StringNext(begin_key);
+    if (auto s = batch->DeleteRange(metadata_cf_handle_, begin_key, end_key); !s.ok()) {
+      return s;
+    }
   }
-  auto last_key = util::StringNext(iter->key().ToString());
-  return storage_->DeleteRange(ctx, first_key, last_key);
+  return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
 rocksdb::Status Database::Dump(engine::Context &ctx, const Slice &user_key, std::vector<std::string> *infos) {

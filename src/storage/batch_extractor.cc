@@ -20,7 +20,11 @@
 
 #include "batch_extractor.h"
 
+#include <cstdint>
+#include <optional>
+
 #include "cluster/redis_slot.h"
+#include "common/string_util.h"
 #include "logging.h"
 #include "parse_util.h"
 #include "server/redis_reply.h"
@@ -408,10 +412,42 @@ rocksdb::Status WriteBatchExtractor::DeleteCF(uint32_t column_family_id, const S
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status WriteBatchExtractor::DeleteRangeCF([[maybe_unused]] uint32_t column_family_id,
-                                                   [[maybe_unused]] const Slice &begin_key,
-                                                   [[maybe_unused]] const Slice &end_key) {
-  // Do nothing with DeleteRange operations
+rocksdb::Status WriteBatchExtractor::DeleteRangeCF(uint32_t column_family_id, const Slice &begin_key,
+                                                   const Slice &end_key) {
+  if (column_family_id != static_cast<uint32_t>(ColumnFamilyID::Metadata)) {
+    return rocksdb::Status::OK();
+  }
+
+  auto check_and_return_namespace = [](const Slice &begin_key, const Slice &end_key) -> std::optional<std::string> {
+    if (begin_key.empty()) {
+      return std::nullopt;
+    }
+
+    auto namespace_size = static_cast<uint8_t>(begin_key.data()[0]);
+    if (begin_key.size() != sizeof(uint8_t) + namespace_size) {
+      return std::nullopt;
+    }
+
+    std::string ns = begin_key.ToString().substr(sizeof(uint8_t), namespace_size);
+    // Redis has no range-delete command;
+    // only a range covering an entire namespace can be translated into FLUSHDB.
+    std::string expected_begin = ComposeNamespaceKey(ns, "", /*slot_id_encoded=*/false);
+    std::string expected_end = util::StringNext(expected_begin);
+    if (begin_key.ToString() != expected_begin || end_key.ToString() != expected_end) {
+      return std::nullopt;
+    }
+
+    return ns;
+  };
+
+  auto ns = check_and_return_namespace(begin_key, end_key);
+  if (!ns.has_value()) {
+    WARN("Rejecting unrecognized DeleteRange in metadata CF, begin_key={}, end_key={}",
+         util::StringToHex(begin_key.ToString()), util::StringToHex(end_key.ToString()));
+    return rocksdb::Status::NotSupported("unrecognized DeleteRange in metadata CF");
+  }
+
+  resp_commands_[ns.value()].emplace_back(redis::ArrayOfBulkStrings({"FLUSHDB"}));
   return rocksdb::Status::OK();
 }
 

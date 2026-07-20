@@ -182,7 +182,8 @@ HnswIndex::HnswIndex(const SearchKey& search_key, HnswVectorFieldMetadata* vecto
 
 uint16_t HnswIndex::RandomizeLayer() {
   if (!generator) {
-    generator = std::make_unique<std::mt19937>(seed.value_or(std::random_device()()));
+    const auto actual_seed = seed ? *seed : std::random_device()();
+    generator = std::make_unique<std::mt19937>(actual_seed);
   }
   std::uniform_real_distribution<double> level_dist(0.0, 1.0);
   double r = level_dist(*generator);

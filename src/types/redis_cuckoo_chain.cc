@@ -320,6 +320,7 @@ rocksdb::Status CuckooChain::MExists(engine::Context &ctx, const Slice &user_key
     CHECK(fingerprints[i] != 0);
   }
 
+  size_t found_count = 0;
   for (int filter_idx = static_cast<int>(metadata.n_filters) - 1; filter_idx >= 0; --filter_idx) {
     auto current_filter_idx = static_cast<uint16_t>(filter_idx);
     uint32_t num_buckets = 0;
@@ -335,7 +336,14 @@ rocksdb::Status CuckooChain::MExists(engine::Context &ctx, const Slice &user_key
       bool item_exists = false;
       s = sub_filter.Contains(hashes[i], fingerprints[i], &item_exists);
       if (!s.ok()) return s;
-      if (item_exists) (*exists)[i] = true;
+      if (item_exists) {
+        (*exists)[i] = true;
+        ++found_count;
+      }
+    }
+
+    if (found_count == items.size()) {
+      break;
     }
   }
 

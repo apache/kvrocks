@@ -150,8 +150,7 @@ class CommandCFExists : public Commander {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    // Return 1 if exists (might exist), 0 if doesn't exist (definitely not)
-    *output = redis::Integer(exists ? 1 : 0);
+    *output = conn->Bool(exists);
     return Status::OK();
   }
 };
@@ -181,7 +180,7 @@ class CommandCFMExists : public Commander {
 
     *output = redis::MultiLen(items_.size());
     for (bool exist : exists) {
-      *output += redis::Integer(exist ? 1 : 0);
+      *output += conn->Bool(exist);
     }
     return Status::OK();
   }

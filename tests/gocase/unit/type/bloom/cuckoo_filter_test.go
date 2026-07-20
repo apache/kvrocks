@@ -49,26 +49,26 @@ func TestCuckooFilter(t *testing.T) {
 		require.ErrorContains(t, rdb.Do(ctx, "cf.add", key, "item").Err(), "WRONGTYPE")
 	})
 
-	t.Run("CF.EXISTS missing key returns 0", func(t *testing.T) {
+	t.Run("CF.EXISTS missing key returns false", func(t *testing.T) {
 		key := "test_cuckoo_filter_exists_missing_key"
 		require.NoError(t, rdb.Del(ctx, key).Err())
-		require.Equal(t, int64(0), rdb.Do(ctx, "cf.exists", key, "item").Val())
+		require.Equal(t, false, rdb.Do(ctx, "cf.exists", key, "item").Val())
 	})
 
 	t.Run("CF.EXISTS existing and absent item", func(t *testing.T) {
 		key := "test_cuckoo_filter_exists_items"
 		require.NoError(t, rdb.Del(ctx, key).Err())
 		require.Equal(t, int64(1), rdb.Do(ctx, "cf.add", key, "present").Val())
-		require.Equal(t, int64(1), rdb.Do(ctx, "cf.exists", key, "present").Val())
-		require.Equal(t, int64(0), rdb.Do(ctx, "cf.exists", key, "absent").Val())
+		require.Equal(t, true, rdb.Do(ctx, "cf.exists", key, "present").Val())
+		require.Equal(t, false, rdb.Do(ctx, "cf.exists", key, "absent").Val())
 	})
 
-	t.Run("CF.MEXISTS returns ordered integers", func(t *testing.T) {
+	t.Run("CF.MEXISTS returns ordered booleans", func(t *testing.T) {
 		key := "test_cuckoo_filter_mexists_ordered"
 		require.NoError(t, rdb.Del(ctx, key).Err())
 		require.Equal(t, int64(1), rdb.Do(ctx, "cf.add", key, "alpha").Val())
 		require.Equal(t, int64(1), rdb.Do(ctx, "cf.add", key, "gamma").Val())
-		require.Equal(t, []interface{}{int64(1), int64(0), int64(1)}, rdb.Do(ctx, "cf.mexists", key, "alpha", "beta", "gamma").Val())
+		require.Equal(t, []interface{}{true, false, true}, rdb.Do(ctx, "cf.mexists", key, "alpha", "beta", "gamma").Val())
 	})
 
 	t.Run("CF.EXISTS wrong type returns WRONGTYPE", func(t *testing.T) {
@@ -193,9 +193,9 @@ func TestCuckooFilter(t *testing.T) {
 			require.NoError(t, result.Err())
 			require.Equal(t, int64(1), result.Val())
 		}
-		require.Equal(t, int64(1), rdb.Do(ctx, "cf.exists", key, "expand_item_0").Val())
-		require.Equal(t, int64(1), rdb.Do(ctx, "cf.exists", key, "expand_item_19").Val())
-		require.Equal(t, []interface{}{int64(1), int64(0), int64(1)}, rdb.Do(ctx, "cf.mexists", key, "expand_item_0", "not_inserted", "expand_item_19").Val())
+		require.Equal(t, true, rdb.Do(ctx, "cf.exists", key, "expand_item_0").Val())
+		require.Equal(t, true, rdb.Do(ctx, "cf.exists", key, "expand_item_19").Val())
+		require.Equal(t, []interface{}{true, false, true}, rdb.Do(ctx, "cf.mexists", key, "expand_item_0", "not_inserted", "expand_item_19").Val())
 	})
 
 	t.Run("Add to full non-scaling filter returns error", func(t *testing.T) {

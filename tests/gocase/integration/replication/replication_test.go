@@ -843,3 +843,60 @@ func TestReplicationExponentialBackoff(t *testing.T) {
 		}, 15*time.Second, 500*time.Millisecond, "slave should reconnect with backoff")
 	})
 }
+
+// TestReplicationFlushDBAcrossNamespaces reproduces issue #2177.
+func TestReplicationFlushDBAcrossNamespaces(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	password := "pwd"
+	master := util.StartServer(t, map[string]string{
+		"requirepass":            password,
+		"masterauth":             password,
+		"repl-namespace-enabled": "yes",
+	})
+	defer master.Close()
+	masterClient := master.NewClientWithOption(&redis.Options{Password: password})
+	defer func() { require.NoError(t, masterClient.Close()) }()
+
+	slave := util.StartServer(t, map[string]string{
+		"requirepass":            password,
+		"masterauth":             password,
+		"repl-namespace-enabled": "yes",
+	})
+	defer slave.Close()
+	slaveClient := slave.NewClientWithOption(&redis.Options{Password: password})
+	defer func() { require.NoError(t, slaveClient.Close()) }()
+
+	require.NoError(t, masterClient.Do(ctx, "NAMESPACE", "ADD", "test-ns", "test-token").Err())
+	require.NoError(t, masterClient.Set(ctx, "default-key", "default-value", 0).Err())
+
+	nsClient := master.NewClientWithOption(&redis.Options{Password: "test-token"})
+	defer func() { require.NoError(t, nsClient.Close()) }()
+	require.NoError(t, nsClient.Set(ctx, "ns-key", "ns-value", 0).Err())
+
+	util.SlaveOf(t, slaveClient, master)
+	util.WaitForOffsetSync(t, masterClient, slaveClient, 5*time.Second)
+
+	require.Equal(t, "default-value", slaveClient.Get(ctx, "default-key").Val())
+	slaveNsClient := slave.NewClientWithOption(&redis.Options{Password: "test-token"})
+	defer func() { require.NoError(t, slaveNsClient.Close()) }()
+	require.Equal(t, "ns-value", slaveNsClient.Get(ctx, "ns-key").Val())
+
+	t.Run("FLUSHALL on master clears keys of every namespace on slave", func(t *testing.T) {
+		require.NoError(t, masterClient.FlushAll(ctx).Err())
+		util.WaitForOffsetSync(t, masterClient, slaveClient, 5*time.Second)
+
+		require.Eventually(t, func() bool {
+			masterDBSize, err := masterClient.DBSize(ctx).Result()
+			require.NoError(t, err)
+			slaveDBSize, err := slaveClient.DBSize(ctx).Result()
+			require.NoError(t, err)
+			masterNsSize, err := nsClient.DBSize(ctx).Result()
+			require.NoError(t, err)
+			slaveNsSize, err := slaveNsClient.DBSize(ctx).Result()
+			require.NoError(t, err)
+			return masterDBSize == 0 && slaveDBSize == 0 && masterNsSize == 0 && slaveNsSize == 0
+		}, 5*time.Second, 100*time.Millisecond)
+	})
+}

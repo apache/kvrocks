@@ -173,16 +173,19 @@ StatusOr<double> ComputeSimilarity(const VectorItem& left, const VectorItem& rig
 }
 
 HnswIndex::HnswIndex(const SearchKey& search_key, HnswVectorFieldMetadata* vector, engine::Storage* storage,
-                     std::random_device::result_type seed)
+                     std::optional<std::random_device::result_type> seed)
     : search_key(search_key),
       metadata(vector),
       storage(storage),
-      generator(std::mt19937(seed)),
+      seed(seed),
       m_level_normalization_factor(1.0 / std::log(metadata->m)) {}
 
 uint16_t HnswIndex::RandomizeLayer() {
+  if (!generator) {
+    generator = std::make_unique<std::mt19937>(seed.value_or(std::random_device()()));
+  }
   std::uniform_real_distribution<double> level_dist(0.0, 1.0);
-  double r = level_dist(generator);
+  double r = level_dist(*generator);
   double log_val = -std::log(r);
   double layer_val = log_val * m_level_normalization_factor;
   return static_cast<uint16_t>(std::floor(layer_val));

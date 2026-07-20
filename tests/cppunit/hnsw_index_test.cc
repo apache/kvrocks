@@ -118,6 +118,12 @@ TEST_F(HnswIndexTest, ComputeSimilarity) {
   hnsw_index->metadata->distance_metric = redis::DistanceMetric::L2;
 }
 
+TEST_F(HnswIndexTest, RandomGeneratorIsInitializedLazily) {
+  EXPECT_FALSE(hnsw_index->generator);
+  hnsw_index->RandomizeLayer();
+  EXPECT_TRUE(hnsw_index->generator);
+}
+
 TEST_F(HnswIndexTest, RandomizeLayer) {
   constexpr size_t kSampleSize = 50000;
 

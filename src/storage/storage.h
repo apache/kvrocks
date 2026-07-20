@@ -352,6 +352,8 @@ class Storage {
 
   bool ExistCheckpoint();
   bool ExistSyncCheckpoint();
+  // Rename checkpoint to "*.trash" under checkpoint_mu_, then DestroyDB outside the lock.
+  Status TryPurgeCheckpoint(int fetch_file_threads);
   int64_t GetCheckpointCreateTimeSecs() const { return checkpoint_info_.create_time_secs; }
   void SetCheckpointAccessTimeSecs(int64_t t) { checkpoint_info_.access_time_secs = t; }
   int64_t GetCheckpointAccessTimeSecs() const { return checkpoint_info_.access_time_secs; }

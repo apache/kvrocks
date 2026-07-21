@@ -460,9 +460,13 @@ rocksdb::Status Database::FlushDB(engine::Context &ctx) {
 rocksdb::Status Database::FlushAll(engine::Context &ctx) {
   auto iter = util::UniqueIterator(ctx, ctx.GetReadOptions(), metadata_cf_handle_);
   std::set<std::string> namespaces;
-  for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+  for (iter->SeekToFirst(); iter->Valid();) {
     auto [ns_slice, _] = ExtractNamespaceKey(iter->key(), storage_->IsSlotIdEncoded());
-    namespaces.emplace(ns_slice.ToString());
+    std::string ns = ns_slice.ToString();
+    namespaces.emplace(ns);
+
+    // Skip all remaining keys in this namespace.
+    iter->Seek(util::StringNext(ComposeNamespaceKey(ns, "", /*slot_id_encoded=*/false)));
   }
   if (auto s = iter->status(); !s.ok()) {
     return s;

@@ -956,21 +956,9 @@ void Server::cron() {
 
     // No replica uses this checkpoint, we can remove it.
     if (counter != 0 && counter % 100 == 0) {
-      int64_t create_time_secs = storage->GetCheckpointCreateTimeSecs();
-      int64_t access_time_secs = storage->GetCheckpointAccessTimeSecs();
-
-      if (storage->ExistCheckpoint()) {
-        // TODO(shooterit): support to config the alive time of checkpoint
-        int64_t now_secs = util::GetTimeStamp<std::chrono::seconds>();
-        if ((GetFetchFileThreadNum() == 0 && now_secs - access_time_secs > 30) ||
-            (now_secs - create_time_secs > 24 * 60 * 60)) {
-          auto s = rocksdb::DestroyDB(config_->checkpoint_dir, rocksdb::Options());
-          if (!s.ok()) {
-            WARN("[server] Fail to clean checkpoint, error: {}", s.ToString());
-          } else {
-            INFO("[server] Clean checkpoint successfully");
-          }
-        }
+      auto s = storage->TryPurgeCheckpoint(GetFetchFileThreadNum());
+      if (!s.IsOK()) {
+        WARN("[server] Fail to clean checkpoint, error: {}", s.Msg());
       }
     }
     // check if DB need to be resumed every minute

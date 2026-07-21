@@ -389,7 +389,9 @@ func TestReplicationShareCheckpoint(t *testing.T) {
 	ctx := context.Background()
 	require.NoError(t, masterClient.Set(ctx, "a", "b", 0).Err())
 	require.NoError(t, masterClient.Do(ctx, "compact").Err())
-	time.Sleep(time.Second)
+	require.Eventually(t, func() bool {
+		return util.FindInfoEntry(masterClient, "is_compacting") == "no"
+	}, 10*time.Second, 100*time.Millisecond)
 
 	slave1 := util.StartServer(t, map[string]string{})
 	defer slave1.Close()

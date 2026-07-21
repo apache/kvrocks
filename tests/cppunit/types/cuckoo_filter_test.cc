@@ -18,20 +18,29 @@
  *
  */
 
+#include <event2/bufferevent.h>
 #include <gtest/gtest.h>
 
 #include <algorithm>
 #include <limits>
 #include <memory>
+#include <string>
 #include <vector>
 
+#include "commands/commander.h"
 #include "common/encoding.h"
+#include "config/config.h"
+#include "server/redis_connection.h"
+#include "server/redis_reply.h"
+#include "server/server.h"
+#include "server/worker.h"
 #include "storage/redis_db.h"
 #include "storage/redis_metadata.h"
 #include "test_base.h"
 #include "types/cuckoo_filter_page.h"
 #include "types/cuckoo_filter_sub_filter.h"
 #include "types/redis_cuckoo_chain.h"
+#include "types/redis_string.h"
 
 class RedisCuckooFilterTest : public TestBase {
  public:
@@ -135,6 +144,103 @@ class RedisCuckooFilterTest : public TestBase {
   std::unique_ptr<redis::Database> db_;
   std::string key_;
 };
+
+class CuckooFilterCommandTest : public TestBase {
+ protected:
+  void SetUp() override {
+    const ::testing::TestInfo *const test_info = ::testing::UnitTest::GetInstance()->current_test_info();
+    key_ = std::string("cf_cmd_test_") + test_info->name();
+
+    config_.port = 0;
+    config_.tls_port = 0;
+    config_.workers = 0;
+    server_ = std::make_unique<Server>(storage_.get(), storage_->GetConfig());
+
+    worker_ = std::make_unique<Worker>(server_.get(), storage_->GetConfig());
+    base_ = event_base_new();
+    ASSERT_NE(base_, nullptr);
+    ASSERT_EQ(bufferevent_pair_new(base_, 0, bev_pair_), 0);
+
+    conn_ = std::make_unique<redis::Connection>(bev_pair_[0], worker_.get());
+    conn_->NeedNotFreeBufferEvent();
+    conn_->BecomeAdmin();
+    conn_->SetNamespace(kDefaultNamespace);
+  }
+
+  void TearDown() override {
+    conn_.reset();
+    bufferevent_free(bev_pair_[0]);
+    bufferevent_free(bev_pair_[1]);
+    event_base_free(base_);
+    worker_.reset();
+    server_.reset();
+  }
+
+  std::string runCommand(const std::vector<std::string> &args) {
+    auto cmd_s = Server::LookupAndCreateCommand(args.front());
+    if (!cmd_s.IsOK()) return redis::Error(std::move(cmd_s).ToStatus());
+
+    auto cmd = std::move(cmd_s).GetValue();
+    cmd->SetArgs(args);
+    auto s = cmd->Parse();
+    if (!s.IsOK()) return redis::Error(s);
+
+    engine::Context ctx(storage_.get());
+    std::string reply;
+    s = conn_->ExecuteCommand(ctx, args.front(), args, cmd.get(), &reply);
+    if (!s.IsOK()) return redis::Error(s);
+    return reply;
+  }
+
+  std::unique_ptr<Server> server_;
+  std::unique_ptr<Worker> worker_;
+  event_base *base_ = nullptr;
+  bufferevent *bev_pair_[2] = {nullptr, nullptr};
+  std::unique_ptr<redis::Connection> conn_;
+};
+
+TEST_F(CuckooFilterCommandTest, ReserveAddExistsAndMExistsReturnResp2Integers) {
+  EXPECT_EQ(runCommand({"cf.reserve", key_, "128", "BUCKETSIZE", "4", "MAXITERATIONS", "16", "EXPANSION", "2"}),
+            "+OK\r\n");
+  EXPECT_EQ(runCommand({"cf.add", key_, "alpha"}), ":1\r\n");
+  EXPECT_EQ(runCommand({"cf.exists", key_, "alpha"}), ":1\r\n");
+  EXPECT_EQ(runCommand({"cf.exists", key_, "beta"}), ":0\r\n");
+  EXPECT_EQ(runCommand({"cf.mexists", key_, "alpha", "beta", "alpha"}), "*3\r\n:1\r\n:0\r\n:1\r\n");
+}
+
+TEST_F(CuckooFilterCommandTest, ExistsAndMExistsReturnResp3Booleans) {
+  EXPECT_EQ(runCommand({"cf.add", key_, "alpha"}), ":1\r\n");
+
+  conn_->SetProtocolVersion(redis::RESP::v3);
+  EXPECT_EQ(runCommand({"cf.exists", key_, "alpha"}), "#t\r\n");
+  EXPECT_EQ(runCommand({"cf.exists", key_, "beta"}), "#f\r\n");
+  EXPECT_EQ(runCommand({"cf.mexists", key_, "alpha", "beta"}), "*2\r\n#t\r\n#f\r\n");
+}
+
+TEST_F(CuckooFilterCommandTest, CommandsRejectWrongArity) {
+  std::vector<std::vector<std::string>> invalid_commands = {
+      {"cf.exists", key_},
+      {"cf.exists", key_, "alpha", "extra"},
+      {"cf.mexists", key_},
+  };
+
+  for (const auto &args : invalid_commands) {
+    auto reply = runCommand(args);
+    EXPECT_NE(reply.find("wrong number of arguments"), std::string::npos) << reply;
+  }
+}
+
+TEST_F(CuckooFilterCommandTest, ExistsAndMExistsReturnWrongTypeError) {
+  redis::String string_db(storage_.get(), kDefaultNamespace);
+  auto s = string_db.Set(*ctx_, key_, "value");
+  ASSERT_TRUE(s.ok()) << s.ToString();
+
+  auto reply = runCommand({"cf.exists", key_, "alpha"});
+  EXPECT_NE(reply.find("WRONGTYPE"), std::string::npos) << reply;
+
+  reply = runCommand({"cf.mexists", key_, "alpha", "beta"});
+  EXPECT_NE(reply.find("WRONGTYPE"), std::string::npos) << reply;
+}
 
 TEST_F(RedisCuckooFilterTest, ReserveInvalidParams) {
   struct InvalidTestCase {
@@ -936,6 +1042,33 @@ TEST_F(RedisCuckooFilterTest, MExistsAfterExpansion) {
   EXPECT_TRUE(exists[0]);
   EXPECT_FALSE(exists[1]);
   EXPECT_TRUE(exists[2]);
+}
+
+TEST_F(RedisCuckooFilterTest, MExistsStopsAfterAllItemsFoundInNewestFilter) {
+  CuckooChainMetadata metadata;
+  metadata.size = 0;
+  metadata.base_capacity = 1000;
+  metadata.bucket_size = 4;
+  metadata.max_iterations = 500;
+  metadata.expansion = 2;
+  metadata.n_filters = 2;
+  metadata.num_deleted_items = 0;
+  metadata.page_size = kCuckooFilterDefaultPageSize;
+  writeMetadata(key_, metadata);
+
+  writePage(makePageKey(key_, metadata, 0, 0), "corrupt");
+
+  addAndVerify(key_, "alpha", metadata.base_capacity, metadata.bucket_size, metadata.max_iterations, metadata.expansion,
+               1, metadata.n_filters);
+  addAndVerify(key_, "beta", metadata.base_capacity, metadata.bucket_size, metadata.max_iterations, metadata.expansion,
+               2, metadata.n_filters);
+
+  std::vector<bool> exists;
+  auto s = cuckoo_->MExists(*ctx_, key_, {"alpha", "beta"}, &exists);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  ASSERT_EQ(exists.size(), 2);
+  EXPECT_TRUE(exists[0]);
+  EXPECT_TRUE(exists[1]);
 }
 
 TEST_F(RedisCuckooFilterTest, ExistsBatchTest) {

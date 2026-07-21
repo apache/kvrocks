@@ -442,9 +442,9 @@ rocksdb::Status WriteBatchExtractor::DeleteRangeCF(uint32_t column_family_id, co
 
   auto ns = check_and_return_namespace(begin_key, end_key);
   if (!ns.has_value()) {
-    WARN("Rejecting unrecognized DeleteRange in metadata CF, begin_key={}, end_key={}",
+    WARN("Ignoring unrecognized DeleteRange in metadata CF, begin_key={}, end_key={}",
          util::StringToHex(begin_key.ToString()), util::StringToHex(end_key.ToString()));
-    return rocksdb::Status::NotSupported("unrecognized DeleteRange in metadata CF");
+    return rocksdb::Status::OK();
   }
 
   resp_commands_[ns.value()].emplace_back(redis::ArrayOfBulkStrings({"FLUSHDB"}));

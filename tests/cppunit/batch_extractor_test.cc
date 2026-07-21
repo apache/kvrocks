@@ -75,7 +75,7 @@ TEST(WriteBatchExtractorTest, RejectNonFlushDBDeleteRange) {
   auto end_key = util::StringNext(begin_key);
 
   auto s = extractor.DeleteRangeCF(static_cast<uint32_t>(ColumnFamilyID::Metadata), begin_key, end_key);
-  ASSERT_TRUE(s.IsNotSupported()) << s.ToString();
+  ASSERT_TRUE(s.ok()) << s.ToString();
 
   EXPECT_TRUE(extractor.GetRESPCommands()->empty());
 }
@@ -88,7 +88,7 @@ TEST(WriteBatchExtractorTest, RejectDeleteRangeWithMismatchedEndKey) {
   std::string end_key = begin_key + std::string(1, '\x02');
 
   auto s = extractor.DeleteRangeCF(static_cast<uint32_t>(ColumnFamilyID::Metadata), begin_key, end_key);
-  ASSERT_TRUE(s.IsNotSupported()) << s.ToString();
+  ASSERT_TRUE(s.ok()) << s.ToString();
 
   EXPECT_TRUE(extractor.GetRESPCommands()->empty());
 }
@@ -97,7 +97,7 @@ TEST(WriteBatchExtractorTest, RejectDeleteRangeWithEmptyBeginKey) {
   WriteBatchExtractor extractor(false, -1, true);
 
   auto s = extractor.DeleteRangeCF(static_cast<uint32_t>(ColumnFamilyID::Metadata), "", "");
-  ASSERT_TRUE(s.IsNotSupported()) << s.ToString();
+  ASSERT_TRUE(s.ok()) << s.ToString();
 
   EXPECT_TRUE(extractor.GetRESPCommands()->empty());
 }

@@ -244,3 +244,41 @@ func TestCuckooFilter(t *testing.T) {
 		require.Equal(t, int64(1), result.Val())
 	})
 }
+
+func TestCuckooFilterRESP3(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{
+		"resp3-enabled": "yes",
+	})
+	defer srv.Close()
+
+	c := srv.NewTCPClient()
+	defer func() { require.NoError(t, c.Close()) }()
+
+	require.NoError(t, c.WriteArgs("HELLO", "3"))
+	for _, line := range []string{
+		"%6",
+		"$6", "server", "$5", "redis",
+		"$7", "version", "$5", "7.0.0",
+		"$5", "proto", ":3",
+		"$4", "mode", "$10", "standalone",
+		"$4", "role", "$6", "master",
+		"$7", "modules", "_",
+	} {
+		c.MustRead(t, line)
+	}
+
+	key := "test_cuckoo_filter_resp3"
+	require.NoError(t, c.WriteArgs("cf.add", key, "alpha"))
+	c.MustRead(t, ":1")
+
+	require.NoError(t, c.WriteArgs("cf.exists", key, "alpha"))
+	c.MustRead(t, "#t")
+
+	require.NoError(t, c.WriteArgs("cf.exists", key, "beta"))
+	c.MustRead(t, "#f")
+
+	require.NoError(t, c.WriteArgs("cf.mexists", key, "alpha", "beta"))
+	c.MustRead(t, "*2")
+	c.MustRead(t, "#t")
+	c.MustRead(t, "#f")
+}

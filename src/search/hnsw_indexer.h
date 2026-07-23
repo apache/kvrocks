@@ -20,7 +20,6 @@
 
 #pragma once
 
-#include <optional>
 #include <random>
 #include <string>
 #include <vector>
@@ -90,11 +89,11 @@ struct HnswIndex {
   HnswVectorFieldMetadata* metadata;
   engine::Storage* storage = nullptr;
 
-  std::optional<std::random_device::result_type> seed;
   double m_level_normalization_factor;
 
-  HnswIndex(const SearchKey& search_key, HnswVectorFieldMetadata* vector, engine::Storage* storage,
-            std::optional<std::random_device::result_type> seed = std::nullopt);
+  static thread_local std::mt19937 generator;
+
+  HnswIndex(const SearchKey& search_key, HnswVectorFieldMetadata* vector, engine::Storage* storage);
 
   static StatusOr<std::vector<VectorItem>> DecodeNodesToVectorItems(engine::Context& ctx,
                                                                     const std::vector<NodeKey>& node_key,

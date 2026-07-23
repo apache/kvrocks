@@ -479,13 +479,7 @@ int Server::PublishMessage(const std::string &channel, const std::string &msg) {
   return cnt;
 }
 
-void Server::NotifyKeyspaceEvent(int type_flag, const std::string &event, const std::string &ns,
-                                 const std::string &key) {
-  const int flags = GetConfig()->notify_keyspace_events;
-  // Require the event class and a channel selector.
-  if (!(flags & type_flag)) return;
-  if (!(flags & (kNotifyKeyspace | kNotifyKeyevent))) return;
-
+void Server::NotifyKeyspaceEvent(int flags, const std::string &event, const std::string &ns, const std::string &key) {
   const std::string db = MapNamespaceToKeyspaceDB(ns, GetConfig()->redis_databases);
   // Publish keyspace before keyevent for each key.
   if (flags & kNotifyKeyspace) {

@@ -158,6 +158,22 @@ func TestKeyspaceNotify(t *testing.T) {
 		expectNoMessage(t, ctx, pubsub)
 	})
 
+	t.Run("MULTI/EXEC preserves per-command notification config", func(t *testing.T) {
+		require.NoError(t, rdb.ConfigSet(ctx, "notify-keyspace-events", "E$").Err())
+		_, err := rdb.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
+			pipe.Set(ctx, "event-before-disable", "v", 0)
+			pipe.ConfigSet(ctx, "notify-keyspace-events", "")
+			pipe.Set(ctx, "event-while-disabled", "v", 0)
+			pipe.ConfigSet(ctx, "notify-keyspace-events", "K$")
+			pipe.Set(ctx, "event-after-enable", "v", 0)
+			return nil
+		})
+		require.NoError(t, err)
+
+		expectMessage(t, ctx, pubsub, "__keyevent@0__:set", "event-before-disable")
+		expectMessage(t, ctx, pubsub, "__keyspace@0__:event-after-enable", "set")
+		expectNoMessage(t, ctx, pubsub)
+	})
 }
 
 func TestKeyspaceNotifyDisabled(t *testing.T) {

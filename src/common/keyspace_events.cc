@@ -38,7 +38,8 @@ bool KeyspaceEventCollector::IsEnabled(int type_flag) const {
 
 void KeyspaceEventCollector::Add(int type_flag, std::string_view event, std::string_view key) {
   if (!IsEnabled(type_flag)) return;
-  events_.emplace_back(KeyspaceEvent{type_flag, std::string(event), ns_, std::string(key)});
+  const int flags = type_flag | (notify_flags_ & (kNotifyKeyspace | kNotifyKeyevent));
+  events_.emplace_back(KeyspaceEvent{flags, std::string(event), ns_, std::string(key)});
 }
 
 std::vector<KeyspaceEvent> KeyspaceEventCollector::Take() { return std::move(events_); }

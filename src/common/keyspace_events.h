@@ -37,8 +37,8 @@ enum NotifyKeyspaceEventFlag {
 };
 
 struct KeyspaceEvent {
-  // Event class flag such as g/$, not K/E channel selectors.
-  int type_flag;
+  // Event class and K/E channels selected when the command executed.
+  int flags;
   std::string event;
   std::string ns;
   std::string key;

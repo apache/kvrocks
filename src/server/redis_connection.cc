@@ -726,7 +726,6 @@ void Connection::QueueOrPublishKeyspaceEvents(std::vector<KeyspaceEvent> &&event
 
   if (in_exec_) {
     // Queue transaction events until commit.
-    pending_keyspace_events_.reserve(pending_keyspace_events_.size() + events.size());
     for (auto &event : events) {
       pending_keyspace_events_.emplace_back(std::move(event));
     }

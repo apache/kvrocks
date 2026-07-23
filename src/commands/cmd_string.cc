@@ -394,7 +394,7 @@ class CommandSet : public Commander {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    if (set_applied) keyspace_event_collector_.Add(kNotifyString, "set", args_[1]);
+    if (set_applied) conn->AddKeyspaceEvent(kNotifyString, "set", args_[1]);
 
     if (get_) {
       if (ret.has_value()) {

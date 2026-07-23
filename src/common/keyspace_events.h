@@ -47,15 +47,14 @@ struct KeyspaceEvent {
 // Collects semantic keyspace events for one command; Connection owns publish timing.
 class KeyspaceEventCollector {
  public:
-  // Sets namespace/config for the next command and drops any previous events.
-  void Begin(std::string ns, int notify_flags);
+  KeyspaceEventCollector(std::string ns, int notify_flags);
   bool IsEnabled(int type_flag) const;
   void Add(int type_flag, std::string_view event, std::string_view key);
   // Moves out events collected during Execute.
   std::vector<KeyspaceEvent> Take();
 
  private:
-  int notify_flags_ = 0;
+  int notify_flags_;
   std::string ns_;
   std::vector<KeyspaceEvent> events_;
 };

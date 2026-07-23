@@ -23,6 +23,7 @@
 
 #include <mutex>
 #include <nonstd/span.hpp>
+#include <optional>
 #include <shared_mutex>
 
 #include "commands/commander.h"
@@ -459,6 +460,32 @@ void Connection::RecordProfilingSampleIfNeed(const std::string &cmd, uint64_t du
   srv_->GetPerfLog()->PushEntry(std::move(entry));
 }
 
+class Connection::KeyspaceEventScope {
+ public:
+  explicit KeyspaceEventScope(Connection &conn) : conn_(conn) {
+    const int notify_flags = conn_.srv_->GetConfig()->notify_keyspace_events;
+    if ((notify_flags & kNotifyAll) != 0 && (notify_flags & (kNotifyKeyspace | kNotifyKeyevent)) != 0) {
+      collector_.emplace(conn_.GetNamespace(), notify_flags);
+    }
+    conn_.active_keyspace_event_collector_ = collector_ ? &*collector_ : nullptr;
+  }
+
+  ~KeyspaceEventScope() { conn_.active_keyspace_event_collector_ = nullptr; }
+
+  KeyspaceEventScope(const KeyspaceEventScope &) = delete;
+  KeyspaceEventScope &operator=(const KeyspaceEventScope &) = delete;
+
+  void Submit() {
+    if (collector_) {
+      conn_.queueOrPublishKeyspaceEvents(collector_->Take());
+    }
+  }
+
+ private:
+  Connection &conn_;
+  std::optional<KeyspaceEventCollector> collector_;
+};
+
 Status Connection::ExecuteCommand(engine::Context &ctx, const std::string &cmd_name,
                                   const std::vector<std::string> &cmd_tokens, Commander *current_cmd,
                                   std::string *reply) {
@@ -466,19 +493,16 @@ Status Connection::ExecuteCommand(engine::Context &ctx, const std::string &cmd_n
 
   auto start = std::chrono::high_resolution_clock::now();
   bool is_profiling = IsProfilingEnabled(cmd_name);
-  const int notify_flags = srv_->GetConfig()->notify_keyspace_events;
-  const bool collect_keyspace_events =
-      (notify_flags & kNotifyAll) != 0 && (notify_flags & (kNotifyKeyspace | kNotifyKeyevent)) != 0;
-  if (collect_keyspace_events) {
-    current_cmd->BeginKeyspaceEventCollection(GetNamespace(), notify_flags);
-  }
-  auto s = current_cmd->Execute(ctx, srv_, this, reply);
-  if (collect_keyspace_events) {
-    auto events = current_cmd->TakeKeyspaceEvents();
+
+  Status s;
+  {
+    KeyspaceEventScope keyspace_events(*this);
+    s = current_cmd->Execute(ctx, srv_, this, reply);
     if (s.IsOK()) {
-      QueueOrPublishKeyspaceEvents(std::move(events));
+      keyspace_events.Submit();
     }
   }
+
   auto end = std::chrono::high_resolution_clock::now();
   uint64_t duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
   if (is_profiling) RecordProfilingSampleIfNeed(cmd_name, duration);
@@ -486,6 +510,16 @@ Status Connection::ExecuteCommand(engine::Context &ctx, const std::string &cmd_n
   srv_->SlowlogPushEntryIfNeeded(&cmd_tokens, duration, this);
   srv_->stats.IncrLatency(static_cast<uint64_t>(duration), cmd_name);
   return s;
+}
+
+bool Connection::IsKeyspaceEventEnabled(int type_flag) const {
+  return active_keyspace_event_collector_ != nullptr && active_keyspace_event_collector_->IsEnabled(type_flag);
+}
+
+void Connection::AddKeyspaceEvent(int type_flag, std::string_view event, std::string_view key) {
+  if (active_keyspace_event_collector_ != nullptr) {
+    active_keyspace_event_collector_->Add(type_flag, event, key);
+  }
 }
 
 static bool IsCmdForIndexing(uint64_t cmd_flags, CommandCategory cmd_cat) {
@@ -721,7 +755,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
   }
 }
 
-void Connection::QueueOrPublishKeyspaceEvents(std::vector<KeyspaceEvent> &&events) {
+void Connection::queueOrPublishKeyspaceEvents(std::vector<KeyspaceEvent> &&events) {
   if (events.empty()) return;
 
   if (in_exec_) {
@@ -749,7 +783,7 @@ void Connection::ResetMultiExec() {
   multi_error_ = false;
   multi_cmds_.clear();
   // Drop events from failed or aborted transactions.
-  ClearKeyspaceEvents();
+  pending_keyspace_events_.clear();
   DisableFlag(Connection::kMultiExec);
 }
 

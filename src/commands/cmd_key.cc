@@ -374,7 +374,7 @@ class CommandDel : public Commander {
     uint64_t cnt = 0;
     redis::Database redis(srv->storage, conn->GetNamespace());
 
-    const bool notify_del = GetAttributes()->name == "del" && IsKeyspaceEventEnabled(kNotifyGeneric);
+    const bool notify_del = GetAttributes()->name == "del" && conn->IsKeyspaceEventEnabled(kNotifyGeneric);
     std::vector<rocksdb::Slice> deleted_keys;
     if (notify_del) deleted_keys.reserve(keys.size());
 
@@ -382,7 +382,7 @@ class CommandDel : public Commander {
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
 
     for (const auto &key : deleted_keys) {
-      keyspace_event_collector_.Add(kNotifyGeneric, "del", std::string_view(key.data(), key.size()));
+      conn->AddKeyspaceEvent(kNotifyGeneric, "del", std::string_view(key.data(), key.size()));
     }
 
     *output = redis::Integer(cnt);

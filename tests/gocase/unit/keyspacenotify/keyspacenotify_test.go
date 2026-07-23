@@ -143,6 +143,29 @@ func TestKeyspaceNotify(t *testing.T) {
 		expectNoMessage(t, ctx, pubsub)
 	})
 
+	t.Run("UNLINK does not publish del", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "unlink-key", "x", 0).Err())
+		expectMessage(t, ctx, pubsub, "__keyspace@0__:unlink-key", "set")
+		expectMessage(t, ctx, pubsub, "__keyevent@0__:set", "unlink-key")
+
+		require.EqualValues(t, 1, rdb.Unlink(ctx, "unlink-key").Val())
+		expectNoMessage(t, ctx, pubsub)
+	})
+
+	t.Run("Lua nested commands publish events", func(t *testing.T) {
+		script := `
+			redis.call("SET", KEYS[1], "v")
+			redis.call("DEL", KEYS[1])
+			return 1
+		`
+		require.NoError(t, rdb.Eval(ctx, script, []string{"lua-key"}).Err())
+		expectMessage(t, ctx, pubsub, "__keyspace@0__:lua-key", "set")
+		expectMessage(t, ctx, pubsub, "__keyevent@0__:set", "lua-key")
+		expectMessage(t, ctx, pubsub, "__keyspace@0__:lua-key", "del")
+		expectMessage(t, ctx, pubsub, "__keyevent@0__:del", "lua-key")
+		expectNoMessage(t, ctx, pubsub)
+	})
+
 	t.Run("MULTI/EXEC publishes queued events after commit", func(t *testing.T) {
 		_, err := rdb.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
 			pipe.Set(ctx, "m1", "v", 0)

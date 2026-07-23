@@ -413,6 +413,130 @@ func TestBitmap(t *testing.T) {
 		require.EqualValues(t, 32, rdb.BitOpOr(ctx, x, a, b).Val())
 	})
 
+	t.Run("BITFIELD and BITFIELD_RO on bitmap type", func(t *testing.T) {
+		t.Parallel()
+		p := util.KeyPrefix(t)
+
+		readKey := p + "read"
+		Set2SetBit(t, rdb, ctx, readKey, []byte("\x58\xa5"))
+		for _, command := range []string{"BITFIELD", "BITFIELD_RO"} {
+			res := rdb.Do(ctx, command, readKey, "GET", "u7", "0", "GET", "u9", "4")
+			require.NoError(t, res.Err())
+			require.EqualValues(t, []interface{}{int64(44), int64(276)}, res.Val())
+		}
+
+		boundaryReadKey := p + "boundary-read"
+		for _, offset := range []int64{8188, 8190, 8191, 8193, 8195, 8196} {
+			require.NoError(t, rdb.SetBit(ctx, boundaryReadKey, offset, 1).Err())
+		}
+		for _, command := range []string{"BITFIELD", "BITFIELD_RO"} {
+			res := rdb.Do(ctx, command, boundaryReadKey, "GET", "u9", "8188")
+			require.NoError(t, res.Err())
+			require.EqualValues(t, []interface{}{int64(363)}, res.Val())
+		}
+
+		writeKey := p + "write"
+		res := rdb.Do(ctx, "BITFIELD", writeKey, "SET", "u8", "0", 88)
+		require.NoError(t, res.Err())
+		require.EqualValues(t, []interface{}{int64(0)}, res.Val())
+		require.Equal(t, "\x58", rdb.Get(ctx, writeKey).Val())
+		for offset, bit := range []int64{0, 1, 0, 1, 1, 0, 0, 0} {
+			require.EqualValues(t, bit, rdb.GetBit(ctx, writeKey, int64(offset)).Val())
+		}
+
+		boundaryWriteKey := p + "boundary-write"
+		res = rdb.Do(ctx, "BITFIELD", boundaryWriteKey, "SET", "u9", "8188", 363)
+		require.NoError(t, res.Err())
+		require.EqualValues(t, []interface{}{int64(0)}, res.Val())
+		value := rdb.Get(ctx, boundaryWriteKey).Val()
+		require.Len(t, value, 1025)
+		require.Equal(t, byte(0x0b), value[1023])
+		require.Equal(t, byte(0x58), value[1024])
+		for offset, bit := range []int64{1, 0, 1, 1, 0, 1, 0, 1, 1} {
+			require.EqualValues(t, bit, rdb.GetBit(ctx, boundaryWriteKey, 8188+int64(offset)).Val())
+		}
+		require.EqualValues(t, 0, rdb.GetBit(ctx, boundaryWriteKey, 8187).Val())
+		require.EqualValues(t, 0, rdb.GetBit(ctx, boundaryWriteKey, 8197).Val())
+	})
+
+	t.Run("BITFIELD signed INCRBY and overflow on bitmap type", func(t *testing.T) {
+		t.Parallel()
+		p := util.KeyPrefix(t)
+
+		signedReadKey := p + "signed-read"
+		Set2SetBit(t, rdb, ctx, signedReadKey, []byte("\xfe"))
+		for _, command := range []string{"BITFIELD", "BITFIELD_RO"} {
+			res := rdb.Do(ctx, command, signedReadKey, "GET", "i8", "0")
+			require.NoError(t, res.Err())
+			require.EqualValues(t, []interface{}{int64(-2)}, res.Val())
+		}
+
+		signedWriteKey := p + "signed-write"
+		res := rdb.Do(ctx, "BITFIELD", signedWriteKey, "SET", "i8", "0", -2)
+		require.NoError(t, res.Err())
+		require.EqualValues(t, []interface{}{int64(0)}, res.Val())
+		require.Equal(t, "\xfe", rdb.Get(ctx, signedWriteKey).Val())
+		for offset, bit := range []int64{1, 1, 1, 1, 1, 1, 1, 0} {
+			require.EqualValues(t, bit, rdb.GetBit(ctx, signedWriteKey, int64(offset)).Val())
+		}
+
+		for _, tc := range []struct {
+			name         string
+			overflow     string
+			expected     interface{}
+			expectedByte byte
+		}{
+			{name: "wrap", overflow: "WRAP", expected: int64(-128), expectedByte: 0x80},
+			{name: "sat", overflow: "SAT", expected: int64(127), expectedByte: 0x7f},
+			{name: "fail", overflow: "FAIL", expected: nil, expectedByte: 0x7f},
+		} {
+			key := p + "overflow-" + tc.name
+			Set2SetBit(t, rdb, ctx, key, []byte("\x7f"))
+			res = rdb.Do(ctx, "BITFIELD", key, "OVERFLOW", tc.overflow, "INCRBY", "i8", "0", 1)
+			require.NoError(t, res.Err())
+			require.Equal(t, []interface{}{tc.expected}, res.Val())
+			require.Equal(t, string([]byte{tc.expectedByte}), rdb.Get(ctx, key).Val())
+			for offset := 0; offset < 8; offset++ {
+				expectedBit := (tc.expectedByte >> (7 - offset)) & 1
+				require.EqualValues(t, expectedBit, rdb.GetBit(ctx, key, int64(offset)).Val())
+			}
+		}
+	})
+
+	t.Run("BITFIELD reads missing and sparse bitmap bytes", func(t *testing.T) {
+		t.Parallel()
+		p := util.KeyPrefix(t)
+
+		missingKey := p + "missing"
+		for _, command := range []string{"BITFIELD", "BITFIELD_RO"} {
+			res := rdb.Do(ctx, command, missingKey, "GET", "u16", "0")
+			require.NoError(t, res.Err())
+			require.EqualValues(t, []interface{}{int64(0)}, res.Val())
+			require.EqualValues(t, 0, rdb.Exists(ctx, missingKey).Val())
+		}
+
+		shortTailKey := p + "short-tail"
+		require.NoError(t, rdb.SetBit(ctx, shortTailKey, 0, 1).Err())
+		for _, command := range []string{"BITFIELD", "BITFIELD_RO"} {
+			res := rdb.Do(ctx, command, shortTailKey, "GET", "u16", "0")
+			require.NoError(t, res.Err())
+			require.EqualValues(t, []interface{}{int64(32768)}, res.Val())
+		}
+		require.Equal(t, "\x80", rdb.Get(ctx, shortTailKey).Val())
+
+		sparseKey := p + "sparse"
+		require.NoError(t, rdb.SetBit(ctx, sparseKey, 2*1024*8, 1).Err())
+		for _, command := range []string{"BITFIELD", "BITFIELD_RO"} {
+			res := rdb.Do(ctx, command, sparseKey, "GET", "u16", "8192", "GET", "u9", "16380")
+			require.NoError(t, res.Err())
+			require.EqualValues(t, []interface{}{int64(0), int64(16)}, res.Val())
+		}
+		value := rdb.Get(ctx, sparseKey).Val()
+		require.Len(t, value, 2049)
+		require.Equal(t, byte(0x80), value[2048])
+		require.EqualValues(t, 1, rdb.GetBit(ctx, sparseKey, 2*1024*8).Val())
+	})
+
 	t.Run("BITFIELD and BITFIELD_RO on string type", func(t *testing.T) {
 		t.Parallel()
 		p := util.KeyPrefix(t)

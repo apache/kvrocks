@@ -21,6 +21,7 @@
 #include "redis_bitmap.h"
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <utility>
@@ -35,6 +36,7 @@ namespace redis {
 
 constexpr uint32_t kBitmapSegmentBits = 1024 * 8;
 constexpr uint32_t kBitmapSegmentBytes = 1024;
+constexpr size_t kMaxBitfieldBytes = sizeof(uint64_t) + 1;
 
 constexpr char kErrBitmapStringOutOfRange[] =
     "The size of the bitmap string exceeds the "
@@ -741,6 +743,7 @@ static rocksdb::Status CopySegmentsBytesToBitfield(engine::Context &ctx, Bitmap:
   int64_t remain_bytes = bytes;
   // the byte_offset in current segment.
   auto segment_byte_offset = static_cast<int>(byte_offset % kBitmapSegmentBytes);
+  std::array<uint8_t, kMaxBitfieldBytes> swapped;
   for (; remain_bytes > 0; ++segment_index) {
     const std::string *cache = nullptr;
     auto cache_status = store.Get(ctx, segment_index, &cache);
@@ -751,10 +754,16 @@ static rocksdb::Status CopySegmentsBytesToBitfield(engine::Context &ctx, Bitmap:
     auto cache_size = static_cast<int>(cache->size());
     auto copyable = std::max(0, cache_size - segment_byte_offset);
     auto copy_count = std::min(static_cast<int>(remain_bytes), copyable);
-    auto src = reinterpret_cast<const uint8_t *>(cache->data() + segment_byte_offset);
-    auto status = bitfield->Set(byte_offset, copy_count, src);
-    if (!status) {
-      return rocksdb::Status::InvalidArgument();
+    if (copy_count > 0) {
+      if (static_cast<size_t>(copy_count) > swapped.size()) {
+        return rocksdb::Status::InvalidArgument();
+      }
+      auto src = reinterpret_cast<const uint8_t *>(cache->data() + segment_byte_offset);
+      std::transform(src, src + copy_count, swapped.begin(), [](uint8_t byte) { return kBitSwapTable[byte]; });
+      auto status = bitfield->Set(byte_offset, copy_count, swapped.data());
+      if (!status) {
+        return rocksdb::Status::InvalidArgument();
+      }
     }
 
     // next segment will copy from its front.
@@ -808,6 +817,7 @@ static rocksdb::Status CopyBitfieldBytesToSegments(engine::Context &ctx, Bitmap:
     if (!status) {
       return rocksdb::Status::InvalidArgument();
     }
+    std::transform(dst, dst + copy_count, dst, [](uint8_t byte) { return kBitSwapTable[byte]; });
 
     // next segment will copy from its front.
     byte_offset = (segment_index + 1) * kBitmapSegmentBytes;

@@ -20,7 +20,6 @@
 
 #pragma once
 
-#include <memory>
 #include <optional>
 #include <random>
 #include <string>
@@ -92,7 +91,6 @@ struct HnswIndex {
   engine::Storage* storage = nullptr;
 
   std::optional<std::random_device::result_type> seed;
-  std::unique_ptr<std::mt19937> generator;
   double m_level_normalization_factor;
 
   HnswIndex(const SearchKey& search_key, HnswVectorFieldMetadata* vector, engine::Storage* storage,

@@ -24,7 +24,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <memory>
 #include <queue>
 #include <random>
 #include <unordered_set>
@@ -181,12 +180,9 @@ HnswIndex::HnswIndex(const SearchKey& search_key, HnswVectorFieldMetadata* vecto
       m_level_normalization_factor(1.0 / std::log(metadata->m)) {}
 
 uint16_t HnswIndex::RandomizeLayer() {
-  if (!generator) {
-    const auto actual_seed = seed ? *seed : std::random_device()();
-    generator = std::make_unique<std::mt19937>(actual_seed);
-  }
+  static thread_local std::mt19937 generator = [this] { return std::mt19937(seed.value_or(std::random_device()())); }();
   std::uniform_real_distribution<double> level_dist(0.0, 1.0);
-  double r = level_dist(*generator);
+  double r = level_dist(generator);
   double log_val = -std::log(r);
   double layer_val = log_val * m_level_normalization_factor;
   return static_cast<uint16_t>(std::floor(layer_val));

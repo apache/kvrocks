@@ -747,13 +747,13 @@ void Connection::queueOrPublishKeyspaceEvents(std::vector<KeyspaceEvent> &&event
   }
 
   for (const auto &event : events) {
-    srv_->NotifyKeyspaceEvent(event.flags, event.event, event.ns, event.key);
+    srv_->NotifyKeyspaceEvent(event.channel_flags, event.event, event.ns, event.key);
   }
 }
 
 void Connection::FlushKeyspaceEvents() {
   for (const auto &e : pending_keyspace_events_) {
-    srv_->NotifyKeyspaceEvent(e.flags, e.event, e.ns, e.key);
+    srv_->NotifyKeyspaceEvent(e.channel_flags, e.event, e.ns, e.key);
   }
   pending_keyspace_events_.clear();
 }
@@ -764,6 +764,11 @@ void Connection::ResetMultiExec() {
   multi_cmds_.clear();
   // Drop events from failed or aborted transactions.
   pending_keyspace_events_.clear();
+  // Retain capacity for typical transactions, but request releasing unusually large buffers.
+  constexpr std::size_t kMaxRetainedKeyspaceEvents = 1024;
+  if (pending_keyspace_events_.capacity() > kMaxRetainedKeyspaceEvents) {
+    pending_keyspace_events_.shrink_to_fit();
+  }
   DisableFlag(Connection::kMultiExec);
 }
 

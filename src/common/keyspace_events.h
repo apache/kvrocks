@@ -37,8 +37,7 @@ enum NotifyKeyspaceEventFlag {
 };
 
 struct KeyspaceEvent {
-  // Event class and K/E channels selected when the command executed.
-  int flags;
+  int channel_flags;
   std::string event;
   std::string ns;
   std::string key;

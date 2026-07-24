@@ -46,7 +46,7 @@ TEST(KeyspaceEvents, CollectorFiltersAndCapturesEvent) {
 
   auto events = collector.Take();
   ASSERT_EQ(events.size(), 1);
-  EXPECT_EQ(events[0].flags, kNotifyKeyspace | kNotifyString);
+  EXPECT_EQ(events[0].channel_flags, kNotifyKeyspace);
   EXPECT_EQ(events[0].event, "set");
   EXPECT_EQ(events[0].ns, "tenant");
   EXPECT_EQ(events[0].key, "key");
@@ -59,10 +59,10 @@ TEST(KeyspaceEvents, CollectorPreservesEventOrder) {
 
   auto events = collector.Take();
   ASSERT_EQ(events.size(), 2);
-  EXPECT_EQ(events[0].flags, kNotifyKeyspace | kNotifyKeyevent | kNotifyString);
+  EXPECT_EQ(events[0].channel_flags, kNotifyKeyspace | kNotifyKeyevent);
   EXPECT_EQ(events[0].event, "set");
   EXPECT_EQ(events[0].key, "first");
-  EXPECT_EQ(events[1].flags, kNotifyKeyspace | kNotifyKeyevent | kNotifyGeneric);
+  EXPECT_EQ(events[1].channel_flags, kNotifyKeyspace | kNotifyKeyevent);
   EXPECT_EQ(events[1].event, "del");
   EXPECT_EQ(events[1].key, "second");
 }

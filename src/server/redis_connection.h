@@ -226,7 +226,7 @@ class Connection : public EvbufCallbackBase<Connection> {
  private:
   class KeyspaceEventScope;
 
-  // Publishes immediately, or queues events inside MULTI/EXEC.
+  // Queues events while EXEC is running; publishes them otherwise.
   void queueOrPublishKeyspaceEvents(std::vector<KeyspaceEvent> &&events);
 
   uint64_t id_ = 0;

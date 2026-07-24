@@ -219,7 +219,7 @@ class Server {
 
   int PublishMessage(const std::string &channel, const std::string &msg);
 
-  // Publishes filtered keyspace notifications.
+  // Publishes a keyspace event through the channels selected when it was collected.
   void NotifyKeyspaceEvent(int flags, const std::string &event, const std::string &ns, const std::string &key);
   void SubscribeChannel(const std::string &channel, redis::Connection *conn);
   void UnsubscribeChannel(const std::string &channel, redis::Connection *conn);

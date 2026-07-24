@@ -224,8 +224,6 @@ class Connection : public EvbufCallbackBase<Connection> {
   ReplyMode GetReplyMode() const { return reply_mode_; }
 
  private:
-  class KeyspaceEventScope;
-
   // Queues events while EXEC is running; publishes them otherwise.
   void queueOrPublishKeyspaceEvents(std::vector<KeyspaceEvent> &&events);
 
@@ -260,7 +258,8 @@ class Connection : public EvbufCallbackBase<Connection> {
   std::atomic<bool> is_running_ = false;
   std::deque<redis::CommandTokens> multi_cmds_;
 
-  KeyspaceEventCollector *active_keyspace_event_collector_ = nullptr;
+  int keyspace_event_notify_flags_ = 0;
+  std::unique_ptr<KeyspaceEventCollector> active_keyspace_event_collector_;
   std::vector<KeyspaceEvent> pending_keyspace_events_;
   bool in_script_ = false;
 

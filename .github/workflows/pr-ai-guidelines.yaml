@@ -58,6 +58,11 @@ jobs:
           fi
 
           GUIDELINES_URL="https://kvrocks.apache.org/community/contributing/#guidelines-for-ai-assisted-contributions"
-          BODY="hi @${AUTHOR}. 感谢你的PR，Please check our [Guidelines for AI-assisted Contributions](${GUIDELINES_URL}). 若您的PR不符合我们的Guidelines，我们会将其直接关闭，如有异议可以reopen此PR。"
+          BODY=$(printf '%s\n' \
+            "Hi @${AUTHOR}," \
+            "" \
+            "Thank you for your pull request. Please review our [Guidelines for AI-assisted Contributions](${GUIDELINES_URL})." \
+            "" \
+            "Pull requests that do not follow these guidelines may be closed. If you believe this decision was made in error, feel free to reopen the PR.")
 
           gh pr comment "${PR_NUMBER}" --repo "${REPO}" --body "${BODY}"

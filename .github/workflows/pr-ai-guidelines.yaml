@@ -1,0 +1,63 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+name: "PR AI Guidelines Reminder"
+
+on:
+  pull_request_target:
+    types:
+      - opened
+
+permissions:
+  pull-requests: write
+
+jobs:
+  remind:
+    name: Remind AI-assisted contribution guidelines
+    runs-on: ubuntu-latest
+    if: >
+      github.repository_owner == 'apache' &&
+      github.event.pull_request.user.type != 'Bot'
+    steps:
+      - name: Check merged PR count and comment if needed
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          MERGED_COUNT=$(gh search prs \
+            --repo "${REPO}" \
+            --author "${AUTHOR}" \
+            --merged \
+            --limit 3 \
+            --json number \
+            --jq 'length')
+
+          echo "Author ${AUTHOR} has at least ${MERGED_COUNT} merged PR(s) in ${REPO} (capped at 3)"
+
+          if [ "${MERGED_COUNT}" -ge 3 ]; then
+            echo "Skipping comment: author already has 3 or more merged PRs"
+            exit 0
+          fi
+
+          GUIDELINES_URL="https://kvrocks.apache.org/community/contributing/#guidelines-for-ai-assisted-contributions"
+          BODY="hi @${AUTHOR}. 感谢你的PR，Please check our [Guidelines for AI-assisted Contributions](${GUIDELINES_URL}). 若您的PR不符合我们的Guidelines，我们会将其直接关闭，如有异议可以reopen此PR。"
+
+          gh pr comment "${PR_NUMBER}" --repo "${REPO}" --body "${BODY}"

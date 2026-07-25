@@ -179,7 +179,7 @@ HnswIndex::HnswIndex(const SearchKey& search_key, HnswVectorFieldMetadata* vecto
       storage(storage),
       m_level_normalization_factor(1.0 / std::log(metadata->m)) {}
 
-uint16_t HnswIndex::RandomizeLayer() {
+uint16_t HnswIndex::RandomizeLayer() const {
   std::uniform_real_distribution<double> level_dist(0.0, 1.0);
   double r = level_dist(generator);
   double log_val = -std::log(r);
@@ -517,7 +517,7 @@ Status HnswIndex::InsertVectorEntryInternal(engine::Context& ctx, std::string_vi
 }
 
 Status HnswIndex::InsertVectorEntry(engine::Context& ctx, std::string_view key, const kqir::NumericArray& vector,
-                                    ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch) {
+                                    ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch) const {
   auto target_level = RandomizeLayer();
   return InsertVectorEntryInternal(ctx, key, vector, batch, target_level);
 }

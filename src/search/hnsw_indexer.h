@@ -99,7 +99,7 @@ struct HnswIndex {
                                                                     const std::vector<NodeKey>& node_key,
                                                                     uint16_t level, const SearchKey& search_key,
                                                                     const HnswVectorFieldMetadata* metadata);
-  uint16_t RandomizeLayer();
+  uint16_t RandomizeLayer() const;
   StatusOr<NodeKey> DefaultEntryPoint(engine::Context& ctx, uint16_t level) const;
   Status AddEdge(const NodeKey& node_key1, const NodeKey& node_key2, uint16_t layer,
                  ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch) const;
@@ -117,7 +117,7 @@ struct HnswIndex {
   Status InsertVectorEntryInternal(engine::Context& ctx, std::string_view key, const kqir::NumericArray& vector,
                                    ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch, uint16_t layer) const;
   Status InsertVectorEntry(engine::Context& ctx, std::string_view key, const kqir::NumericArray& vector,
-                           ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch);
+                           ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch) const;
   Status DeleteVectorEntry(engine::Context& ctx, std::string_view key,
                            ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch) const;
   StatusOr<std::vector<KeyWithDistance>> KnnSearch(engine::Context& ctx, const kqir::NumericArray& query_vector,

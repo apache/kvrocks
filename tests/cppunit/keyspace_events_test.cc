@@ -26,20 +26,20 @@
 
 TEST(KeyspaceEvents, CollectorRequiresEventClassAndChannel) {
   KeyspaceEventCollector no_channel("tenant", kNotifyString);
-  EXPECT_FALSE(no_channel.IsEnabled(kNotifyString));
+  EXPECT_FALSE(ShouldNotifyKeyspaceEvent(kNotifyString, kNotifyString));
   no_channel.Add(kNotifyString, "set", "key");
   EXPECT_TRUE(no_channel.Take().empty());
 
   KeyspaceEventCollector no_event_class("tenant", kNotifyKeyspace);
-  EXPECT_FALSE(no_event_class.IsEnabled(kNotifyString));
+  EXPECT_FALSE(ShouldNotifyKeyspaceEvent(kNotifyKeyspace, kNotifyString));
   no_event_class.Add(kNotifyString, "set", "key");
   EXPECT_TRUE(no_event_class.Take().empty());
 }
 
 TEST(KeyspaceEvents, CollectorFiltersAndCapturesEvent) {
   KeyspaceEventCollector collector("tenant", kNotifyKeyspace | kNotifyString);
-  EXPECT_TRUE(collector.IsEnabled(kNotifyString));
-  EXPECT_FALSE(collector.IsEnabled(kNotifyGeneric));
+  EXPECT_TRUE(ShouldNotifyKeyspaceEvent(kNotifyKeyspace | kNotifyString, kNotifyString));
+  EXPECT_FALSE(ShouldNotifyKeyspaceEvent(kNotifyKeyspace | kNotifyString, kNotifyGeneric));
 
   collector.Add(kNotifyGeneric, "del", "ignored");
   collector.Add(kNotifyString, "set", "key");

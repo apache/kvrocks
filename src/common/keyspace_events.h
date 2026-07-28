@@ -49,7 +49,6 @@ struct KeyspaceEvent {
 class KeyspaceEventCollector {
  public:
   KeyspaceEventCollector(std::string ns, int notify_flags);
-  bool IsEnabled(int type_flag) const;
   void Add(int type_flag, std::string_view event, std::string_view key);
   // Moves out events collected during Execute.
   std::vector<KeyspaceEvent> Take();

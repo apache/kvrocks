@@ -36,6 +36,8 @@ enum NotifyKeyspaceEventFlag {
   kNotifyAll = kNotifyGeneric | kNotifyString,
 };
 
+bool ShouldNotifyKeyspaceEvent(int notify_flags, int type_flag);
+
 struct KeyspaceEvent {
   int channel_flags;
   std::string event;

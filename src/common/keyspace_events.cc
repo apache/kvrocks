@@ -26,11 +26,15 @@
 #include "config/config.h"
 #include "fmt/format.h"
 
+bool ShouldNotifyKeyspaceEvent(int notify_flags, int type_flag) {
+  return (notify_flags & type_flag) != 0 && (notify_flags & (kNotifyKeyspace | kNotifyKeyevent)) != 0;
+}
+
 KeyspaceEventCollector::KeyspaceEventCollector(std::string ns, int notify_flags)
     : notify_flags_(notify_flags), ns_(std::move(ns)) {}
 
 bool KeyspaceEventCollector::IsEnabled(int type_flag) const {
-  return (notify_flags_ & type_flag) != 0 && (notify_flags_ & (kNotifyKeyspace | kNotifyKeyevent)) != 0;
+  return ShouldNotifyKeyspaceEvent(notify_flags_, type_flag);
 }
 
 void KeyspaceEventCollector::Add(int type_flag, std::string_view event, std::string_view key) {

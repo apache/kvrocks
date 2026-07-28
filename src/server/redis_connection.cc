@@ -488,8 +488,7 @@ Status Connection::ExecuteCommand(engine::Context &ctx, const std::string &cmd_n
 }
 
 bool Connection::IsKeyspaceEventEnabled(int type_flag) const {
-  return (keyspace_event_notify_flags_ & type_flag) != 0 &&
-         (keyspace_event_notify_flags_ & (kNotifyKeyspace | kNotifyKeyevent)) != 0;
+  return ShouldNotifyKeyspaceEvent(keyspace_event_notify_flags_, type_flag);
 }
 
 void Connection::AddKeyspaceEvent(int type_flag, std::string_view event, std::string_view key) {

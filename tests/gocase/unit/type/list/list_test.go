@@ -42,6 +42,8 @@ var largeValue = map[string]string{
 	"linkedList": strings.Repeat("hello", 4),
 }
 
+const blockingTimeout = "0.2"
+
 func TestLTRIM(t *testing.T) {
 	configOptions := []util.ConfigOptions{
 		{
@@ -485,7 +487,7 @@ func testList(t *testing.T, configs util.KvrocksServerConfigs) {
 			rd := srv.NewTCPClient()
 			defer func() { require.NoError(t, rd.Close()) }()
 			require.NoError(t, rdb.Del(ctx, "blist1", "blist2").Err())
-			require.NoError(t, rd.WriteArgs(popType, "blist1", "blist2", "1"))
+			require.NoError(t, rd.WriteArgs(popType, "blist1", "blist2", blockingTimeout))
 			rd.MustMatch(t, "")
 		})
 
@@ -1491,7 +1493,7 @@ func testList(t *testing.T, configs util.KvrocksServerConfigs) {
 			rd := srv.NewTCPClient()
 			defer func() { require.NoError(t, rd.Close()) }()
 			require.NoError(t, rdb.Del(ctx, key1, key2).Err())
-			require.NoError(t, rd.WriteArgs("blmpop", "1", "2", key1, key2, direction))
+			require.NoError(t, rd.WriteArgs("blmpop", blockingTimeout, "2", key1, key2, direction))
 			rd.MustMatch(t, "")
 		})
 

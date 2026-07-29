@@ -317,8 +317,8 @@ inline Status TDigestCDF(const std::vector<Centroid>& centroids, double centroid
       weight_so_far += current_centroid.weight;
     }
 
-    while (centroid_idx == centroids.size() - 1 && sorted_unique_inputs[input_idx] < centroids[centroid_idx].mean &&
-           input_idx < last_valid_input_idx) {
+    while (centroid_idx == centroids.size() - 1 && input_idx < last_valid_input_idx &&
+           sorted_unique_inputs[input_idx] < centroids[centroid_idx].mean) {
       auto cdf_input = sorted_unique_inputs[input_idx];
       auto current_centroid = centroids[centroid_idx];
       const auto width = current_centroid.mean - centroids_min;

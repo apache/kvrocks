@@ -44,6 +44,7 @@ class Disk : public Database {
   rocksdb::Status GetBitmapSize(engine::Context &ctx, const Slice &ns_key, uint64_t *key_size);
   rocksdb::Status GetSortedintSize(engine::Context &ctx, const Slice &ns_key, uint64_t *key_size);
   rocksdb::Status GetStreamSize(engine::Context &ctx, const Slice &ns_key, uint64_t *key_size);
+  rocksdb::Status GetCuckooFilterSize(engine::Context &ctx, const Slice &ns_key, uint64_t *key_size);
   rocksdb::Status GetKeySize(engine::Context &ctx, const Slice &user_key, RedisType type, uint64_t *key_size);
 
  private:

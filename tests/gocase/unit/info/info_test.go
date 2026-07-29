@@ -21,6 +21,7 @@ package info
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -186,4 +187,121 @@ func TestKeyspaceHitMiss(t *testing.T) {
 	require.EqualError(t, rdb0.HGet(ctx, "no_exists_hash", "f1").Err(), redis.Nil.Error())
 	require.Equal(t, "2", util.FindInfoEntry(rdb0, "keyspace_hits", "stats"))
 	require.Equal(t, "3", util.FindInfoEntry(rdb0, "keyspace_misses", "stats"))
+}
+
+func TestInfoFormat(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{})
+	defer srv.Close()
+
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	// Values are emitted with their original JSON type: numbers are unquoted, strings are quoted.
+	// encoding/json decodes JSON numbers into float64 and JSON strings into string when the target
+	// is `any`, so we assert on the concrete Go types to lock in the typed-output contract.
+	t.Run("single section as JSON with typed values", func(t *testing.T) {
+		out, err := rdb.Do(ctx, "INFO", "server", "FORMAT", "JSON").Text()
+		require.NoError(t, err)
+
+		info := map[string]map[string]any{}
+		require.NoError(t, json.Unmarshal([]byte(out), &info))
+		require.Contains(t, info, "Server")
+		// numeric field -> JSON number (Go float64)
+		require.IsType(t, float64(0), info["Server"]["tcp_port"])
+		require.Greater(t, info["Server"]["tcp_port"].(float64), float64(0))
+		// string field -> JSON string
+		require.Equal(t, "unstable", info["Server"]["kvrocks_version"])
+		// only the requested section should be present
+		require.Len(t, info, 1)
+	})
+
+	t.Run("boolean fields are JSON booleans", func(t *testing.T) {
+		out, err := rdb.Do(ctx, "INFO", "persistence", "FORMAT", "JSON").Text()
+		require.NoError(t, err)
+
+		info := map[string]map[string]any{}
+		require.NoError(t, json.Unmarshal([]byte(out), &info))
+		// `loading` is a C++ bool: JSON preserves the native type (true/false), while the text format
+		// renders it as 0/1 (asserted by the text-format test below and the pre-existing cluster test).
+		require.IsType(t, false, info["Persistence"]["loading"])
+		require.Equal(t, false, info["Persistence"]["loading"])
+	})
+
+	t.Run("all sections as JSON", func(t *testing.T) {
+		out, err := rdb.Do(ctx, "INFO", "FORMAT", "JSON").Text()
+		require.NoError(t, err)
+
+		info := map[string]map[string]any{}
+		require.NoError(t, json.Unmarshal([]byte(out), &info))
+		for _, sec := range []string{"Server", "Clients", "Memory", "Stats"} {
+			require.Contains(t, info, sec)
+		}
+	})
+
+	t.Run("multiple sections as JSON", func(t *testing.T) {
+		out, err := rdb.Do(ctx, "INFO", "server", "clients", "FORMAT", "JSON").Text()
+		require.NoError(t, err)
+
+		info := map[string]map[string]any{}
+		require.NoError(t, json.Unmarshal([]byte(out), &info))
+		require.Contains(t, info, "Server")
+		require.Contains(t, info, "Clients")
+		require.Len(t, info, 2)
+	})
+
+	t.Run("text format matches pre-change expected output", func(t *testing.T) {
+		// Expected output captured from the INFO command BEFORE the typed-value (FORMAT) change, to
+		// guard that the text serialization stays byte-for-byte identical to the original. The
+		// Persistence section is used because its fields are deterministic right after startup;
+		// last_bgsave_time holds the (volatile) server start timestamp, so it is matched as a number.
+		// \A and \z anchor the whole response, so this asserts an exact match of the entire section.
+		expected := `\A# Persistence\r\n` +
+			`loading:0\r\n` +
+			`bgsave_in_progress:0\r\n` +
+			`last_bgsave_time:[0-9]+\r\n` +
+			`last_bgsave_status:ok\r\n` +
+			`last_bgsave_time_sec:-1\r\n\z`
+
+		// Both the default (no FORMAT) command and explicit FORMAT TXT must reproduce the original
+		// text output, proving the typed-value refactor did not change the text format.
+		def, err := rdb.Do(ctx, "INFO", "persistence").Text()
+		require.NoError(t, err)
+		require.Regexp(t, expected, def)
+
+		txt, err := rdb.Do(ctx, "INFO", "persistence", "FORMAT", "TXT").Text()
+		require.NoError(t, err)
+		require.Regexp(t, expected, txt)
+	})
+
+	t.Run("cpu values are JSON numbers", func(t *testing.T) {
+		// used_cpu_* are floating-point fields; JSON must emit them as numbers (not quoted strings),
+		// while the text format keeps the decimal representation.
+		js, err := rdb.Do(ctx, "INFO", "cpu", "FORMAT", "JSON").Text()
+		require.NoError(t, err)
+		info := map[string]map[string]any{}
+		require.NoError(t, json.Unmarshal([]byte(js), &info))
+		require.IsType(t, float64(0), info["CPU"]["used_cpu_sys"])
+		require.IsType(t, float64(0), info["CPU"]["used_cpu_user"])
+
+		txt, err := rdb.Do(ctx, "INFO", "cpu", "FORMAT", "TXT").Text()
+		require.NoError(t, err)
+		require.Regexp(t, `\nused_cpu_sys:[0-9]+\.[0-9]+\r`, txt)
+	})
+
+	t.Run("format keyword is case-insensitive", func(t *testing.T) {
+		out, err := rdb.Do(ctx, "info", "server", "format", "json").Text()
+		require.NoError(t, err)
+		info := map[string]map[string]any{}
+		require.NoError(t, json.Unmarshal([]byte(out), &info))
+		require.Contains(t, info, "Server")
+	})
+
+	t.Run("invalid format value returns syntax error", func(t *testing.T) {
+		require.ErrorContains(t, rdb.Do(ctx, "INFO", "server", "FORMAT", "YAML").Err(), "syntax error")
+	})
+
+	t.Run("FORMAT without a value returns syntax error", func(t *testing.T) {
+		require.ErrorContains(t, rdb.Do(ctx, "INFO", "server", "FORMAT").Err(), "syntax error")
+	})
 }

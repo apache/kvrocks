@@ -956,21 +956,9 @@ void Server::cron() {
 
     // No replica uses this checkpoint, we can remove it.
     if (counter != 0 && counter % 100 == 0) {
-      int64_t create_time_secs = storage->GetCheckpointCreateTimeSecs();
-      int64_t access_time_secs = storage->GetCheckpointAccessTimeSecs();
-
-      if (storage->ExistCheckpoint()) {
-        // TODO(shooterit): support to config the alive time of checkpoint
-        int64_t now_secs = util::GetTimeStamp<std::chrono::seconds>();
-        if ((GetFetchFileThreadNum() == 0 && now_secs - access_time_secs > 30) ||
-            (now_secs - create_time_secs > 24 * 60 * 60)) {
-          auto s = rocksdb::DestroyDB(config_->checkpoint_dir, rocksdb::Options());
-          if (!s.ok()) {
-            WARN("[server] Fail to clean checkpoint, error: {}", s.ToString());
-          } else {
-            INFO("[server] Clean checkpoint successfully");
-          }
-        }
+      auto s = storage->TryPurgeCheckpoint(GetFetchFileThreadNum());
+      if (!s.IsOK()) {
+        WARN("[server] Fail to clean checkpoint, error: {}", s.Msg());
       }
     }
     // check if DB need to be resumed every minute
@@ -1406,6 +1394,8 @@ Server::InfoEntries Server::GetStatsInfo() {
   entries.emplace_back("sync_full", stats.fullsync_count.load());
   entries.emplace_back("sync_partial_ok", stats.psync_ok_count.load());
   entries.emplace_back("sync_partial_err", stats.psync_err_count.load());
+  entries.emplace_back("client_output_buffer_limit_disconnections",
+                       stats.client_output_buffer_limit_disconnections.load());
 
   auto db_stats = storage->GetDBStats();
   entries.emplace_back("keyspace_hits", db_stats->keyspace_hits.load());
@@ -1537,7 +1527,7 @@ Server::InfoEntries Server::GetKeyspaceInfo(const std::string &ns) {
 // DB is closed and the pointer is invalid. Server may crash if we access DB during loading.
 // If you add new fields which access DB into INFO command output, make sure
 // this section can't be shown when loading(i.e. !is_loading_).
-std::string Server::GetInfo(const std::string &ns, const std::vector<std::string> &sections) {
+std::string Server::GetInfo(const std::string &ns, const std::vector<std::string> &sections, InfoFormat format) {
   std::vector<std::pair<std::string, std::function<InfoEntries(Server *)>>> info_funcs = {
       {"Server", &Server::GetServerInfo},   {"Clients", &Server::GetClientsInfo},
       {"Memory", &Server::GetMemoryInfo},   {"Persistence", &Server::GetPersistenceInfo},
@@ -1548,25 +1538,38 @@ std::string Server::GetInfo(const std::string &ns, const std::vector<std::string
   };
 
   std::string info_str;
+  jsoncons::json json_obj;
 
   bool all = sections.empty() || util::FindICase(sections.begin(), sections.end(), "all") != sections.end();
 
   bool first = true;
   for (const auto &[sec, fn] : info_funcs) {
     if (all || util::FindICase(sections.begin(), sections.end(), sec) != sections.end()) {
-      if (first)
-        first = false;
-      else
-        info_str.append("\r\n");
+      auto entries = fn(this);
+      if (format == InfoFormat::Json) {
+        jsoncons::json sec_obj;
+        for (const auto &entry : entries) {
+          std::visit([&](const auto &v) { sec_obj[entry.name] = v; }, entry.val);
+        }
+        json_obj[sec] = std::move(sec_obj);
+      } else {
+        if (first)
+          first = false;
+        else
+          info_str.append("\r\n");
 
-      info_str.append("# " + sec + "\r\n");
+        info_str.append("# " + sec + "\r\n");
 
-      for (const auto &entry : fn(this)) {
-        info_str.append(fmt::format("{}:{}\r\n", entry.name, entry.val));
+        for (const auto &entry : entries) {
+          info_str.append(fmt::format("{}:{}\r\n", entry.name, entry.ValueToString()));
+        }
       }
     }
   }
 
+  if (format == InfoFormat::Json) {
+    return json_obj.to_string();
+  }
   return info_str;
 }
 
@@ -1805,16 +1808,19 @@ void Server::SlowlogPushEntryIfNeeded(const std::vector<std::string> *args, uint
   slow_log_.PushEntry(std::move(entry));
 }
 
-std::string Server::GetClientsStr() {
+std::string Server::GetClientsStr(const redis::Connection *conn) {
   std::string clients;
   for (const auto &t : worker_threads_) {
-    clients.append(t->GetWorker()->GetClientsStr());
+    clients.append(t->GetWorker()->GetClientsStr(conn));
   }
 
-  std::shared_lock<std::shared_mutex> guard(slave_threads_mu_);
-
-  for (const auto &st : slave_threads_) {
-    clients.append(st->GetConn()->ToString());
+  // Slave (replication) connections live outside any tenant namespace, so
+  // only admin (default-namespace) callers may enumerate them.
+  if (conn->IsAdmin()) {
+    std::shared_lock<std::shared_mutex> guard(slave_threads_mu_);
+    for (const auto &st : slave_threads_) {
+      clients.append(st->GetConn()->ToString());
+    }
   }
 
   return clients;
@@ -1824,12 +1830,18 @@ void Server::KillClient(int64_t *killed, const std::string &addr, uint64_t id, u
                         redis::Connection *conn) {
   *killed = 0;
 
-  // Normal clients and pubsub clients
+  // Normal clients and pubsub clients (per-worker filtering applies the
+  // namespace check for non-admin callers).
   for (const auto &t : worker_threads_) {
     int64_t killed_in_worker = 0;
     t->GetWorker()->KillClient(conn, id, addr, type, skipme, &killed_in_worker);
     *killed += killed_in_worker;
   }
+
+  // Replication links (master / slave) are not tenant-owned; only admin
+  // callers may terminate them, otherwise a non-admin tenant could
+  // disrupt replication.
+  if (!conn->IsAdmin()) return;
 
   // Slave clients
   {

@@ -29,6 +29,7 @@
 #include "storage/redis_metadata.h"
 #include "test_base.h"
 #include "types/redis_bitmap.h"
+#include "types/redis_cuckoo_chain.h"
 #include "types/redis_list.h"
 #include "types/redis_set.h"
 #include "types/redis_sortedint.h"
@@ -251,4 +252,20 @@ TEST_F(RedisDiskTest, StreamDisk) {
   EXPECT_GE(key_size, approximate_size * estimation_factor_);
   EXPECT_LE(key_size, approximate_size / estimation_factor_);
   auto s = stream->Del(*ctx_, key_);
+}
+
+TEST_F(RedisDiskTest, CuckooFilterDisk) {
+  std::unique_ptr<redis::CuckooChain> cuckoo =
+      std::make_unique<redis::CuckooChain>(storage_.get(), "disk_ns_cuckoo_filter");
+  std::unique_ptr<redis::Disk> disk = std::make_unique<redis::Disk>(storage_.get(), "disk_ns_cuckoo_filter");
+  key_ = "cuckoo_filter_disk_key";
+
+  EXPECT_TRUE(cuckoo->Reserve(*ctx_, key_, 1000, 4, 500, 2, kCuckooFilterDefaultPageSize).ok());
+  uint64_t key_size = 0;
+  EXPECT_TRUE(disk->GetKeySize(*ctx_, key_, kRedisCuckooFilter, &key_size).ok());
+
+  bool added = false;
+  EXPECT_TRUE(cuckoo->Add(*ctx_, key_, "item", &added).ok());
+  EXPECT_TRUE(added);
+  EXPECT_TRUE(disk->GetKeySize(*ctx_, key_, kRedisCuckooFilter, &key_size).ok());
 }

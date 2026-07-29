@@ -1169,6 +1169,10 @@ Status Storage::ReplDataManager::GetFullReplDataInfo(Storage *storage, std::stri
     files->append(f);
     files->push_back(',');
   }
+  if (files->empty()) {
+    WARN("[storage] Checkpoint directory is empty");
+    return {Status::NotOK, "checkpoint directory is empty"};
+  }
   files->pop_back();
 
   return Status::OK();
@@ -1180,6 +1184,51 @@ bool Storage::ExistCheckpoint() {
 }
 
 bool Storage::ExistSyncCheckpoint() { return env_->FileExists(config_->sync_checkpoint_dir).ok(); }
+
+Status Storage::TryPurgeCheckpoint(int fetch_file_threads) {
+  std::string trash_dir = config_->checkpoint_dir + ".trash";
+  if (env_->FileExists(trash_dir).ok()) {
+    auto s = rocksdb::DestroyDB(trash_dir, rocksdb::Options());
+    if (!s.ok()) {
+      WARN("[storage] Fail to clean stale checkpoint trash, error: {}", s.ToString());
+      return {Status::NotOK, s.ToString()};
+    }
+  }
+
+  {
+    std::lock_guard<std::mutex> lg(checkpoint_mu_);
+    if (!env_->FileExists(config_->checkpoint_dir).ok()) {
+      return Status::OK();
+    }
+
+    // TODO(shooterit): support to config the alive time of checkpoint
+    int64_t create_time_secs = checkpoint_info_.create_time_secs;
+    int64_t access_time_secs = checkpoint_info_.access_time_secs;
+    int64_t now_secs = util::GetTimeStamp<std::chrono::seconds>();
+    bool should_purge =
+        (fetch_file_threads == 0 && now_secs - access_time_secs > 30) || (now_secs - create_time_secs > 24 * 60 * 60);
+    if (!should_purge) {
+      return Status::OK();
+    }
+
+    auto s = env_->RenameFile(config_->checkpoint_dir, trash_dir);
+    if (!s.ok()) {
+      WARN("[storage] Fail to rename checkpoint for purge, error: {}", s.ToString());
+      return {Status::NotOK, s.ToString()};
+    }
+    checkpoint_info_.create_time_secs = 0;
+    checkpoint_info_.access_time_secs = 0;
+    checkpoint_info_.latest_seq = 0;
+  }
+
+  auto s = rocksdb::DestroyDB(trash_dir, rocksdb::Options());
+  if (!s.ok()) {
+    WARN("[storage] Fail to clean checkpoint, error: {}", s.ToString());
+    return {Status::NotOK, s.ToString()};
+  }
+  INFO("[storage] Clean checkpoint successfully");
+  return Status::OK();
+}
 
 Status Storage::InWALBoundary(rocksdb::SequenceNumber seq) {
   std::unique_ptr<rocksdb::TransactionLogIterator> iter;

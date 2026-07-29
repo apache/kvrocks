@@ -64,6 +64,8 @@ rocksdb::Status Disk::GetKeySize(engine::Context &ctx, const Slice &user_key, Re
       return GetZsetSize(ctx, ns_key, key_size);
     case RedisType::kRedisStream:
       return GetStreamSize(ctx, ns_key, key_size);
+    case RedisType::kRedisCuckooFilter:
+      return GetCuckooFilterSize(ctx, ns_key, key_size);
     default:
       return rocksdb::Status::NotFound("Not found ", user_key);
   }
@@ -133,6 +135,13 @@ rocksdb::Status Disk::GetStreamSize(engine::Context &ctx, const Slice &ns_key, u
   rocksdb::Status s = Database::GetMetadata(ctx, {kRedisStream}, ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
   return GetApproximateSizes(metadata, ns_key, storage_->GetCFHandle(ColumnFamilyID::Stream), key_size);
+}
+
+rocksdb::Status Disk::GetCuckooFilterSize(engine::Context &ctx, const Slice &ns_key, uint64_t *key_size) {
+  CuckooChainMetadata metadata(false);
+  rocksdb::Status s = Database::GetMetadata(ctx, {kRedisCuckooFilter}, ns_key, &metadata);
+  if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
+  return GetApproximateSizes(metadata, ns_key, storage_->GetCFHandle(ColumnFamilyID::PrimarySubkey), key_size);
 }
 
 }  // namespace redis

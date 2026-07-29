@@ -23,33 +23,21 @@
 #include <memory>
 #include <utility>
 
-#include "db_util.h"
 #include "event_util.h"
 #include "fmt/format.h"
 #include "io_util.h"
-#include "storage/batch_extractor.h"
 #include "storage/iterator.h"
 #include "storage/redis_metadata.h"
 #include "sync_migrate_context.h"
 #include "thread_util.h"
 #include "time_util.h"
-#include "types/redis_stream_base.h"
 
-constexpr std::string_view errFailedToSendCommands = "failed to send commands to restore a key";
 constexpr std::string_view errMigrationTaskCanceled = "key migration stopped due to a task cancellation";
 constexpr std::string_view errFailedToSetImportStatus = "failed to set import status on destination node";
-constexpr std::string_view errUnsupportedMigrationType = "unsupported migration type";
-
-static std::map<RedisType, std::string> type_to_cmd = {
-    {kRedisString, "set"}, {kRedisList, "rpush"},    {kRedisHash, "hmset"},      {kRedisSet, "sadd"},
-    {kRedisZSet, "zadd"},  {kRedisBitmap, "setbit"}, {kRedisSortedint, "siadd"}, {kRedisStream, "xadd"},
-};
 
 SlotMigrator::SlotMigrator(Server *srv)
     : Database(srv->storage, kDefaultNamespace),
       srv_(srv),
-      max_migration_speed_(srv->GetConfig()->migrate_speed),
-      max_pipeline_size_(srv->GetConfig()->pipeline_size),
       seq_gap_limit_(srv->GetConfig()->sequence_gap),
       migrate_batch_bytes_per_sec_(srv->GetConfig()->migrate_batch_rate_limit_mb * MiB),
       migrate_batch_size_bytes_(srv->GetConfig()->migrate_batch_size_kb * KiB) {
@@ -91,18 +79,7 @@ Status SlotMigrator::PerformSlotRangeMigration(const std::string &node_id, std::
   }
   migration_state_ = MigrationState::kStarted;
 
-  auto speed = srv_->GetConfig()->migrate_speed;
   auto seq_gap = srv_->GetConfig()->sequence_gap;
-  auto pipeline_size = srv_->GetConfig()->pipeline_size;
-
-  if (speed <= 0) {
-    speed = 0;
-  }
-
-  if (pipeline_size <= 0) {
-    pipeline_size = kDefaultMaxPipelineSize;
-  }
-
   if (seq_gap <= 0) {
     seq_gap = kDefaultSequenceGapLimit;
   }
@@ -116,7 +93,7 @@ Status SlotMigrator::PerformSlotRangeMigration(const std::string &node_id, std::
   dst_node_ = node_id;
 
   // Create migration job
-  auto job = std::make_unique<SlotMigrationJob>(slot_range, dst_ip, dst_port, speed, pipeline_size, seq_gap);
+  auto job = std::make_unique<SlotMigrationJob>(slot_range, dst_ip, dst_port, seq_gap);
   {
     std::lock_guard<std::mutex> guard(job_mutex_);
     migration_job_ = std::move(job);
@@ -158,14 +135,11 @@ void SlotMigrator::loop() {
       clean();
       return;
     }
-    INFO("[migrate] Migrating slot(s): {}, dst_ip: {}, dst_port: {}, max_speed: {}, max_pipeline_size: {}",
-         migration_job_->slot_range.String(), migration_job_->dst_ip, migration_job_->dst_port,
-         migration_job_->max_speed, migration_job_->max_pipeline_size);
+    INFO("[migrate] Migrating slot(s): {}, dst_ip: {}, dst_port: {}", migration_job_->slot_range.String(),
+         migration_job_->dst_ip, migration_job_->dst_port);
 
     dst_ip_ = migration_job_->dst_ip;
     dst_port_ = migration_job_->dst_port;
-    max_migration_speed_ = migration_job_->max_speed;
-    max_pipeline_size_ = migration_job_->max_pipeline_size;
     seq_gap_limit_ = migration_job_->seq_gap_limit;
 
     runMigrationProcess();
@@ -264,7 +238,6 @@ Status SlotMigrator::startMigration() {
   }
 
   wal_begin_seq_ = slot_snapshot_->GetSequenceNumber();
-  last_send_time_ = 0;
 
   // Connect to the destination node
   auto result = util::SockConnect(dst_ip_, dst_port_);
@@ -289,134 +262,13 @@ Status SlotMigrator::startMigration() {
     return s.Prefixed(errFailedToSetImportStatus);
   }
 
-  migration_type_ = srv_->GetConfig()->migrate_type;
-
-  // If the APPLYBATCH command is not supported on the destination,
-  // we will fall back to the redis-command migration type.
-  if (migration_type_ == MigrationType::kRawKeyValue) {
-    bool supported = GET_OR_RET(supportedApplyBatchCommandOnDstNode(*dst_fd_));
-    if (!supported) {
-      INFO("APPLYBATCH command is not supported, use redis command for migration");
-      migration_type_ = MigrationType::kRedisCommand;
-    }
+  // The migration relies on the APPLYBATCH command on the destination node
+  // to apply the raw key-value batches, so abort the migration if it's unavailable.
+  bool supported = GET_OR_RET(supportedApplyBatchCommandOnDstNode(*dst_fd_));
+  if (!supported) {
+    return {Status::NotOK, "destination node doesn't support the APPLYBATCH command"};
   }
   INFO("[migrate] Start migrating slot(s) {}, connect destination fd {}", slot_range_.load().String(), *dst_fd_);
-
-  return Status::OK();
-}
-
-Status SlotMigrator::sendSnapshot() {
-  if (migration_type_ == MigrationType::kRedisCommand) {
-    return sendSnapshotByCmd();
-  } else if (migration_type_ == MigrationType::kRawKeyValue) {
-    return sendSnapshotByRawKV();
-  }
-  return {Status::NotOK, std::string(errUnsupportedMigrationType)};
-}
-
-Status SlotMigrator::syncWAL() {
-  if (migration_type_ == MigrationType::kRedisCommand) {
-    return syncWALByCmd();
-  } else if (migration_type_ == MigrationType::kRawKeyValue) {
-    return syncWALByRawKV();
-  }
-  return {Status::NotOK, std::string(errUnsupportedMigrationType)};
-}
-
-Status SlotMigrator::sendSnapshotByCmd() {
-  uint64_t migrated_key_cnt = 0;
-  uint64_t expired_key_cnt = 0;
-  uint64_t empty_key_cnt = 0;
-  std::string restore_cmds;
-  SlotRange slot_range = slot_range_;
-  INFO("[migrate] Start migrating snapshot of slot(s): {}", slot_range.String());
-
-  // Construct key prefix to iterate the keys belong to the target slot
-  std::string prefix = ComposeSlotKeyPrefix(namespace_, slot_range.start);
-  INFO("[migrate] Iterate keys of slot(s), key's prefix: {}", prefix);
-
-  std::string upper_bound = ComposeSlotKeyUpperBound(namespace_, slot_range.end);
-  rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
-  read_options.snapshot = slot_snapshot_;
-  Slice prefix_slice(prefix);
-  Slice upper_bound_slice(upper_bound);
-  read_options.iterate_lower_bound = &prefix_slice;
-  read_options.iterate_upper_bound = &upper_bound_slice;
-  rocksdb::ColumnFamilyHandle *cf_handle = storage_->GetCFHandle(ColumnFamilyID::Metadata);
-  auto iter = util::UniqueIterator(storage_->GetDB()->NewIterator(read_options, cf_handle));
-
-  // Seek to the beginning of keys start with 'prefix' and iterate all these keys
-  int current_slot = slot_range.start;
-  for (iter->Seek(prefix); iter->Valid(); iter->Next()) {
-    // The migrating task has to be stopped, if server role is changed from master to slave
-    // or flush command (flushdb or flushall) is executed
-    if (stop_migration_) {
-      return {Status::NotOK, std::string(errMigrationTaskCanceled)};
-    }
-
-    // Iteration is out of range
-    current_slot = ExtractSlotId(iter->key());
-    if (!slot_range.Contains(current_slot)) {
-      break;
-    }
-
-    // Get user key
-    auto [_, user_key] = ExtractNamespaceKey(iter->key(), /*slot_id_encoded=*/true);
-
-    // Add key's constructed commands to restore_cmds, send pipeline or not according to task's max_pipeline_size
-    auto result = migrateOneKey(user_key, iter->value(), &restore_cmds);
-    if (!result.IsOK()) {
-      return {Status::NotOK, fmt::format("failed to migrate a key {}: {}", user_key, result.Msg())};
-    }
-
-    if (*result == KeyMigrationResult::kMigrated) {
-      INFO("[migrate] The key {} successfully migrated", user_key);
-      migrated_key_cnt++;
-    } else if (*result == KeyMigrationResult::kExpired) {
-      INFO("[migrate] The key {} is expired", user_key);
-      expired_key_cnt++;
-    } else if (*result == KeyMigrationResult::kUnderlyingStructEmpty) {
-      INFO("[migrate] The key {} has no elements", user_key);
-      empty_key_cnt++;
-    } else {
-      ERROR("[migrate] Migrated a key {} with unexpected result: {}", user_key, static_cast<int>(*result));
-      return {Status::NotOK};
-    }
-  }
-
-  if (auto s = iter->status(); !s.ok()) {
-    auto err_str = s.ToString();
-    ERROR("[migrate] Failed to iterate keys of slot {}: {}", current_slot, err_str);
-    return {Status::NotOK, fmt::format("failed to iterate keys of slot {}: {}", current_slot, err_str)};
-  }
-
-  // It's necessary to send commands that are still in the pipeline since the final pipeline may not be sent
-  // while iterating keys because its size could be less than max_pipeline_size_
-  auto s = sendCmdsPipelineIfNeed(&restore_cmds, true);
-  if (!s.IsOK()) {
-    return s.Prefixed(errFailedToSendCommands);
-  }
-  INFO(
-      "[migrate] Succeed to migrate slot(s) snapshot, slot(s): {}, Migrated keys: {}, Expired keys: {}, Empty keys: {}",
-      slot_range.String(), migrated_key_cnt, expired_key_cnt, empty_key_cnt);
-
-  return Status::OK();
-}
-
-Status SlotMigrator::syncWALByCmd() {
-  // Send incremental data from WAL circularly until new increment less than a certain amount
-  auto s = syncWalBeforeForbiddingSlot();
-  if (!s.IsOK()) {
-    return s.Prefixed("failed to sync WAL before forbidding a slot");
-  }
-
-  setForbiddenSlotRange(slot_range_);
-
-  // Send last incremental data
-  s = syncWalAfterForbiddingSlot();
-  if (!s.IsOK()) {
-    return s.Prefixed("failed to sync WAL after forbidding a slot");
-  }
 
   return Status::OK();
 }
@@ -466,7 +318,6 @@ void SlotMigrator::clean() {
   }
 
   current_stage_ = SlotMigrationStage::kNone;
-  current_pipeline_size_ = 0;
   wal_begin_seq_ = 0;
   std::lock_guard<std::mutex> guard(job_mutex_);
   migration_job_.reset();
@@ -537,32 +388,6 @@ StatusOr<bool> SlotMigrator::supportedApplyBatchCommandOnDstNode(int sock_fd) {
 
 Status SlotMigrator::checkSingleResponse(int sock_fd) { return checkMultipleResponses(sock_fd, 1); }
 
-// Commands  |  Response            |  Instance
-// ++++++++++++++++++++++++++++++++++++++++
-// set          Redis::Integer         :1\r\n
-// hset         Redis::SimpleString    +OK\r\n
-// sadd         Redis::Integer
-// zadd         Redis::Integer
-// siadd        Redis::Integer
-// setbit       Redis::Integer
-// expire       Redis::Integer
-// lpush        Redis::Integer
-// rpush        Redis::Integer
-// ltrim        Redis::SimpleString    -Err\r\n
-// linsert      Redis::Integer
-// lset         Redis::SimpleString
-// hdel         Redis::Integer
-// srem         Redis::Integer
-// zrem         Redis::Integer
-// lpop         Redis::NilString       $-1\r\n
-//          or  Redis::BulkString      $1\r\n1\r\n
-// rpop         Redis::NilString
-//          or  Redis::BulkString
-// lrem         Redis::Integer
-// sirem        Redis::Integer
-// del          Redis::Integer
-// xadd         Redis::BulkString
-// bitfield     Redis::Array           *1\r\n:0
 Status SlotMigrator::checkMultipleResponses(int sock_fd, int total) {
   if (sock_fd < 0 || total <= 0) {
     return {Status::NotOK, fmt::format("invalid arguments: sock_fd={}, count={}", sock_fd, total)};
@@ -667,370 +492,6 @@ Status SlotMigrator::checkMultipleResponses(int sock_fd, int total) {
   }
 }
 
-StatusOr<KeyMigrationResult> SlotMigrator::migrateOneKey(const rocksdb::Slice &key,
-                                                         const rocksdb::Slice &encoded_metadata,
-                                                         std::string *restore_cmds) {
-  std::string bytes = encoded_metadata.ToString();
-  Metadata metadata(kRedisNone, false);
-  if (auto s = metadata.Decode(bytes); !s.ok()) {
-    return {Status::NotOK, s.ToString()};
-  }
-
-  if (!metadata.IsEmptyableType() && metadata.size == 0) {
-    return KeyMigrationResult::kUnderlyingStructEmpty;
-  }
-
-  if (metadata.Expired()) {
-    return KeyMigrationResult::kExpired;
-  }
-
-  // Construct command according to type of the key
-  switch (metadata.Type()) {
-    case kRedisString:
-    case kRedisJson: {
-      auto s = migrateSimpleKey(key, metadata, bytes, restore_cmds);
-      if (!s.IsOK()) {
-        return s.Prefixed("failed to migrate simple key");
-      }
-      break;
-    }
-    case kRedisList:
-    case kRedisZSet:
-    case kRedisBitmap:
-    case kRedisHash:
-    case kRedisSet:
-    case kRedisSortedint: {
-      auto s = migrateComplexKey(key, metadata, restore_cmds);
-      if (!s.IsOK()) {
-        return s.Prefixed("failed to migrate complex key");
-      }
-      break;
-    }
-    case kRedisStream: {
-      StreamMetadata stream_md(false);
-      if (auto s = stream_md.Decode(bytes); !s.ok()) {
-        return {Status::NotOK, s.ToString()};
-      }
-
-      auto s = migrateStream(key, stream_md, restore_cmds);
-      if (!s.IsOK()) {
-        return s.Prefixed("failed to migrate stream key");
-      }
-      break;
-    }
-    case kRedisHyperLogLog: {
-      // HyperLogLog migration by cmd is not supported,
-      // since it's hard to restore the same key structure for HyperLogLog
-      // commands.
-      break;
-    }
-    default:
-      break;
-  }
-
-  return KeyMigrationResult::kMigrated;
-}
-
-Status SlotMigrator::migrateSimpleKey(const rocksdb::Slice &key, const Metadata &metadata, const std::string &bytes,
-                                      std::string *restore_cmds) {
-  if (metadata.Type() == kRedisString) {
-    std::vector<std::string> command = {"SET", key.ToString(), bytes.substr(Metadata::GetOffsetAfterExpire(bytes[0]))};
-    if (metadata.expire > 0) {
-      command.emplace_back("PXAT");
-      command.emplace_back(std::to_string(metadata.expire));
-    }
-    *restore_cmds += redis::ArrayOfBulkStrings(command);
-    current_pipeline_size_++;
-  } else if (metadata.Type() == kRedisJson) {
-    // kRedisJson
-    JsonValue json_value;
-    if (auto s = redis::Json::FromRawString(bytes, &json_value); !s.ok()) {
-      return {Status::NotOK, s.ToString()};
-    }
-    auto json_bytes = GET_OR_RET(json_value.Dump());
-    std::vector<std::string> command = {"JSON.SET", key.ToString(), "$", std::move(json_bytes)};
-    *restore_cmds += redis::ArrayOfBulkStrings(command);
-    current_pipeline_size_++;
-
-    if (metadata.expire > 0) {
-      *restore_cmds += redis::ArrayOfBulkStrings({"PEXPIREAT", key.ToString(), std::to_string(metadata.expire)});
-      current_pipeline_size_++;
-    }
-  } else {
-    return {Status::NotOK, "unsupported simple key type"};
-  }
-
-  // Check whether pipeline needs to be sent
-  // TODO(chrisZMF): Resend data if failed to send data
-  auto s = sendCmdsPipelineIfNeed(restore_cmds, false);
-  if (!s.IsOK()) {
-    return s.Prefixed(errFailedToSendCommands);
-  }
-
-  return Status::OK();
-}
-
-Status SlotMigrator::migrateComplexKey(const rocksdb::Slice &key, const Metadata &metadata, std::string *restore_cmds) {
-  std::string cmd;
-  {
-    auto iter = type_to_cmd.find(metadata.Type());
-    if (iter != type_to_cmd.end()) {
-      cmd = iter->second;
-    } else {
-      if (metadata.Type() > RedisTypeNames.size()) {
-        return {Status::NotOK, "unknown key type: " + std::to_string(metadata.Type())};
-      }
-      return {Status::NotOK, fmt::format("unsupported complex key type: {}", metadata.TypeName())};
-    }
-  }
-
-  std::vector<std::string> user_cmd = {cmd, key.ToString()};
-  // Construct key prefix to iterate values of the complex type user key
-  std::string slot_key = AppendNamespacePrefix(key);
-  std::string prefix_subkey = InternalKey(slot_key, "", metadata.version, true).Encode();
-  rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
-  read_options.snapshot = slot_snapshot_;
-  Slice prefix_slice(prefix_subkey);
-  read_options.iterate_lower_bound = &prefix_slice;
-  // Should use th raw db iterator to avoid reading uncommitted writes in transaction mode
-  auto iter = util::UniqueIterator(storage_->GetDB()->NewIterator(read_options));
-
-  int item_count = 0;
-
-  for (iter->Seek(prefix_subkey); iter->Valid(); iter->Next()) {
-    if (stop_migration_) {
-      return {Status::NotOK, std::string(errMigrationTaskCanceled)};
-    }
-
-    if (!iter->key().starts_with(prefix_subkey)) {
-      break;
-    }
-
-    // Parse values of the complex key
-    // InternalKey is adopted to get complex key's value from the formatted key return by iterator of rocksdb
-    InternalKey inkey(iter->key(), true);
-    switch (metadata.Type()) {
-      case kRedisSet: {
-        user_cmd.emplace_back(inkey.GetSubKey().ToString());
-        break;
-      }
-      case kRedisSortedint: {
-        auto id = DecodeFixed64(inkey.GetSubKey().ToString().data());
-        user_cmd.emplace_back(std::to_string(id));
-        break;
-      }
-      case kRedisZSet: {
-        auto score = DecodeDouble(iter->value().ToString().data());
-        user_cmd.emplace_back(util::Float2String(score));
-        user_cmd.emplace_back(inkey.GetSubKey().ToString());
-        break;
-      }
-      case kRedisBitmap: {
-        auto s = migrateBitmapKey(inkey, &iter, &user_cmd, restore_cmds);
-        if (!s.IsOK()) {
-          return s.Prefixed("failed to migrate bitmap key");
-        }
-        break;
-      }
-      case kRedisHash: {
-        user_cmd.emplace_back(inkey.GetSubKey().ToString());
-        user_cmd.emplace_back(iter->value().ToString());
-        break;
-      }
-      case kRedisList: {
-        user_cmd.emplace_back(iter->value().ToString());
-        break;
-      }
-      case kRedisHyperLogLog: {
-        break;
-      }
-      default:
-        break;
-    }
-
-    // Check item count
-    // Exclude bitmap because it does not have hmset-like command
-    if (metadata.Type() != kRedisBitmap) {
-      item_count++;
-      if (item_count >= kMaxItemsInCommand) {
-        *restore_cmds += redis::ArrayOfBulkStrings(user_cmd);
-        current_pipeline_size_++;
-        item_count = 0;
-        // Have to clear saved items
-        user_cmd.erase(user_cmd.begin() + 2, user_cmd.end());
-
-        // Send commands if the pipeline contains enough of them
-        auto s = sendCmdsPipelineIfNeed(restore_cmds, false);
-        if (!s.IsOK()) {
-          return s.Prefixed(errFailedToSendCommands);
-        }
-      }
-    }
-  }
-
-  if (auto s = iter->status(); !s.ok()) {
-    return {Status::NotOK,
-            fmt::format("failed to iterate values of the complex key {}: {}", key.ToString(), s.ToString())};
-  }
-
-  // Have to check the item count of the last command list
-  if (item_count % kMaxItemsInCommand != 0) {
-    *restore_cmds += redis::ArrayOfBulkStrings(user_cmd);
-    current_pipeline_size_++;
-  }
-
-  // Add TTL for complex key
-  if (metadata.expire > 0) {
-    *restore_cmds += redis::ArrayOfBulkStrings({"PEXPIREAT", key.ToString(), std::to_string(metadata.expire)});
-    current_pipeline_size_++;
-  }
-
-  // Send commands if the pipeline contains enough of them
-  auto s = sendCmdsPipelineIfNeed(restore_cmds, false);
-  if (!s.IsOK()) {
-    return s.Prefixed(errFailedToSendCommands);
-  }
-
-  return Status::OK();
-}
-
-Status SlotMigrator::migrateStream(const Slice &key, const StreamMetadata &metadata, std::string *restore_cmds) {
-  rocksdb::ReadOptions read_options = storage_->DefaultScanOptions();
-  read_options.snapshot = slot_snapshot_;
-  std::string ns_key = AppendNamespacePrefix(key);
-  // Construct key prefix to iterate values of the stream
-  std::string prefix_key = InternalKey(ns_key, "", metadata.version, true).Encode();
-  rocksdb::Slice prefix_key_slice(prefix_key);
-  read_options.iterate_lower_bound = &prefix_key_slice;
-
-  // Should use th raw db iterator to avoid reading uncommitted writes in transaction mode
-  auto iter =
-      util::UniqueIterator(storage_->GetDB()->NewIterator(read_options, storage_->GetCFHandle(ColumnFamilyID::Stream)));
-
-  std::vector<std::string> user_cmd = {type_to_cmd[metadata.Type()], key.ToString()};
-
-  for (iter->Seek(prefix_key); iter->Valid(); iter->Next()) {
-    if (stop_migration_) {
-      return {Status::NotOK, std::string(errMigrationTaskCanceled)};
-    }
-
-    if (!iter->key().starts_with(prefix_key)) {
-      break;
-    }
-
-    auto s = WriteBatchExtractor::ExtractStreamAddCommand(true, iter->key(), iter->value(), &user_cmd);
-    if (!s.IsOK()) {
-      return s;
-    }
-    *restore_cmds += redis::ArrayOfBulkStrings(user_cmd);
-    current_pipeline_size_++;
-
-    user_cmd.erase(user_cmd.begin() + 2, user_cmd.end());
-
-    s = sendCmdsPipelineIfNeed(restore_cmds, false);
-    if (!s.IsOK()) {
-      return s.Prefixed(errFailedToSendCommands);
-    }
-  }
-
-  if (auto s = iter->status(); !s.ok()) {
-    return {Status::NotOK,
-            fmt::format("failed to iterate values of the stream key {}: {}", key.ToString(), s.ToString())};
-  }
-
-  // commands like XTRIM and XDEL affect stream's metadata, but we use only XADD for a slot migration
-  // XSETID is used to adjust stream's info on the destination node according to the current values on the source
-  *restore_cmds += redis::ArrayOfBulkStrings({"XSETID", key.ToString(), metadata.last_generated_id.ToString(),
-                                              "ENTRIESADDED", std::to_string(metadata.entries_added), "MAXDELETEDID",
-                                              metadata.max_deleted_entry_id.ToString()});
-  current_pipeline_size_++;
-
-  // Add TTL
-  if (metadata.expire > 0) {
-    *restore_cmds += redis::ArrayOfBulkStrings({"PEXPIREAT", key.ToString(), std::to_string(metadata.expire)});
-    current_pipeline_size_++;
-  }
-
-  auto s = sendCmdsPipelineIfNeed(restore_cmds, false);
-  if (!s.IsOK()) {
-    return s.Prefixed(errFailedToSendCommands);
-  }
-
-  return Status::OK();
-}
-
-Status SlotMigrator::migrateBitmapKey(const InternalKey &inkey, std::unique_ptr<rocksdb::Iterator> *iter,
-                                      std::vector<std::string> *user_cmd, std::string *restore_cmds) {
-  std::string index_str = inkey.GetSubKey().ToString();
-  std::string fragment = (*iter)->value().ToString();
-  auto parse_result = ParseInt<int>(index_str, 10);
-  if (!parse_result) {
-    return {Status::RedisParseErr, "index is not a valid integer"};
-  }
-
-  uint32_t index = *parse_result;
-
-  // Bitmap does not have hmset-like command
-  // TODO(chrisZMF): Use hmset-like command for efficiency
-  for (int byte_idx = 0; byte_idx < static_cast<int>(fragment.size()); byte_idx++) {
-    if (fragment[byte_idx] & 0xff) {
-      for (int bit_idx = 0; bit_idx < 8; bit_idx++) {
-        if (fragment[byte_idx] & (1 << bit_idx)) {
-          uint32_t offset = (index * 8) + (byte_idx * 8) + bit_idx;
-          user_cmd->emplace_back(std::to_string(offset));
-          user_cmd->emplace_back("1");
-          *restore_cmds += redis::ArrayOfBulkStrings(*user_cmd);
-          current_pipeline_size_++;
-          user_cmd->erase(user_cmd->begin() + 2, user_cmd->end());
-        }
-      }
-
-      auto s = sendCmdsPipelineIfNeed(restore_cmds, false);
-      if (!s.IsOK()) {
-        return s.Prefixed(errFailedToSendCommands);
-      }
-    }
-  }
-
-  return Status::OK();
-}
-
-Status SlotMigrator::sendCmdsPipelineIfNeed(std::string *commands, bool need) {
-  if (stop_migration_) {
-    return {Status::NotOK, std::string(errMigrationTaskCanceled)};
-  }
-
-  // Check pipeline
-  if (!need && current_pipeline_size_ < max_pipeline_size_) {
-    return Status::OK();
-  }
-
-  if (current_pipeline_size_ == 0) {
-    INFO("[migrate] No commands to send");
-    return Status::OK();
-  }
-
-  applyMigrationSpeedLimit();
-
-  auto s = util::SockSend(*dst_fd_, *commands);
-  if (!s.IsOK()) {
-    return s.Prefixed("failed to write data to a socket");
-  }
-
-  last_send_time_ = util::GetTimeStampUS();
-
-  s = checkMultipleResponses(*dst_fd_, current_pipeline_size_);
-  if (!s.IsOK()) {
-    return s.Prefixed("wrong response from the destination node");
-  }
-
-  // Clear commands and running pipeline
-  commands->clear();
-  current_pipeline_size_ = 0;
-
-  return Status::OK();
-}
-
 void SlotMigrator::setForbiddenSlotRange(const SlotRange &slot_range) {
   INFO("[migrate] Setting forbidden slot(s) {}", slot_range.String());
   // Block server to set forbidden slot
@@ -1046,158 +507,6 @@ void SlotMigrator::setForbiddenSlotRange(const SlotRange &slot_range) {
 void SlotMigrator::ReleaseForbiddenSlotRange() {
   INFO("[migrate] Release forbidden slot(s) {}", forbidden_slot_range_.load().String());
   forbidden_slot_range_ = {-1, -1};
-}
-
-void SlotMigrator::applyMigrationSpeedLimit() const {
-  if (max_migration_speed_ > 0) {
-    uint64_t current_time = util::GetTimeStampUS();
-    uint64_t per_request_time = 1000000 * max_pipeline_size_ / max_migration_speed_;
-    if (per_request_time == 0) {
-      per_request_time = 1;
-    }
-    if (last_send_time_ + per_request_time > current_time) {
-      uint64_t during = last_send_time_ + per_request_time - current_time;
-      INFO("[migrate] Sleep to limit migration speed for: {}", during);
-      std::this_thread::sleep_for(std::chrono::microseconds(during));
-    }
-  }
-}
-
-Status SlotMigrator::generateCmdsFromBatch(rocksdb::BatchResult *batch, std::string *commands) {
-  // Iterate batch to get keys and construct commands for keys
-  WriteBatchExtractor write_batch_extractor(storage_->IsSlotIdEncoded(), slot_range_, false);
-  rocksdb::Status status = batch->writeBatchPtr->Iterate(&write_batch_extractor);
-  if (!status.ok()) {
-    ERROR("[migrate] Failed to parse write batch, Err: {}", status.ToString());
-    return {Status::NotOK};
-  }
-
-  // Get all constructed commands
-  auto resp_commands = write_batch_extractor.GetRESPCommands();
-  for (const auto &iter : *resp_commands) {
-    for (const auto &it : iter.second) {
-      *commands += it;
-      current_pipeline_size_++;
-    }
-  }
-
-  return Status::OK();
-}
-
-Status SlotMigrator::migrateIncrementData(std::unique_ptr<rocksdb::TransactionLogIterator> *iter, uint64_t end_seq) {
-  if (!(*iter) || !(*iter)->Valid()) {
-    ERROR("[migrate] WAL iterator is invalid");
-    return {Status::NotOK};
-  }
-
-  uint64_t next_seq = wal_begin_seq_ + 1;
-  std::string commands;
-
-  while (true) {
-    if (stop_migration_) {
-      ERROR("[migrate] Migration task end during migrating WAL data");
-      return {Status::NotOK};
-    }
-
-    auto batch = (*iter)->GetBatch();
-    if (batch.sequence != next_seq) {
-      ERROR("[migrate] WAL iterator is discrete, some seq might be lost, expected sequence: {}, but got sequence: {}",
-            next_seq, batch.sequence);
-      return {Status::NotOK};
-    }
-
-    // Generate commands by iterating write batch
-    auto s = generateCmdsFromBatch(&batch, &commands);
-    if (!s.IsOK()) {
-      ERROR("[migrate] Failed to generate commands from write batch");
-      return {Status::NotOK};
-    }
-
-    // Check whether command pipeline should be sent
-    s = sendCmdsPipelineIfNeed(&commands, false);
-    if (!s.IsOK()) {
-      ERROR("[migrate] Failed to send WAL commands pipeline");
-      return {Status::NotOK};
-    }
-
-    next_seq = batch.sequence + batch.writeBatchPtr->Count();
-    if (next_seq > end_seq) {
-      INFO("[migrate] Migrate incremental data an epoch OK, seq from {}, to {}", wal_begin_seq_, end_seq);
-      break;
-    }
-
-    (*iter)->Next();
-    if (!(*iter)->Valid()) {
-      ERROR("[migrate] WAL iterator is invalid, expected end seq: {}, next seq: {}", end_seq, next_seq);
-      return {Status::NotOK};
-    }
-  }
-
-  // Send the left data of this epoch
-  auto s = sendCmdsPipelineIfNeed(&commands, true);
-  if (!s.IsOK()) {
-    ERROR("[migrate] Failed to send WAL last commands in pipeline");
-    return {Status::NotOK};
-  }
-
-  return Status::OK();
-}
-
-Status SlotMigrator::syncWalBeforeForbiddingSlot() {
-  uint32_t count = 0;
-
-  while (count < kMaxLoopTimes) {
-    uint64_t latest_seq = storage_->GetDB()->GetLatestSequenceNumber();
-    uint64_t gap = latest_seq - wal_begin_seq_;
-    if (gap <= static_cast<uint64_t>(seq_gap_limit_)) {
-      INFO("[migrate] Incremental data sequence: {}, less than limit: {}, go to set forbidden slot", gap,
-           seq_gap_limit_);
-      break;
-    }
-
-    std::unique_ptr<rocksdb::TransactionLogIterator> iter = nullptr;
-    auto s = storage_->GetWALIter(wal_begin_seq_ + 1, &iter);
-    if (!s.IsOK()) {
-      ERROR("[migrate] Failed to generate WAL iterator before setting forbidden slot, Err: {}", s.Msg());
-      return {Status::NotOK};
-    }
-
-    // Iterate wal and migrate data
-    s = migrateIncrementData(&iter, latest_seq);
-    if (!s.IsOK()) {
-      ERROR("[migrate] Failed to migrate WAL data before setting forbidden slot");
-      return {Status::NotOK};
-    }
-
-    wal_begin_seq_ = latest_seq;
-    count++;
-  }
-  INFO("[migrate] Succeed to migrate incremental data before setting forbidden slot, end epoch: {}", count);
-  return Status::OK();
-}
-
-Status SlotMigrator::syncWalAfterForbiddingSlot() {
-  uint64_t latest_seq = storage_->GetDB()->GetLatestSequenceNumber();
-
-  // No incremental data
-  if (latest_seq <= wal_begin_seq_) return Status::OK();
-
-  // Get WAL iter
-  std::unique_ptr<rocksdb::TransactionLogIterator> iter = nullptr;
-  auto s = storage_->GetWALIter(wal_begin_seq_ + 1, &iter);
-  if (!s.IsOK()) {
-    ERROR("[migrate] Failed to generate WAL iterator after setting forbidden slot, Err: {}", s.Msg());
-    return {Status::NotOK};
-  }
-
-  // Send incremental data
-  s = migrateIncrementData(&iter, latest_seq);
-  if (!s.IsOK()) {
-    ERROR("[migrate] Failed to migrate WAL data after setting forbidden slot");
-    return {Status::NotOK};
-  }
-
-  return Status::OK();
 }
 
 void SlotMigrator::GetMigrationInfo(std::string *info) const {
@@ -1255,7 +564,7 @@ Status SlotMigrator::sendMigrationBatch(BatchSender *batch) {
   return batch->Send();
 }
 
-Status SlotMigrator::sendSnapshotByRawKV() {
+Status SlotMigrator::sendSnapshot() {
   uint64_t start_ts = util::GetTimeStampMS();
   auto slot_range = slot_range_.load();
   INFO("[migrate] Migrating snapshot of slot(s) {} by raw key value", slot_range.String());
@@ -1335,7 +644,7 @@ Status SlotMigrator::sendSnapshotByRawKV() {
   return Status::OK();
 }
 
-Status SlotMigrator::syncWALByRawKV() {
+Status SlotMigrator::syncWAL() {
   uint64_t start_ts = util::GetTimeStampMS();
   INFO("[migrate] Syncing WAL of slot(s) {} by raw key value", slot_range_.load().String());
   BatchSender batch_sender(*dst_fd_, migrate_batch_size_bytes_, migrate_batch_bytes_per_sec_);

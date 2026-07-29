@@ -90,9 +90,6 @@ const std::vector<ConfigEnum<BlockCacheType>> cache_types{[] {
   return res;
 }()};
 
-const std::vector<ConfigEnum<MigrationType>> migration_types{{"redis-command", MigrationType::kRedisCommand},
-                                                             {"raw-key-value", MigrationType::kRawKeyValue}};
-
 const std::vector<ConfigEnum<HashSubkeyEncodingMode>> hash_subkey_encoding_modes{
     {"legacy", HashSubkeyEncodingMode::kLegacy},
     {"field-expiration", HashSubkeyEncodingMode::kFieldExpiration},
@@ -140,7 +137,13 @@ Status SetRocksdbCompression(Server *srv, const rocksdb::CompressionType compres
 };
 
 Config::Config() {
-  deprecated_fields_ = {"rocksdb.row_cache_size"};
+  // The `migrate-type` config was deprecated after removing the `redis-command` migration type,
+  // and the server will always migrate slots in the way of the raw key-value.
+  // The `migrate-speed` and `migrate-pipeline-size` configs only took effect in the
+  // `redis-command` migration type, so they were deprecated as well. Use the
+  // `migrate-batch-rate-limit-mb` and `migrate-batch-size-kb` configs to control the
+  // migration speed instead.
+  deprecated_fields_ = {"rocksdb.row_cache_size", "migrate-type", "migrate-speed", "migrate-pipeline-size"};
 
   struct FieldWrapper {
     std::string name;
@@ -177,6 +180,8 @@ Config::Config() {
       {"timeout", false, new IntField(&timeout, 0, 0, INT_MAX)},
       {"tcp-backlog", true, new IntField(&backlog, 511, 0, INT_MAX)},
       {"maxclients", false, new IntField(&maxclients, 10240, 0, INT_MAX)},
+      {"client-output-buffer-limit", false,
+       new StringField(&client_output_buffer_limit_str_, "normal 0 0 0 slave 0 0 0 pubsub 0 0 0")},
       {"max-backup-to-keep", false, new IntField(&max_backup_to_keep, 1, 0, 1)},
       {"max-backup-keep-hours", false, new IntField(&max_backup_keep_hours, 0, 0, INT_MAX)},
       {"master-use-repl-port", false, new YesNoField(&master_use_repl_port, false)},
@@ -233,11 +238,7 @@ Config::Config() {
       {"rename-command", true, new MultiStringField(&rename_command_, std::vector<std::string>{})},
       {"fullsync-recv-file-delay", false, new IntField(&fullsync_recv_file_delay, 0, 0, INT_MAX)},
       {"cluster-enabled", true, new YesNoField(&cluster_enabled, false)},
-      {"migrate-speed", false, new IntField(&migrate_speed, 4096, 0, INT_MAX)},
-      {"migrate-pipeline-size", false, new IntField(&pipeline_size, 16, 1, INT_MAX)},
       {"migrate-sequence-gap", false, new IntField(&sequence_gap, 10000, 1, INT_MAX)},
-      {"migrate-type", false,
-       new EnumField<MigrationType>(&migrate_type, migration_types, MigrationType::kRawKeyValue)},
       {"migrate-batch-size-kb", false, new IntField(&migrate_batch_size_kb, 16, 1, INT_MAX)},
       {"migrate-batch-rate-limit-mb", false, new IntField(&migrate_batch_rate_limit_mb, 16, 1, INT_MAX)},
       {"unixsocket", true, new StringField(&unixsocket, "")},
@@ -445,6 +446,55 @@ void Config::initFieldValidator() {
 // The callback function would be invoked after the field was set,
 // it may change related fields or re-format the field. for example,
 // when the 'dir' was set, the db-dir or backup-dir should be reset as well.
+// Parses a client-output-buffer-limit spec like "normal 0 0 0 pubsub 32m 8m 60"
+// and applies it to the limits of the specified client kinds. The full spec is
+// parsed before applying anything, so a malformed quadruple cannot leave the
+// limits partially updated.
+Status Config::parseClientOutputBufferLimits(const std::string &v) {
+  std::vector<std::string> args = util::Split(v, " \t");
+  if (args.empty() || args.size() % 4 != 0) {
+    return {Status::NotOK, "should be in the format of <class> <hard limit> <soft limit> <soft seconds> ..."};
+  }
+
+  struct ParsedLimit {
+    ClientKind kind;
+    uint64_t hard_limit_bytes, soft_limit_bytes;
+    int64_t soft_limit_seconds;
+  };
+  std::vector<ParsedLimit> parsed;
+  for (size_t i = 0; i < args.size(); i += 4) {
+    ClientKind kind = ClientKind::kNormal;
+    if (util::EqualICase(args[i], "normal")) {
+      kind = ClientKind::kNormal;
+    } else if (util::EqualICase(args[i], "slave") || util::EqualICase(args[i], "replica")) {
+      kind = ClientKind::kSlave;
+    } else if (util::EqualICase(args[i], "pubsub")) {
+      kind = ClientKind::kPubsub;
+    } else {
+      return {Status::NotOK, fmt::format("unknown client kind '{}'", args[i])};
+    }
+    auto hard = GET_OR_RET(ParseSizeAndUnit(args[i + 1]).Prefixed("invalid hard limit"));
+    auto soft = GET_OR_RET(ParseSizeAndUnit(args[i + 2]).Prefixed("invalid soft limit"));
+    auto secs = GET_OR_RET(
+        ParseInt<int64_t>(args[i + 3], NumericRange<int64_t>{0, INT64_MAX}, 10).Prefixed("invalid soft seconds"));
+    if (hard > INT64_MAX || soft > INT64_MAX) {
+      return {Status::NotOK, fmt::format("the hard limit and soft limit should be no greater than {}", INT64_MAX)};
+    }
+    if (hard != 0 && soft >= hard) {
+      return {Status::NotOK, "the soft limit should be less than the hard limit"};
+    }
+    parsed.push_back({kind, hard, soft, secs});
+  }
+
+  for (const auto &p : parsed) {
+    auto &limit = GetClientOutputBufferLimit(p.kind);
+    limit.hard_limit_bytes.store(p.hard_limit_bytes, std::memory_order_relaxed);
+    limit.soft_limit_bytes.store(p.soft_limit_bytes, std::memory_order_relaxed);
+    limit.soft_limit_seconds.store(p.soft_limit_seconds, std::memory_order_relaxed);
+  }
+  return Status::OK();
+}
+
 void Config::initFieldCallback() {
   auto set_db_option_cb = [](Server *srv, const std::string &k, const std::string &v) -> Status {
     if (!srv) return Status::OK();  // srv is nullptr when load config from file
@@ -552,6 +602,24 @@ void Config::initFieldCallback() {
              srv->AdjustOpenFilesLimit();
              return Status::OK();
            }},
+          {"client-output-buffer-limit",
+           [this]([[maybe_unused]] Server *srv, [[maybe_unused]] const std::string &k, const std::string &v) -> Status {
+             if (auto s = parseClientOutputBufferLimits(v); !s.IsOK()) return s;
+
+             // Canonicalize the stored string so that CONFIG GET/REWRITE always
+             // report all classes, even if only a subset was specified.
+             constexpr const char *client_kinds[] = {"normal", "slave", "pubsub"};
+             std::string canonical;
+             for (size_t i = 0; i < static_cast<size_t>(ClientKind::kCount); i++) {
+               const auto &limit = client_output_buffer_limits[i];
+               canonical += fmt::format("{}{} {} {} {}", i == 0 ? "" : " ", client_kinds[i],
+                                        limit.hard_limit_bytes.load(std::memory_order_relaxed),
+                                        limit.soft_limit_bytes.load(std::memory_order_relaxed),
+                                        limit.soft_limit_seconds.load(std::memory_order_relaxed));
+             }
+             client_output_buffer_limit_str_ = std::move(canonical);
+             return Status::OK();
+           }},
           {"slaveof", replicaof_cb},
           {"replicaof", replicaof_cb},
           {"profiling-sample-commands",
@@ -601,18 +669,6 @@ void Config::initFieldCallback() {
            [this](Server *srv, [[maybe_unused]] const std::string &k, [[maybe_unused]] const std::string &v) -> Status {
              if (!srv) return Status::OK();
              srv->GetPerfLog()->SetMaxEntries(profiling_sample_record_max_len);
-             return Status::OK();
-           }},
-          {"migrate-speed",
-           [this](Server *srv, [[maybe_unused]] const std::string &k, [[maybe_unused]] const std::string &v) -> Status {
-             if (!srv) return Status::OK();
-             if (cluster_enabled) srv->slot_migrator->SetMaxMigrationSpeed(migrate_speed);
-             return Status::OK();
-           }},
-          {"migrate-pipeline-size",
-           [this](Server *srv, [[maybe_unused]] const std::string &k, [[maybe_unused]] const std::string &v) -> Status {
-             if (!srv) return Status::OK();
-             if (cluster_enabled) srv->slot_migrator->SetMaxPipelineSize(pipeline_size);
              return Status::OK();
            }},
           {"migrate-sequence-gap",

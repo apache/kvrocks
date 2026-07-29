@@ -35,6 +35,10 @@ class RdbStream {
   virtual Status Read(char *buf, size_t len) = 0;
   virtual Status Write(const char *buf, size_t len) = 0;
   virtual StatusOr<uint64_t> GetCheckSum() const = 0;
+  // Rejects a declared object length that exceeds the bytes still available in
+  // the stream, before that length is used to allocate memory: a value can never
+  // be larger than the input that carries it.
+  virtual Status EnsureRemainingBytes(uint64_t n) const = 0;
   StatusOr<uint8_t> ReadByte() {
     uint8_t value = 0;
     auto s = Read(reinterpret_cast<char *>(&value), 1);
@@ -55,6 +59,14 @@ class RdbStringStream : public RdbStream {
   Status Read(char *buf, size_t len) override;
   Status Write(const char *buf, size_t len) override;
   StatusOr<uint64_t> GetCheckSum() const override;
+  Status EnsureRemainingBytes(uint64_t n) const override {
+    uint64_t remaining = pos_ < input_.size() ? input_.size() - pos_ : 0;
+    if (n > remaining) {
+      return {Status::NotOK,
+              fmt::format("invalid RDB payload: required {} bytes exceeds the remaining {} bytes", n, remaining)};
+    }
+    return Status::OK();
+  }
   std::string &GetInput() { return input_; }
 
  private:
@@ -80,6 +92,14 @@ class RdbFileStream : public RdbStream {
     memrev64ifbe(&crc);
     return crc;
   }
+  Status EnsureRemainingBytes(uint64_t n) const override {
+    uint64_t remaining = file_size_ > total_read_bytes_ ? file_size_ - total_read_bytes_ : 0;
+    if (n > remaining) {
+      return {Status::NotOK,
+              fmt::format("invalid RDB payload: required {} bytes exceeds the remaining {} bytes", n, remaining)};
+    }
+    return Status::OK();
+  }
 
  private:
   std::ifstream ifs_;
@@ -87,4 +107,5 @@ class RdbFileStream : public RdbStream {
   uint64_t check_sum_;
   size_t total_read_bytes_;
   size_t max_read_chunk_size_;  // maximum single read chunk size
+  uint64_t file_size_ = 0;      // total size of the rdb file, set in Open()
 };

@@ -48,6 +48,35 @@ enum class HashFieldExpireCondition {
   kLT,
 };
 
+enum class HashFieldSetCondition {
+  kNone,
+  kFNX,
+  kFXX,
+};
+
+struct HashSetExOptions {
+  enum class TTLAction {
+    kDiscard,
+    kKeep,
+    kSet,
+  };
+
+  HashFieldSetCondition condition = HashFieldSetCondition::kNone;
+  TTLAction ttl_action = TTLAction::kDiscard;
+  uint64_t expire_at_ms = 0;
+};
+
+struct HashGetExOptions {
+  enum class TTLAction {
+    kNone,
+    kPersist,
+    kSet,
+  };
+
+  TTLAction ttl_action = TTLAction::kNone;
+  uint64_t expire_at_ms = 0;
+};
+
 namespace redis {
 
 class Hash : public SubKeyScanner {
@@ -71,6 +100,13 @@ class Hash : public SubKeyScanner {
                              std::vector<FieldValue> *field_values);
   rocksdb::Status MGet(engine::Context &ctx, const Slice &user_key, const std::vector<Slice> &fields,
                        std::vector<std::string> *values, std::vector<rocksdb::Status> *statuses);
+  rocksdb::Status SetFieldsWithExpire(engine::Context &ctx, const Slice &user_key,
+                                      const std::vector<FieldValue> &field_values, const HashSetExOptions &options,
+                                      bool *applied, std::optional<uint64_t> now_ms = std::nullopt);
+  rocksdb::Status GetFieldsWithExpire(engine::Context &ctx, const Slice &user_key, const std::vector<Slice> &fields,
+                                      const HashGetExOptions &options, std::vector<std::string> *values,
+                                      std::vector<rocksdb::Status> *statuses,
+                                      std::optional<uint64_t> now_ms = std::nullopt);
   rocksdb::Status GetAll(engine::Context &ctx, const Slice &user_key, std::vector<FieldValue> *field_values,
                          HashFetchType type = HashFetchType::kAll);
   rocksdb::Status Scan(engine::Context &ctx, const Slice &user_key, const std::string &cursor, uint64_t limit,

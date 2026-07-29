@@ -200,6 +200,8 @@ func TestReplicationBasics(t *testing.T) {
 		redis.Z{Score: 2, Member: "b"},
 		redis.Z{Score: 3, Member: "c"},
 	).Err())
+	require.NoError(t, masterClient.Do(ctx, "cf.reserve", "mycf", "1000").Err())
+	require.NoError(t, masterClient.Do(ctx, "cf.add", "mycf", "item0").Err())
 
 	slave := util.StartServer(t, map[string]string{})
 	defer slave.Close()
@@ -225,6 +227,7 @@ func TestReplicationBasics(t *testing.T) {
 		require.Equal(t, masterClient.ZRangeWithScores(ctx, "myzset", 0, -1),
 			slaveClient.ZRangeWithScores(ctx, "myzset", 0, -1))
 		require.Equal(t, masterClient.SMembers(ctx, "myhash"), slaveClient.SMembers(ctx, "myhash"))
+		require.Equal(t, "MBbloomCF", slaveClient.Type(ctx, "mycf").Val())
 	})
 
 	t.Run("The link status should be up", func(t *testing.T) {
@@ -236,6 +239,16 @@ func TestReplicationBasics(t *testing.T) {
 		require.Eventually(t, func() bool {
 			return slaveClient.Get(ctx, "mykey").Val() == "bar"
 		}, 50*time.Second, 100*time.Millisecond)
+	})
+
+	t.Run("Cuckoo filter updates should replicate", func(t *testing.T) {
+		require.NoError(t, masterClient.Do(ctx, "cf.add", "mycf", "item1").Err())
+		util.WaitForOffsetSync(t, masterClient, slaveClient, 5*time.Second)
+		require.Equal(t, "MBbloomCF", slaveClient.Type(ctx, "mycf").Val())
+
+		require.NoError(t, masterClient.Do(ctx, "cf.add", "mycf", "item2").Err())
+		util.WaitForOffsetSync(t, masterClient, slaveClient, 5*time.Second)
+		require.Equal(t, "MBbloomCF", slaveClient.Type(ctx, "mycf").Val())
 	})
 
 	t.Run("FLUSHALL should be replicated", func(t *testing.T) {
@@ -359,7 +372,9 @@ func TestReplicationWithLimitSpeed(t *testing.T) {
 		require.Eventually(t, func() bool {
 			return slave.LogFileMatches(t, ".*skip count: 1.*")
 		}, 50*time.Second, 1000*time.Millisecond)
-		util.WaitForSync(t, slaveClient)
+		require.Eventually(t, func() bool {
+			return util.FindInfoEntry(slaveClient, "master_link_status") == "up"
+		}, 30*time.Second, 100*time.Millisecond)
 		require.Equal(t, "b", slaveClient.Get(ctx, "a").Val())
 	})
 }
@@ -374,7 +389,9 @@ func TestReplicationShareCheckpoint(t *testing.T) {
 	ctx := context.Background()
 	require.NoError(t, masterClient.Set(ctx, "a", "b", 0).Err())
 	require.NoError(t, masterClient.Do(ctx, "compact").Err())
-	time.Sleep(time.Second)
+	require.Eventually(t, func() bool {
+		return util.FindInfoEntry(masterClient, "is_compacting") == "no"
+	}, 10*time.Second, 100*time.Millisecond)
 
 	slave1 := util.StartServer(t, map[string]string{})
 	defer slave1.Close()

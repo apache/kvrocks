@@ -495,13 +495,30 @@ void Worker::UnpauseConnection(int fd, uint64_t id) {
 Status Worker::Reply(int fd, const std::string &reply) {
   std::unique_lock<std::mutex> lock(conns_mu_);
   auto iter = conns_.find(fd);
-  if (iter != conns_.end()) {
-    iter->second->SetLastInteraction();
-    redis::Reply(iter->second->Output(), reply);
+  if (iter == conns_.end()) {
+    return {Status::NotOK, "connection doesn't exist"};
+  }
+
+  // A connection that is scheduled to close doesn't need any more replies
+  // since its pending output will be dropped when it's freed, but it's still
+  // counted as a receiver like Redis does, as it remains subscribed until
+  // the connection is freed.
+  if (iter->second->IsFlagEnabled(redis::Connection::kCloseAsync)) {
     return Status::OK();
   }
 
-  return {Status::NotOK, "connection doesn't exist"};
+  iter->second->SetLastInteraction();
+  redis::Reply(iter->second->Output(), reply);
+  if (iter->second->IsExceedOutputBufferLimit()) {
+    WARN("[worker] Client {} (id={}) scheduled to be closed ASAP for overcoming of output buffer limits, obuf: {}",
+         iter->second->GetAddr(), iter->second->GetID(), evbuffer_get_length(iter->second->Output()));
+    srv->stats.IncrClientOutputBufferLimitDisconnections();
+    // The message was already appended to the output buffer before the
+    // connection was scheduled to close, so the subscriber is still counted
+    // as a receiver of the message, the same as Redis.
+    iter->second->Close(true /* is_async */);
+  }
+  return Status::OK();
 }
 
 void Worker::BecomeMonitorConn(redis::Connection *conn) {
@@ -536,13 +553,16 @@ void Worker::FeedMonitorConns(redis::Connection *conn, const std::string &respon
   }
 }
 
-std::string Worker::GetClientsStr() {
+std::string Worker::GetClientsStr(const redis::Connection *conn) {
   std::unique_lock<std::mutex> lock(conns_mu_);
 
   std::string output;
   for (const auto &iter : conns_) {
-    redis::Connection *conn = iter.second;
-    output.append(conn->ToString());
+    // Non-admin callers must only see clients in their own namespace. Admin
+    // (default-namespace) callers see every client. Mirrors the namespace
+    // filtering in Worker::FeedMonitorConns.
+    if (!conn->IsAdmin() && iter.second->GetNamespace() != conn->GetNamespace()) continue;
+    output.append(iter.second->ToString());
   }
 
   return output;
@@ -555,6 +575,9 @@ void Worker::KillClient(redis::Connection *self, uint64_t id, const std::string 
   for (const auto &iter : conns_) {
     redis::Connection *conn = iter.second;
     if (skipme && self == conn) continue;
+    // Non-admin callers may only target clients in their own namespace, to
+    // prevent cross-tenant denial of service via CLIENT KILL.
+    if (!self->IsAdmin() && conn->GetNamespace() != self->GetNamespace()) continue;
 
     // no need to kill the client again if the kCloseAfterReply flag is set
     if (conn->IsFlagEnabled(redis::Connection::kCloseAfterReply)) {

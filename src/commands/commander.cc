@@ -20,10 +20,70 @@
 
 #include "commander.h"
 
+#include <cstdlib>
+
 #include "cluster/cluster_defs.h"
 #include "server/redis_reply.h"
 
 namespace redis {
+
+bool CommandTable::isSubcommandName(const std::string &name) { return name.find('|') != std::string::npos; }
+
+std::pair<std::string, std::string> CommandTable::parseSubcommandName(const std::string &name) {
+  auto delimiter = name.find('|');
+  if (delimiter == std::string::npos || delimiter == 0 || delimiter + 1 >= name.size()) {
+    std::cout << fmt::format("Encountered invalid subcommand name '{}'", name) << std::endl;
+    std::abort();
+  }
+
+  auto normalized_parent = util::ToLower(name.substr(0, delimiter));
+  auto normalized_sub = util::ToLower(name.substr(delimiter + 1));
+  return {normalized_parent, normalized_sub};
+}
+
+const CommandAttributes *CommandTable::registerCommand(CommandAttributes attr, CommandCategory category) {
+  if (original_commands.contains(attr.name) || commands.contains(attr.name)) {
+    std::cout << fmt::format("Duplicate command registration for '{}'", attr.name) << std::endl;
+    std::abort();
+  }
+
+  attr.category = category;
+  redis_command_table.emplace_back(std::move(attr));
+  auto *registered_attr = &redis_command_table.back();
+  original_commands[registered_attr->name] = registered_attr;
+  commands[registered_attr->name] = registered_attr;
+  return registered_attr;
+}
+
+const CommandAttributes *CommandTable::registerSubCommand(CommandAttributes attr, CommandCategory category) {
+  auto [parent, sub] = parseSubcommandName(attr.name);
+  auto &subcommand_family = sub_commands[parent];
+  if (subcommand_family.contains(sub)) {
+    std::cout << fmt::format("Duplicate subcommand registration for '{}|{}'", parent, sub) << std::endl;
+    std::abort();
+  }
+
+  attr.category = category;
+  attr.name = fmt::format("{}|{}", parent, sub);
+  redis_subcommand_table.emplace_back(std::move(attr));
+  auto *registered_attr = &redis_subcommand_table.back();
+  subcommand_family[sub] = registered_attr;
+  return registered_attr;
+}
+
+const CommandAttributes *CommandTable::findSubCommand(const std::string &parent, const std::string &sub) {
+  auto family_iter = sub_commands.find(util::ToLower(parent));
+  if (family_iter == sub_commands.end()) {
+    return nullptr;
+  }
+
+  auto subcommand_iter = family_iter->second.find(util::ToLower(sub));
+  if (subcommand_iter == family_iter->second.end()) {
+    return nullptr;
+  }
+
+  return subcommand_iter->second;
+}
 
 RegisterToCommandTable::RegisterToCommandTable(CommandCategory category,
                                                std::initializer_list<CommandAttributes> list) {
@@ -32,10 +92,11 @@ RegisterToCommandTable::RegisterToCommandTable(CommandCategory category,
   }
 
   for (auto attr : list) {
-    attr.category = category;
-    CommandTable::redis_command_table.emplace_back(attr);
-    CommandTable::original_commands[attr.name] = &CommandTable::redis_command_table.back();
-    CommandTable::commands[attr.name] = &CommandTable::redis_command_table.back();
+    if (CommandTable::isSubcommandName(attr.name)) {
+      CommandTable::registerSubCommand(std::move(attr), category);
+      continue;
+    }
+    CommandTable::registerCommand(std::move(attr), category);
   }
 }
 
@@ -83,6 +144,32 @@ void CommandTable::GetCommandsInfo(std::string *info, const std::vector<std::str
   }
 }
 
+StatusOr<ResolvedCommand> CommandTable::Resolve(const std::vector<std::string> &cmd_tokens) {
+  if (cmd_tokens.empty()) {
+    return {Status::RedisUnknownCmd, "No command specified"};
+  }
+
+  auto cmd_iter = commands.find(util::ToLower(cmd_tokens.front()));
+  if (cmd_iter == commands.end()) {
+    return {Status::RedisUnknownCmd, "Invalid command specified"};
+  }
+
+  const auto *root_attributes = cmd_iter->second;
+  ResolvedCommand resolved{root_attributes->name, root_attributes};
+
+  if (cmd_tokens.size() <= 1) {
+    return resolved;
+  }
+
+  auto subcommand_attributes = findSubCommand(root_attributes->name, cmd_tokens[1]);
+  if (subcommand_attributes == nullptr) {
+    return resolved;
+  }
+
+  resolved.attributes = subcommand_attributes;
+  return resolved;
+}
+
 StatusOr<std::vector<int>> CommandTable::GetKeysFromCommand(const CommandAttributes *attributes,
                                                             const std::vector<std::string> &cmd_tokens) {
   int argc = static_cast<int>(cmd_tokens.size());
@@ -92,7 +179,9 @@ StatusOr<std::vector<int>> CommandTable::GetKeysFromCommand(const CommandAttribu
   }
 
   auto cmd = attributes->factory();
-  if (auto s = cmd->Parse(cmd_tokens); !s) {
+  cmd->SetAttributes(attributes);
+  cmd->SetArgs(cmd_tokens);
+  if (auto s = cmd->Parse(); !s) {
     return {Status::NotOK, "Invalid syntax found in this command arguments: " + s.Msg()};
   }
 

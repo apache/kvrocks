@@ -445,3 +445,22 @@ func TestCommand(t *testing.T) {
 		}
 	})
 }
+
+// renamed root command GETKEYS
+func TestCommandGetKeysWithRenamedCommand(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{
+		"rename-command MGET": "RENAMED_MGET",
+	})
+	defer srv.Close()
+
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	r := rdb.Do(ctx, "COMMAND", "GETKEYS", "RENAMED_MGET", "k1", "k2")
+	vs, err := r.Slice()
+	require.NoError(t, err)
+	require.Len(t, vs, 2)
+	require.Equal(t, "k1", vs[0])
+	require.Equal(t, "k2", vs[1])
+}

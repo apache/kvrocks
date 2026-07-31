@@ -104,14 +104,16 @@ func SimpleTCPProxy(ctx context.Context, t testing.TB, to string, slowdown bool)
 					}
 					n, err := src.Read(buffer)
 					if err != nil {
-						if errors.Is(err, io.EOF) {
+						// A cancelled proxy may unblock a read with a connection reset
+						// while the test is intentionally tearing the stream down.
+						if errors.Is(err, io.EOF) || ctx.Err() != nil {
 							break COPY_LOOP
 						}
 						return err
 					}
 					_, err = dest.Write(buffer[:n])
 					if err != nil {
-						if errors.Is(err, io.EOF) {
+						if errors.Is(err, io.EOF) || ctx.Err() != nil {
 							break COPY_LOOP
 						}
 						return err

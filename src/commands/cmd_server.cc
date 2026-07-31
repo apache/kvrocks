@@ -1722,16 +1722,22 @@ class CommandLatency : public Commander {
       return Status::OK();
     }
 
+    // Report the caller's namespace histogram; the admin/default namespace sees the aggregate.
+    auto stats_holder = conn->GetNamespace() == kDefaultNamespace
+                            ? srv->AggregateNamespaceStats()
+                            : srv->GetOrCreateNamespaceStats(conn->GetNamespace());
+    const Stats &cmd_stats = *stats_holder;
+
     std::vector<const std::pair<const std::string, CommandHistogram> *> target_histograms;
     if (args_.size() > 2) {
       for (size_t i = 2; i < args_.size(); i++) {
-        auto it = srv->stats.commands_histogram.find(util::ToLower(args_[i]));
-        if (it != srv->stats.commands_histogram.end() && it->second.calls > 0) {
+        auto it = cmd_stats.commands_histogram.find(util::ToLower(args_[i]));
+        if (it != cmd_stats.commands_histogram.end() && it->second.calls > 0) {
           target_histograms.push_back(&(*it));
         }
       }
     } else {
-      for (const auto &iter : srv->stats.commands_histogram) {
+      for (const auto &iter : cmd_stats.commands_histogram) {
         if (iter.second.calls > 0) {
           target_histograms.push_back(&iter);
         }
@@ -1750,8 +1756,8 @@ class CommandLatency : public Commander {
         if (cumulative == 0) continue;
 
         int64_t boundary = 0;
-        if (i < srv->stats.bucket_boundaries.size()) {
-          boundary = static_cast<int64_t>(srv->stats.bucket_boundaries[i]);
+        if (i < cmd_stats.bucket_boundaries.size()) {
+          boundary = static_cast<int64_t>(cmd_stats.bucket_boundaries[i]);
         } else {
           boundary = -1;
         }
@@ -1824,5 +1830,5 @@ REDIS_REGISTER_COMMANDS(
     MakeCmdAttr<CommandSST>("sst", -3, "write exclusive admin", 1, 1, 1),
     MakeCmdAttr<CommandFlushMemTable>("flushmemtable", -1, "exclusive write", NO_KEY),
     MakeCmdAttr<CommandFlushBlockCache>("flushblockcache", 1, "exclusive write", NO_KEY),
-    MakeCmdAttr<CommandLatency>("latency", -2, "read-only admin", NO_KEY), )
+    MakeCmdAttr<CommandLatency>("latency", -2, "read-only", NO_KEY), )
 }  // namespace redis

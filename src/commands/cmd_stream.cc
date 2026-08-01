@@ -1340,6 +1340,18 @@ class CommandXRead : public Commander,
   }
 
   void OnWrite(bufferevent *bev) {
+    // The connection might be scheduled to close while it's blocked, e.g. it
+    // exceeded the output buffer limit or was killed by the CLIENT KILL command.
+    // The manually triggered write callback lands here instead of
+    // Connection::OnWrite since the blocking command replaced the bufferevent
+    // callbacks, so the close must be handled here as well.
+    if (conn_->IsFlagEnabled(Connection::kCloseAsync) || conn_->IsFlagEnabled(Connection::kCloseAfterReply)) {
+      if (timer_) timer_.reset();
+      unblockAll();
+      conn_->Close();
+      return;
+    }
+
     if (timer_ != nullptr) {
       timer_.reset();
     }
@@ -1643,6 +1655,18 @@ class CommandXReadGroup : public Commander,
   }
 
   void OnWrite(bufferevent *bev) {
+    // The connection might be scheduled to close while it's blocked, e.g. it
+    // exceeded the output buffer limit or was killed by the CLIENT KILL command.
+    // The manually triggered write callback lands here instead of
+    // Connection::OnWrite since the blocking command replaced the bufferevent
+    // callbacks, so the close must be handled here as well.
+    if (conn_->IsFlagEnabled(Connection::kCloseAsync) || conn_->IsFlagEnabled(Connection::kCloseAfterReply)) {
+      if (timer_) timer_.reset();
+      unblockAll();
+      conn_->Close();
+      return;
+    }
+
     if (timer_ != nullptr) {
       timer_.reset();
     }

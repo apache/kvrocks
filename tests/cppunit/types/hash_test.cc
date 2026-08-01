@@ -27,8 +27,11 @@
 #include <filesystem>
 #include <fstream>
 #include <memory>
+#include <optional>
 #include <random>
 #include <string>
+#include <tuple>
+#include <utility>
 #include <vector>
 
 #include "parse_util.h"
@@ -144,6 +147,104 @@ class RedisHashFieldExpirationEncodingTest : public ::testing::Test {
     auto s = batch->Delete(hashSubKey(key, field, metadata));
     if (!s.ok()) return s;
     return storage_->Write(*ctx_, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+  }
+
+  rocksdb::Status getRawHashValue(const std::string &key, const std::string &field, std::string *raw_value) {
+    HashMetadata metadata = hashMetadata(key);
+    return storage_->Get(*ctx_, ctx_->GetReadOptions(), hashSubKey(key, field, metadata), raw_value);
+  }
+
+  std::pair<std::string, uint64_t> decodedHashValue(const std::string &key, const std::string &field) {
+    HashMetadata metadata(false);
+    std::string raw_value = rawHashValue(key, field, &metadata);
+    Slice decoded_value(raw_value);
+    uint64_t expire = 0;
+    auto s = metadata.DecodeSubkeyValue(&decoded_value, &expire);
+    assert(s.ok());
+    return {decoded_value.ToString(), expire};
+  }
+
+  void expectHashMetadata(const std::string &key, uint64_t size, uint64_t persist, uint64_t lower, uint64_t upper) {
+    HashMetadata metadata = hashMetadata(key);
+    EXPECT_EQ(metadata.mode, HashSubkeyEncodingMode::kFieldExpiration);
+    EXPECT_EQ(metadata.size, size);
+    EXPECT_EQ(metadata.persist, persist);
+    EXPECT_EQ(metadata.lower, lower);
+    EXPECT_EQ(metadata.upper, upper);
+    EXPECT_LE(metadata.persist, metadata.size);
+    if (metadata.size == metadata.persist) {
+      EXPECT_EQ(metadata.lower, 0);
+      EXPECT_EQ(metadata.upper, 0);
+    } else {
+      EXPECT_GT(metadata.lower, 0);
+      EXPECT_GE(metadata.upper, metadata.lower);
+    }
+  }
+
+  void createFourStateHash(const std::string &key, uint64_t expired_at, uint64_t live_expire) {
+    uint64_t ret = 0;
+    auto s = hash_->MSet(*ctx_, key, {{"P", "p"}, {"L", "l"}, {"X", "x"}, {"K", "k"}}, false, &ret);
+    assert(s.ok());
+    assert(ret == 4);
+    s = putRawHashValue(key, "L", live_expire, "l");
+    assert(s.ok());
+    s = putRawHashValue(key, "X", expired_at, "x");
+    assert(s.ok());
+
+    HashMetadata metadata = hashMetadata(key);
+    metadata.persist = 2;
+    metadata.lower = expired_at;
+    metadata.upper = live_expire;
+    s = putHashMetadata(key, metadata);
+    assert(s.ok());
+  }
+
+  void createKeeperAndGhost(const std::string &key, uint64_t ghost_expire) {
+    uint64_t ret = 0;
+    auto s = hash_->MSet(*ctx_, key, {{"K", "k"}, {"G", "g"}}, false, &ret);
+    assert(s.ok());
+    assert(ret == 2);
+    s = putRawHashValue(key, "G", ghost_expire, "g");
+    assert(s.ok());
+
+    HashMetadata metadata = hashMetadata(key);
+    metadata.persist = 1;
+    metadata.lower = ghost_expire;
+    metadata.upper = ghost_expire;
+    s = putHashMetadata(key, metadata);
+    assert(s.ok());
+    s = deleteRawHashValue(key, "G");
+    assert(s.ok());
+  }
+
+  static void expectGetResults(const std::vector<std::string> &values, const std::vector<rocksdb::Status> &statuses,
+                               const std::vector<std::optional<std::string>> &expected) {
+    ASSERT_EQ(values.size(), expected.size());
+    ASSERT_EQ(statuses.size(), expected.size());
+    for (size_t i = 0; i < expected.size(); ++i) {
+      if (expected[i]) {
+        EXPECT_TRUE(statuses[i].ok()) << statuses[i].ToString();
+        EXPECT_EQ(values[i], *expected[i]);
+      } else {
+        EXPECT_TRUE(statuses[i].IsNotFound()) << statuses[i].ToString();
+      }
+    }
+  }
+
+  static HashSetExOptions setExOptions(HashSetExOptions::TTLAction action, uint64_t expire_at = 0,
+                                       HashFieldSetCondition condition = HashFieldSetCondition::kNone) {
+    HashSetExOptions options;
+    options.ttl_action = action;
+    options.expire_at_ms = expire_at;
+    options.condition = condition;
+    return options;
+  }
+
+  static HashGetExOptions getExOptions(HashGetExOptions::TTLAction action, uint64_t expire_at = 0) {
+    HashGetExOptions options;
+    options.ttl_action = action;
+    options.expire_at_ms = expire_at;
+    return options;
   }
 
   Config config_;
@@ -1032,6 +1133,926 @@ TEST_F(RedisHashFieldExpirationEncodingTest, IncrementsKeepLiveTTLAndTreatExpire
   EXPECT_EQ(metadata.persist, 4);
   EXPECT_EQ(metadata.lower, now - 1);
   EXPECT_EQ(metadata.upper, now + 120'000);
+}
+
+TEST_F(RedisHashFieldExpirationEncodingTest, SetFieldsWithExpireCoversAllPhysicalStatesAndTTLChanges) {
+  const uint64_t now = util::GetTimeStampMS();
+  const uint64_t expired_at = now - 1'000;
+  const uint64_t live_expire = now + 60'000;
+  const uint64_t new_expire = now + 120'000;
+  const std::vector<FieldValue> updates = {{"P", "new-p"}, {"L", "new-l"}, {"X", "new-x"}, {"M", "new-m"}};
+
+  {
+    const std::string key = "hsetex-state-future";
+    createFourStateHash(key, expired_at, live_expire);
+    HashMetadata before = hashMetadata(key);
+    bool applied = false;
+    auto options = setExOptions(HashSetExOptions::TTLAction::kSet, new_expire);
+    auto s = hash_->SetFieldsWithExpire(*ctx_, key, updates, options, &applied, now);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    EXPECT_TRUE(applied);
+    expectHashMetadata(key, 5, 1, expired_at, new_expire);
+    HashMetadata after = hashMetadata(key);
+    EXPECT_EQ(after.flags, before.flags);
+    EXPECT_EQ(after.version, before.version);
+    EXPECT_EQ(after.expire, before.expire);
+    for (const auto &field : {"P", "L", "X", "M"}) {
+      EXPECT_EQ(decodedHashValue(key, field).second, new_expire);
+    }
+    EXPECT_EQ(decodedHashValue(key, "P").first, "new-p");
+    EXPECT_EQ(decodedHashValue(key, "L").first, "new-l");
+    EXPECT_EQ(decodedHashValue(key, "X").first, "new-x");
+    EXPECT_EQ(decodedHashValue(key, "M").first, "new-m");
+    EXPECT_EQ(decodedHashValue(key, "K"), (std::pair<std::string, uint64_t>{"k", 0}));
+  }
+
+  {
+    const std::string key = "hsetex-state-discard";
+    createFourStateHash(key, expired_at, live_expire);
+    bool applied = false;
+    auto options = setExOptions(HashSetExOptions::TTLAction::kDiscard);
+    auto s = hash_->SetFieldsWithExpire(*ctx_, key, updates, options, &applied, now);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    EXPECT_TRUE(applied);
+    expectHashMetadata(key, 5, 5, 0, 0);
+    for (const auto &field : {"P", "L", "X", "M", "K"}) {
+      EXPECT_EQ(decodedHashValue(key, field).second, 0);
+    }
+  }
+
+  {
+    const std::string key = "hsetex-state-keep";
+    createFourStateHash(key, expired_at, live_expire);
+    bool applied = false;
+    auto options = setExOptions(HashSetExOptions::TTLAction::kKeep);
+    auto s = hash_->SetFieldsWithExpire(*ctx_, key, updates, options, &applied, now);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    EXPECT_TRUE(applied);
+    expectHashMetadata(key, 5, 3, expired_at, live_expire);
+    EXPECT_EQ(decodedHashValue(key, "P"), (std::pair<std::string, uint64_t>{"new-p", 0}));
+    EXPECT_EQ(decodedHashValue(key, "L"), (std::pair<std::string, uint64_t>{"new-l", live_expire}));
+    EXPECT_EQ(decodedHashValue(key, "X"), (std::pair<std::string, uint64_t>{"new-x", expired_at}));
+    EXPECT_EQ(decodedHashValue(key, "M"), (std::pair<std::string, uint64_t>{"new-m", 0}));
+    std::string value;
+    EXPECT_TRUE(hash_->Get(*ctx_, key, "X", &value).IsNotFound());
+  }
+
+  {
+    const std::string key = "hsetex-state-immediate";
+    createFourStateHash(key, expired_at, live_expire);
+    bool applied = false;
+    auto options = setExOptions(HashSetExOptions::TTLAction::kSet, now);
+    auto s = hash_->SetFieldsWithExpire(*ctx_, key, updates, options, &applied, now);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    EXPECT_TRUE(applied);
+    expectHashMetadata(key, 1, 1, 0, 0);
+    std::string raw_value;
+    for (const auto &field : {"P", "L", "X", "M"}) {
+      EXPECT_TRUE(getRawHashValue(key, field, &raw_value).IsNotFound());
+    }
+    EXPECT_EQ(decodedHashValue(key, "K"), (std::pair<std::string, uint64_t>{"k", 0}));
+  }
+}
+
+TEST_F(RedisHashFieldExpirationEncodingTest, GetFieldsWithExpireCoversAllPhysicalStatesAndTTLChanges) {
+  const uint64_t now = util::GetTimeStampMS();
+  const uint64_t expired_at = now - 1'000;
+  const uint64_t live_expire = now + 60'000;
+  const uint64_t new_expire = now + 120'000;
+  const std::vector<Slice> fields = {"P", "L", "X", "M"};
+  const std::vector<std::optional<std::string>> expected = {"p", "l", std::nullopt, std::nullopt};
+
+  {
+    const std::string key = "hgetex-state-none";
+    createFourStateHash(key, expired_at, live_expire);
+    std::vector<std::string> values;
+    std::vector<rocksdb::Status> statuses;
+    auto options = getExOptions(HashGetExOptions::TTLAction::kNone);
+    auto s = hash_->GetFieldsWithExpire(*ctx_, key, fields, options, &values, &statuses, now);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    expectGetResults(values, statuses, expected);
+    expectHashMetadata(key, 3, 2, expired_at, live_expire);
+    EXPECT_EQ(decodedHashValue(key, "P"), (std::pair<std::string, uint64_t>{"p", 0}));
+    EXPECT_EQ(decodedHashValue(key, "L"), (std::pair<std::string, uint64_t>{"l", live_expire}));
+  }
+
+  {
+    const std::string key = "hgetex-state-future";
+    createFourStateHash(key, expired_at, live_expire);
+    std::vector<std::string> values;
+    std::vector<rocksdb::Status> statuses;
+    auto options = getExOptions(HashGetExOptions::TTLAction::kSet, new_expire);
+    auto s = hash_->GetFieldsWithExpire(*ctx_, key, fields, options, &values, &statuses, now);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    expectGetResults(values, statuses, expected);
+    expectHashMetadata(key, 3, 1, expired_at, new_expire);
+    EXPECT_EQ(decodedHashValue(key, "P").second, new_expire);
+    EXPECT_EQ(decodedHashValue(key, "L").second, new_expire);
+  }
+
+  {
+    const std::string key = "hgetex-state-persist";
+    createFourStateHash(key, expired_at, live_expire);
+    std::vector<std::string> values;
+    std::vector<rocksdb::Status> statuses;
+    auto options = getExOptions(HashGetExOptions::TTLAction::kPersist);
+    auto s = hash_->GetFieldsWithExpire(*ctx_, key, fields, options, &values, &statuses, now);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    expectGetResults(values, statuses, expected);
+    expectHashMetadata(key, 3, 3, 0, 0);
+    EXPECT_EQ(decodedHashValue(key, "P").second, 0);
+    EXPECT_EQ(decodedHashValue(key, "L").second, 0);
+  }
+
+  {
+    const std::string key = "hgetex-state-immediate";
+    createFourStateHash(key, expired_at, live_expire);
+    std::vector<std::string> values;
+    std::vector<rocksdb::Status> statuses;
+    auto options = getExOptions(HashGetExOptions::TTLAction::kSet, now);
+    auto s = hash_->GetFieldsWithExpire(*ctx_, key, fields, options, &values, &statuses, now);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    expectGetResults(values, statuses, expected);
+    expectHashMetadata(key, 1, 1, 0, 0);
+    std::string raw_value;
+    for (const auto &field : {"P", "L", "X"}) {
+      EXPECT_TRUE(getRawHashValue(key, field, &raw_value).IsNotFound());
+    }
+  }
+}
+
+TEST_F(RedisHashFieldExpirationEncodingTest, SetAndGetFieldsWithExpireHandleMissingAndDeadlineBoundaries) {
+  const uint64_t now = util::GetTimeStampMS();
+  bool applied = false;
+  auto immediate_set = setExOptions(HashSetExOptions::TTLAction::kSet, now);
+  auto s =
+      hash_->SetFieldsWithExpire(*ctx_, "hsetex-missing-immediate", {{"M", "value"}}, immediate_set, &applied, now);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  EXPECT_TRUE(applied);
+  HashMetadata metadata(false);
+  EXPECT_TRUE(getHashMetadata("hsetex-missing-immediate", &metadata).IsNotFound());
+
+  applied = false;
+  auto fnx_immediate = setExOptions(HashSetExOptions::TTLAction::kSet, now, HashFieldSetCondition::kFNX);
+  s = hash_->SetFieldsWithExpire(*ctx_, "hsetex-missing-fnx-immediate", {{"M", "value"}}, fnx_immediate, &applied, now);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  EXPECT_TRUE(applied);
+  EXPECT_TRUE(getHashMetadata("hsetex-missing-fnx-immediate", &metadata).IsNotFound());
+
+  const std::string key = "hgetex-equal-now";
+  uint64_t ret = 0;
+  s = hash_->MSet(*ctx_, key, {{"f", "value"}}, false, &ret);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  ASSERT_EQ(ret, 1);
+  s = putRawHashValue(key, "f", now, "value");
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  metadata = hashMetadata(key);
+  metadata.persist = 0;
+  metadata.lower = now;
+  metadata.upper = now;
+  s = putHashMetadata(key, metadata);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+
+  std::vector<std::string> values;
+  std::vector<rocksdb::Status> statuses;
+  auto immediate_get = getExOptions(HashGetExOptions::TTLAction::kSet, now);
+  s = hash_->GetFieldsWithExpire(*ctx_, key, {"f"}, immediate_get, &values, &statuses, now);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  expectGetResults(values, statuses, {"value"});
+  EXPECT_TRUE(getHashMetadata(key, &metadata).IsNotFound());
+
+  const std::string expired_key = "hgetex-only-expired";
+  s = hash_->MSet(*ctx_, expired_key, {{"X", "x"}}, false, &ret);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  s = putRawHashValue(expired_key, "X", now - 1, "x");
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  metadata = hashMetadata(expired_key);
+  metadata.persist = 0;
+  metadata.lower = now - 1;
+  metadata.upper = now - 1;
+  s = putHashMetadata(expired_key, metadata);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  values.clear();
+  statuses.clear();
+  auto no_change = getExOptions(HashGetExOptions::TTLAction::kNone);
+  s = hash_->GetFieldsWithExpire(*ctx_, expired_key, {"X"}, no_change, &values, &statuses, now);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  expectGetResults(values, statuses, {std::nullopt});
+  EXPECT_TRUE(getHashMetadata(expired_key, &metadata).IsNotFound());
+}
+
+TEST_F(RedisHashFieldExpirationEncodingTest, SetFieldsWithExpireConditionsAreAtomicAndCleanupInRequestOrder) {
+  const uint64_t now = util::GetTimeStampMS();
+  const uint64_t expired_at = now - 1'000;
+  const uint64_t live_expire = now + 60'000;
+
+  {
+    const std::string key = "hsetex-fxx-success";
+    createFourStateHash(key, expired_at, live_expire);
+    bool applied = false;
+    auto options = setExOptions(HashSetExOptions::TTLAction::kDiscard, 0, HashFieldSetCondition::kFXX);
+    auto s = hash_->SetFieldsWithExpire(*ctx_, key, {{"P", "new-p"}, {"L", "new-l"}}, options, &applied, now);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    EXPECT_TRUE(applied);
+    expectHashMetadata(key, 4, 3, expired_at, live_expire);
+    EXPECT_EQ(decodedHashValue(key, "P"), (std::pair<std::string, uint64_t>{"new-p", 0}));
+    EXPECT_EQ(decodedHashValue(key, "L"), (std::pair<std::string, uint64_t>{"new-l", 0}));
+  }
+
+  {
+    const std::string key = "hsetex-fxx-missing-failure";
+    createFourStateHash(key, expired_at, live_expire);
+    HashMetadata before = hashMetadata(key);
+    bool applied = true;
+    auto options = setExOptions(HashSetExOptions::TTLAction::kDiscard, 0, HashFieldSetCondition::kFXX);
+    auto s = hash_->SetFieldsWithExpire(*ctx_, key, {{"P", "new-p"}, {"M", "new-m"}}, options, &applied, now);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    EXPECT_FALSE(applied);
+    EXPECT_EQ(hashMetadata(key), before);
+    EXPECT_EQ(decodedHashValue(key, "P").first, "p");
+    std::string raw_value;
+    EXPECT_TRUE(getRawHashValue(key, "M", &raw_value).IsNotFound());
+  }
+
+  {
+    const std::string key = "hsetex-fnx-expired-success";
+    createFourStateHash(key, expired_at, live_expire);
+    bool applied = false;
+    auto options = setExOptions(HashSetExOptions::TTLAction::kDiscard, 0, HashFieldSetCondition::kFNX);
+    auto s = hash_->SetFieldsWithExpire(*ctx_, key, {{"X", "new-x"}, {"M", "new-m"}}, options, &applied, now);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    EXPECT_TRUE(applied);
+    expectHashMetadata(key, 5, 4, expired_at, live_expire);
+    EXPECT_EQ(decodedHashValue(key, "X"), (std::pair<std::string, uint64_t>{"new-x", 0}));
+    EXPECT_EQ(decodedHashValue(key, "M"), (std::pair<std::string, uint64_t>{"new-m", 0}));
+  }
+
+  {
+    const std::string key = "hsetex-fxx-expired-failure";
+    createFourStateHash(key, expired_at, live_expire);
+    bool applied = true;
+    auto options = setExOptions(HashSetExOptions::TTLAction::kDiscard, 0, HashFieldSetCondition::kFXX);
+    auto s = hash_->SetFieldsWithExpire(*ctx_, key, {{"P", "new-p"}, {"X", "new-x"}}, options, &applied, now);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    EXPECT_FALSE(applied);
+    expectHashMetadata(key, 3, 2, expired_at, live_expire);
+    EXPECT_EQ(decodedHashValue(key, "P").first, "p");
+    std::string raw_value;
+    EXPECT_TRUE(getRawHashValue(key, "X", &raw_value).IsNotFound());
+  }
+
+  for (const auto &[name, condition, fields] :
+       std::vector<std::tuple<std::string, HashFieldSetCondition, std::vector<FieldValue>>>{
+           {"fxx", HashFieldSetCondition::kFXX, {{"M", "new-m"}, {"X", "new-x"}}},
+           {"fnx", HashFieldSetCondition::kFNX, {{"P", "new-p"}, {"X", "new-x"}}},
+       }) {
+    const std::string key = "hsetex-ordered-unvisited-x-" + name;
+    createFourStateHash(key, expired_at, live_expire);
+    HashMetadata before = hashMetadata(key);
+    bool applied = true;
+    auto options = setExOptions(HashSetExOptions::TTLAction::kDiscard, 0, condition);
+    auto s = hash_->SetFieldsWithExpire(*ctx_, key, fields, options, &applied, now);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    EXPECT_FALSE(applied);
+    EXPECT_EQ(hashMetadata(key), before);
+    EXPECT_EQ(decodedHashValue(key, "X"), (std::pair<std::string, uint64_t>{"x", expired_at}));
+  }
+
+  {
+    const std::string key = "hsetex-ordered-cleaned-x-before-failure";
+    createFourStateHash(key, expired_at, live_expire);
+    bool applied = true;
+    auto options = setExOptions(HashSetExOptions::TTLAction::kDiscard, 0, HashFieldSetCondition::kFNX);
+    auto s = hash_->SetFieldsWithExpire(*ctx_, key, {{"X", "new-x"}, {"P", "new-p"}}, options, &applied, now);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    EXPECT_FALSE(applied);
+    expectHashMetadata(key, 3, 2, expired_at, live_expire);
+    EXPECT_EQ(decodedHashValue(key, "P").first, "p");
+    std::string raw_value;
+    EXPECT_TRUE(getRawHashValue(key, "X", &raw_value).IsNotFound());
+  }
+
+  {
+    const std::string key = "hsetex-missing-fxx";
+    bool applied = true;
+    auto options = setExOptions(HashSetExOptions::TTLAction::kDiscard, 0, HashFieldSetCondition::kFXX);
+    auto s = hash_->SetFieldsWithExpire(*ctx_, key, {{"M", "value"}}, options, &applied, now);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    EXPECT_FALSE(applied);
+    HashMetadata metadata(false);
+    EXPECT_TRUE(getHashMetadata(key, &metadata).IsNotFound());
+  }
+}
+
+TEST_F(RedisHashFieldExpirationEncodingTest, SetFieldsWithExpireConditionChangesExpiredKeepTTLTransition) {
+  const uint64_t now = util::GetTimeStampMS();
+  const uint64_t expired_at = now - 1'000;
+  const uint64_t future = now + 60'000;
+
+  auto create_keeper_and_expired = [&](const std::string &key) {
+    uint64_t ret = 0;
+    auto s = hash_->MSet(*ctx_, key, {{"K", "k"}, {"X", "x"}}, false, &ret);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    ASSERT_EQ(ret, 2);
+    s = putRawHashValue(key, "X", expired_at, "x");
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    HashMetadata metadata = hashMetadata(key);
+    metadata.persist = 1;
+    metadata.lower = expired_at;
+    metadata.upper = expired_at;
+    s = putHashMetadata(key, metadata);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+  };
+
+  {
+    const std::string key = "hsetex-x-keep-without-condition";
+    create_keeper_and_expired(key);
+    bool applied = false;
+    auto options = setExOptions(HashSetExOptions::TTLAction::kKeep);
+    auto s = hash_->SetFieldsWithExpire(*ctx_, key, {{"X", "unconditional"}}, options, &applied, now);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    EXPECT_TRUE(applied);
+    expectHashMetadata(key, 2, 1, expired_at, expired_at);
+    EXPECT_EQ(decodedHashValue(key, "X"), (std::pair<std::string, uint64_t>{"unconditional", expired_at}));
+  }
+
+  {
+    const std::string key = "hsetex-x-keep-with-fnx";
+    create_keeper_and_expired(key);
+    bool applied = false;
+    auto options = setExOptions(HashSetExOptions::TTLAction::kKeep, 0, HashFieldSetCondition::kFNX);
+    auto s = hash_->SetFieldsWithExpire(*ctx_, key, {{"X", "conditional"}}, options, &applied, now);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    EXPECT_TRUE(applied);
+    expectHashMetadata(key, 2, 2, 0, 0);
+    EXPECT_EQ(decodedHashValue(key, "X"), (std::pair<std::string, uint64_t>{"conditional", 0}));
+  }
+
+  {
+    const std::string key = "hsetex-x-future-with-fnx";
+    create_keeper_and_expired(key);
+    bool applied = false;
+    auto options = setExOptions(HashSetExOptions::TTLAction::kSet, future, HashFieldSetCondition::kFNX);
+    auto s = hash_->SetFieldsWithExpire(*ctx_, key, {{"X", "conditional"}}, options, &applied, now);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    EXPECT_TRUE(applied);
+    expectHashMetadata(key, 2, 1, future, future);
+    EXPECT_EQ(decodedHashValue(key, "X"), (std::pair<std::string, uint64_t>{"conditional", future}));
+  }
+}
+
+TEST_F(RedisHashFieldExpirationEncodingTest, SetFieldsWithExpireDuplicatesUsePreWriteStateAndLastValue) {
+  const uint64_t now = util::GetTimeStampMS();
+  const uint64_t expired_at = now - 1'000;
+  const uint64_t future = now + 60'000;
+
+  {
+    const std::string key = "hsetex-duplicate-missing-fnx";
+    bool applied = false;
+    auto options = setExOptions(HashSetExOptions::TTLAction::kDiscard, 0, HashFieldSetCondition::kFNX);
+    auto s = hash_->SetFieldsWithExpire(*ctx_, key, {{"f", "first"}, {"f", "last"}}, options, &applied, now);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    EXPECT_TRUE(applied);
+    expectHashMetadata(key, 1, 1, 0, 0);
+    EXPECT_EQ(decodedHashValue(key, "f"), (std::pair<std::string, uint64_t>{"last", 0}));
+  }
+
+  {
+    const std::string key = "hsetex-duplicate-existing-fxx";
+    uint64_t ret = 0;
+    auto s = hash_->MSet(*ctx_, key, {{"f", "old"}}, false, &ret);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    bool applied = false;
+    auto options = setExOptions(HashSetExOptions::TTLAction::kSet, future, HashFieldSetCondition::kFXX);
+    s = hash_->SetFieldsWithExpire(*ctx_, key, {{"f", "first"}, {"f", "last"}}, options, &applied, now);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    EXPECT_TRUE(applied);
+    expectHashMetadata(key, 1, 0, future, future);
+    EXPECT_EQ(decodedHashValue(key, "f"), (std::pair<std::string, uint64_t>{"last", future}));
+  }
+
+  {
+    const std::string key = "hsetex-duplicate-expired-keep";
+    uint64_t ret = 0;
+    auto s = hash_->MSet(*ctx_, key, {{"K", "k"}, {"X", "x"}}, false, &ret);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    s = putRawHashValue(key, "X", expired_at, "x");
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    HashMetadata metadata = hashMetadata(key);
+    metadata.persist = 1;
+    metadata.lower = expired_at;
+    metadata.upper = expired_at;
+    s = putHashMetadata(key, metadata);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    bool applied = false;
+    auto options = setExOptions(HashSetExOptions::TTLAction::kKeep);
+    s = hash_->SetFieldsWithExpire(*ctx_, key, {{"X", "first"}, {"X", "last"}}, options, &applied, now);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    EXPECT_TRUE(applied);
+    expectHashMetadata(key, 2, 1, expired_at, expired_at);
+    EXPECT_EQ(decodedHashValue(key, "X"), (std::pair<std::string, uint64_t>{"last", expired_at}));
+  }
+
+  {
+    const std::string key = "hsetex-duplicate-immediate";
+    uint64_t ret = 0;
+    auto s = hash_->MSet(*ctx_, key, {{"f", "old"}}, false, &ret);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    bool applied = false;
+    auto options = setExOptions(HashSetExOptions::TTLAction::kSet, now);
+    s = hash_->SetFieldsWithExpire(*ctx_, key, {{"f", "first"}, {"f", "last"}}, options, &applied, now);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    EXPECT_TRUE(applied);
+    HashMetadata metadata(false);
+    EXPECT_TRUE(getHashMetadata(key, &metadata).IsNotFound());
+  }
+}
+
+TEST_F(RedisHashFieldExpirationEncodingTest, GetFieldsWithExpireDuplicatesUseCommandLocalState) {
+  const uint64_t now = util::GetTimeStampMS();
+  const uint64_t expired_at = now - 1'000;
+  const uint64_t future = now + 60'000;
+
+  {
+    const std::string key = "hgetex-duplicate-immediate";
+    uint64_t ret = 0;
+    auto s = hash_->MSet(*ctx_, key, {{"f", "value"}}, false, &ret);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    std::vector<std::string> values;
+    std::vector<rocksdb::Status> statuses;
+    auto options = getExOptions(HashGetExOptions::TTLAction::kSet, now);
+    s = hash_->GetFieldsWithExpire(*ctx_, key, {"f", "f"}, options, &values, &statuses, now);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    expectGetResults(values, statuses, {"value", std::nullopt});
+    HashMetadata metadata(false);
+    EXPECT_TRUE(getHashMetadata(key, &metadata).IsNotFound());
+  }
+
+  {
+    const std::string key = "hgetex-duplicate-persist";
+    uint64_t ret = 0;
+    auto s = hash_->MSet(*ctx_, key, {{"f", "value"}}, false, &ret);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    s = putRawHashValue(key, "f", future, "value");
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    HashMetadata metadata = hashMetadata(key);
+    metadata.persist = 0;
+    metadata.lower = future;
+    metadata.upper = future;
+    s = putHashMetadata(key, metadata);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    std::vector<std::string> values;
+    std::vector<rocksdb::Status> statuses;
+    auto options = getExOptions(HashGetExOptions::TTLAction::kPersist);
+    s = hash_->GetFieldsWithExpire(*ctx_, key, {"f", "f"}, options, &values, &statuses, now);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    expectGetResults(values, statuses, {"value", "value"});
+    expectHashMetadata(key, 1, 1, 0, 0);
+  }
+
+  {
+    const std::string key = "hgetex-duplicate-future";
+    uint64_t ret = 0;
+    auto s = hash_->MSet(*ctx_, key, {{"f", "value"}}, false, &ret);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    std::vector<std::string> values;
+    std::vector<rocksdb::Status> statuses;
+    auto options = getExOptions(HashGetExOptions::TTLAction::kSet, future);
+    s = hash_->GetFieldsWithExpire(*ctx_, key, {"f", "f"}, options, &values, &statuses, now);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    expectGetResults(values, statuses, {"value", "value"});
+    expectHashMetadata(key, 1, 0, future, future);
+  }
+
+  {
+    const std::string key = "hgetex-duplicate-expired";
+    uint64_t ret = 0;
+    auto s = hash_->MSet(*ctx_, key, {{"X", "x"}}, false, &ret);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    s = putRawHashValue(key, "X", expired_at, "x");
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    HashMetadata metadata = hashMetadata(key);
+    metadata.persist = 0;
+    metadata.lower = expired_at;
+    metadata.upper = expired_at;
+    s = putHashMetadata(key, metadata);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    std::vector<std::string> values;
+    std::vector<rocksdb::Status> statuses;
+    auto options = getExOptions(HashGetExOptions::TTLAction::kNone);
+    s = hash_->GetFieldsWithExpire(*ctx_, key, {"X", "X"}, options, &values, &statuses, now);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    expectGetResults(values, statuses, {std::nullopt, std::nullopt});
+    EXPECT_TRUE(getHashMetadata(key, &metadata).IsNotFound());
+  }
+
+  {
+    const std::string key = "hgetex-duplicate-ghost";
+    createKeeperAndGhost(key, expired_at);
+    HashMetadata before = hashMetadata(key);
+    std::vector<std::string> values;
+    std::vector<rocksdb::Status> statuses;
+    auto options = getExOptions(HashGetExOptions::TTLAction::kNone);
+    auto s = hash_->GetFieldsWithExpire(*ctx_, key, {"G", "G"}, options, &values, &statuses, now);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    expectGetResults(values, statuses, {std::nullopt, std::nullopt});
+    EXPECT_EQ(hashMetadata(key), before);
+  }
+}
+
+TEST_F(RedisHashFieldExpirationEncodingTest, SetAndGetFieldsWithExpireKeepConservativeBoundsUntilLastTTL) {
+  const uint64_t now = util::GetTimeStampMS();
+  const uint64_t t10 = now + 10'000;
+  const uint64_t t20 = now + 20'000;
+  const uint64_t t25 = now + 25'000;
+  const uint64_t t30 = now + 30'000;
+  bool applied = false;
+  auto options = setExOptions(HashSetExOptions::TTLAction::kSet, t20);
+  auto s = hash_->SetFieldsWithExpire(*ctx_, "hsetex-bounds", {{"a", "1"}, {"b", "2"}}, options, &applied, now);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  EXPECT_TRUE(applied);
+  expectHashMetadata("hsetex-bounds", 2, 0, t20, t20);
+
+  options.expire_at_ms = t30;
+  s = hash_->SetFieldsWithExpire(*ctx_, "hsetex-bounds", {{"a", "3"}}, options, &applied, now);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  expectHashMetadata("hsetex-bounds", 2, 0, t20, t30);
+
+  options.expire_at_ms = t25;
+  s = hash_->SetFieldsWithExpire(*ctx_, "hsetex-bounds", {{"b", "4"}}, options, &applied, now);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  expectHashMetadata("hsetex-bounds", 2, 0, t20, t30);
+
+  std::vector<std::string> values;
+  std::vector<rocksdb::Status> statuses;
+  auto get_options = getExOptions(HashGetExOptions::TTLAction::kSet, t10);
+  s = hash_->GetFieldsWithExpire(*ctx_, "hsetex-bounds", {"a"}, get_options, &values, &statuses, now);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  expectHashMetadata("hsetex-bounds", 2, 0, t10, t30);
+
+  get_options.expire_at_ms = t20;
+  s = hash_->GetFieldsWithExpire(*ctx_, "hsetex-bounds", {"a"}, get_options, &values, &statuses, now);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  expectHashMetadata("hsetex-bounds", 2, 0, t10, t30);
+
+  get_options = getExOptions(HashGetExOptions::TTLAction::kPersist);
+  s = hash_->GetFieldsWithExpire(*ctx_, "hsetex-bounds", {"a"}, get_options, &values, &statuses, now);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  expectHashMetadata("hsetex-bounds", 2, 1, t10, t30);
+
+  options = setExOptions(HashSetExOptions::TTLAction::kDiscard);
+  s = hash_->SetFieldsWithExpire(*ctx_, "hsetex-bounds", {{"b", "persistent"}}, options, &applied, now);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  expectHashMetadata("hsetex-bounds", 2, 2, 0, 0);
+}
+
+TEST_F(RedisHashFieldExpirationEncodingTest, SetFieldsWithExpireDoesNotConsumeCompactionGhosts) {
+  const uint64_t now = util::GetTimeStampMS();
+  const uint64_t ghost_expire = now - 1'000;
+  const uint64_t future = now + 60'000;
+
+  {
+    const std::string key = "hsetex-ghost-persistent";
+    createKeeperAndGhost(key, ghost_expire);
+    bool applied = false;
+    auto options = setExOptions(HashSetExOptions::TTLAction::kDiscard);
+    auto s = hash_->SetFieldsWithExpire(*ctx_, key, {{"G", "new-g"}}, options, &applied, now);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    EXPECT_TRUE(applied);
+    expectHashMetadata(key, 3, 2, ghost_expire, ghost_expire);
+    EXPECT_EQ(decodedHashValue(key, "G"), (std::pair<std::string, uint64_t>{"new-g", 0}));
+
+    uint64_t size = 0;
+    s = hash_->Size(*ctx_, key, &size, HashLengthMode::kAccurate);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    EXPECT_EQ(size, 2);
+    expectHashMetadata(key, 2, 2, 0, 0);
+  }
+
+  {
+    const std::string key = "hsetex-ghost-future";
+    createKeeperAndGhost(key, ghost_expire);
+    bool applied = false;
+    auto options = setExOptions(HashSetExOptions::TTLAction::kSet, future);
+    auto s = hash_->SetFieldsWithExpire(*ctx_, key, {{"G", "new-g"}}, options, &applied, now);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    EXPECT_TRUE(applied);
+    expectHashMetadata(key, 3, 1, ghost_expire, future);
+    EXPECT_EQ(decodedHashValue(key, "G"), (std::pair<std::string, uint64_t>{"new-g", future}));
+
+    uint64_t size = 0;
+    s = hash_->Size(*ctx_, key, &size, HashLengthMode::kAccurate);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    EXPECT_EQ(size, 2);
+    expectHashMetadata(key, 2, 1, future, future);
+  }
+
+  {
+    const std::string key = "hsetex-ghost-keep";
+    createKeeperAndGhost(key, ghost_expire);
+    bool applied = false;
+    auto options = setExOptions(HashSetExOptions::TTLAction::kKeep);
+    auto s = hash_->SetFieldsWithExpire(*ctx_, key, {{"G", "new-g"}}, options, &applied, now);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    EXPECT_TRUE(applied);
+    expectHashMetadata(key, 3, 2, ghost_expire, ghost_expire);
+    EXPECT_EQ(decodedHashValue(key, "G"), (std::pair<std::string, uint64_t>{"new-g", 0}));
+  }
+}
+
+TEST_F(RedisHashFieldExpirationEncodingTest, GetFieldsWithExpireDistinguishesExpiredPhysicalFromGhost) {
+  const std::string key = "hgetex-expired-and-ghost";
+  const uint64_t now = util::GetTimeStampMS();
+  const uint64_t expired_at = now - 2'000;
+  const uint64_t ghost_expire = now - 1'000;
+  uint64_t ret = 0;
+  auto s = hash_->MSet(*ctx_, key, {{"X", "x"}, {"G", "g"}, {"K", "k"}}, false, &ret);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  ASSERT_EQ(ret, 3);
+  s = putRawHashValue(key, "X", expired_at, "x");
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  s = putRawHashValue(key, "G", ghost_expire, "g");
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  HashMetadata metadata = hashMetadata(key);
+  metadata.persist = 1;
+  metadata.lower = expired_at;
+  metadata.upper = ghost_expire;
+  s = putHashMetadata(key, metadata);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  s = deleteRawHashValue(key, "G");
+  ASSERT_TRUE(s.ok()) << s.ToString();
+
+  std::vector<std::string> values;
+  std::vector<rocksdb::Status> statuses;
+  auto options = getExOptions(HashGetExOptions::TTLAction::kPersist);
+  s = hash_->GetFieldsWithExpire(*ctx_, key, {"X", "G", "K"}, options, &values, &statuses, now);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  expectGetResults(values, statuses, {std::nullopt, std::nullopt, "k"});
+  expectHashMetadata(key, 2, 1, expired_at, ghost_expire);
+  std::string raw_value;
+  EXPECT_TRUE(getRawHashValue(key, "X", &raw_value).IsNotFound());
+  EXPECT_TRUE(getRawHashValue(key, "G", &raw_value).IsNotFound());
+
+  uint64_t size = 0;
+  s = hash_->Size(*ctx_, key, &size, HashLengthMode::kAccurate);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  EXPECT_EQ(size, 1);
+  expectHashMetadata(key, 1, 1, 0, 0);
+}
+
+TEST_F(RedisHashFieldExpirationEncodingTest, SetAndGetFieldsWithExpirePreserveExistingKeyMetadataIdentity) {
+  const std::string key = "hsetex-key-metadata-identity";
+  const uint64_t now = util::GetTimeStampMS();
+  const uint64_t expired_at = now - 1'000;
+  const uint64_t live_expire = now + 60'000;
+  const uint64_t new_expire = now + 120'000;
+  const uint64_t key_expire = now + 600'000;
+  createFourStateHash(key, expired_at, live_expire);
+  HashMetadata metadata = hashMetadata(key);
+  metadata.expire = key_expire;
+  auto s = putHashMetadata(key, metadata);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  const HashMetadata identity = hashMetadata(key);
+
+  auto expect_identity = [&]() {
+    HashMetadata current = hashMetadata(key);
+    EXPECT_EQ(current.flags, identity.flags);
+    EXPECT_EQ(current.mode, identity.mode);
+    EXPECT_EQ(current.version, identity.version);
+    EXPECT_EQ(current.expire, identity.expire);
+  };
+
+  bool applied = false;
+  auto set_options = setExOptions(HashSetExOptions::TTLAction::kSet, new_expire);
+  s = hash_->SetFieldsWithExpire(*ctx_, key, {{"P", "new-p"}}, set_options, &applied, now);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  EXPECT_TRUE(applied);
+  expect_identity();
+
+  std::vector<std::string> values;
+  std::vector<rocksdb::Status> statuses;
+  auto get_options = getExOptions(HashGetExOptions::TTLAction::kSet, new_expire);
+  s = hash_->GetFieldsWithExpire(*ctx_, key, {"L"}, get_options, &values, &statuses, now);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  expect_identity();
+
+  values.clear();
+  statuses.clear();
+  get_options = getExOptions(HashGetExOptions::TTLAction::kPersist);
+  s = hash_->GetFieldsWithExpire(*ctx_, key, {"L"}, get_options, &values, &statuses, now);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  expect_identity();
+
+  set_options = setExOptions(HashSetExOptions::TTLAction::kKeep);
+  s = hash_->SetFieldsWithExpire(*ctx_, key, {{"X", "kept-x"}}, set_options, &applied, now);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  expect_identity();
+}
+
+TEST_F(RedisHashFieldExpirationEncodingTest, SetFieldsWithExpireRetainsConservativeKeyTTLCornerState) {
+  const std::string key = "hsetex-key-ttl-conservative-upper";
+  const uint64_t now = util::GetTimeStampMS();
+  const uint64_t short_expire = now - 1'000;
+  const uint64_t long_expire = now + 120'000;
+  const uint64_t key_expire = now + 60'000;
+  uint64_t ret = 0;
+  auto s = hash_->MSet(*ctx_, key, {{"X", "x"}}, false, &ret);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  s = putRawHashValue(key, "X", short_expire, "x");
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  HashMetadata metadata = hashMetadata(key);
+  metadata.persist = 0;
+  metadata.lower = short_expire;
+  metadata.upper = long_expire;
+  metadata.expire = key_expire;
+  s = putHashMetadata(key, metadata);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  const HashMetadata original_metadata = hashMetadata(key);
+
+  bool applied = false;
+  auto options = setExOptions(HashSetExOptions::TTLAction::kDiscard);
+  s = hash_->SetFieldsWithExpire(*ctx_, key, {{"new", "value"}}, options, &applied, now);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  EXPECT_TRUE(applied);
+  metadata = hashMetadata(key);
+  EXPECT_EQ(metadata.size, 2);
+  EXPECT_EQ(metadata.persist, 1);
+  EXPECT_EQ(metadata.lower, short_expire);
+  EXPECT_EQ(metadata.upper, long_expire);
+  EXPECT_EQ(metadata.expire, original_metadata.expire);
+  EXPECT_EQ(metadata.version, original_metadata.version);
+  EXPECT_EQ(metadata.flags, original_metadata.flags);
+  EXPECT_EQ(decodedHashValue(key, "new"), (std::pair<std::string, uint64_t>{"value", 0}));
+}
+
+TEST_F(RedisHashFieldExpirationEncodingTest, SetFieldsWithExpireRecreatesExpiredKeyOrLeavesFXXMissing) {
+  const uint64_t now = util::GetTimeStampMS();
+  const uint64_t key_expired_at = now - 1'000;
+
+  {
+    const std::string key = "hsetex-recreate-expired-key";
+    uint64_t ret = 0;
+    auto s = hash_->MSet(*ctx_, key, {{"old", "value"}}, false, &ret);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    HashMetadata metadata = hashMetadata(key);
+    const uint64_t old_version = metadata.version;
+    metadata.expire = key_expired_at;
+    s = putHashMetadata(key, metadata);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+
+    bool applied = false;
+    auto options = setExOptions(HashSetExOptions::TTLAction::kDiscard);
+    s = hash_->SetFieldsWithExpire(*ctx_, key, {{"new", "new-value"}}, options, &applied, now);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    EXPECT_TRUE(applied);
+    metadata = hashMetadata(key);
+    EXPECT_NE(metadata.version, old_version);
+    EXPECT_EQ(metadata.expire, 0);
+    EXPECT_EQ(metadata.size, 1);
+    EXPECT_EQ(metadata.persist, 1);
+    EXPECT_EQ(metadata.lower, 0);
+    EXPECT_EQ(metadata.upper, 0);
+    EXPECT_EQ(decodedHashValue(key, "new"), (std::pair<std::string, uint64_t>{"new-value", 0}));
+  }
+
+  {
+    const std::string key = "hsetex-fxx-expired-key";
+    uint64_t ret = 0;
+    auto s = hash_->MSet(*ctx_, key, {{"old", "value"}}, false, &ret);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    HashMetadata metadata = hashMetadata(key);
+    metadata.expire = key_expired_at;
+    s = putHashMetadata(key, metadata);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    std::string raw_before;
+    s = db_->GetRawMetadata(*ctx_, db_->AppendNamespacePrefix(key), &raw_before);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+
+    bool applied = true;
+    auto options = setExOptions(HashSetExOptions::TTLAction::kDiscard, 0, HashFieldSetCondition::kFXX);
+    s = hash_->SetFieldsWithExpire(*ctx_, key, {{"old", "new-value"}}, options, &applied, now);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    EXPECT_FALSE(applied);
+    std::string raw_after;
+    s = db_->GetRawMetadata(*ctx_, db_->AppendNamespacePrefix(key), &raw_after);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    EXPECT_EQ(raw_after, raw_before);
+  }
+}
+
+TEST_F(RedisHashTest, SetAndGetFieldsWithExpireRejectExistingLegacyHashWithoutMutation) {
+  redis::Database db(storage_.get(), "hash_ns");
+  const std::string key = "hsetex-legacy-existing";
+  uint64_t ret = 0;
+  auto s = hash_->MSet(*ctx_, key, {{"f", "value"}}, false, &ret);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  ASSERT_EQ(ret, 1);
+
+  HashMetadata metadata(false);
+  s = db.GetMetadata(*ctx_, {kRedisHash}, db.AppendNamespacePrefix(key), &metadata);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  ASSERT_EQ(metadata.mode, HashSubkeyEncodingMode::kLegacy);
+  const std::string sub_key =
+      InternalKey(db.AppendNamespacePrefix(key), "f", metadata.version, storage_->IsSlotIdEncoded()).Encode();
+  std::string raw_metadata_before;
+  std::string raw_value_before;
+  s = db.GetRawMetadata(*ctx_, db.AppendNamespacePrefix(key), &raw_metadata_before);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  s = storage_->Get(*ctx_, ctx_->GetReadOptions(), sub_key, &raw_value_before);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  ASSERT_EQ(raw_value_before, "value");
+
+  std::vector<HashSetExOptions> set_options;
+  for (auto action : {HashSetExOptions::TTLAction::kDiscard, HashSetExOptions::TTLAction::kKeep}) {
+    HashSetExOptions options;
+    options.ttl_action = action;
+    set_options.push_back(options);
+  }
+  for (uint64_t expire_at : {uint64_t{1}, util::GetTimeStampMS() + 60'000}) {
+    HashSetExOptions options;
+    options.ttl_action = HashSetExOptions::TTLAction::kSet;
+    options.expire_at_ms = expire_at;
+    set_options.push_back(options);
+  }
+  HashSetExOptions conditional;
+  conditional.ttl_action = HashSetExOptions::TTLAction::kDiscard;
+  conditional.condition = HashFieldSetCondition::kFXX;
+  set_options.push_back(conditional);
+
+  for (const auto &options : set_options) {
+    bool applied = false;
+    s = hash_->SetFieldsWithExpire(*ctx_, key, {{"f", "changed"}}, options, &applied, util::GetTimeStampMS());
+    EXPECT_TRUE(s.IsInvalidArgument()) << s.ToString();
+  }
+
+  std::vector<HashGetExOptions> get_options;
+  for (auto action : {HashGetExOptions::TTLAction::kNone, HashGetExOptions::TTLAction::kPersist}) {
+    HashGetExOptions options;
+    options.ttl_action = action;
+    get_options.push_back(options);
+  }
+  for (uint64_t expire_at : {uint64_t{1}, util::GetTimeStampMS() + 60'000}) {
+    HashGetExOptions options;
+    options.ttl_action = HashGetExOptions::TTLAction::kSet;
+    options.expire_at_ms = expire_at;
+    get_options.push_back(options);
+  }
+  for (const auto &options : get_options) {
+    std::vector<std::string> values;
+    std::vector<rocksdb::Status> statuses;
+    s = hash_->GetFieldsWithExpire(*ctx_, key, {"f"}, options, &values, &statuses, util::GetTimeStampMS());
+    EXPECT_TRUE(s.IsInvalidArgument()) << s.ToString();
+  }
+
+  std::string raw_metadata_after;
+  std::string raw_value_after;
+  s = db.GetRawMetadata(*ctx_, db.AppendNamespacePrefix(key), &raw_metadata_after);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  s = storage_->Get(*ctx_, ctx_->GetReadOptions(), sub_key, &raw_value_after);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  EXPECT_EQ(raw_metadata_after, raw_metadata_before);
+  EXPECT_EQ(raw_value_after, raw_value_before);
+}
+
+TEST_F(RedisHashTest, SetAndGetFieldsWithExpireHandleMissingKeyUnderLegacyConfig) {
+  redis::Database db(storage_.get(), "hash_ns");
+  const uint64_t now = util::GetTimeStampMS();
+  const std::string key = "hsetex-legacy-missing";
+
+  for (auto condition : {HashFieldSetCondition::kNone, HashFieldSetCondition::kFNX}) {
+    for (auto action : {HashSetExOptions::TTLAction::kDiscard, HashSetExOptions::TTLAction::kKeep,
+                        HashSetExOptions::TTLAction::kSet}) {
+      HashSetExOptions options;
+      options.ttl_action = action;
+      options.expire_at_ms = action == HashSetExOptions::TTLAction::kSet ? now : 0;
+      options.condition = condition;
+      bool applied = false;
+      auto s = hash_->SetFieldsWithExpire(*ctx_, key, {{"f", "value"}}, options, &applied, now);
+      EXPECT_TRUE(s.IsInvalidArgument()) << s.ToString();
+      std::string raw_metadata;
+      EXPECT_TRUE(db.GetRawMetadata(*ctx_, db.AppendNamespacePrefix(key), &raw_metadata).IsNotFound());
+    }
+  }
+
+  HashSetExOptions fxx;
+  fxx.ttl_action = HashSetExOptions::TTLAction::kDiscard;
+  fxx.condition = HashFieldSetCondition::kFXX;
+  bool applied = true;
+  auto s = hash_->SetFieldsWithExpire(*ctx_, key, {{"f", "value"}}, fxx, &applied, now);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  EXPECT_FALSE(applied);
+
+  std::vector<std::string> values;
+  std::vector<rocksdb::Status> statuses;
+  HashGetExOptions get_options;
+  get_options.ttl_action = HashGetExOptions::TTLAction::kSet;
+  get_options.expire_at_ms = now + 60'000;
+  s = hash_->GetFieldsWithExpire(*ctx_, key, {"a", "b"}, get_options, &values, &statuses, now);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  ASSERT_EQ(values.size(), 2);
+  ASSERT_EQ(statuses.size(), 2);
+  EXPECT_TRUE(statuses[0].IsNotFound());
+  EXPECT_TRUE(statuses[1].IsNotFound());
 }
 
 TEST_F(RedisHashTest, HIncr) {

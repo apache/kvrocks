@@ -76,6 +76,7 @@ class Stats {
   std::atomic<uint64_t> fullsync_count = {0};
   std::atomic<uint64_t> psync_err_count = {0};
   std::atomic<uint64_t> psync_ok_count = {0};
+  std::atomic<uint64_t> client_output_buffer_limit_disconnections = {0};
   std::map<std::string, CommandStat> commands_stats;
 
   using BucketBoundaries = std::vector<double>;
@@ -91,6 +92,9 @@ class Stats {
   void IncrFullSyncCount() { fullsync_count.fetch_add(1, std::memory_order_relaxed); }
   void IncrPSyncErrCount() { psync_err_count.fetch_add(1, std::memory_order_relaxed); }
   void IncrPSyncOKCount() { psync_ok_count.fetch_add(1, std::memory_order_relaxed); }
+  void IncrClientOutputBufferLimitDisconnections() {
+    client_output_buffer_limit_disconnections.fetch_add(1, std::memory_order_relaxed);
+  }
   static int64_t GetMemoryRSS();
   void TrackInstantaneousMetric(int metric, uint64_t current_reading);
   uint64_t GetInstantaneousMetric(int metric) const;

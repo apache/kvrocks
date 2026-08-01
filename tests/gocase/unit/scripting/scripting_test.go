@@ -958,3 +958,42 @@ func TestLuaJITBytecodeDoS(t *testing.T) {
 	require.Equal(t, []interface{}{"load_failed:attempt to load chunk with wrong mode"}, r.Val())
 	require.NoError(t, rdb.Ping(ctx).Err())
 }
+
+// TestScriptEvalDeeplyNestedTableReply is a regression test for a deeply
+// self-nested Lua reply that used to overflow the stack and crash the server.
+func TestScriptEvalDeeplyNestedTableReply(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{})
+	defer srv.Close()
+
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	require.Equal(t, "PONG", rdb.Ping(ctx).Val())
+
+	require.NoError(t, rdb.Eval(ctx, `local t={} for i=1,50 do t={t} end return t`, nil).Err())
+
+	// One script per recursive conversion site in ReplyToRedisReply
+	const depth = 200000
+	for name, format := range map[string]string{
+		"array element":               `local t={} for i=1,%d do t={t} end return t`,
+		"array element after sibling": `local t={} for i=1,%d do t={t} end return {1, t, 3}`,
+		"map key":                     `local t={} for i=1,%d do t={t} end return {map={[t]=1}}`,
+		"map value":                   `local t={} for i=1,%d do t={t} end return {map={key=t}}`,
+		"set entry":                   `local t={} for i=1,%d do t={t} end return {set={[t]=true}}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			err := rdb.Eval(ctx, fmt.Sprintf(format, depth), nil).Err()
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "reached lua stack limit")
+
+			// confirm the error path left the Lua stack top in a good state
+			require.Equal(t, []interface{}{int64(1), int64(2), int64(3)},
+				rdb.Eval(ctx, `return {1, 2, 3}`, nil).Val())
+		})
+	}
+
+	require.Eventually(t, func() bool {
+		return rdb.Ping(ctx).Val() == "PONG"
+	}, 5*time.Second, 100*time.Millisecond)
+}

@@ -1271,12 +1271,26 @@ void PushError(lua_State *lua, const char *err) {
   lua_settable(lua, -3);
 }
 
-// this function does not pop any element on the stack
-std::string ReplyToRedisReply(redis::Connection *conn, lua_State *lua) {
+// Max nesting depth of a Lua reply table. The conversion below recurses on the
+// native C stack (Lua's own recursion guard doesn't apply after lua_pcall
+// returns), and worker threads may have small stacks (512KiB by default on
+// macOS), so the cap must be low enough to keep ~100 frames affordable.
+constexpr int kMaxLuaReplyNestingDepth = 100;
+
+// Convert the Lua value at the top of the stack (and everything nested in it)
+// into RESP protocol bytes. This function does not pop any element on the stack.
+StatusOr<std::string> LuaTypeToRedisReply(redis::Connection *conn, lua_State *lua, int depth) {
   std::string output;
   const char *obj_s = nullptr;
   size_t obj_len = 0;
   int j = 0, mbulklen = 0;
+
+  // Also reserve Lua stack room before converting this level (a map reply
+  // pushes up to 4 slots). On failure the whole reply is discarded by the
+  // top-level caller and turned into a single error.
+  if (depth > kMaxLuaReplyNestingDepth || !lua_checkstack(lua, 4)) {
+    return {Status::NotOK, "reached lua stack limit"};
+  }
 
   int t = lua_type(lua, -1);
   switch (t) {
@@ -1384,11 +1398,21 @@ std::string ReplyToRedisReply(redis::Connection *conn, lua_State *lua) {
         while (lua_next(lua, -2)) {
           lua_pushvalue(lua, -2);
           // return key
-          map_output += ReplyToRedisReply(conn, lua);
-          lua_pop(lua, 1);
+          auto key_output = LuaTypeToRedisReply(conn, lua, depth + 1);
+          if (!key_output) {
+            lua_pop(lua, 4);  // pop the key copy, value, iteration key and 'map' table
+            return key_output;
+          }
+          map_output += *key_output;
+          lua_pop(lua, 1);  // pop the converted key copy
           // return value
-          map_output += ReplyToRedisReply(conn, lua);
-          lua_pop(lua, 1);
+          auto value_output = LuaTypeToRedisReply(conn, lua, depth + 1);
+          if (!value_output) {
+            lua_pop(lua, 3);  // pop the value, iteration key and 'map' table
+            return value_output;
+          }
+          map_output += *value_output;
+          lua_pop(lua, 1);  // pop the converted value
           map_len++;
         }
         output = conn->HeaderOfMap(map_len) + std::move(map_output);
@@ -1408,8 +1432,13 @@ std::string ReplyToRedisReply(redis::Connection *conn, lua_State *lua) {
         while (lua_next(lua, -2)) {
           lua_pop(lua, 1);
           lua_pushvalue(lua, -1);
-          set_output += ReplyToRedisReply(conn, lua);
-          lua_pop(lua, 1);
+          auto entry_output = LuaTypeToRedisReply(conn, lua, depth + 1);
+          if (!entry_output) {
+            lua_pop(lua, 3);  // pop the entry copy, iteration key and 'set' table
+            return entry_output;
+          }
+          set_output += *entry_output;
+          lua_pop(lua, 1);  // pop the converted entry copy
           set_len++;
         }
         output = conn->HeaderOfSet(set_len) + std::move(set_output);
@@ -1428,8 +1457,13 @@ std::string ReplyToRedisReply(redis::Connection *conn, lua_State *lua) {
           break;
         }
         mbulklen++;
-        output += ReplyToRedisReply(conn, lua);
-        lua_pop(lua, 1);
+        auto element_output = LuaTypeToRedisReply(conn, lua, depth + 1);
+        if (!element_output) {
+          lua_pop(lua, 1);  // pop the element
+          return element_output;
+        }
+        output += *element_output;
+        lua_pop(lua, 1);  // pop the converted element
       }
       output = redis::MultiLen(mbulklen) + output;
       break;
@@ -1437,6 +1471,16 @@ std::string ReplyToRedisReply(redis::Connection *conn, lua_State *lua) {
       output = conn->NilString();
   }
   return output;
+}
+
+std::string ReplyToRedisReply(redis::Connection *conn, lua_State *lua) {
+  auto reply = LuaTypeToRedisReply(conn, lua, 1);
+  if (!reply) {
+    // Discard the partially converted reply and report a single top-level
+    // error instead of embedding it deep inside nested array headers.
+    return redis::Error({Status::RedisErrorNoPrefix, reply.Msg()});
+  }
+  return std::move(*reply);
 }
 
 /* In case the error set into the Lua stack by pushError() was generated

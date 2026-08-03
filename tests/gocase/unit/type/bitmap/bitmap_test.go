@@ -89,20 +89,21 @@ func SimulateBitOp(op BITOP, values ...[]byte) string {
 	var binaryResult []byte
 	for i := 0; i < maxlen; i++ {
 		x := binaryArray[0][i]
-		if op == NOT {
+		switch op {
+		case NOT:
 			if x == '0' {
 				x = '1'
 			} else {
 				x = '0'
 			}
-		} else if op == DIFF {
+		case DIFF:
 			// bits in X but not in any Y
 			for j := 1; j < len(binaryArray); j++ {
 				if binaryArray[j][i] == '1' {
 					x = '0'
 				}
 			}
-		} else if op == DIFF1 {
+		case DIFF1:
 			// bits in any Y but not in X
 			orRest := byte('0')
 			for j := 1; j < len(binaryArray); j++ {
@@ -115,7 +116,7 @@ func SimulateBitOp(op BITOP, values ...[]byte) string {
 			} else {
 				x = '0'
 			}
-		} else if op == ANDOR {
+		case ANDOR:
 			// bits in X AND at least one Y
 			orRest := byte('0')
 			for j := 1; j < len(binaryArray); j++ {
@@ -128,7 +129,7 @@ func SimulateBitOp(op BITOP, values ...[]byte) string {
 			} else {
 				x = '0'
 			}
-		} else if op == ONE {
+		case ONE:
 			// bits set in exactly one key
 			count := 0
 			for j := 0; j < len(binaryArray); j++ {
@@ -141,7 +142,7 @@ func SimulateBitOp(op BITOP, values ...[]byte) string {
 			} else {
 				x = '0'
 			}
-		} else {
+		default:
 			for j := 1; j < len(binaryArray); j++ {
 				left := int(x - '0')
 				right := int(binaryArray[j][i] - '0')
@@ -608,7 +609,8 @@ func TestBitmap(t *testing.T) {
 				Set2SetBit(t, rdb, ctx, veckeys[k], vec[k])
 			}
 			doArgs := func(op string) []interface{} {
-				args := []interface{}{"BITOP", op, "target"}
+				args := make([]interface{}, 0, 3+len(veckeys))
+				args = append(args, "BITOP", op, "target")
 				for _, k := range veckeys {
 					args = append(args, k)
 				}

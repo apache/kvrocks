@@ -1138,6 +1138,8 @@ class CommandZUnion : public Commander {
           aggregate_method_ = kAggregateMin;
         } else if (util::ToLower(aggregate_value) == "max") {
           aggregate_method_ = kAggregateMax;
+        } else if (util::ToLower(aggregate_value) == "count") {
+          aggregate_method_ = kAggregateCount;
         } else {
           return {Status::RedisParseErr, "aggregate param error"};
         }
@@ -1223,6 +1225,8 @@ class CommandZUnionStore : public Commander {
           aggregate_method_ = kAggregateMin;
         } else if (util::ToLower(args[i + 1]) == "max") {
           aggregate_method_ = kAggregateMax;
+        } else if (util::ToLower(args[i + 1]) == "count") {
+          aggregate_method_ = kAggregateCount;
         } else {
           return {Status::RedisParseErr, "aggregate param error"};
         }

@@ -658,7 +658,7 @@ rocksdb::Status ZSet::Inter(engine::Context &ctx, const std::vector<KeyWeight> &
   if (!s.ok() || target_mscores.empty()) return s;
 
   for (const auto &ms : target_mscores) {
-    double score = ms.score * keys_weights[0].weight;
+    double score = aggregate_method == kAggregateCount ? keys_weights[0].weight : ms.score * keys_weights[0].weight;
     if (std::isnan(score)) score = 0;
     dst_zset[ms.member] = score;
     member_counters[ms.member] = 1;
@@ -671,10 +671,11 @@ rocksdb::Status ZSet::Inter(engine::Context &ctx, const std::vector<KeyWeight> &
     for (const auto &ms : target_mscores) {
       if (dst_zset.find(ms.member) == dst_zset.end()) continue;
       member_counters[ms.member]++;
-      double score = ms.score * keys_weights[i].weight;
+      double score = aggregate_method == kAggregateCount ? keys_weights[i].weight : ms.score * keys_weights[i].weight;
       if (std::isnan(score)) score = 0;
       switch (aggregate_method) {
         case kAggregateSum:
+        case kAggregateCount:
           dst_zset[ms.member] += score;
           if (std::isnan(dst_zset[ms.member])) {
             dst_zset[ms.member] = 0;
@@ -766,13 +767,14 @@ rocksdb::Status ZSet::Union(engine::Context &ctx, const std::vector<KeyWeight> &
     auto s = RangeByScore(ctx, key_weight.key, spec, &target_mscores, &target_size);
     if (!s.ok() && !s.IsNotFound()) return s;
     for (const auto &ms : target_mscores) {
-      double score = ms.score * key_weight.weight;
+      double score = aggregate_method == kAggregateCount ? key_weight.weight : ms.score * key_weight.weight;
       if (std::isnan(score)) score = 0;
       if (dst_zset.find(ms.member) == dst_zset.end()) {
         dst_zset[ms.member] = score;
       } else {
         switch (aggregate_method) {
           case kAggregateSum:
+          case kAggregateCount:
             dst_zset[ms.member] += score;
             if (std::isnan(dst_zset[ms.member])) dst_zset[ms.member] = 0;
             break;

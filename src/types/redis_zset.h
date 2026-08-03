@@ -29,7 +29,7 @@
 #include "storage/redis_db.h"
 #include "storage/redis_metadata.h"
 
-enum AggregateMethod { kAggregateSum, kAggregateMin, kAggregateMax };
+enum AggregateMethod { kAggregateSum, kAggregateMin, kAggregateMax, kAggregateCount };
 
 struct KeyWeight {
   std::string key;

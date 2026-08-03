@@ -65,6 +65,7 @@ TEST(KeyspaceEvents, CollectorPreservesEventOrder) {
   EXPECT_EQ(events[1].channel_flags, kNotifyKeyspace | kNotifyKeyevent);
   EXPECT_EQ(events[1].event, "del");
   EXPECT_EQ(events[1].key, "second");
+  EXPECT_TRUE(collector.Empty());
 }
 
 TEST(KeyspaceEvents, ParseFlags) {

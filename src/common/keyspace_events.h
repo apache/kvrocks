@@ -45,12 +45,14 @@ struct KeyspaceEvent {
   std::string key;
 };
 
-// Collects semantic keyspace events for one command; Connection owns publish timing.
+// Collects semantic keyspace events for one request context; Connection owns publish timing.
 class KeyspaceEventCollector {
  public:
   KeyspaceEventCollector(std::string ns, int notify_flags);
+  bool IsEnabled(int type_flag) const { return ShouldNotifyKeyspaceEvent(notify_flags_, type_flag); }
   void Add(int type_flag, std::string_view event, std::string_view key);
-  // Moves out events collected during Execute.
+  bool Empty() const { return events_.empty(); }
+  // Moves out all collected events.
   std::vector<KeyspaceEvent> Take();
 
  private:

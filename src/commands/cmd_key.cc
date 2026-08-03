@@ -19,11 +19,9 @@
  */
 
 #include <cstdint>
-#include <string_view>
 
 #include "commander.h"
 #include "commands/ttl_util.h"
-#include "common/keyspace_events.h"
 #include "error_constants.h"
 #include "server/redis_reply.h"
 #include "server/server.h"
@@ -374,16 +372,8 @@ class CommandDel : public Commander {
     uint64_t cnt = 0;
     redis::Database redis(srv->storage, conn->GetNamespace());
 
-    const bool notify_del = GetAttributes()->name == "del" && conn->IsKeyspaceEventEnabled(kNotifyGeneric);
-    std::vector<rocksdb::Slice> deleted_keys;
-    if (notify_del) deleted_keys.reserve(keys.size());
-
-    auto s = redis.MDel(ctx, keys, &cnt, notify_del ? &deleted_keys : nullptr);
+    auto s = redis.MDel(ctx, keys, &cnt);
     if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
-
-    for (const auto &key : deleted_keys) {
-      conn->AddKeyspaceEvent(kNotifyGeneric, "del", std::string_view(key.data(), key.size()));
-    }
 
     *output = redis::Integer(cnt);
     return Status::OK();

@@ -34,12 +34,16 @@ KeyspaceEventCollector::KeyspaceEventCollector(std::string ns, int notify_flags)
     : notify_flags_(notify_flags), ns_(std::move(ns)) {}
 
 void KeyspaceEventCollector::Add(int type_flag, std::string_view event, std::string_view key) {
-  if (!ShouldNotifyKeyspaceEvent(notify_flags_, type_flag)) return;
+  if (!IsEnabled(type_flag)) return;
   const int channel_flags = notify_flags_ & (kNotifyKeyspace | kNotifyKeyevent);
   events_.emplace_back(KeyspaceEvent{channel_flags, std::string(event), ns_, std::string(key)});
 }
 
-std::vector<KeyspaceEvent> KeyspaceEventCollector::Take() { return std::move(events_); }
+std::vector<KeyspaceEvent> KeyspaceEventCollector::Take() {
+  std::vector<KeyspaceEvent> events;
+  events.swap(events_);
+  return events;
+}
 
 Status ParseNotifyKeyspaceEventsFlags(const std::string &input, int *flags) {
   int result = 0;

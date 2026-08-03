@@ -110,8 +110,7 @@ class Database {
   [[nodiscard]] rocksdb::Status GetRawMetadata(engine::Context &ctx, const Slice &ns_key, std::string *bytes);
   [[nodiscard]] rocksdb::Status Expire(engine::Context &ctx, const Slice &user_key, uint64_t timestamp);
   [[nodiscard]] rocksdb::Status Del(engine::Context &ctx, const Slice &user_key);
-  [[nodiscard]] rocksdb::Status MDel(engine::Context &ctx, const std::vector<Slice> &keys, uint64_t *deleted_cnt,
-                                     std::vector<Slice> *deleted_user_keys = nullptr);
+  [[nodiscard]] rocksdb::Status MDel(engine::Context &ctx, const std::vector<Slice> &keys, uint64_t *deleted_cnt);
   [[nodiscard]] rocksdb::Status Exists(engine::Context &ctx, const std::vector<Slice> &keys, uint32_t *ret);
   [[nodiscard]] rocksdb::Status TTL(engine::Context &ctx, const Slice &user_key, int64_t *ttl);
   [[nodiscard]] rocksdb::Status GetExpireTime(engine::Context &ctx, const Slice &user_key, uint64_t *timestamp);

@@ -77,6 +77,12 @@ func TestKeyspaceNotify(t *testing.T) {
 		expectMessage(t, ctx, pubsub, "__keyevent@0__:set", "foo")
 	})
 
+	t.Run("SETEX publishes set from the shared Set API", func(t *testing.T) {
+		require.NoError(t, rdb.Do(ctx, "SETEX", "setex-key", 60, "value").Err())
+		expectMessage(t, ctx, pubsub, "__keyspace@0__:setex-key", "set")
+		expectMessage(t, ctx, pubsub, "__keyevent@0__:set", "setex-key")
+	})
+
 	t.Run("SET NX on existing key publishes nothing", func(t *testing.T) {
 		require.NoError(t, rdb.Set(ctx, "nxkey", "v1", 0).Err())
 		expectMessage(t, ctx, pubsub, "__keyspace@0__:nxkey", "set")
@@ -143,13 +149,14 @@ func TestKeyspaceNotify(t *testing.T) {
 		expectNoMessage(t, ctx, pubsub)
 	})
 
-	t.Run("UNLINK does not publish del", func(t *testing.T) {
+	t.Run("UNLINK publishes del", func(t *testing.T) {
 		require.NoError(t, rdb.Set(ctx, "unlink-key", "x", 0).Err())
 		expectMessage(t, ctx, pubsub, "__keyspace@0__:unlink-key", "set")
 		expectMessage(t, ctx, pubsub, "__keyevent@0__:set", "unlink-key")
 
 		require.EqualValues(t, 1, rdb.Unlink(ctx, "unlink-key").Val())
-		expectNoMessage(t, ctx, pubsub)
+		expectMessage(t, ctx, pubsub, "__keyspace@0__:unlink-key", "del")
+		expectMessage(t, ctx, pubsub, "__keyevent@0__:del", "unlink-key")
 	})
 
 	t.Run("Lua nested commands publish events", func(t *testing.T) {

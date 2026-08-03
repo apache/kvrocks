@@ -26,7 +26,6 @@
 #include <memory>
 #include <set>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -211,8 +210,6 @@ class Connection : public EvbufCallbackBase<Connection> {
   std::deque<redis::CommandTokens> *GetMultiExecCommands() { return &multi_cmds_; }
 
   void FlushKeyspaceEvents();
-  bool IsKeyspaceEventEnabled(int type_flag) const;
-  void AddKeyspaceEvent(int type_flag, std::string_view event, std::string_view key);
 
   std::function<void(int)> close_cb = nullptr;
 
@@ -258,8 +255,6 @@ class Connection : public EvbufCallbackBase<Connection> {
   std::atomic<bool> is_running_ = false;
   std::deque<redis::CommandTokens> multi_cmds_;
 
-  int keyspace_event_notify_flags_ = 0;
-  std::unique_ptr<KeyspaceEventCollector> active_keyspace_event_collector_;
   std::vector<KeyspaceEvent> pending_keyspace_events_;
   bool in_script_ = false;
 

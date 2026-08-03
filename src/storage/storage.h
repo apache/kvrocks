@@ -35,9 +35,11 @@
 #include <memory>
 #include <shared_mutex>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
+#include "common/keyspace_events.h"
 #include "common/port.h"
 #include "config/config.h"
 #include "lock_manager.h"
@@ -424,6 +426,31 @@ class Storage {
 struct Context {
   engine::Storage *storage = nullptr;
 
+  void EnableKeyspaceEventCollection(const std::string &ns, int notify_flags) {
+    if (!ShouldNotifyKeyspaceEvent(notify_flags, kNotifyAll)) return;
+    keyspace_event_ns_ = ns;
+    keyspace_event_notify_flags_ = notify_flags;
+  }
+
+  bool IsKeyspaceEventEnabled(int type_flag) const {
+    return ShouldNotifyKeyspaceEvent(keyspace_event_notify_flags_, type_flag);
+  }
+
+  void AddKeyspaceEvent(int type_flag, std::string_view event, std::string_view key) {
+    if (!IsKeyspaceEventEnabled(type_flag)) return;
+    if (!keyspace_event_collector_) {
+      keyspace_event_collector_ =
+          std::make_unique<KeyspaceEventCollector>(keyspace_event_ns_, keyspace_event_notify_flags_);
+    }
+    keyspace_event_collector_->Add(type_flag, event, key);
+  }
+
+  bool HasKeyspaceEvents() const { return keyspace_event_collector_ && !keyspace_event_collector_->Empty(); }
+
+  std::vector<KeyspaceEvent> TakeKeyspaceEvents() {
+    return keyspace_event_collector_ ? keyspace_event_collector_->Take() : std::vector<KeyspaceEvent>{};
+  }
+
   /// batch can be nullptr if
   /// 1. The Context is not in transactional mode.
   /// 2. The Context is in transactional mode, but no write operation is performed.
@@ -470,13 +497,22 @@ struct Context {
       storage = ctx.storage;
       snapshot_ = ctx.snapshot_;
       batch = std::move(ctx.batch);
+      keyspace_event_ns_ = std::move(ctx.keyspace_event_ns_);
+      keyspace_event_notify_flags_ = ctx.keyspace_event_notify_flags_;
+      keyspace_event_collector_ = std::move(ctx.keyspace_event_collector_);
 
       ctx.storage = nullptr;
       ctx.snapshot_ = nullptr;
     }
     return *this;
   }
-  Context(Context &&ctx) noexcept : storage(ctx.storage), batch(std::move(ctx.batch)), snapshot_(ctx.snapshot_) {
+  Context(Context &&ctx) noexcept
+      : storage(ctx.storage),
+        batch(std::move(ctx.batch)),
+        snapshot_(ctx.snapshot_),
+        keyspace_event_ns_(std::move(ctx.keyspace_event_ns_)),
+        keyspace_event_notify_flags_(ctx.keyspace_event_notify_flags_),
+        keyspace_event_collector_(std::move(ctx.keyspace_event_collector_)) {
     ctx.storage = nullptr;
     ctx.snapshot_ = nullptr;
   }
@@ -501,6 +537,9 @@ struct Context {
   /// Normally it will be fixed to the latest Snapshot when the Context is constructed.
   /// If is_txn_mode is false, the snapshot is nullptr.
   const rocksdb::Snapshot *snapshot_ = nullptr;
+  std::string keyspace_event_ns_;
+  int keyspace_event_notify_flags_ = 0;
+  std::unique_ptr<KeyspaceEventCollector> keyspace_event_collector_;
 };
 
 }  // namespace engine

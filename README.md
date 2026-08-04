@@ -29,7 +29,7 @@
 
 **Apache Kvrocks** is a distributed key value NoSQL database that uses RocksDB as storage engine and is compatible with Redis protocol. Kvrocks intends to decrease the cost of memory and increase the capacity while compared to Redis. The design of replication and storage was inspired by [rocksplicator](https://github.com/pinterest/rocksplicator) and [blackwidow](https://github.com/Qihoo360/blackwidow).
 
-Kvrocks has the following key features:
+Kvrocks has the following key features:test
 
 * Redis Compatible: Users can access Apache Kvrocks via any Redis client.
 * Namespace: Similar to Redis SELECT but equipped with token per namespace.

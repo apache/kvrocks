@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/apache/kvrocks/tests/gocase/util"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 )
 
@@ -102,5 +103,30 @@ func TestFlushMemTableInvalid(t *testing.T) {
 
 		_, err = rdb.Do(ctx, "FLUSHMEMTABLE", "ASYN").Result()
 		require.Contains(t, err.Error(), "parameter must be 'ASYNC'")
+	})
+}
+
+func TestFlushMemTableAdminPermission(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{
+		"requirepass": "admin",
+	})
+	defer srv.Close()
+
+	ctx := context.Background()
+
+	adminClient := srv.NewClientWithOption(&redis.Options{Password: "admin"})
+	defer func() { require.NoError(t, adminClient.Close()) }()
+
+	require.NoError(t, adminClient.Do(ctx, "NAMESPACE", "ADD", "test_ns", "test_token").Err())
+
+	userClient := srv.NewClientWithOption(&redis.Options{Password: "test_token"})
+	defer func() { require.NoError(t, userClient.Close()) }()
+
+	t.Run("Non-admin user should be rejected", func(t *testing.T) {
+		require.ErrorContains(t, userClient.Do(ctx, "FLUSHMEMTABLE").Err(), "admin")
+	})
+
+	t.Run("Admin user should be allowed", func(t *testing.T) {
+		require.NoError(t, adminClient.Do(ctx, "FLUSHMEMTABLE").Err())
 	})
 }

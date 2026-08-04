@@ -124,9 +124,8 @@ Status Cluster::SetSlotRanges(const std::vector<SlotRange> &slot_ranges, const s
       to_assign_node->slots[slot] = true;
       slots_nodes_[slot] = to_assign_node;
 
-      // Clear data of migrated slot or record of imported slot
+      // Clear data of migrated slot
       if (old_node == myself_ && old_node != to_assign_node) {
-        // If slot is migrated from this node
         if (migrated_slots_.count(slot) > 0) {
           auto s = srv_->slot_migrator->ClearKeysOfSlotRange(ctx, kDefaultNamespace, SlotRange::GetPoint(slot));
           if (!s.ok()) {
@@ -136,10 +135,6 @@ Status Cluster::SetSlotRanges(const std::vector<SlotRange> &slot_ranges, const s
           if (migrated_slots_.empty()) {
             srv_->slot_migrator->ReleaseForbiddenSlotRange();
           }
-        }
-        // If slot is imported into this node
-        if (imported_slots_.count(slot) > 0) {
-          imported_slots_.erase(slot);
         }
       }
     }
@@ -222,9 +217,8 @@ Status Cluster::SetClusterNodes(const std::string &nodes_str, int64_t version, b
     }
     srv_->slot_migrator->ReleaseForbiddenSlotRange();
   }
-  // Clear migrated and imported slot info
+  // Clear migrated slot info
   migrated_slots_.clear();
-  imported_slots_.clear();
 
   return Status::OK();
 }
@@ -282,6 +276,12 @@ Status Cluster::SetMasterSlaveRepl() {
 
 bool Cluster::IsNotMaster() { return myself_ == nullptr || myself_->role != kClusterMaster || srv_->IsSlave(); }
 
+void Cluster::ClearImportingSlotRange() {
+  if (myself_) {
+    myself_->importing_slot_range = {-1, -1};
+  }
+}
+
 Status Cluster::SetSlotRangeMigrated(const SlotRange &slot_range, const std::string &ip_port) {
   if (!slot_range.IsValid()) {
     return {Status::NotOK, errSlotRangeInvalid};
@@ -293,19 +293,6 @@ Status Cluster::SetSlotRangeMigrated(const SlotRange &slot_range, const std::str
   auto exclusivity = srv_->WorkExclusivityGuard();
   for (auto slot = slot_range.start; slot <= slot_range.end; slot++) {
     migrated_slots_[slot] = ip_port;
-  }
-  return Status::OK();
-}
-
-Status Cluster::SetSlotRangeImported(const SlotRange &slot_range) {
-  if (!slot_range.IsValid()) {
-    return {Status::NotOK, errSlotRangeInvalid};
-  }
-
-  // It is called by command 'cluster import'. When executing the command, the
-  // exclusive lock has been locked. Therefore, it can't be locked again.
-  for (auto slot = slot_range.start; slot <= slot_range.end; slot++) {
-    imported_slots_.insert(slot);
   }
   return Status::OK();
 }
@@ -393,11 +380,13 @@ Status Cluster::ImportSlotRange(redis::Connection *conn, const SlotRange &slot_r
     case kImportSuccess:
       s = srv_->slot_import->Success(slot_range);
       if (!s.IsOK()) return s;
+      ClearImportingSlotRange();
       INFO("[import] Mark the importing slot(s) {} as succeed", slot_range.String());
       break;
     case kImportFailed:
       s = srv_->slot_import->Fail(slot_range);
       if (!s.IsOK()) return s;
+      ClearImportingSlotRange();
       INFO("[import] Mark the importing slot(s) {} as failed", slot_range.String());
       break;
     default:
@@ -981,7 +970,6 @@ Status Cluster::Reset() {
     n = nullptr;
   }
   migrated_slots_.clear();
-  imported_slots_.clear();
 
   // The migrator's forbidden slot range persists past a successful migration
   // and is only harmless while slots_nodes_[slot] no longer points at us.

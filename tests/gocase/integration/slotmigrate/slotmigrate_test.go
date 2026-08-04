@@ -1507,7 +1507,7 @@ func TestClusterResetPreservesForbiddenSlot(t *testing.T) {
 	require.NoError(t, rdb0.FlushDB(ctx).Err())
 
 	// CLUSTER RESET HARD — this clears cluster topology, node id, migrated_slots_,
-	// imported_slots_, etc., but does NOT reset the migrator's forbidden_slot_range_.
+	// etc., but does NOT reset the migrator's forbidden_slot_range_.
 	require.Equal(t, "OK", rdb0.Do(ctx, "cluster", "reset", "hard").Val())
 
 	// Recreate the cluster; srv0 now owns slot 3300 again.

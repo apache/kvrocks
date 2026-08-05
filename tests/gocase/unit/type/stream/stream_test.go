@@ -2172,6 +2172,7 @@ func TestStreamOffset(t *testing.T) {
 		require.NoError(t, rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
 			Group:    groupName,
 			Consumer: "Alice",
+			Count:    10,
 			Streams:  []string{streamName, ">"},
 		}).Err())
 		require.Equal(t, int64(3), rdb.XInfoGroups(ctx, streamName).Val()[0].Pending)

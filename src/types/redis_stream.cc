@@ -651,9 +651,9 @@ rocksdb::Status Stream::AutoClaim(engine::Context &ctx, const Slice &stream_name
   if (total_claimed_count > 0 || deleted_count > 0) {
     current_consumer_metadata.pending_number += total_claimed_count;
     if (auto it = consumer_pending_decrements.find(consumer_name); it != consumer_pending_decrements.end()) {
-      current_consumer_metadata.pending_number =
-          current_consumer_metadata.pending_number >= it->second ? current_consumer_metadata.pending_number - it->second
-                                                                  : 0;
+      current_consumer_metadata.pending_number = current_consumer_metadata.pending_number >= it->second
+                                                     ? current_consumer_metadata.pending_number - it->second
+                                                     : 0;
       consumer_pending_decrements.erase(it);
     }
     current_consumer_metadata.last_attempted_interaction_ms = now_ms;

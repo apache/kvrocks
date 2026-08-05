@@ -24,7 +24,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <memory>
 #include <queue>
 #include <random>
 #include <unordered_set>
@@ -172,15 +171,15 @@ StatusOr<double> ComputeSimilarity(const VectorItem& left, const VectorItem& rig
   }
 }
 
-HnswIndex::HnswIndex(const SearchKey& search_key, HnswVectorFieldMetadata* vector, engine::Storage* storage,
-                     std::random_device::result_type seed)
+thread_local std::mt19937 HnswIndex::generator{std::random_device()()};
+
+HnswIndex::HnswIndex(const SearchKey& search_key, HnswVectorFieldMetadata* vector, engine::Storage* storage)
     : search_key(search_key),
       metadata(vector),
       storage(storage),
-      generator(std::mt19937(seed)),
       m_level_normalization_factor(1.0 / std::log(metadata->m)) {}
 
-uint16_t HnswIndex::RandomizeLayer() {
+uint16_t HnswIndex::RandomizeLayer() const {
   std::uniform_real_distribution<double> level_dist(0.0, 1.0);
   double r = level_dist(generator);
   double log_val = -std::log(r);
@@ -518,7 +517,7 @@ Status HnswIndex::InsertVectorEntryInternal(engine::Context& ctx, std::string_vi
 }
 
 Status HnswIndex::InsertVectorEntry(engine::Context& ctx, std::string_view key, const kqir::NumericArray& vector,
-                                    ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch) {
+                                    ObserverOrUniquePtr<rocksdb::WriteBatchBase>& batch) const {
   auto target_level = RandomizeLayer();
   return InsertVectorEntryInternal(ctx, key, vector, batch, target_level);
 }

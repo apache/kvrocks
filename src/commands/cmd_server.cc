@@ -1800,7 +1800,7 @@ REDIS_REGISTER_COMMANDS(
     MakeCmdAttr<CommandShutdown>("shutdown", 1, "read-only exclusive no-multi no-script admin", NO_KEY),
     MakeCmdAttr<CommandQuit>("quit", 1, "read-only", NO_KEY), MakeCmdAttr<CommandScan>("scan", -2, "read-only", NO_KEY),
     MakeCmdAttr<CommandRandomKey>("randomkey", 1, "read-only", NO_KEY),
-    MakeCmdAttr<CommandDebug>("debug", -2, "read-only exclusive", NO_KEY, CommandDebug::FlagGen),
+    MakeCmdAttr<CommandDebug>("debug", -2, "read-only exclusive admin", NO_KEY, CommandDebug::FlagGen),
     MakeCmdAttr<CommandCommand>("command", -1, "read-only", NO_KEY),
     MakeCmdAttr<CommandEcho>("echo", 2, "read-only", NO_KEY),
     MakeCmdAttr<CommandTime>("time", 1, "read-only ok-loading", NO_KEY),
@@ -1822,7 +1822,7 @@ REDIS_REGISTER_COMMANDS(
     MakeCmdAttr<CommandDump>("dump", 2, "read-only", 1, 1, 1),
     MakeCmdAttr<CommandPollUpdates>("pollupdates", -2, "read-only admin", NO_KEY),
     MakeCmdAttr<CommandSST>("sst", -3, "write exclusive admin", 1, 1, 1),
-    MakeCmdAttr<CommandFlushMemTable>("flushmemtable", -1, "exclusive write", NO_KEY),
-    MakeCmdAttr<CommandFlushBlockCache>("flushblockcache", 1, "exclusive write", NO_KEY),
+    MakeCmdAttr<CommandFlushMemTable>("flushmemtable", -1, "exclusive write admin", NO_KEY),
+    MakeCmdAttr<CommandFlushBlockCache>("flushblockcache", 1, "exclusive write admin", NO_KEY),
     MakeCmdAttr<CommandLatency>("latency", -2, "read-only admin", NO_KEY), )
 }  // namespace redis

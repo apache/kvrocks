@@ -426,31 +426,6 @@ class Storage {
 struct Context {
   engine::Storage *storage = nullptr;
 
-  void EnableKeyspaceEventCollection(const std::string &ns, int notify_flags) {
-    if (!ShouldNotifyKeyspaceEvent(notify_flags, kNotifyAll)) return;
-    keyspace_event_ns_ = ns;
-    keyspace_event_notify_flags_ = notify_flags;
-  }
-
-  bool IsKeyspaceEventEnabled(int type_flag) const {
-    return ShouldNotifyKeyspaceEvent(keyspace_event_notify_flags_, type_flag);
-  }
-
-  void AddKeyspaceEvent(int type_flag, std::string_view event, std::string_view key) {
-    if (!IsKeyspaceEventEnabled(type_flag)) return;
-    if (!keyspace_event_collector_) {
-      keyspace_event_collector_ =
-          std::make_unique<KeyspaceEventCollector>(keyspace_event_ns_, keyspace_event_notify_flags_);
-    }
-    keyspace_event_collector_->Add(type_flag, event, key);
-  }
-
-  bool HasKeyspaceEvents() const { return keyspace_event_collector_ && !keyspace_event_collector_->Empty(); }
-
-  std::vector<KeyspaceEvent> TakeKeyspaceEvents() {
-    return keyspace_event_collector_ ? keyspace_event_collector_->Take() : std::vector<KeyspaceEvent>{};
-  }
-
   /// batch can be nullptr if
   /// 1. The Context is not in transactional mode.
   /// 2. The Context is in transactional mode, but no write operation is performed.
@@ -499,7 +474,7 @@ struct Context {
       batch = std::move(ctx.batch);
       keyspace_event_ns_ = std::move(ctx.keyspace_event_ns_);
       keyspace_event_notify_flags_ = ctx.keyspace_event_notify_flags_;
-      keyspace_event_collector_ = std::move(ctx.keyspace_event_collector_);
+      keyspace_events_ = std::move(ctx.keyspace_events_);
 
       ctx.storage = nullptr;
       ctx.snapshot_ = nullptr;
@@ -512,7 +487,7 @@ struct Context {
         snapshot_(ctx.snapshot_),
         keyspace_event_ns_(std::move(ctx.keyspace_event_ns_)),
         keyspace_event_notify_flags_(ctx.keyspace_event_notify_flags_),
-        keyspace_event_collector_(std::move(ctx.keyspace_event_collector_)) {
+        keyspace_events_(std::move(ctx.keyspace_events_)) {
     ctx.storage = nullptr;
     ctx.snapshot_ = nullptr;
   }
@@ -528,6 +503,35 @@ struct Context {
     return snapshot_;
   }
 
+  void EnableKeyspaceEventCollection(const std::string &ns, int notify_flags) {
+    if (!ShouldNotifyKeyspaceEvent(notify_flags, kNotifyAll)) return;
+    keyspace_event_ns_ = ns;
+    keyspace_event_notify_flags_ = notify_flags;
+  }
+
+  bool IsKeyspaceEventEnabled(int type_flag) const {
+    return ShouldNotifyKeyspaceEvent(keyspace_event_notify_flags_, type_flag);
+  }
+
+  void AddKeyspaceEvent(int type_flag, std::string_view event, std::string_view key) {
+    if (!IsKeyspaceEventEnabled(type_flag)) return;
+    const int channel_flags = keyspace_event_notify_flags_ & (kNotifyKeyspace | kNotifyKeyevent);
+    keyspace_events_.emplace_back(KeyspaceEvent{
+        channel_flags,
+        std::string(event),
+        keyspace_event_ns_,
+        std::string(key),
+    });
+  }
+
+  bool HasKeyspaceEvents() const { return !keyspace_events_.empty(); }
+
+  std::vector<KeyspaceEvent> TakeKeyspaceEvents() {
+    std::vector<KeyspaceEvent> events;
+    events.swap(keyspace_events_);
+    return events;
+  }
+
  private:
   /// It is only used by NonTransactionContext
   explicit Context(engine::Storage *storage, bool txn_mode) : storage(storage), txn_context_enabled(txn_mode) {}
@@ -539,7 +543,7 @@ struct Context {
   const rocksdb::Snapshot *snapshot_ = nullptr;
   std::string keyspace_event_ns_;
   int keyspace_event_notify_flags_ = 0;
-  std::unique_ptr<KeyspaceEventCollector> keyspace_event_collector_;
+  std::vector<KeyspaceEvent> keyspace_events_;
 };
 
 }  // namespace engine

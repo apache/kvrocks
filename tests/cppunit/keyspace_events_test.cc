@@ -22,50 +22,62 @@
 
 #include <gtest/gtest.h>
 
+#include <utility>
+
 #include "config/config.h"
+#include "storage/storage.h"
 
-TEST(KeyspaceEvents, CollectorRequiresEventClassAndChannel) {
-  KeyspaceEventCollector no_channel("tenant", kNotifyString);
+TEST(KeyspaceEvents, NotificationRequiresEventClassAndChannel) {
   EXPECT_FALSE(ShouldNotifyKeyspaceEvent(kNotifyString, kNotifyString));
-  no_channel.Add(kNotifyString, "set", "key");
-  EXPECT_TRUE(no_channel.Take().empty());
-
-  KeyspaceEventCollector no_event_class("tenant", kNotifyKeyspace);
   EXPECT_FALSE(ShouldNotifyKeyspaceEvent(kNotifyKeyspace, kNotifyString));
-  no_event_class.Add(kNotifyString, "set", "key");
-  EXPECT_TRUE(no_event_class.Take().empty());
 }
 
-TEST(KeyspaceEvents, CollectorFiltersAndCapturesEvent) {
-  KeyspaceEventCollector collector("tenant", kNotifyKeyspace | kNotifyString);
-  EXPECT_TRUE(ShouldNotifyKeyspaceEvent(kNotifyKeyspace | kNotifyString, kNotifyString));
-  EXPECT_FALSE(ShouldNotifyKeyspaceEvent(kNotifyKeyspace | kNotifyString, kNotifyGeneric));
+TEST(KeyspaceEvents, ContextFiltersAndCapturesEvent) {
+  auto ctx = engine::Context::NoTransactionContext(nullptr);
+  EXPECT_FALSE(ctx.HasKeyspaceEvents());
 
-  collector.Add(kNotifyGeneric, "del", "ignored");
-  collector.Add(kNotifyString, "set", "key");
+  ctx.AddKeyspaceEvent(kNotifyString, "set", "disabled");
+  EXPECT_FALSE(ctx.HasKeyspaceEvents());
 
-  auto events = collector.Take();
+  ctx.EnableKeyspaceEventCollection("tenant", kNotifyKeyspace | kNotifyString);
+  EXPECT_TRUE(ctx.IsKeyspaceEventEnabled(kNotifyString));
+  EXPECT_FALSE(ctx.IsKeyspaceEventEnabled(kNotifyGeneric));
+
+  ctx.AddKeyspaceEvent(kNotifyGeneric, "del", "ignored");
+  EXPECT_FALSE(ctx.HasKeyspaceEvents());
+  ctx.AddKeyspaceEvent(kNotifyString, "set", "key");
+
+  auto events = ctx.TakeKeyspaceEvents();
   ASSERT_EQ(events.size(), 1);
   EXPECT_EQ(events[0].channel_flags, kNotifyKeyspace);
   EXPECT_EQ(events[0].event, "set");
   EXPECT_EQ(events[0].ns, "tenant");
   EXPECT_EQ(events[0].key, "key");
+  EXPECT_FALSE(ctx.HasKeyspaceEvents());
+  EXPECT_TRUE(ctx.TakeKeyspaceEvents().empty());
 }
 
-TEST(KeyspaceEvents, CollectorPreservesEventOrder) {
-  KeyspaceEventCollector collector("tenant", kNotifyKeyspace | kNotifyKeyevent | kNotifyAll);
-  collector.Add(kNotifyString, "set", "first");
-  collector.Add(kNotifyGeneric, "del", "second");
+TEST(KeyspaceEvents, ContextMovePreservesEventOrder) {
+  auto ctx = engine::Context::NoTransactionContext(nullptr);
+  ctx.EnableKeyspaceEventCollection("tenant", kNotifyKeyspace | kNotifyKeyevent | kNotifyAll);
+  ctx.AddKeyspaceEvent(kNotifyString, "set", "first");
+  ctx.AddKeyspaceEvent(kNotifyGeneric, "del", "second");
 
-  auto events = collector.Take();
+  auto moved_ctx = std::move(ctx);
+  auto assigned_ctx = engine::Context::NoTransactionContext(nullptr);
+  assigned_ctx = std::move(moved_ctx);
+
+  auto events = assigned_ctx.TakeKeyspaceEvents();
   ASSERT_EQ(events.size(), 2);
   EXPECT_EQ(events[0].channel_flags, kNotifyKeyspace | kNotifyKeyevent);
   EXPECT_EQ(events[0].event, "set");
+  EXPECT_EQ(events[0].ns, "tenant");
   EXPECT_EQ(events[0].key, "first");
   EXPECT_EQ(events[1].channel_flags, kNotifyKeyspace | kNotifyKeyevent);
   EXPECT_EQ(events[1].event, "del");
+  EXPECT_EQ(events[1].ns, "tenant");
   EXPECT_EQ(events[1].key, "second");
-  EXPECT_TRUE(collector.Empty());
+  EXPECT_FALSE(assigned_ctx.HasKeyspaceEvents());
 }
 
 TEST(KeyspaceEvents, ParseFlags) {

@@ -22,7 +22,6 @@
 
 #include <string>
 #include <string_view>
-#include <vector>
 
 #include "status.h"
 
@@ -43,22 +42,6 @@ struct KeyspaceEvent {
   std::string event;
   std::string ns;
   std::string key;
-};
-
-// Collects semantic keyspace events for one request context; Connection owns publish timing.
-class KeyspaceEventCollector {
- public:
-  KeyspaceEventCollector(std::string ns, int notify_flags);
-  bool IsEnabled(int type_flag) const { return ShouldNotifyKeyspaceEvent(notify_flags_, type_flag); }
-  void Add(int type_flag, std::string_view event, std::string_view key);
-  bool Empty() const { return events_.empty(); }
-  // Moves out all collected events.
-  std::vector<KeyspaceEvent> Take();
-
- private:
-  int notify_flags_;
-  std::string ns_;
-  std::vector<KeyspaceEvent> events_;
 };
 
 // Parses notify-keyspace-events flags.

@@ -684,7 +684,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
           WARN("[connection] index updating failed for key: {}", record.key);
         }
       }
-      if (s.IsOK() && ctx.HasKeyspaceEvents()) {
+      if (ctx.HasKeyspaceEvents()) {
         keyspace_events = ctx.TakeKeyspaceEvents();
       }
     }

@@ -20,9 +20,6 @@
 
 #pragma once
 
-#include <memory>
-#include <vector>
-
 #include "cuckoo_filter.h"
 #include "storage/redis_db.h"
 #include "storage/redis_metadata.h"
@@ -60,8 +57,6 @@ class CuckooChain : public Database {
   rocksdb::Status Delete(engine::Context &ctx, const Slice &user_key, const Slice &item, bool *deleted);
 
  private:
-  using CuckooSubFilters = std::vector<std::unique_ptr<CuckooSubFilter>>;
-
   // Loads metadata for a cuckoo filter key.
   rocksdb::Status getCuckooChainMetadata(engine::Context &ctx, const Slice &ns_key, CuckooChainMetadata *metadata);
 
@@ -77,16 +72,8 @@ class CuckooChain : public Database {
                                                     uint64_t hash, uint8_t fingerprint, bool *inserted);
   rocksdb::Status commitPagesAndMetadata(engine::Context &ctx, const Slice &user_key, const std::string &ns_key,
                                          const CuckooChainMetadata *metadata, CuckooPageCache &pages);
-  rocksdb::Status buildSubFilters(engine::Context &ctx, const std::string &ns_key, const CuckooChainMetadata &metadata,
-                                  CuckooSubFilters *sub_filters);
-  rocksdb::Status compactCuckooChain(CuckooChainMetadata *metadata, CuckooSubFilters *sub_filters,
-                                     std::vector<uint16_t> *freed_filter_indexes, bool cont);
-  rocksdb::Status compactSingleSubFilter(uint16_t source_index, CuckooSubFilters *sub_filters, bool *fully_compacted);
-  rocksdb::Status deleteSubFilterPages(rocksdb::WriteBatchBase *batch, const std::string &ns_key,
-                                       const CuckooChainMetadata &metadata, uint16_t filter_index);
   rocksdb::Status commitDelete(engine::Context &ctx, const Slice &user_key, const std::string &ns_key,
-                               CuckooChainMetadata *metadata, CuckooSubFilters *sub_filters,
-                               const std::vector<uint16_t> &freed_filter_indexes);
+                               CuckooChainMetadata *metadata, CuckooSubFilter *sub_filter);
 };
 
 }  // namespace redis

@@ -21,7 +21,6 @@
 #include "redis_cuckoo_chain.h"
 
 #include "cuckoo_filter.h"
-#include "cuckoo_filter_page.h"
 #include "cuckoo_filter_sub_filter.h"
 #include "logging.h"
 
@@ -186,7 +185,7 @@ rocksdb::Status CuckooChain::Delete(engine::Context &ctx, const Slice &user_key,
 
   CuckooChainMetadata metadata(false);
   auto s = getCuckooChainMetadata(ctx, ns_key, &metadata);
-  if (s.IsNotFound()) return rocksdb::Status::OK();
+  if (s.IsNotFound()) return rocksdb::Status::NotFound("Not found");
   if (!s.ok()) return s;
 
   s = validateMetadata(metadata);
@@ -195,13 +194,17 @@ rocksdb::Status CuckooChain::Delete(engine::Context &ctx, const Slice &user_key,
   uint64_t hash = CuckooFilterHelper::Hash(item.data(), item.size());
   uint8_t fingerprint = CuckooFilterHelper::GenerateFingerprint(hash);
 
-  CuckooSubFilters sub_filters;
-  s = buildSubFilters(ctx, ns_key, metadata, &sub_filters);
-  if (!s.ok()) return s;
-
   for (int filter_idx = static_cast<int>(metadata.n_filters) - 1; filter_idx >= 0; --filter_idx) {
+    uint32_t num_buckets = 0;
+    s = CuckooFilterHelper::GetFilterNumBuckets(metadata.base_capacity, metadata.expansion, metadata.bucket_size,
+                                                static_cast<uint16_t>(filter_idx), &num_buckets);
+    if (!s.ok()) return s;
+
+    CuckooSubFilter sub_filter(storage_, ctx, ns_key, storage_->IsSlotIdEncoded(), metadata.version,
+                               metadata.bucket_size, metadata.page_size, static_cast<uint16_t>(filter_idx),
+                               num_buckets);
     bool found = false;
-    s = sub_filters[filter_idx]->Delete(hash, fingerprint, &found);
+    s = sub_filter.Delete(hash, fingerprint, &found);
     if (!s.ok()) return s;
     if (!found) continue;
 
@@ -209,19 +212,10 @@ rocksdb::Status CuckooChain::Delete(engine::Context &ctx, const Slice &user_key,
     metadata.size--;
     metadata.num_deleted_items++;
     *deleted = true;
-    break;
+    return commitDelete(ctx, user_key, ns_key, &metadata, &sub_filter);
   }
 
-  if (!*deleted) return rocksdb::Status::OK();
-
-  std::vector<uint16_t> freed_filter_indexes;
-  if (metadata.n_filters > 1 &&
-      static_cast<long double>(metadata.num_deleted_items) > static_cast<long double>(metadata.size) * 0.10L) {
-    s = compactCuckooChain(&metadata, &sub_filters, &freed_filter_indexes, false);
-    if (!s.ok()) return s;
-  }
-
-  return commitDelete(ctx, user_key, ns_key, &metadata, &sub_filters, freed_filter_indexes);
+  return rocksdb::Status::OK();
 }
 
 rocksdb::Status CuckooChain::tryCuckooInsert(engine::Context &ctx, const Slice &user_key, const std::string &ns_key,
@@ -336,106 +330,15 @@ rocksdb::Status CuckooChain::commitSubFilterAndMetadata(engine::Context &ctx, co
   return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
-rocksdb::Status CuckooChain::buildSubFilters(engine::Context &ctx, const std::string &ns_key,
-                                             const CuckooChainMetadata &metadata, CuckooSubFilters *sub_filters) {
-  sub_filters->clear();
-  sub_filters->reserve(metadata.n_filters);
-  for (uint16_t filter_idx = 0; filter_idx < metadata.n_filters; ++filter_idx) {
-    uint32_t num_buckets = 0;
-    auto s = CuckooFilterHelper::GetFilterNumBuckets(metadata.base_capacity, metadata.expansion, metadata.bucket_size,
-                                                     filter_idx, &num_buckets);
-    if (!s.ok()) return s;
-
-    sub_filters->push_back(std::make_unique<CuckooSubFilter>(storage_, ctx, ns_key, storage_->IsSlotIdEncoded(),
-                                                             metadata.version, metadata.bucket_size, metadata.page_size,
-                                                             filter_idx, num_buckets));
-  }
-  return rocksdb::Status::OK();
-}
-
-rocksdb::Status CuckooChain::compactCuckooChain(CuckooChainMetadata *metadata, CuckooSubFilters *sub_filters,
-                                                std::vector<uint16_t> *freed_filter_indexes, bool cont) {
-  for (int source_idx = static_cast<int>(metadata->n_filters) - 1; source_idx >= 1; --source_idx) {
-    bool fully_compacted = false;
-    auto s = compactSingleSubFilter(static_cast<uint16_t>(source_idx), sub_filters, &fully_compacted);
-    if (!s.ok()) return s;
-
-    if (fully_compacted && source_idx == static_cast<int>(metadata->n_filters) - 1) {
-      freed_filter_indexes->push_back(static_cast<uint16_t>(source_idx));
-      metadata->n_filters--;
-    }
-
-    if (!fully_compacted && !cont) break;
-  }
-
-  metadata->num_deleted_items = 0;
-  return rocksdb::Status::OK();
-}
-
-rocksdb::Status CuckooChain::compactSingleSubFilter(uint16_t source_index, CuckooSubFilters *sub_filters,
-                                                    bool *fully_compacted) {
-  *fully_compacted = true;
-  auto *source_filter = (*sub_filters)[source_index].get();
-  for (uint32_t bucket_idx = 0; bucket_idx < source_filter->NumBuckets(); ++bucket_idx) {
-    for (uint32_t slot_idx = 0; slot_idx < source_filter->BucketSize(); ++slot_idx) {
-      uint8_t fingerprint = 0;
-      auto s = source_filter->GetBucketSlot(bucket_idx, slot_idx, &fingerprint);
-      if (!s.ok()) return s;
-      if (fingerprint == 0) continue;
-
-      bool relocated = false;
-      for (uint16_t target_idx = 0; target_idx < source_index; ++target_idx) {
-        bool inserted = false;
-        s = (*sub_filters)[target_idx]->TryInsert(bucket_idx, fingerprint, &inserted);
-        if (!s.ok()) return s;
-        if (!inserted) continue;
-
-        s = source_filter->SetBucketSlot(bucket_idx, slot_idx, 0);
-        if (!s.ok()) return s;
-        relocated = true;
-        break;
-      }
-
-      if (!relocated) *fully_compacted = false;
-    }
-  }
-  return rocksdb::Status::OK();
-}
-
-rocksdb::Status CuckooChain::deleteSubFilterPages(rocksdb::WriteBatchBase *batch, const std::string &ns_key,
-                                                  const CuckooChainMetadata &metadata, uint16_t filter_index) {
-  uint32_t num_buckets = 0;
-  auto s = CuckooFilterHelper::GetFilterNumBuckets(metadata.base_capacity, metadata.expansion, metadata.bucket_size,
-                                                   filter_index, &num_buckets);
-  if (!s.ok()) return s;
-
-  uint32_t page_count = GetCuckooPageCount(num_buckets, metadata.page_size, metadata.bucket_size);
-  for (uint32_t page_index = 0; page_index < page_count; ++page_index) {
-    std::string page_key =
-        GetCuckooPageKey(ns_key, metadata.version, storage_->IsSlotIdEncoded(), filter_index, page_index);
-    s = batch->Delete(page_key);
-    if (!s.ok()) return s;
-  }
-  return rocksdb::Status::OK();
-}
-
 rocksdb::Status CuckooChain::commitDelete(engine::Context &ctx, const Slice &user_key, const std::string &ns_key,
-                                          CuckooChainMetadata *metadata, CuckooSubFilters *sub_filters,
-                                          const std::vector<uint16_t> &freed_filter_indexes) {
+                                          CuckooChainMetadata *metadata, CuckooSubFilter *sub_filter) {
   auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisCuckooFilter, std::vector<std::string>{"del", user_key.ToString()});
   auto s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) return s;
 
-  for (auto &sub_filter : *sub_filters) {
-    s = sub_filter->WriteToBatch(batch.Get());
-    if (!s.ok()) return s;
-  }
-
-  for (uint16_t filter_index : freed_filter_indexes) {
-    s = deleteSubFilterPages(batch.Get(), ns_key, *metadata, filter_index);
-    if (!s.ok()) return s;
-  }
+  s = sub_filter->WriteToBatch(batch.Get());
+  if (!s.ok()) return s;
 
   std::string metadata_bytes;
   metadata->Encode(&metadata_bytes);

@@ -46,14 +46,6 @@ uint32_t GetExpectedPageSize(uint32_t page_index, uint32_t num_buckets, uint32_t
   return page_bucket_count * bucket_size;
 }
 
-}  // namespace
-
-uint32_t GetCuckooPageCount(uint32_t num_buckets, uint32_t page_size, uint8_t bucket_size) {
-  if (num_buckets == 0) return 0;
-  uint32_t buckets_per_page = GetBucketsPerPage(page_size, bucket_size);
-  return GetPageIndex(num_buckets - 1, buckets_per_page) + 1;
-}
-
 std::string GetCuckooPageKey(const Slice &ns_key, uint64_t version, bool slot_id_encoded, uint16_t filter_index,
                              uint32_t page_index) {
   std::string sub_key;
@@ -61,6 +53,8 @@ std::string GetCuckooPageKey(const Slice &ns_key, uint64_t version, bool slot_id
   PutFixed32(&sub_key, page_index);
   return InternalKey(ns_key, sub_key, version, slot_id_encoded).Encode();
 }
+
+}  // namespace
 
 CuckooPageCache::CuckooPageCache(engine::Storage *storage, engine::Context &ctx, const Slice &ns_key,
                                  bool slot_id_encoded, uint64_t version, uint8_t bucket_size, uint32_t page_size)

@@ -116,7 +116,7 @@ func TestCuckooFilter(t *testing.T) {
 	t.Run("Del missing key", func(t *testing.T) {
 		key := "test_cuckoo_filter_del_missing"
 		require.NoError(t, rdb.Del(ctx, key).Err())
-		require.Equal(t, int64(0), rdb.Do(ctx, "cf.del", key, "item").Val())
+		require.ErrorContains(t, rdb.Do(ctx, "cf.del", key, "item").Err(), "Not found")
 	})
 
 	t.Run("Del wrong type", func(t *testing.T) {

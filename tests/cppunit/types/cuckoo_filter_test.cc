@@ -784,11 +784,11 @@ TEST_F(RedisCuckooFilterTest, ExpansionWritesNewFilterIndexPage) {
   EXPECT_EQ(page.size(), expected_page_size);
 }
 
-TEST_F(RedisCuckooFilterTest, DeleteMissingKeyReturnsFalse) {
+TEST_F(RedisCuckooFilterTest, DeleteMissingKeyReturnsNotFound) {
   bool deleted = true;
   auto s = cuckoo_->Delete(*ctx_, key_, "missing", &deleted);
-  ASSERT_TRUE(s.ok()) << s.ToString();
-  EXPECT_FALSE(deleted);
+  EXPECT_TRUE(s.IsNotFound()) << s.ToString();
+  EXPECT_NE(s.ToString().find("Not found"), std::string::npos);
 }
 
 TEST_F(RedisCuckooFilterTest, DeleteBasicClearsOneItem) {
@@ -899,7 +899,7 @@ TEST_F(RedisCuckooFilterTest, DeleteSearchesNewestFilterFirst) {
   EXPECT_EQ(readFingerprint(key_, stored_metadata, 1, bucket, 0), 0);
 }
 
-TEST_F(RedisCuckooFilterTest, DeleteTriggersCompactAndFreesLatestFilter) {
+TEST_F(RedisCuckooFilterTest, DeleteDoesNotCompactFilters) {
   CuckooChainMetadata metadata;
   metadata.size = 8;
   metadata.base_capacity = 2;
@@ -933,77 +933,12 @@ TEST_F(RedisCuckooFilterTest, DeleteTriggersCompactAndFreesLatestFilter) {
 
   auto stored_metadata = getMetadata(key_);
   EXPECT_EQ(stored_metadata.size, 7);
-  EXPECT_EQ(stored_metadata.n_filters, 1);
-  EXPECT_EQ(stored_metadata.num_deleted_items, 0);
-  EXPECT_EQ(readFingerprint(key_, stored_metadata, 0, movable_bucket, 0), movable_fingerprint);
+  EXPECT_EQ(stored_metadata.n_filters, 2);
+  EXPECT_EQ(stored_metadata.num_deleted_items, 2);
+  EXPECT_EQ(readFingerprint(key_, stored_metadata, 1, movable_bucket, 0), movable_fingerprint);
+  EXPECT_EQ(readFingerprint(key_, stored_metadata, 1, delete_bucket, 0), 0);
 
   std::string page;
   s = readPage(makePageKey(key_, metadata, 1, 0), &page);
-  EXPECT_TRUE(s.IsNotFound()) << s.ToString();
-}
-
-TEST_F(RedisCuckooFilterTest, CompactStopsOnFailedRelocation) {
-  CuckooChainMetadata metadata;
-  metadata.size = 8;
-  metadata.base_capacity = 2;
-  metadata.bucket_size = 1;
-  metadata.max_iterations = 1;
-  metadata.expansion = 1;
-  metadata.n_filters = 2;
-  metadata.num_deleted_items = 1;
-  metadata.page_size = 4;
-  writeMetadata(key_, metadata);
-
-  uint32_t num_buckets = 0;
-  auto s = redis::CuckooFilterHelper::GetFilterNumBuckets(metadata.base_capacity, metadata.expansion,
-                                                          metadata.bucket_size, 0, &num_buckets);
-  ASSERT_TRUE(s.ok()) << s.ToString();
-  ASSERT_EQ(num_buckets, 4);
-
-  constexpr uint32_t blocked_bucket = 0;
-  constexpr uint8_t blocked_fingerprint = 7;
-  auto blocked_alt = redis::CuckooFilterHelper::GetAltBucketIndex(blocked_bucket, blocked_fingerprint, num_buckets);
-  ASSERT_NE(blocked_alt, blocked_bucket);
-  placeFingerprint(key_, metadata, 0, num_buckets, blocked_bucket, 0, 101);
-  placeFingerprint(key_, metadata, 0, num_buckets, blocked_alt, 0, 102);
-  placeFingerprint(key_, metadata, 1, num_buckets, blocked_bucket, 0, blocked_fingerprint);
-
-  uint32_t movable_bucket = num_buckets;
-  for (uint32_t bucket = 0; bucket < num_buckets; ++bucket) {
-    if (bucket != blocked_bucket && bucket != blocked_alt) {
-      movable_bucket = bucket;
-      break;
-    }
-  }
-  ASSERT_LT(movable_bucket, num_buckets);
-  constexpr uint8_t movable_fingerprint = 88;
-  placeFingerprint(key_, metadata, 1, num_buckets, movable_bucket, 0, movable_fingerprint);
-
-  std::string item;
-  uint8_t delete_fingerprint = 0;
-  uint32_t delete_bucket = num_buckets;
-  for (int i = 0; i < 10000; ++i) {
-    auto candidate = "delete_" + std::to_string(i);
-    auto hash = redis::CuckooFilterHelper::Hash(candidate);
-    auto bucket = static_cast<uint32_t>(hash % num_buckets);
-    if (bucket == blocked_bucket || bucket == movable_bucket) continue;
-    item = candidate;
-    delete_fingerprint = redis::CuckooFilterHelper::GenerateFingerprint(hash);
-    delete_bucket = bucket;
-    break;
-  }
-  ASSERT_FALSE(item.empty());
-  placeFingerprint(key_, metadata, 1, num_buckets, delete_bucket, 0, delete_fingerprint);
-
-  bool deleted = false;
-  s = cuckoo_->Delete(*ctx_, key_, item, &deleted);
-  ASSERT_TRUE(s.ok()) << s.ToString();
-  EXPECT_TRUE(deleted);
-
-  auto stored_metadata = getMetadata(key_);
-  EXPECT_EQ(stored_metadata.size, 7);
-  EXPECT_EQ(stored_metadata.n_filters, 2);
-  EXPECT_EQ(stored_metadata.num_deleted_items, 0);
-  EXPECT_EQ(readFingerprint(key_, stored_metadata, 0, movable_bucket, 0), movable_fingerprint);
-  EXPECT_EQ(readFingerprint(key_, stored_metadata, 1, blocked_bucket, 0), blocked_fingerprint);
+  EXPECT_TRUE(s.ok()) << s.ToString();
 }

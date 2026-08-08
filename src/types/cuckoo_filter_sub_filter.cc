@@ -77,14 +77,6 @@ rocksdb::Status CuckooSubFilter::Delete(uint64_t hash, uint8_t fingerprint, bool
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status CuckooSubFilter::GetBucketSlot(uint32_t bucket_index, uint32_t slot_index, uint8_t *fingerprint) {
-  return pages_.GetBucketSlot(filter_index_, num_buckets_, bucket_index, slot_index, fingerprint);
-}
-
-rocksdb::Status CuckooSubFilter::SetBucketSlot(uint32_t bucket_index, uint32_t slot_index, uint8_t fingerprint) {
-  return pages_.SetBucketSlot(filter_index_, num_buckets_, bucket_index, slot_index, fingerprint);
-}
-
 rocksdb::Status CuckooSubFilter::TryKickOutInsert(uint64_t hash, uint8_t fingerprint, uint16_t max_iterations,
                                                   bool *inserted) {
   *inserted = false;

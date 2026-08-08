@@ -35,14 +35,8 @@ class CuckooSubFilter {
                   uint64_t version, uint8_t bucket_size, uint32_t page_size, uint16_t filter_index,
                   uint32_t num_buckets);
 
-  uint16_t Index() const { return filter_index_; }
-  uint8_t BucketSize() const { return bucket_size_; }
-  uint32_t NumBuckets() const { return num_buckets_; }
-
   rocksdb::Status TryInsert(uint64_t hash, uint8_t fingerprint, bool *inserted);
   rocksdb::Status Delete(uint64_t hash, uint8_t fingerprint, bool *deleted);
-  rocksdb::Status GetBucketSlot(uint32_t bucket_index, uint32_t slot_index, uint8_t *fingerprint);
-  rocksdb::Status SetBucketSlot(uint32_t bucket_index, uint32_t slot_index, uint8_t fingerprint);
   // Performs speculative kick-out mutations in the page cache. On success, dirty pages remain staged for
   // WriteToBatch(); on inserted=false or non-OK status, cached pages are discarded before returning.
   rocksdb::Status TryKickOutInsert(uint64_t hash, uint8_t fingerprint, uint16_t max_iterations, bool *inserted);

@@ -1356,6 +1356,18 @@ static void CheckLagValid(const StreamMetadata &stream_metadata, StreamConsumerG
   if (stream_metadata.entries_added == 0) {
     group_metadata.lag = 0;
     valid = true;
+  } else if (stream_metadata.size == 0) {
+    // All entries deleted; the stream is empty.
+    group_metadata.lag = 0;
+    valid = true;
+  } else if (group_metadata.last_delivered_id < stream_metadata.first_entry_id &&
+             stream_metadata.max_deleted_entry_id < stream_metadata.first_entry_id) {
+    // Cursor and max tombstone are both behind the first live entry, so every remaining
+    // entry is unread: lag is the current stream length. Mirrors Redis streamReplyWithCGLag
+    // and avoids trusting an entries_read that XGROUP SETID/ENTRIESREAD set inconsistently
+    // with last-delivered-id.
+    group_metadata.lag = stream_metadata.size;
+    valid = true;
   } else if (group_metadata.entries_read != -1 &&
              !StreamRangeHasTombstones(stream_metadata, group_metadata.last_delivered_id)) {
     group_metadata.lag = stream_metadata.entries_added - group_metadata.entries_read;

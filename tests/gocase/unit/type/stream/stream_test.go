@@ -2174,7 +2174,7 @@ func TestStreamOffset(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, groups, 1)
 		require.EqualValues(t, 3, groups[0].EntriesRead)
-		require.GreaterOrEqual(t, groups[0].Lag, int64(0))
+		require.EqualValues(t, 3, groups[0].Lag)
 
 		// XGROUP SETID clamps the same way.
 		require.NoError(t, rdb.Do(ctx, "XGROUP", "SETID", streamName, groupName, "0", "ENTRIESREAD", 1000000).Err())
@@ -2183,7 +2183,7 @@ func TestStreamOffset(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, groups, 1)
 		require.EqualValues(t, 3, groups[0].EntriesRead)
-		require.GreaterOrEqual(t, groups[0].Lag, int64(0))
+		require.EqualValues(t, 3, groups[0].Lag)
 	})
 
 	t.Run("XAUTOCLAIM with out of range count", func(t *testing.T) {

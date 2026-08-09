@@ -53,25 +53,25 @@ rocksdb::Status CuckooSubFilter::Delete(uint64_t hash, uint8_t fingerprint, bool
   if (!s.ok()) return s;
 
   for (uint32_t slot_idx = 0; slot_idx < bucket_size_; ++slot_idx) {
-    uint8_t current_fingerprint = 0;
+    uint8_t current_fingerprint = kEmptyCuckooFingerprint;
     s = pages_.GetBucketSlot(filter_index_, num_buckets_, bucket1_idx, slot_idx, &current_fingerprint);
     if (!s.ok()) return s;
     if (current_fingerprint != fingerprint) continue;
 
     *deleted = true;
-    return pages_.SetBucketSlot(filter_index_, num_buckets_, bucket1_idx, slot_idx, 0);
+    return pages_.SetBucketSlot(filter_index_, num_buckets_, bucket1_idx, slot_idx, kEmptyCuckooFingerprint);
   }
 
   if (bucket1_idx == bucket2_idx) return rocksdb::Status::OK();
 
   for (uint32_t slot_idx = 0; slot_idx < bucket_size_; ++slot_idx) {
-    uint8_t current_fingerprint = 0;
+    uint8_t current_fingerprint = kEmptyCuckooFingerprint;
     s = pages_.GetBucketSlot(filter_index_, num_buckets_, bucket2_idx, slot_idx, &current_fingerprint);
     if (!s.ok()) return s;
     if (current_fingerprint != fingerprint) continue;
 
     *deleted = true;
-    return pages_.SetBucketSlot(filter_index_, num_buckets_, bucket2_idx, slot_idx, 0);
+    return pages_.SetBucketSlot(filter_index_, num_buckets_, bucket2_idx, slot_idx, kEmptyCuckooFingerprint);
   }
 
   return rocksdb::Status::OK();

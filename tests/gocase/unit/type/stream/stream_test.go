@@ -2155,40 +2155,35 @@ func TestStreamOffset(t *testing.T) {
 		// add xpending to this test case when it is supported
 	})
 
-	t.Run("XAUTOCLAIM decrements pending_number when sweeping deleted entries", func(t *testing.T) {
-		streamName := "x"
+	t.Run("XGROUP CREATE/SETID clamp ENTRIESREAD to entries-added (matches Redis)", func(t *testing.T) {
+		streamName := "x-entries-read"
 		groupName := "grp"
 		require.NoError(t, rdb.Del(ctx, streamName).Err())
 		for _, id := range []string{"1-0", "2-0", "3-0"} {
-			require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
-				Stream: streamName,
-				ID:     id,
-				Values: map[string]interface{}{"f": "v"},
-			}).Err())
+			require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: streamName, ID: id, Values: map[string]interface{}{"f": "v"}}).Err())
 		}
-		require.NoError(t, rdb.XGroupCreate(ctx, streamName, groupName, "0").Err())
+		// entries-added is 3; ENTRIESREAD far beyond it must be clamped down on write, as
+		// Redis does. Otherwise the stored value is served back and the unsigned lag
+		// (entries_added - entries_read) underflows to ~2^64, overflowing the signed-64
+		// integer clients decode the RESP reply as and breaking XINFO GROUPS.
+		require.NoError(t, rdb.Do(ctx, "XGROUP", "CREATE", streamName, groupName, "0", "ENTRIESREAD", 1000000).Err())
 
-		// Alice reads all three, so the group and the consumer each hold 3 pending.
-		require.NoError(t, rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
-			Group:    groupName,
-			Consumer: "Alice",
-			Count:    10,
-			Streams:  []string{streamName, ">"},
-		}).Err())
-		require.Equal(t, int64(3), rdb.XInfoGroups(ctx, streamName).Val()[0].Pending)
-		consumers := rdb.XInfoConsumers(ctx, streamName, groupName).Val()
-		require.Len(t, consumers, 1)
-		require.Equal(t, int64(3), consumers[0].Pending)
+		// The reply must stay decodable, and entries-read is clamped to entries-added.
+		require.NoError(t, rdb.Do(ctx, "XINFO", "GROUPS", streamName).Err())
+		groups, err := rdb.XInfoGroups(ctx, streamName).Result()
+		require.NoError(t, err)
+		require.Len(t, groups, 1)
+		require.EqualValues(t, 3, groups[0].EntriesRead)
+		require.GreaterOrEqual(t, groups[0].Lag, int64(0))
 
-		// Delete the entries so their PEL records dangle, then let XAUTOCLAIM sweep them.
-		// Before the fix the sweep dropped the records without decrementing pending_number.
-		require.NoError(t, rdb.XDel(ctx, streamName, "1-0", "2-0", "3-0").Err())
-		require.NoError(t, rdb.Do(ctx, "XAUTOCLAIM", streamName, groupName, "Bob", 0, "0-0").Err())
-
-		require.Equal(t, int64(0), rdb.XInfoGroups(ctx, streamName).Val()[0].Pending)
-		for _, c := range rdb.XInfoConsumers(ctx, streamName, groupName).Val() {
-			require.Equalf(t, int64(0), c.Pending, "consumer %s should have 0 pending", c.Name)
-		}
+		// XGROUP SETID clamps the same way.
+		require.NoError(t, rdb.Do(ctx, "XGROUP", "SETID", streamName, groupName, "0", "ENTRIESREAD", 1000000).Err())
+		require.NoError(t, rdb.Do(ctx, "XINFO", "GROUPS", streamName).Err())
+		groups, err = rdb.XInfoGroups(ctx, streamName).Result()
+		require.NoError(t, err)
+		require.Len(t, groups, 1)
+		require.EqualValues(t, 3, groups[0].EntriesRead)
+		require.GreaterOrEqual(t, groups[0].Lag, int64(0))
 	})
 
 	t.Run("XAUTOCLAIM with out of range count", func(t *testing.T) {

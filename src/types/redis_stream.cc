@@ -720,6 +720,18 @@ rocksdb::Status Stream::AutoClaim(engine::Context &ctx, const Slice &stream_name
 
   return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
+
+// Mirror Redis (t_stream.c, XGROUP CREATE/SETID): an ENTRIESREAD past entries_added is
+// clamped down on write. lag is stored and served unsigned (entries_added - entries_read),
+// so an out-of-range entries_read underflows it to ~2^64 and overflows the signed-64 integer
+// clients decode the RESP reply as, breaking XINFO GROUPS.
+static int64_t clampEntriesRead(int64_t entries_read, uint64_t entries_added) {
+  if (entries_read != -1 && static_cast<uint64_t>(entries_read) > entries_added) {
+    return static_cast<int64_t>(entries_added);
+  }
+  return entries_read;
+}
+
 rocksdb::Status Stream::CreateGroup(engine::Context &ctx, const Slice &stream_name,
                                     const StreamXGroupCreateOptions &options, const std::string &group_name) {
   std::string ns_key = AppendNamespacePrefix(stream_name);
@@ -743,7 +755,7 @@ rocksdb::Status Stream::CreateGroup(engine::Context &ctx, const Slice &stream_na
       return rocksdb::Status::InvalidArgument(s.Msg());
     }
   }
-  consumer_group_metadata.entries_read = options.entries_read;
+  consumer_group_metadata.entries_read = clampEntriesRead(options.entries_read, metadata.entries_added);
   std::string entry_key = internalKeyFromGroupName(ns_key, metadata, group_name);
   std::string entry_value = encodeStreamConsumerGroupMetadataValue(consumer_group_metadata);
 
@@ -976,7 +988,7 @@ rocksdb::Status Stream::GroupSetId(engine::Context &ctx, const Slice &stream_nam
       return rocksdb::Status::InvalidArgument(s.Msg());
     }
   }
-  consumer_group_metadata.entries_read = options.entries_read;
+  consumer_group_metadata.entries_read = clampEntriesRead(options.entries_read, metadata.entries_added);
   std::string entry_value = encodeStreamConsumerGroupMetadataValue(consumer_group_metadata);
 
   auto batch = storage_->GetWriteBatchBase();

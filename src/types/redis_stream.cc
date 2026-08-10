@@ -643,19 +643,25 @@ rocksdb::Status Stream::AutoClaim(engine::Context &ctx, const Slice &stream_name
   // A claim keeps the group total (entry moves between consumers); a deleted dangling
   // entry leaves the PEL, so decrement both its consumer and the group. Saturating.
   const uint64_t deleted_count = deleted_entries.size();
+  // The current consumer never appears in claimed_consumer_entity_count (we only claim from other
+  // consumers), so keep its own deleted-entry decrement in a scalar and let the map hold only the
+  // other consumers, avoiding a find-and-erase on the map.
+  uint64_t current_consumer_decrement = 0;
   std::map<std::string, uint64_t> consumer_pending_decrements = claimed_consumer_entity_count;
   for (const auto &[consumer, cnt] : deleted_consumer_count) {
-    consumer_pending_decrements[consumer] += cnt;
+    if (consumer == consumer_name) {
+      current_consumer_decrement += cnt;
+    } else {
+      consumer_pending_decrements[consumer] += cnt;
+    }
   }
 
   if (total_claimed_count > 0 || deleted_count > 0) {
     current_consumer_metadata.pending_number += total_claimed_count;
-    if (auto it = consumer_pending_decrements.find(consumer_name); it != consumer_pending_decrements.end()) {
-      current_consumer_metadata.pending_number = current_consumer_metadata.pending_number >= it->second
-                                                     ? current_consumer_metadata.pending_number - it->second
-                                                     : 0;
-      consumer_pending_decrements.erase(it);
-    }
+    current_consumer_metadata.pending_number =
+        current_consumer_metadata.pending_number >= current_consumer_decrement
+            ? current_consumer_metadata.pending_number - current_consumer_decrement
+            : 0;
     current_consumer_metadata.last_attempted_interaction_ms = now_ms;
 
     s = batch->Put(stream_cf_handle_, consumer_key, encodeStreamConsumerMetadataValue(current_consumer_metadata));

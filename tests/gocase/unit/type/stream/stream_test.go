@@ -2168,7 +2168,8 @@ func TestStreamOffset(t *testing.T) {
 		// integer clients decode the RESP reply as and breaking XINFO GROUPS.
 		require.NoError(t, rdb.Do(ctx, "XGROUP", "CREATE", streamName, groupName, "0", "ENTRIESREAD", 1000000).Err())
 
-		// The reply must stay decodable, and entries-read is clamped to entries-added.
+		// The reply must stay decodable, and entries-read is clamped to entries-added. The
+		// cursor is at 0-0 (behind the first entry), so lag is the full stream length, 3.
 		require.NoError(t, rdb.Do(ctx, "XINFO", "GROUPS", streamName).Err())
 		groups, err := rdb.XInfoGroups(ctx, streamName).Result()
 		require.NoError(t, err)
@@ -2184,6 +2185,78 @@ func TestStreamOffset(t *testing.T) {
 		require.Len(t, groups, 1)
 		require.EqualValues(t, 3, groups[0].EntriesRead)
 		require.EqualValues(t, 3, groups[0].Lag)
+
+		// A normal XREADGROUP after the clamp advances the cursor and keeps incrementing
+		// entries_read, so it can run past entries_added (kvrocks does not recompute it from
+		// the delivered ID the way Redis does). The serve-path guard in CheckLagValid must
+		// still keep the unsigned lag from underflowing to ~2^64: XINFO GROUPS stays decodable
+		// and, with every entry now read, reports lag 0.
+		require.NoError(t, rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    groupName,
+			Consumer: "c1",
+			Count:    10,
+			Streams:  []string{streamName, ">"},
+		}).Err())
+		require.NoError(t, rdb.Do(ctx, "XINFO", "GROUPS", streamName).Err())
+		groups, err = rdb.XInfoGroups(ctx, streamName).Result()
+		require.NoError(t, err)
+		require.Len(t, groups, 1)
+		require.EqualValues(t, 0, groups[0].Lag)
+	})
+
+	t.Run("XINFO GROUPS lag is 0 when the stream is emptied (matches Redis)", func(t *testing.T) {
+		streamName := "x-empty-lag"
+		groupName := "grp"
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+		for _, id := range []string{"1-0", "2-0", "3-0"} {
+			require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: streamName, ID: id, Values: map[string]interface{}{"f": "v"}}).Err())
+		}
+		require.NoError(t, rdb.XGroupCreate(ctx, streamName, groupName, "0").Err())
+
+		// Delete every entry: the stream is empty (size 0) but entries-added stays 3. Redis
+		// reports lag 0 here, and the reply must stay decodable.
+		require.NoError(t, rdb.XDel(ctx, streamName, "1-0", "2-0", "3-0").Err())
+		require.NoError(t, rdb.Do(ctx, "XINFO", "GROUPS", streamName).Err())
+		groups, err := rdb.XInfoGroups(ctx, streamName).Result()
+		require.NoError(t, err)
+		require.Len(t, groups, 1)
+		require.EqualValues(t, 0, groups[0].Lag)
+	})
+
+	t.Run("XAUTOCLAIM decrements pending_number when sweeping deleted entries", func(t *testing.T) {
+		streamName := "x"
+		groupName := "grp"
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+		for _, id := range []string{"1-0", "2-0", "3-0"} {
+			require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+				Stream: streamName,
+				ID:     id,
+				Values: map[string]interface{}{"f": "v"},
+			}).Err())
+		}
+		require.NoError(t, rdb.XGroupCreate(ctx, streamName, groupName, "0").Err())
+
+		// Alice reads all three, so the group and the consumer each hold 3 pending.
+		require.NoError(t, rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    groupName,
+			Consumer: "Alice",
+			Count:    10,
+			Streams:  []string{streamName, ">"},
+		}).Err())
+		require.Equal(t, int64(3), rdb.XInfoGroups(ctx, streamName).Val()[0].Pending)
+		consumers := rdb.XInfoConsumers(ctx, streamName, groupName).Val()
+		require.Len(t, consumers, 1)
+		require.Equal(t, int64(3), consumers[0].Pending)
+
+		// Delete the entries so their PEL records dangle, then let XAUTOCLAIM sweep them.
+		// Before the fix the sweep dropped the records without decrementing pending_number.
+		require.NoError(t, rdb.XDel(ctx, streamName, "1-0", "2-0", "3-0").Err())
+		require.NoError(t, rdb.Do(ctx, "XAUTOCLAIM", streamName, groupName, "Bob", 0, "0-0").Err())
+
+		require.Equal(t, int64(0), rdb.XInfoGroups(ctx, streamName).Val()[0].Pending)
+		for _, c := range rdb.XInfoConsumers(ctx, streamName, groupName).Val() {
+			require.Equalf(t, int64(0), c.Pending, "consumer %s should have 0 pending", c.Name)
+		}
 	})
 
 	t.Run("XAUTOCLAIM with out of range count", func(t *testing.T) {

@@ -726,7 +726,7 @@ rocksdb::Status Stream::AutoClaim(engine::Context &ctx, const Slice &stream_name
 // so an out-of-range entries_read underflows it to ~2^64 and overflows the signed-64 integer
 // clients decode the RESP reply as, breaking XINFO GROUPS.
 static int64_t ClampEntriesRead(int64_t entries_read, uint64_t entries_added) {
-  if (entries_read != -1 && static_cast<uint64_t>(entries_read) > entries_added) {
+  if (entries_read >= 0 && static_cast<uint64_t>(entries_read) > entries_added) {
     return static_cast<int64_t>(entries_added);
   }
   return entries_read;
@@ -1353,11 +1353,9 @@ static int64_t StreamEstimateDistanceFromFirstEverEntry(const StreamMetadata &me
 
 static void CheckLagValid(const StreamMetadata &stream_metadata, StreamConsumerGroupMetadata &group_metadata) {
   bool valid = false;
-  if (stream_metadata.entries_added == 0) {
-    group_metadata.lag = 0;
-    valid = true;
-  } else if (stream_metadata.size == 0) {
-    // All entries deleted; the stream is empty.
+  if (stream_metadata.entries_added == 0 || stream_metadata.size == 0) {
+    // Nothing was ever added, or every entry has since been deleted: the group is fully
+    // caught up. Mirrors Redis streamReplyWithCGLag.
     group_metadata.lag = 0;
     valid = true;
   } else if (group_metadata.last_delivered_id < stream_metadata.first_entry_id &&
@@ -1369,7 +1367,12 @@ static void CheckLagValid(const StreamMetadata &stream_metadata, StreamConsumerG
     group_metadata.lag = stream_metadata.size;
     valid = true;
   } else if (group_metadata.entries_read != -1 &&
+             group_metadata.entries_read <= static_cast<int64_t>(stream_metadata.entries_added) &&
              !StreamRangeHasTombstones(stream_metadata, group_metadata.last_delivered_id)) {
+    // Guard entries_read <= entries_added: the subtraction is served as an unsigned lag, so
+    // an entries_read ahead of entries_added (e.g. a post-clamp XREADGROUP still incrementing
+    // the counter) would underflow to ~2^64 and overflow the signed-64 integer clients decode
+    // the reply as. Falling through to the estimate path keeps XINFO GROUPS decodable.
     group_metadata.lag = stream_metadata.entries_added - group_metadata.entries_read;
     valid = true;
   } else {

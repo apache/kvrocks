@@ -20,8 +20,8 @@ include_guard()
 include(cmake/utils.cmake)
 
 FetchContent_DeclareGitHubWithMirror(pegtl
-  taocpp/PEGTL 3.2.8
-  MD5=5c919edd001ef157b0d25fc9dcc8b3e1
+  taocpp/PEGTL 4.0.1
+  MD5=0defc359aef0cf55d8bc09e3229d25b1
 )
 
 FetchContent_MakeAvailableWithArgs(pegtl)

@@ -87,7 +87,7 @@ jobs:
         run: |
           ./x.py fetch-deps ${{ env.KVROCKS_DEPS_CACHE_DIR }}
           ./x.py fetch-deps ${{ env.KVROCKS_DEPS_CACHE_DIR }} -D ENABLE_LUAJIT=OFF
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           go-version-file: 'tests/gocase/go.mod'
           cache: false
@@ -342,7 +342,7 @@ jobs:
         if: ${{ !matrix.arm_linux }}
         with:
           python-version: 3.x
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           go-version-file: 'tests/gocase/go.mod'
           cache: false
@@ -653,7 +653,7 @@ jobs:
           path: ${{ env.KVROCKS_DEPS_CACHE_DIR }}
           key: kvrocks-full-deps-${{ hashFiles('x.py', 'CMakeLists.txt', 'cmake/**/*.cmake') }}
           enableCrossOsArchive: true
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         if: ${{ !startsWith(matrix.image, 'opensuse') }}
         with:
           go-version-file: 'tests/gocase/go.mod'

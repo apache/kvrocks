@@ -22,6 +22,8 @@
 
 #include <rocksdb/status.h>
 
+#include <algorithm>
+#include <cstdint>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -371,7 +373,8 @@ rocksdb::Status Stream::DeletePelEntries(engine::Context &ctx, const Slice &stre
   }
   if (*acknowledged > 0) {
     StreamConsumerGroupMetadata group_metadata = decodeStreamConsumerGroupMetadataValue(get_group_value);
-    group_metadata.pending_number -= *acknowledged;
+    group_metadata.pending_number =
+        group_metadata.pending_number >= *acknowledged ? group_metadata.pending_number - *acknowledged : 0;
     std::string group_value = encodeStreamConsumerGroupMetadataValue(group_metadata);
     s = batch->Put(stream_cf_handle_, group_key, group_value);
     if (!s.ok()) return s;
@@ -385,7 +388,8 @@ rocksdb::Status Stream::DeletePelEntries(engine::Context &ctx, const Slice &stre
       }
       if (s.ok()) {
         auto consumer_metadata = decodeStreamConsumerMetadataValue(consumer_meta_original);
-        consumer_metadata.pending_number -= ack_count;
+        consumer_metadata.pending_number =
+            consumer_metadata.pending_number >= ack_count ? consumer_metadata.pending_number - ack_count : 0;
         s = batch->Put(stream_cf_handle_, consumer_meta_key, encodeStreamConsumerMetadataValue(consumer_metadata));
         if (!s.ok()) return s;
       }
@@ -484,7 +488,8 @@ rocksdb::Status Stream::ClaimPelEntries(engine::Context &ctx, const Slice &strea
         }
         StreamConsumerMetadata original_consumer_metadata =
             decodeStreamConsumerMetadataValue(get_original_consumer_value);
-        original_consumer_metadata.pending_number -= 1;
+        original_consumer_metadata.pending_number =
+            original_consumer_metadata.pending_number >= 1 ? original_consumer_metadata.pending_number - 1 : 0;
         s = batch->Put(stream_cf_handle_, original_consumer_key,
                        encodeStreamConsumerMetadataValue(original_consumer_metadata));
         if (!s.ok()) return s;
@@ -943,7 +948,8 @@ rocksdb::Status Stream::DestroyConsumer(engine::Context &ctx, const Slice &strea
   if (!s.ok()) return s;
   StreamConsumerGroupMetadata group_metadata = decodeStreamConsumerGroupMetadataValue(get_group_value);
   group_metadata.consumer_number -= 1;
-  group_metadata.pending_number -= deleted_pel;
+  group_metadata.pending_number =
+      group_metadata.pending_number >= deleted_pel ? group_metadata.pending_number - deleted_pel : 0;
   s = batch->Put(stream_cf_handle_, group_key, encodeStreamConsumerGroupMetadataValue(group_metadata));
   if (!s.ok()) return s;
   return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
@@ -1346,12 +1352,13 @@ static void CheckLagValid(const StreamMetadata &stream_metadata, StreamConsumerG
     valid = true;
   } else if (group_metadata.entries_read != -1 &&
              !StreamRangeHasTombstones(stream_metadata, group_metadata.last_delivered_id)) {
-    group_metadata.lag = stream_metadata.entries_added - group_metadata.entries_read;
+    group_metadata.lag = std::min(stream_metadata.entries_added - static_cast<uint64_t>(group_metadata.entries_read), static_cast<uint64_t>(INT64_MAX));
     valid = true;
   } else {
     int64_t entries_read = StreamEstimateDistanceFromFirstEverEntry(stream_metadata, group_metadata.last_delivered_id);
     if (entries_read != -1) {
-      group_metadata.lag = stream_metadata.entries_added - entries_read;
+      group_metadata.lag = std::min(stream_metadata.entries_added - static_cast<uint64_t>(entries_read),
+                                  static_cast<uint64_t>(INT64_MAX));
       valid = true;
     }
   }

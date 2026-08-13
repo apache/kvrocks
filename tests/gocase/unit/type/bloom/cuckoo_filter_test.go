@@ -187,4 +187,141 @@ func TestCuckooFilter(t *testing.T) {
 		require.NoError(t, result.Err())
 		require.Equal(t, int64(1), result.Val())
 	})
+
+	t.Run("Info of no exists key", func(t *testing.T) {
+		key := "no_exist_key"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.ErrorContains(t, rdb.Do(ctx, "cf.info", key).Err(), "filter is not found")
+	})
+
+	t.Run("Info empty filter", func(t *testing.T) {
+		key := "test_cf_info_empty"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "1024").Err())
+
+		all := rdb.Do(ctx, "cf.info", key).Val().([]interface{})
+		require.Equal(t, []interface{}{
+			"Size", int64(2048),
+			"Number of buckets", int64(1024),
+			"Number of filters", int64(1),
+			"Number of items inserted", int64(0),
+			"Number of items deleted", int64(0),
+			"Bucket size", int64(2),
+			"Expansion rate", int64(1),
+			"Max iterations", int64(500),
+		}, all)
+	})
+
+	t.Run("Info wrong type key", func(t *testing.T) {
+		key := "test_cf_info_wrong_type"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Set(ctx, key, "value", 0).Err())
+		require.ErrorContains(t, rdb.Do(ctx, "cf.info", key).Err(), "WRONGTYPE")
+	})
+
+	t.Run("Info invalid argument", func(t *testing.T) {
+		key := "test_cf_info_invalid_arg"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "1000").Err())
+		require.ErrorContains(t, rdb.Do(ctx, "cf.info", key, "invalid").Err(), "Invalid info argument")
+	})
+
+	t.Run("Info items after add", func(t *testing.T) {
+		key := "test_cf_info_items_add"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "1000").Err())
+		require.Equal(t, int64(0), rdb.Do(ctx, "cf.info", key, "items").Val().([]interface{})[1])
+		require.NoError(t, rdb.Do(ctx, "cf.add", key, "item1").Err())
+		require.Equal(t, int64(1), rdb.Do(ctx, "cf.info", key, "items").Val().([]interface{})[1])
+		require.NoError(t, rdb.Do(ctx, "cf.add", key, "item2").Err())
+		require.Equal(t, int64(2), rdb.Do(ctx, "cf.info", key, "items").Val().([]interface{})[1])
+	})
+
+	t.Run("Info duplicate items increments", func(t *testing.T) {
+		key := "test_cf_info_items_dup"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "1000").Err())
+		for i := 0; i < 3; i++ {
+			require.NoError(t, rdb.Do(ctx, "cf.add", key, "dup_item").Err())
+		}
+		items := rdb.Do(ctx, "cf.info", key, "items").Val().([]interface{})
+		require.Equal(t, int64(3), items[1])
+		require.Equal(t, int64(0), items[3])
+	})
+
+	t.Run("Info filters after expansion", func(t *testing.T) {
+		key := "test_cf_info_expansion"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "4", "BUCKETSIZE", "1", "MAXITERATIONS", "1", "EXPANSION", "2").Err())
+		require.Equal(t, int64(1), rdb.Do(ctx, "cf.info", key, "filters").Val())
+		for i := 0; i < 10; i++ {
+			require.NoError(t, rdb.Do(ctx, "cf.add", key, fmt.Sprintf("expand_%d", i)).Err())
+		}
+		require.Greater(t, rdb.Do(ctx, "cf.info", key, "filters").Val(), int64(1))
+	})
+
+	t.Run("Info individual fields", func(t *testing.T) {
+		key := "test_cf_info_fields"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "500", "BUCKETSIZE", "4", "MAXITERATIONS", "20", "EXPANSION", "0").Err())
+		require.Equal(t, int64(512), rdb.Do(ctx, "cf.info", key, "size").Val())
+		require.Equal(t, int64(128), rdb.Do(ctx, "cf.info", key, "buckets").Val())
+		require.Equal(t, int64(1), rdb.Do(ctx, "cf.info", key, "filters").Val())
+		require.Equal(t, int64(0), rdb.Do(ctx, "cf.info", key, "items").Val().([]interface{})[1])
+		require.Equal(t, int64(4), rdb.Do(ctx, "cf.info", key, "bucket_size").Val())
+		require.Equal(t, interface{}(nil), rdb.Do(ctx, "cf.info", key, "expansion").Val())
+		require.Equal(t, int64(20), rdb.Do(ctx, "cf.info", key, "max_iterations").Val())
+	})
+
+	t.Run("Count no exists key returns zero", func(t *testing.T) {
+		key := "no_exist_key_count"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.Equal(t, int64(0), rdb.Do(ctx, "cf.count", key, "item").Val())
+	})
+
+	t.Run("Count empty filter", func(t *testing.T) {
+		key := "test_cf_count_empty"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "100").Err())
+		require.Equal(t, int64(0), rdb.Do(ctx, "cf.count", key, "item").Val())
+	})
+
+	t.Run("Count after add", func(t *testing.T) {
+		key := "test_cf_count_after_add"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "100").Err())
+		require.NoError(t, rdb.Do(ctx, "cf.add", key, "my_item").Err())
+		require.Equal(t, int64(1), rdb.Do(ctx, "cf.count", key, "my_item").Val())
+	})
+
+	t.Run("Count duplicate items", func(t *testing.T) {
+		key := "test_cf_count_dup"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "100").Err())
+		for i := 0; i < 5; i++ {
+			require.NoError(t, rdb.Do(ctx, "cf.add", key, "same_item").Err())
+		}
+		require.Equal(t, int64(5), rdb.Do(ctx, "cf.count", key, "same_item").Val())
+	})
+
+	t.Run("Count non-existent item", func(t *testing.T) {
+		key := "test_cf_count_not_exist_item"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "100").Err())
+		require.NoError(t, rdb.Do(ctx, "cf.add", key, "item1").Err())
+		require.Equal(t, int64(0), rdb.Do(ctx, "cf.count", key, "item2").Val())
+	})
+
+	t.Run("Count wrong type key", func(t *testing.T) {
+		key := "test_cf_count_wrong_type"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Set(ctx, key, "value", 0).Err())
+		require.ErrorContains(t, rdb.Do(ctx, "cf.count", key, "item").Err(), "WRONGTYPE")
+	})
+
+	t.Run("Count wrong number of arguments", func(t *testing.T) {
+		require.Error(t, rdb.Do(ctx, "cf.count").Err())
+		require.Error(t, rdb.Do(ctx, "cf.count", "key_only").Err())
+		require.Error(t, rdb.Do(ctx, "cf.count", "key", "item1", "item2").Err())
+	})
 }

@@ -131,8 +131,142 @@ class CommandCFAdd : public Commander {
   }
 };
 
-// Register the CF.RESERVE and CF.ADD commands
-REDIS_REGISTER_COMMANDS(CuckooFilter, MakeCmdAttr<CommandCFReserve>("cf.reserve", -3, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandCFAdd>("cf.add", 3, "write", 1, 1, 1))
+class CommandCFInfo : public Commander {
+public:
+  Status Parse(const std::vector<std::string> &args) override {
+    // CF.INFO key
+    if (args.size() > 3) {
+      return {Status::RedisParseErr, errWrongNumOfArguments};
+    }
+    CommandParser parser(args, 2);
+    if (parser.Good()) {
+      if (parser.EatEqICase("size")) {
+        type_ = CuckooInfoType::kSize;
+      } else if (parser.EatEqICase("buckets")) {
+        type_ = CuckooInfoType::kBuckets;
+      } else if (parser.EatEqICase("filters")) {
+        type_ = CuckooInfoType::kFilters;
+      } else if (parser.EatEqICase("items")) {
+        type_ = CuckooInfoType::kItems;
+      } else if (parser.EatEqICase("bucket_size")) {
+        type_ = CuckooInfoType::kBucketSize;
+      } else if (parser.EatEqICase("expansion")) {
+        type_ = CuckooInfoType::kExpansion;
+      } else if (parser.EatEqICase("max_iterations")) {
+        type_ = CuckooInfoType::kMaxIterations;
+      } else {
+        return {Status::RedisParseErr, "Invalid info argument"};
+      }
+    }
+    return Commander::Parse(args);
+  }
+
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    redis::CuckooChain cuckoo_db(srv->storage, conn->GetNamespace());
+    redis::CuckooFilterInfo info;
+    auto s = cuckoo_db.Info(ctx, args_[1], &info);
+
+    if (s.IsNotFound()) {
+      return {Status::RedisExecErr, "filter is not found"};
+    }
+    if (!s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+
+    switch(type_) {
+      case CuckooInfoType::kAll:
+        *output = redis::MultiLen(2 * 8);
+        *output += redis::SimpleString("Size");
+        *output += redis::Integer(info.size);
+        *output += redis::SimpleString("Number of buckets");
+        *output += redis::Integer(info.n_buckets);
+        *output += redis::SimpleString("Number of filters");
+        *output += redis::Integer(info.n_filters);
+        *output += redis::SimpleString("Number of items inserted");
+        *output += redis::Integer(info.n_items_inserted);
+        *output += redis::SimpleString("Number of items deleted");
+        *output += redis::Integer(info.n_items_deleted);
+        *output += redis::SimpleString("Bucket size");
+        *output += redis::Integer(info.bucket_size);
+        *output += redis::SimpleString("Expansion rate");
+        *output += redis::Integer(info.expansion);
+        *output += redis::SimpleString("Max iterations");
+        *output += redis::Integer(info.max_iterations);
+        break;
+      case CuckooInfoType::kSize:
+        *output = redis::Integer(info.size);
+        break;
+      case CuckooInfoType::kBuckets:
+        *output = redis::Integer(info.n_buckets);
+        break;
+      case CuckooInfoType::kFilters:
+        *output = redis::Integer(info.n_filters);
+        break;
+      case CuckooInfoType::kItems:
+        *output = redis::MultiLen(2 * 2);
+        *output += redis::SimpleString("Number of items inserted");
+        *output += redis::Integer(info.n_items_inserted);
+        *output += redis::SimpleString("Number of items deleted");
+        *output += redis::Integer(info.n_items_deleted);
+        break;
+      case CuckooInfoType::kBucketSize:
+        *output = redis::Integer(info.bucket_size);
+        break;
+      case CuckooInfoType::kExpansion:
+        *output = info.expansion == 0 ? conn->NilString() : redis::Integer(info.expansion);
+        break;
+      case CuckooInfoType::kMaxIterations:
+        *output = redis::Integer(info.max_iterations);
+        break;
+    }
+    return Status::OK();
+  }
+
+  private:
+    CuckooInfoType type_ = CuckooInfoType::kAll;
+};
+
+class CommandCFCount : public Commander {
+public:
+  Status Parse(const std::vector<std::string> &args) override {
+    // CF.COUNT key item
+    if (args.size() != 3) {
+      return {Status::RedisParseErr, errWrongNumOfArguments};
+    }
+    return Commander::Parse(args);
+  }
+
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    redis::CuckooChain cuckoo_db(srv->storage, conn->GetNamespace());
+    uint64_t count = 0;
+    auto s = cuckoo_db.Count(ctx, args_[1], args_[2], &count);
+
+    if (s.IsNotFound()) {
+      *output = redis::Integer(0);
+      return Status::OK();
+    }
+    if (!s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+
+    *output = redis::Integer(count);
+    return Status::OK();
+  }
+
+};
+
+
+
+/* Register commands
+  CF.RESERVE
+  CF.ADD
+  CF.INFO
+  CF.COUNT
+*/
+REDIS_REGISTER_COMMANDS(CuckooFilter, 
+  MakeCmdAttr<CommandCFReserve>("cf.reserve", -3, "write", 1, 1, 1),
+  MakeCmdAttr<CommandCFAdd>("cf.add", 3, "write", 1, 1, 1),
+  MakeCmdAttr<CommandCFInfo>("cf.info", -2, "read-only", 1, 1, 1),
+  MakeCmdAttr<CommandCFCount>("cf.count", 3, "read-only", 1, 1, 1), )
 
 }  // namespace redis

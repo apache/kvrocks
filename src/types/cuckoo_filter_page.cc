@@ -234,4 +234,19 @@ void CuckooPageCache::setBucketRefSlot(const BucketRef &bucket, uint32_t slot_id
   bucket.page->is_dirty = true;
 }
 
+rocksdb::Status CuckooPageCache::CountInBucket(uint16_t filter_index, uint32_t num_buckets, uint32_t bucket_index, uint8_t fingerprint, uint32_t *count) {
+  *count = 0;
+  BucketRef bucket;
+  auto s = ensureBucketLoaded(filter_index, num_buckets, bucket_index, &bucket);
+  if (!s.ok()) return s;
+
+  for (size_t i = 0; i < bucket.size; ++i) {
+    size_t offset = bucket.offset + i;
+    if (static_cast<uint8_t>(bucket.page->data[offset]) == fingerprint) {
+      *count += 1;
+    }
+  }
+  return rocksdb::Status::OK();
+}
+
 }  // namespace redis

@@ -44,6 +44,9 @@ class CuckooSubFilter {
   rocksdb::Status TryKickOutInsert(uint64_t hash, uint8_t fingerprint, uint16_t max_iterations, bool *inserted);
   rocksdb::Status WriteToBatch(rocksdb::WriteBatchBase *batch);
 
+  // Counts the occurrences of an item in this sub-filter by checking both primary and secondary buckets.
+  rocksdb::Status Count(uint64_t hash, uint8_t fingerprint, uint32_t *count);
+
  private:
   uint32_t getPrimaryBucketIndex(uint64_t hash) const;
   uint32_t getSecondaryBucketIndex(uint64_t hash, uint8_t fingerprint) const;

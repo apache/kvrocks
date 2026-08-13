@@ -49,6 +49,8 @@ class CuckooPageCache {
 
   void DiscardCachedPages();
 
+  rocksdb::Status CountInBucket(uint16_t filter_index, uint32_t num_buckets, uint32_t bucket_index, uint8_t fingerprint, uint32_t *count);
+
  private:
   struct PageEntry {
     std::string data;

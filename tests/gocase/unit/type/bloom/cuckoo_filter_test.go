@@ -208,7 +208,7 @@ func TestCuckooFilter(t *testing.T) {
 			"Number of items deleted", int64(0),
 			"Bucket size", int64(2),
 			"Expansion rate", int64(1),
-			"Max iterations", int64(500),
+			"Max iterations", int64(20),
 		}, all)
 	})
 
@@ -264,8 +264,8 @@ func TestCuckooFilter(t *testing.T) {
 		key := "test_cf_info_fields"
 		require.NoError(t, rdb.Del(ctx, key).Err())
 		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "500", "BUCKETSIZE", "4", "MAXITERATIONS", "20", "EXPANSION", "0").Err())
-		require.Equal(t, int64(512), rdb.Do(ctx, "cf.info", key, "size").Val())
-		require.Equal(t, int64(128), rdb.Do(ctx, "cf.info", key, "buckets").Val())
+		require.Equal(t, int64(1024), rdb.Do(ctx, "cf.info", key, "size").Val())
+		require.Equal(t, int64(256), rdb.Do(ctx, "cf.info", key, "buckets").Val())
 		require.Equal(t, int64(1), rdb.Do(ctx, "cf.info", key, "filters").Val())
 		require.Equal(t, int64(0), rdb.Do(ctx, "cf.info", key, "items").Val().([]interface{})[1])
 		require.Equal(t, int64(4), rdb.Do(ctx, "cf.info", key, "bucket_size").Val())

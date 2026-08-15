@@ -31,6 +31,7 @@
 #include "status.h"
 
 namespace redis {
+extern const char *kErrInvalidEntryIdSpecified;
 
 struct StreamEntryID {
   uint64_t ms = 0;
@@ -201,6 +202,18 @@ enum class StreamSubkeyType {
   StreamConsumerGroupMetadata = 1,
   StreamConsumerMetadata = 2,
   StreamPelEntry = 3,
+};
+
+enum class StreamDeleteOption {
+  KeepRef = 0,
+  DelRef = 1,
+  Acked = 2,
+};
+
+enum class StreamEntryDeleteResult : int {
+  kEntryNotFound = -1,
+  kEntryDeleted = 1,
+  kEntrySkipped = 2,
 };
 
 struct StreamPelEntry {

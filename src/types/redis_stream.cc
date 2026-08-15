@@ -22,7 +22,10 @@
 
 #include <rocksdb/status.h>
 
+#include <algorithm>
 #include <memory>
+#include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -31,6 +34,12 @@
 #include "time_util.h"
 
 namespace redis {
+
+namespace {
+
+constexpr size_t kXDelExMultiGetBatchSize = 128;
+
+}  // namespace
 
 const char *errSetEntryIdSmallerThanLastGenerated =
     "The ID specified in XSETID is smaller than the target stream top item";
@@ -391,6 +400,398 @@ rocksdb::Status Stream::DeletePelEntries(engine::Context &ctx, const Slice &stre
       }
     }
   }
+  return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+}
+
+rocksdb::Status Stream::getConsumerGroups(engine::Context &ctx, const std::string &ns_key,
+                                          const StreamMetadata &metadata,
+                                          std::vector<StreamConsumerGroupInfo> *groups) {
+  groups->clear();
+
+  std::string subkey_type_delimiter;
+  PutFixed64(&subkey_type_delimiter, UINT64_MAX);
+  PutFixed8(&subkey_type_delimiter, static_cast<uint8_t>(StreamSubkeyType::StreamConsumerGroupMetadata));
+
+  std::string next_version_prefix_key =
+      InternalKey(ns_key, subkey_type_delimiter, metadata.version + 1, storage_->IsSlotIdEncoded()).Encode();
+  std::string prefix_key =
+      InternalKey(ns_key, subkey_type_delimiter, metadata.version, storage_->IsSlotIdEncoded()).Encode();
+
+  rocksdb::ReadOptions read_options = ctx.DefaultScanOptions();
+  rocksdb::Slice upper_bound(next_version_prefix_key);
+  read_options.iterate_upper_bound = &upper_bound;
+  rocksdb::Slice lower_bound(prefix_key);
+  read_options.iterate_lower_bound = &lower_bound;
+
+  auto iter = util::UniqueIterator(ctx, read_options, stream_cf_handle_);
+  for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+    // Group metadata keys sort before consumer/PEL keys, so no more groups once we see a different type.
+    if (identifySubkeyType(iter->key()) != StreamSubkeyType::StreamConsumerGroupMetadata) {
+      break;
+    }
+    groups->push_back(
+        {groupNameFromInternalKey(iter->key()), decodeStreamConsumerGroupMetadataValue(iter->value().ToString())});
+  }
+  return iter->status();
+}
+
+rocksdb::Status Stream::deleteEntryAndUpdateMeta(rocksdb::WriteBatchBase *batch, const std::string &entry_key,
+                                                 const StreamEntryID &id, StreamMetadata *metadata,
+                                                 uint64_t *deleted_cnt) {
+  rocksdb::Status s = batch->Delete(stream_cf_handle_, entry_key);
+  if (!s.ok()) return s;
+  (*deleted_cnt)++;
+
+  if (metadata->max_deleted_entry_id < id) {
+    metadata->max_deleted_entry_id = id;
+  }
+
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status Stream::cleanPelFromGroups(
+    engine::Context &ctx, const std::string &ns_key, const StreamMetadata &metadata,
+    const std::vector<StreamEntryID> &ids, rocksdb::WriteBatchBase *batch, bool *batch_modified,
+    const std::vector<StreamConsumerGroupInfo> &groups, std::map<std::string, uint64_t> *group_pending_decrements,
+    std::map<std::string, std::map<std::string, uint64_t>> *consumer_pending_decrements) {
+  if (ids.empty() || groups.empty()) {
+    return rocksdb::Status::OK();
+  }
+
+  rocksdb::ReadOptions read_options = ctx.DefaultMultiGetOptions();
+  for (const auto &group : groups) {
+    for (size_t start = 0; start < ids.size(); start += kXDelExMultiGetBatchSize) {
+      auto count = std::min(kXDelExMultiGetBatchSize, ids.size() - start);
+      std::vector<std::string> encoded_keys;
+      std::vector<rocksdb::Slice> keys;
+      encoded_keys.reserve(count);
+      keys.reserve(count);
+      for (size_t i = 0; i < count; i++) {
+        encoded_keys.push_back(internalPelKeyFromGroupAndEntryId(ns_key, metadata, group.name, ids[start + i]));
+        keys.emplace_back(encoded_keys.back());
+      }
+
+      std::vector<rocksdb::PinnableSlice> values(count);
+      std::vector<rocksdb::Status> statuses(count);
+      storage_->MultiGet(ctx, read_options, stream_cf_handle_, keys.size(), keys.data(), values.data(),
+                         statuses.data());
+
+      for (size_t i = 0; i < count; i++) {
+        if (!statuses[i].ok() && !statuses[i].IsNotFound()) return statuses[i];
+        if (!statuses[i].ok()) continue;
+
+        rocksdb::Status s = batch->Delete(stream_cf_handle_, keys[i]);
+        if (!s.ok()) return s;
+        *batch_modified = true;
+
+        auto pel_entry = decodeStreamPelEntryValue(values[i].ToString());
+        (*group_pending_decrements)[group.name]++;
+        (*consumer_pending_decrements)[group.name][pel_entry.consumer_name]++;
+      }
+    }
+  }
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status Stream::flushPendingNumberUpdates(
+    engine::Context &ctx, const std::string &ns_key, const StreamMetadata &metadata, rocksdb::WriteBatchBase *batch,
+    const std::unordered_map<std::string, StreamConsumerGroupMetadata> &group_metadata_by_name,
+    const std::map<std::string, uint64_t> &group_pending_decrements,
+    const std::map<std::string, std::map<std::string, uint64_t>> &consumer_pending_decrements) {
+  for (const auto &[group_name, decrement] : group_pending_decrements) {
+    auto group_it = group_metadata_by_name.find(group_name);
+    if (group_it == group_metadata_by_name.end()) continue;
+
+    auto group_meta = group_it->second;
+    group_meta.pending_number = group_meta.pending_number >= decrement ? group_meta.pending_number - decrement : 0;
+    auto group_key = internalKeyFromGroupName(ns_key, metadata, group_name);
+    auto s = batch->Put(stream_cf_handle_, group_key, encodeStreamConsumerGroupMetadataValue(group_meta));
+    if (!s.ok()) return s;
+  }
+
+  for (const auto &[group_name, consumers] : consumer_pending_decrements) {
+    for (const auto &[consumer_name, decrement] : consumers) {
+      auto consumer_key = internalKeyFromConsumerName(ns_key, metadata, group_name, consumer_name);
+      std::string consumer_value;
+      auto s = storage_->Get(ctx, ctx.GetReadOptions(), stream_cf_handle_, consumer_key, &consumer_value);
+      if (!s.ok() && !s.IsNotFound()) {
+        return s;
+      }
+      if (s.ok()) {
+        auto consumer_meta = decodeStreamConsumerMetadataValue(consumer_value);
+        consumer_meta.pending_number =
+            consumer_meta.pending_number >= decrement ? consumer_meta.pending_number - decrement : 0;
+        s = batch->Put(stream_cf_handle_, consumer_key, encodeStreamConsumerMetadataValue(consumer_meta));
+        if (!s.ok()) return s;
+      }
+    }
+  }
+
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status Stream::isAckedByAllGroups(engine::Context &ctx, const std::string &ns_key,
+                                           const StreamMetadata &metadata, const StreamEntryID &id,
+                                           const std::vector<StreamConsumerGroupInfo> &active_groups,
+                                           const StreamEntryID *min_last_delivered_id, bool *all_acked) {
+  *all_acked = true;
+  if (min_last_delivered_id != nullptr && id > *min_last_delivered_id) {
+    *all_acked = false;
+    return rocksdb::Status::OK();
+  }
+  if (active_groups.empty()) {
+    return rocksdb::Status::OK();
+  }
+
+  rocksdb::ReadOptions read_options = ctx.DefaultMultiGetOptions();
+  for (size_t start = 0; start < active_groups.size(); start += kXDelExMultiGetBatchSize) {
+    auto count = std::min(kXDelExMultiGetBatchSize, active_groups.size() - start);
+    std::vector<std::string> encoded_keys;
+    std::vector<rocksdb::Slice> keys;
+    encoded_keys.reserve(count);
+    keys.reserve(count);
+    for (size_t i = 0; i < count; i++) {
+      encoded_keys.push_back(internalPelKeyFromGroupAndEntryId(ns_key, metadata, active_groups[start + i].name, id));
+      keys.emplace_back(encoded_keys.back());
+    }
+
+    std::vector<rocksdb::PinnableSlice> values(count);
+    std::vector<rocksdb::Status> statuses(count);
+    storage_->MultiGet(ctx, read_options, stream_cf_handle_, keys.size(), keys.data(), values.data(), statuses.data());
+
+    for (const auto &status : statuses) {
+      if (status.ok()) {
+        *all_acked = false;
+        return rocksdb::Status::OK();
+      }
+      if (!status.IsNotFound()) {
+        return status;
+      }
+    }
+  }
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status Stream::DeleteEntriesWithOption(engine::Context &ctx, const Slice &stream_name,
+                                                const std::vector<StreamEntryID> &ids, StreamDeleteOption option,
+                                                std::vector<int> *results) {
+  results->assign(ids.size(), static_cast<int>(StreamEntryDeleteResult::kEntryNotFound));
+
+  std::string ns_key = AppendNamespacePrefix(stream_name);
+
+  StreamMetadata metadata(false);
+  rocksdb::Status s = GetMetadata(ctx, ns_key, &metadata);
+  if (!s.ok()) {
+    return s.IsNotFound() ? rocksdb::Status::OK() : s;
+  }
+
+  if (ids.empty()) {
+    return rocksdb::Status::OK();
+  }
+
+  auto batch = storage_->GetWriteBatchBase();
+  std::string option_str;
+  switch (option) {
+    case StreamDeleteOption::DelRef:
+      option_str = "DELREF";
+      break;
+    case StreamDeleteOption::Acked:
+      option_str = "ACKED";
+      break;
+    default:
+      option_str = "KEEPREF";
+      break;
+  }
+  WriteBatchLogData log_data(kRedisStream, {"XDELEX", option_str});
+  s = batch->PutLogData(log_data.Encode());
+  if (!s.ok()) return s;
+
+  std::string next_version_prefix_key =
+      InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode();
+  std::string prefix_key = InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode();
+
+  rocksdb::ReadOptions read_options = ctx.DefaultScanOptions();
+  rocksdb::Slice upper_bound(next_version_prefix_key);
+  read_options.iterate_upper_bound = &upper_bound;
+  rocksdb::Slice lower_bound(prefix_key);
+  read_options.iterate_lower_bound = &lower_bound;
+
+  auto iter = util::UniqueIterator(ctx, read_options, stream_cf_handle_);
+
+  std::vector<StreamConsumerGroupInfo> groups;
+  std::unordered_map<std::string, StreamConsumerGroupMetadata> group_metadata_by_name;
+  std::optional<StreamEntryID> min_last_delivered_id;
+  bool need_groups = (option == StreamDeleteOption::DelRef || option == StreamDeleteOption::Acked);
+  if (need_groups) {
+    s = getConsumerGroups(ctx, ns_key, metadata, &groups);
+    if (!s.ok()) return s;
+    group_metadata_by_name.reserve(groups.size());
+    for (const auto &group : groups) {
+      group_metadata_by_name.emplace(group.name, group.metadata);
+      if (!min_last_delivered_id || group.metadata.last_delivered_id < *min_last_delivered_id) {
+        min_last_delivered_id = group.metadata.last_delivered_id;
+      }
+    }
+  }
+
+  uint64_t deleted_cnt = 0;
+  bool batch_modified = false;
+  std::map<std::string, uint64_t> group_pending_decrements;
+  std::map<std::string, std::map<std::string, uint64_t>> consumer_pending_decrements;
+
+  std::unordered_map<std::string, int> seen_entry_results;
+  seen_entry_results.reserve(ids.size());
+  std::unordered_set<std::string> deleted_entry_keys;
+  deleted_entry_keys.reserve(ids.size());
+  std::vector<StreamEntryID> delref_pel_cleanup_ids;
+  if (option == StreamDeleteOption::DelRef) {
+    delref_pel_cleanup_ids.reserve(ids.size());
+  }
+  StreamEntryID original_first_entry_id = metadata.first_entry_id;
+  StreamEntryID original_last_entry_id = metadata.last_entry_id;
+
+  for (size_t i = 0; i < ids.size(); i++) {
+    const auto &id = ids[i];
+
+    std::string entry_key = internalKeyFromEntryID(ns_key, metadata, id);
+
+    auto seen_result = seen_entry_results.find(entry_key);
+    if (seen_result != seen_entry_results.end()) {
+      (*results)[i] = seen_result->second == static_cast<int>(StreamEntryDeleteResult::kEntrySkipped)
+                          ? static_cast<int>(StreamEntryDeleteResult::kEntrySkipped)
+                          : static_cast<int>(StreamEntryDeleteResult::kEntryNotFound);
+      continue;
+    }
+
+    std::string value;
+    s = storage_->Get(ctx, read_options, stream_cf_handle_, entry_key, &value);
+    if (!s.ok() && !s.IsNotFound()) {
+      return s;
+    }
+
+    if (s.IsNotFound()) {
+      // DELREF cleans dangling PELs; ACKED still checks group state without the entry.
+      if (option == StreamDeleteOption::DelRef) {
+        delref_pel_cleanup_ids.push_back(id);
+      } else if (option == StreamDeleteOption::Acked) {
+        bool all_acked = false;
+        s = isAckedByAllGroups(ctx, ns_key, metadata, id, groups,
+                               min_last_delivered_id ? &*min_last_delivered_id : nullptr, &all_acked);
+        if (!s.ok()) return s;
+        if (!all_acked) {
+          (*results)[i] = static_cast<int>(StreamEntryDeleteResult::kEntrySkipped);
+          seen_entry_results.emplace(entry_key, (*results)[i]);
+          continue;
+        }
+      }
+      (*results)[i] = static_cast<int>(StreamEntryDeleteResult::kEntryNotFound);
+      seen_entry_results.emplace(entry_key, (*results)[i]);
+      continue;
+    }
+
+    switch (option) {
+      case StreamDeleteOption::KeepRef:
+        s = deleteEntryAndUpdateMeta(batch.Get(), entry_key, id, &metadata, &deleted_cnt);
+        if (!s.ok()) return s;
+        batch_modified = true;
+        deleted_entry_keys.insert(entry_key);
+        (*results)[i] = static_cast<int>(StreamEntryDeleteResult::kEntryDeleted);
+        seen_entry_results.emplace(entry_key, (*results)[i]);
+        break;
+
+      case StreamDeleteOption::DelRef:
+        s = deleteEntryAndUpdateMeta(batch.Get(), entry_key, id, &metadata, &deleted_cnt);
+        if (!s.ok()) return s;
+        delref_pel_cleanup_ids.push_back(id);
+        batch_modified = true;
+        deleted_entry_keys.insert(entry_key);
+        (*results)[i] = static_cast<int>(StreamEntryDeleteResult::kEntryDeleted);
+        seen_entry_results.emplace(entry_key, (*results)[i]);
+        break;
+
+      case StreamDeleteOption::Acked: {
+        bool all_acked = false;
+        s = isAckedByAllGroups(ctx, ns_key, metadata, id, groups,
+                               min_last_delivered_id ? &*min_last_delivered_id : nullptr, &all_acked);
+        if (!s.ok()) return s;
+        if (all_acked) {
+          s = deleteEntryAndUpdateMeta(batch.Get(), entry_key, id, &metadata, &deleted_cnt);
+          if (!s.ok()) return s;
+          batch_modified = true;
+          deleted_entry_keys.insert(entry_key);
+          (*results)[i] = static_cast<int>(StreamEntryDeleteResult::kEntryDeleted);
+        } else {
+          (*results)[i] = static_cast<int>(StreamEntryDeleteResult::kEntrySkipped);
+        }
+        seen_entry_results.emplace(entry_key, (*results)[i]);
+        break;
+      }
+    }
+  }
+
+  if (!delref_pel_cleanup_ids.empty()) {
+    s = cleanPelFromGroups(ctx, ns_key, metadata, delref_pel_cleanup_ids, batch.Get(), &batch_modified, groups,
+                           &group_pending_decrements, &consumer_pending_decrements);
+    if (!s.ok()) return s;
+  }
+
+  if (deleted_cnt > 0) {
+    metadata.size -= deleted_cnt;
+
+    if (metadata.size == 0) {
+      metadata.first_entry_id.Clear();
+      metadata.last_entry_id.Clear();
+      metadata.recorded_first_entry_id.Clear();
+    } else {
+      bool first_deleted =
+          deleted_entry_keys.count(internalKeyFromEntryID(ns_key, metadata, original_first_entry_id)) > 0;
+      bool last_deleted =
+          deleted_entry_keys.count(internalKeyFromEntryID(ns_key, metadata, original_last_entry_id)) > 0;
+
+      if (first_deleted) {
+        iter->SeekToFirst();
+        while (iter->Valid() && (identifySubkeyType(iter->key()) != StreamSubkeyType::StreamEntry ||
+                                 deleted_entry_keys.count(iter->key().ToString()) > 0)) {
+          iter->Next();
+        }
+        if (iter->Valid()) {
+          metadata.first_entry_id = entryIDFromInternalKey(iter->key());
+          metadata.recorded_first_entry_id = metadata.first_entry_id;
+        } else {
+          metadata.first_entry_id.Clear();
+          metadata.recorded_first_entry_id.Clear();
+        }
+      }
+      if (last_deleted) {
+        iter->SeekToLast();
+        while (iter->Valid() && (identifySubkeyType(iter->key()) != StreamSubkeyType::StreamEntry ||
+                                 deleted_entry_keys.count(iter->key().ToString()) > 0)) {
+          iter->Prev();
+        }
+        if (iter->Valid()) {
+          metadata.last_entry_id = entryIDFromInternalKey(iter->key());
+        } else {
+          metadata.last_entry_id.Clear();
+        }
+      }
+    }
+
+    std::string bytes;
+    metadata.Encode(&bytes);
+    s = batch->Put(metadata_cf_handle_, ns_key, bytes);
+    if (!s.ok()) return s;
+  }
+
+  if (!group_pending_decrements.empty()) {
+    s = flushPendingNumberUpdates(ctx, ns_key, metadata, batch.Get(), group_metadata_by_name, group_pending_decrements,
+                                  consumer_pending_decrements);
+    if (!s.ok()) return s;
+  }
+
+  if (!batch_modified) {
+    return rocksdb::Status::OK();
+  }
+
   return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
@@ -1423,6 +1824,11 @@ rocksdb::Status Stream::GetConsumerInfo(
   auto iter = util::UniqueIterator(ctx, read_options, stream_cf_handle_);
   for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
     if (identifySubkeyType(iter->key()) != StreamSubkeyType::StreamConsumerMetadata) {
+      continue;
+    }
+
+    // Iterate bounds may include consumers from other groups; verify group name explicitly.
+    if (groupNameFromInternalKey(iter->key()) != group_name) {
       continue;
     }
 

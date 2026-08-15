@@ -28,6 +28,7 @@ import (
 	"regexp"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -104,14 +105,17 @@ func SimpleTCPProxy(ctx context.Context, t testing.TB, to string, slowdown bool)
 					}
 					n, err := src.Read(buffer)
 					if err != nil {
-						if errors.Is(err, io.EOF) {
+						// ECONNRESET can happen instead of io.EOF when the peer closes
+						// the connection abortively (e.g. with unread data still
+						// buffered), which is expected during intentional teardown.
+						if errors.Is(err, io.EOF) || errors.Is(err, syscall.ECONNRESET) {
 							break COPY_LOOP
 						}
 						return err
 					}
 					_, err = dest.Write(buffer[:n])
 					if err != nil {
-						if errors.Is(err, io.EOF) {
+						if errors.Is(err, io.EOF) || errors.Is(err, syscall.ECONNRESET) {
 							break COPY_LOOP
 						}
 						return err

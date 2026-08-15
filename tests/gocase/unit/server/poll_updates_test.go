@@ -349,3 +349,39 @@ func TestPollUpdates_WithStrict(t *testing.T) {
 	require.Equal(t, "v0", rdb1.Get(ctx, "k0").Val())
 	require.Equal(t, "v0", rdb1.HGet(ctx, "h0", "f0").Val())
 }
+
+func TestDBNameAdminPermission(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{
+		"requirepass": "admin",
+	})
+	defer srv.Close()
+
+	ctx := context.Background()
+
+	adminClient := srv.NewClientWithOption(&redis.Options{Password: "admin"})
+	defer func() { require.NoError(t, adminClient.Close()) }()
+
+	require.NoError(t, adminClient.Do(ctx, "NAMESPACE", "ADD", "test_ns", "test_token").Err())
+
+	// _db_name replies with a raw inline string rather than a typed RESP reply,
+	// so we use a TCP client to read the response directly.
+	t.Run("Non-admin user should be rejected", func(t *testing.T) {
+		c := srv.NewTCPClient()
+		defer func() { require.NoError(t, c.Close()) }()
+		require.NoError(t, c.WriteArgs("AUTH", "test_token"))
+		c.MustRead(t, "+OK")
+		require.NoError(t, c.WriteArgs("_db_name"))
+		c.MustMatch(t, ".*admin.*")
+	})
+
+	t.Run("Admin user should be allowed", func(t *testing.T) {
+		c := srv.NewTCPClient()
+		defer func() { require.NoError(t, c.Close()) }()
+		require.NoError(t, c.WriteArgs("AUTH", "admin"))
+		c.MustRead(t, "+OK")
+		require.NoError(t, c.WriteArgs("_db_name"))
+		line, err := c.ReadLine()
+		require.NoError(t, err)
+		require.NotEmpty(t, line)
+	})
+}

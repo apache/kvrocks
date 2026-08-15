@@ -72,6 +72,53 @@ func parseRESPCommands(t *testing.T, values []any) []any {
 	return updates
 }
 
+func collectRESPCommands(updates []any, name string) [][]string {
+	commands := make([][]string, 0)
+	for _, update := range updates {
+		resp, ok := update.(RESPFormat)
+		if !ok {
+			continue
+		}
+		for _, command := range resp.Commands {
+			if len(command) > 0 && command[0] == name {
+				commands = append(commands, command)
+			}
+		}
+	}
+	return commands
+}
+
+func applyRESPCommands(t *testing.T, rdb *redis.Client, updates []any, names ...string) {
+	t.Helper()
+	// Simulate a downstream instance applying POLLUPDATES RESP commands.
+	// The optional names filter keeps each case focused on expected effects.
+	allowed := make(map[string]struct{}, len(names))
+	for _, name := range names {
+		allowed[name] = struct{}{}
+	}
+	for _, update := range updates {
+		resp, ok := update.(RESPFormat)
+		if !ok {
+			continue
+		}
+		for _, command := range resp.Commands {
+			if len(command) == 0 {
+				continue
+			}
+			if len(allowed) > 0 {
+				if _, ok := allowed[command[0]]; !ok {
+					continue
+				}
+			}
+			args := make([]interface{}, 0, len(command))
+			for _, token := range command {
+				args = append(args, token)
+			}
+			require.NoError(t, rdb.Do(context.Background(), args...).Err())
+		}
+	}
+}
+
 func parsePollUpdatesResult(t *testing.T, m map[any]any, isRESP bool) *PollUpdatesResult {
 	itemCount := 3
 	require.Len(t, m, itemCount)
@@ -115,7 +162,6 @@ func TestPollUpdates_Basic(t *testing.T) {
 	defer srv0.Close()
 	rdb0 := srv0.NewClient()
 	defer func() { require.NoError(t, rdb0.Close()) }()
-
 	srv1 := util.StartServer(t, map[string]string{})
 	defer srv1.Close()
 	rdb1 := srv1.NewClient()
@@ -174,6 +220,12 @@ func TestPollUpdates_WithRESPFormat(t *testing.T) {
 	defer srv0.Close()
 	rdb0 := srv0.NewClient()
 	defer func() { require.NoError(t, rdb0.Close()) }()
+
+	// rdb1 simulates a downstream instance replaying RESP commands from rdb0.
+	srv1 := util.StartServer(t, map[string]string{})
+	defer srv1.Close()
+	rdb1 := srv1.NewClient()
+	defer func() { require.NoError(t, rdb1.Close()) }()
 
 	var pollUpdates *PollUpdatesResult
 	t.Run("String type", func(t *testing.T) {
@@ -283,11 +335,141 @@ func TestPollUpdates_WithRESPFormat(t *testing.T) {
 		pollUpdates = parsePollUpdatesResult(t, result.(map[any]any), true)
 		require.Len(t, pollUpdates.Updates, 1)
 		require.EqualValues(t, []any{RESPFormat{
+			Namespace: "default",
 			Commands: [][]string{
 				{"XADD", "stream", id, "field", "value"},
 				{"XDEL", "stream", id},
 			}},
 		}, pollUpdates.Updates)
+	})
+
+	t.Run("Stream XACKDEL KEEPREF replay", func(t *testing.T) {
+		streamName := "poll_xackdel_keepref"
+		groupName := "myGroup"
+		require.NoError(t, rdb0.XAdd(ctx, &redis.XAddArgs{Stream: streamName, ID: "1-0", Values: []string{"field", "value"}}).Err())
+		require.NoError(t, rdb0.XGroupCreateMkStream(ctx, streamName, groupName, "0").Err())
+		_, err := rdb0.XReadGroup(ctx, &redis.XReadGroupArgs{Group: groupName, Consumer: "c1", Streams: []string{streamName, ">"}, Count: 1}).Result()
+		require.NoError(t, err)
+		r, err := rdb0.Do(ctx, "XACKDEL", streamName, groupName, "KEEPREF", "IDS", "1", "1-0").Result()
+		require.NoError(t, err)
+		require.Equal(t, []interface{}{int64(1)}, r)
+
+		result, err := rdb0.Do(ctx, "POLLUPDATES", pollUpdates.NextSeq, "MAX", 20, "FORMAT", "RESP").Result()
+		require.NoError(t, err)
+		pollUpdates = parsePollUpdatesResult(t, result.(map[any]any), true)
+		xackCommands := collectRESPCommands(pollUpdates.Updates, "XACK")
+		require.Equal(t, [][]string{{"XACK", streamName, groupName, "1-0"}}, xackCommands)
+		xdelCommands := collectRESPCommands(pollUpdates.Updates, "XDEL")
+		require.Equal(t, [][]string{{"XDEL", streamName, "1-0"}}, xdelCommands)
+		require.Empty(t, collectRESPCommands(pollUpdates.Updates, "XACKDEL"))
+
+		require.NoError(t, rdb1.FlushDB(ctx).Err())
+		require.NoError(t, rdb1.XAdd(ctx, &redis.XAddArgs{Stream: streamName, ID: "1-0", Values: []string{"field", "value"}}).Err())
+		require.NoError(t, rdb1.XGroupCreateMkStream(ctx, streamName, groupName, "$").Err())
+		applyRESPCommands(t, rdb1, pollUpdates.Updates, "XACK", "XDEL")
+		require.Equal(t, int64(0), rdb1.XLen(ctx, streamName).Val())
+	})
+
+	t.Run("Stream XACKDEL ACKED replay", func(t *testing.T) {
+		streamName := "poll_xackdel_acked"
+		groupName := "myGroup"
+		require.NoError(t, rdb0.XAdd(ctx, &redis.XAddArgs{Stream: streamName, ID: "1-0", Values: []string{"field", "value"}}).Err())
+		require.NoError(t, rdb0.XGroupCreateMkStream(ctx, streamName, groupName, "0").Err())
+		_, err := rdb0.XReadGroup(ctx, &redis.XReadGroupArgs{Group: groupName, Consumer: "c1", Streams: []string{streamName, ">"}, Count: 1}).Result()
+		require.NoError(t, err)
+		r, err := rdb0.Do(ctx, "XACKDEL", streamName, groupName, "ACKED", "IDS", "1", "1-0").Result()
+		require.NoError(t, err)
+		require.Equal(t, []interface{}{int64(1)}, r)
+
+		result, err := rdb0.Do(ctx, "POLLUPDATES", pollUpdates.NextSeq, "MAX", 20, "FORMAT", "RESP").Result()
+		require.NoError(t, err)
+		pollUpdates = parsePollUpdatesResult(t, result.(map[any]any), true)
+		xackCommands := collectRESPCommands(pollUpdates.Updates, "XACK")
+		require.Equal(t, [][]string{{"XACK", streamName, groupName, "1-0"}}, xackCommands)
+		xdelCommands := collectRESPCommands(pollUpdates.Updates, "XDEL")
+		require.Equal(t, [][]string{{"XDEL", streamName, "1-0"}}, xdelCommands)
+		require.Empty(t, collectRESPCommands(pollUpdates.Updates, "XACKDEL"))
+
+		require.NoError(t, rdb1.FlushDB(ctx).Err())
+		require.NoError(t, rdb1.XAdd(ctx, &redis.XAddArgs{Stream: streamName, ID: "1-0", Values: []string{"field", "value"}}).Err())
+		require.NoError(t, rdb1.XGroupCreateMkStream(ctx, streamName, groupName, "$").Err())
+		applyRESPCommands(t, rdb1, pollUpdates.Updates, "XACK", "XDEL")
+		require.Equal(t, int64(0), rdb1.XLen(ctx, streamName).Val())
+	})
+
+	t.Run("Stream XACKDEL DELREF replay deduplicates group PEL cleanup", func(t *testing.T) {
+		streamName := "poll_xackdel_delref"
+		groupName := "myGroup"
+		otherGroup := "otherGroup"
+		require.NoError(t, rdb0.XAdd(ctx, &redis.XAddArgs{Stream: streamName, ID: "1-0", Values: []string{"field", "value"}}).Err())
+		require.NoError(t, rdb0.XGroupCreateMkStream(ctx, streamName, groupName, "0").Err())
+		require.NoError(t, rdb0.XGroupCreateMkStream(ctx, streamName, otherGroup, "0").Err())
+		_, err := rdb0.XReadGroup(ctx, &redis.XReadGroupArgs{Group: groupName, Consumer: "c1", Streams: []string{streamName, ">"}, Count: 1}).Result()
+		require.NoError(t, err)
+		_, err = rdb0.XReadGroup(ctx, &redis.XReadGroupArgs{Group: otherGroup, Consumer: "c2", Streams: []string{streamName, ">"}, Count: 1}).Result()
+		require.NoError(t, err)
+		r, err := rdb0.Do(ctx, "XACKDEL", streamName, groupName, "DELREF", "IDS", "1", "1-0").Result()
+		require.NoError(t, err)
+		require.Equal(t, []interface{}{int64(1)}, r)
+
+		result, err := rdb0.Do(ctx, "POLLUPDATES", pollUpdates.NextSeq, "MAX", 20, "FORMAT", "RESP").Result()
+		require.NoError(t, err)
+		pollUpdates = parsePollUpdatesResult(t, result.(map[any]any), true)
+		xackCommands := collectRESPCommands(pollUpdates.Updates, "XACK")
+		require.ElementsMatch(t, [][]string{
+			{"XACK", streamName, groupName, "1-0"},
+			{"XACK", streamName, otherGroup, "1-0"},
+		}, xackCommands)
+		xdelCommands := collectRESPCommands(pollUpdates.Updates, "XDEL")
+		require.Equal(t, [][]string{{"XDEL", streamName, "1-0"}}, xdelCommands)
+		require.Empty(t, collectRESPCommands(pollUpdates.Updates, "XACKDEL"))
+
+		require.NoError(t, rdb1.FlushDB(ctx).Err())
+		require.NoError(t, rdb1.XAdd(ctx, &redis.XAddArgs{Stream: streamName, ID: "1-0", Values: []string{"field", "value"}}).Err())
+		require.NoError(t, rdb1.XGroupCreateMkStream(ctx, streamName, groupName, "$").Err())
+		require.NoError(t, rdb1.XGroupCreateMkStream(ctx, streamName, otherGroup, "0").Err())
+		_, err = rdb1.XReadGroup(ctx, &redis.XReadGroupArgs{Group: otherGroup, Consumer: "c2", Streams: []string{streamName, ">"}, Count: 1}).Result()
+		require.NoError(t, err)
+		applyRESPCommands(t, rdb1, pollUpdates.Updates, "XACK", "XDEL")
+		require.Equal(t, int64(0), rdb1.XLen(ctx, streamName).Val())
+		otherPending, err := rdb1.XPending(ctx, streamName, otherGroup).Result()
+		require.NoError(t, err)
+		require.Equal(t, int64(0), otherPending.Count)
+	})
+
+	t.Run("Stream XACKDEL ACKED skipped replays ack only", func(t *testing.T) {
+		streamName := "poll_xackdel_acked_skipped"
+		groupName := "myGroup"
+		otherGroup := "otherGroup"
+		require.NoError(t, rdb0.XAdd(ctx, &redis.XAddArgs{Stream: streamName, ID: "1-0", Values: []string{"field", "value"}}).Err())
+		require.NoError(t, rdb0.XGroupCreateMkStream(ctx, streamName, groupName, "0").Err())
+		require.NoError(t, rdb0.XGroupCreateMkStream(ctx, streamName, otherGroup, "0").Err())
+		_, err := rdb0.XReadGroup(ctx, &redis.XReadGroupArgs{Group: groupName, Consumer: "c1", Streams: []string{streamName, ">"}, Count: 1}).Result()
+		require.NoError(t, err)
+		_, err = rdb0.XReadGroup(ctx, &redis.XReadGroupArgs{Group: otherGroup, Consumer: "c2", Streams: []string{streamName, ">"}, Count: 1}).Result()
+		require.NoError(t, err)
+		r, err := rdb0.Do(ctx, "XACKDEL", streamName, groupName, "ACKED", "IDS", "1", "1-0").Result()
+		require.NoError(t, err)
+		require.Equal(t, []interface{}{int64(2)}, r)
+
+		result, err := rdb0.Do(ctx, "POLLUPDATES", pollUpdates.NextSeq, "MAX", 20, "FORMAT", "RESP").Result()
+		require.NoError(t, err)
+		pollUpdates = parsePollUpdatesResult(t, result.(map[any]any), true)
+		xackCommands := collectRESPCommands(pollUpdates.Updates, "XACK")
+		require.Equal(t, [][]string{{"XACK", streamName, groupName, "1-0"}}, xackCommands)
+		require.Empty(t, collectRESPCommands(pollUpdates.Updates, "XDEL"))
+		require.Empty(t, collectRESPCommands(pollUpdates.Updates, "XACKDEL"))
+
+		require.NoError(t, rdb1.FlushDB(ctx).Err())
+		require.NoError(t, rdb1.XAdd(ctx, &redis.XAddArgs{Stream: streamName, ID: "1-0", Values: []string{"field", "value"}}).Err())
+		require.NoError(t, rdb1.XGroupCreateMkStream(ctx, streamName, groupName, "0").Err())
+		_, err = rdb1.XReadGroup(ctx, &redis.XReadGroupArgs{Group: groupName, Consumer: "c1", Streams: []string{streamName, ">"}, Count: 1}).Result()
+		require.NoError(t, err)
+		applyRESPCommands(t, rdb1, pollUpdates.Updates, "XACK")
+		require.Equal(t, int64(1), rdb1.XLen(ctx, streamName).Val())
+		pending, err := rdb1.XPending(ctx, streamName, groupName).Result()
+		require.NoError(t, err)
+		require.Equal(t, int64(0), pending.Count)
 	})
 
 	t.Run("JSON type", func(t *testing.T) {

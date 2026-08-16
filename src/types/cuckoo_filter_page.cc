@@ -119,6 +119,13 @@ rocksdb::Status CuckooPageCache::SetBucketSlot(uint16_t filter_index, uint32_t n
 rocksdb::Status CuckooPageCache::WriteBackDirtyPages(rocksdb::WriteBatchBase *batch) {
   for (const auto &entry : pages_) {
     if (!entry.second.is_dirty) continue;
+    if (std::all_of(entry.second.data.begin(), entry.second.data.end(), [](char value) { return value == 0; })) {
+      if (entry.second.exists) {
+        auto s = batch->Delete(entry.first);
+        if (!s.ok()) return s;
+      }
+      continue;
+    }
     auto s = batch->Put(entry.first, entry.second.data);
     if (!s.ok()) return s;
   }
@@ -167,6 +174,7 @@ rocksdb::Status CuckooPageCache::loadPage(const BucketLocation &location, PageEn
   PageEntry page_entry;
   auto s = storage_->Get(ctx_, ctx_.GetReadOptions(), location.page_key, &page_entry.data);
   if (!s.ok() && !s.IsNotFound()) return s;
+  page_entry.exists = s.ok();
   s = normalizePage(s, location.expected_page_size, &page_entry);
   if (!s.ok()) return s;
 
@@ -193,7 +201,10 @@ rocksdb::Status CuckooPageCache::loadPages(const std::vector<BucketLocation> &lo
 
   for (size_t i = 0; i < locations.size(); ++i) {
     PageEntry page_entry;
-    if (statuses[i].ok()) page_entry.data.assign(values[i].data(), values[i].size());
+    if (statuses[i].ok()) {
+      page_entry.data.assign(values[i].data(), values[i].size());
+      page_entry.exists = true;
+    }
     auto s = normalizePage(statuses[i], locations[i].expected_page_size, &page_entry);
     if (!s.ok()) return s;
     pages_.emplace(locations[i].page_key, std::move(page_entry));

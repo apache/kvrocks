@@ -896,7 +896,9 @@ TEST_F(RedisCuckooFilterTest, DeleteSearchesNewestFilterFirst) {
   auto stored_metadata = getMetadata(key_);
   EXPECT_EQ(stored_metadata.n_filters, 2);
   EXPECT_EQ(readFingerprint(key_, stored_metadata, 0, bucket, 0), fingerprint);
-  EXPECT_EQ(readFingerprint(key_, stored_metadata, 1, bucket, 0), 0);
+  std::string page;
+  s = readPage(makePageKey(key_, stored_metadata, 1, pageIndexForBucket(stored_metadata, bucket)), &page);
+  EXPECT_TRUE(s.IsNotFound()) << s.ToString();
 }
 
 TEST_F(RedisCuckooFilterTest, DeleteDoesNotCompactFilters) {

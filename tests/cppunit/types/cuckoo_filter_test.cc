@@ -83,10 +83,10 @@ class RedisCuckooFilterTest : public TestBase {
 
   void addAndVerify(const std::string &key, const std::string &item, uint64_t capacity, uint8_t bucket_size,
                     uint16_t max_iterations, uint16_t expansion, uint64_t expected_size, uint16_t n_filters = 1) {
-    bool added = false;
-    auto s = cuckoo_->Add(*ctx_, key, item, &added);
+    redis::CuckooFilterInsertResult ret = redis::CuckooFilterInsertResult::kOk;
+    auto s = cuckoo_->Add(*ctx_, key, item, ret);
     ASSERT_TRUE(s.ok()) << key << ": add '" << item << "' failed: " << s.ToString();
-    ASSERT_TRUE(added) << key << ": item '" << item << "' should have been added";
+    ASSERT_TRUE(ret == redis::CuckooFilterInsertResult::kOk) << key << ": item '" << item << "' should have been added";
     verifyMetadata(key, capacity, bucket_size, max_iterations, expansion, expected_size, n_filters, 0);
   }
 
@@ -234,14 +234,14 @@ TEST_F(RedisCuckooFilterTest, ReserveKeepsZeroExpansionNonScaling) {
   uint64_t added_count = 0;
   bool full = false;
   for (int i = 0; i < 100; ++i) {
-    bool added = false;
-    auto s = cuckoo_->Add(*ctx_, key_, "item_" + std::to_string(i), &added);
-    if (!s.ok()) {
-      ASSERT_TRUE(s.IsAborted()) << s.ToString();
+    redis::CuckooFilterInsertResult ret = redis::CuckooFilterInsertResult::kOk;
+    auto s = cuckoo_->Add(*ctx_, key_, "item_" + std::to_string(i), ret);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    if (ret == redis::CuckooFilterInsertResult::kFull) {
       full = true;
       break;
     }
-    ASSERT_TRUE(added);
+    ASSERT_EQ(ret, redis::CuckooFilterInsertResult::kOk);
     ++added_count;
   }
 
@@ -564,16 +564,18 @@ TEST_F(RedisCuckooFilterTest, AddSmallFilterCapacity) {
   bool full = false;
   for (int i = 0; i < 100; ++i) {
     std::string item = "item_" + std::to_string(i);
-    bool added = false;
-    auto s = cuckoo_->Add(*ctx_, key_, item, &added);
+    redis::CuckooFilterInsertResult ret = redis::CuckooFilterInsertResult::kOk;
+    auto s = cuckoo_->Add(*ctx_, key_, item, ret);
 
     if (!s.ok()) {
-      ASSERT_TRUE(s.IsAborted()) << "Should be Aborted status when full";
+      FAIL() << "Unexpected error: " << s.ToString();
+    }
+    if (ret == redis::CuckooFilterInsertResult::kFull) {
       full = true;
       break;
     }
 
-    ASSERT_TRUE(added) << "Item should have been added before the filter is full";
+    ASSERT_EQ(ret, redis::CuckooFilterInsertResult::kOk) << "Item should have been added before the filter is full";
     ++added_count;
   }
 
@@ -716,10 +718,10 @@ TEST_F(RedisCuckooFilterTest, ExpansionWritesNewFilterIndexPage) {
   CuckooChainMetadata metadata(false);
   uint64_t added_count = 0;
   for (int i = 0; i < 100; ++i) {
-    bool added = false;
-    auto s = cuckoo_->Add(*ctx_, key_, "item_" + std::to_string(i), &added);
+    redis::CuckooFilterInsertResult ret = redis::CuckooFilterInsertResult::kOk;
+    auto s = cuckoo_->Add(*ctx_, key_, "item_" + std::to_string(i), ret);
     ASSERT_TRUE(s.ok()) << s.ToString();
-    ASSERT_TRUE(added);
+    ASSERT_EQ(ret, redis::CuckooFilterInsertResult::kOk);
     ++added_count;
 
     metadata = getMetadata(key_);
@@ -743,3 +745,131 @@ TEST_F(RedisCuckooFilterTest, ExpansionWritesNewFilterIndexPage) {
   ASSERT_TRUE(s.ok()) << s.ToString();
   EXPECT_EQ(page.size(), expected_page_size);
 }
+
+TEST_F(RedisCuckooFilterTest, InsertBasic) {
+  std::vector<std::string> items = {"item1", "item2", "item3"};
+  std::vector<redis::CuckooFilterInsertResult> rets(3, redis::CuckooFilterInsertResult::kOk);
+  redis::CuckooFilterInsertOptions options;
+  auto s = cuckoo_->Insert(*ctx_, key_, items, options, rets);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  ASSERT_EQ(rets.size(), 3);
+  for (const auto &ret : rets) {
+    EXPECT_EQ(ret, redis::CuckooFilterInsertResult::kOk);
+  }
+  verifyMetadata(key_, redis::kCFDefaultCapacity, redis::kCFDefaultBucketSize, redis::kCFDefaultMaxIterations,
+                 redis::kCFDefaultExpansion, 3, 1);
+}
+
+TEST_F(RedisCuckooFilterTest, InsertNoCreateNonExistent) {
+  std::vector<std::string> items = {"item1"};
+  std::vector<redis::CuckooFilterInsertResult> rets(1, redis::CuckooFilterInsertResult::kOk);
+  redis::CuckooFilterInsertOptions options;
+  options.auto_create = false;
+  auto s = cuckoo_->Insert(*ctx_, key_, items, options, rets);
+  ASSERT_TRUE(s.IsNotFound()) << s.ToString();
+}
+
+TEST_F(RedisCuckooFilterTest, InsertNoCreateExisting) {
+  reserveAndVerify(key_, 1000, 4, 500, 2);
+  std::vector<std::string> items = {"item1", "item2"};
+  std::vector<redis::CuckooFilterInsertResult> rets(2, redis::CuckooFilterInsertResult::kOk);
+  redis::CuckooFilterInsertOptions options;
+  options.auto_create = false;
+  auto s = cuckoo_->Insert(*ctx_, key_, items, options, rets);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  ASSERT_EQ(rets.size(), 2);
+  for (const auto &ret : rets) {
+    EXPECT_EQ(ret, redis::CuckooFilterInsertResult::kOk);
+  }
+  verifyMetadata(key_, 1000, 4, 500, 2, 2, 1);
+}
+
+TEST_F(RedisCuckooFilterTest, InsertWithCustomCapacity) {
+  std::vector<std::string> items = {"item1", "item2"};
+  std::vector<redis::CuckooFilterInsertResult> rets(2, redis::CuckooFilterInsertResult::kOk);
+  redis::CuckooFilterInsertOptions options;
+  options.capacity = 5000;
+  auto s = cuckoo_->Insert(*ctx_, key_, items, options, rets);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  ASSERT_EQ(rets.size(), 2);
+  for (const auto &ret : rets) {
+    EXPECT_EQ(ret, redis::CuckooFilterInsertResult::kOk);
+  }
+  verifyMetadata(key_, 5000, redis::kCFDefaultBucketSize, redis::kCFDefaultMaxIterations, redis::kCFDefaultExpansion, 2,
+                 1);
+}
+
+TEST_F(RedisCuckooFilterTest, InsertInvalidCapacity) {
+  std::vector<std::string> items = {"item1"};
+  std::vector<redis::CuckooFilterInsertResult> rets(1, redis::CuckooFilterInsertResult::kOk);
+  redis::CuckooFilterInsertOptions options;
+
+  options.capacity = 1;
+  auto s = cuckoo_->Insert(*ctx_, key_, items, options, rets);
+  ASSERT_TRUE(s.IsInvalidArgument()) << s.ToString();
+
+  options.capacity = std::numeric_limits<uint64_t>::max();
+  s = cuckoo_->Insert(*ctx_, key_, items, options, rets);
+  ASSERT_TRUE(s.IsCorruption()) << s.ToString();
+}
+
+TEST_F(RedisCuckooFilterTest, InsertExistingFilterIgnoresCapacity) {
+  reserveAndVerify(key_, 1000, 4, 500, 2);
+
+  std::vector<std::string> items = {"item1"};
+  std::vector<redis::CuckooFilterInsertResult> rets(1, redis::CuckooFilterInsertResult::kOk);
+  redis::CuckooFilterInsertOptions options;
+  options.capacity = 9999;
+  auto s = cuckoo_->Insert(*ctx_, key_, items, options, rets);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  ASSERT_EQ(rets.size(), 1);
+  EXPECT_EQ(rets[0], redis::CuckooFilterInsertResult::kOk);
+  verifyMetadata(key_, 1000, 4, 500, 2, 1, 1);
+}
+
+TEST_F(RedisCuckooFilterTest, InsertNonScalingFilterFull) {
+  reserveAndVerify(key_, 2, 1, 1, 0);
+
+  std::vector<std::string> items(50);
+  for (int i = 0; i < 50; ++i) {
+    items[i] = "item_" + std::to_string(i);
+  }
+
+  std::vector<redis::CuckooFilterInsertResult> rets(items.size(), redis::CuckooFilterInsertResult::kOk);
+  redis::CuckooFilterInsertOptions options;
+  auto s = cuckoo_->Insert(*ctx_, key_, items, options, rets);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  ASSERT_EQ(rets.size(), items.size());
+
+  size_t ok_count = 0;
+  size_t full_count = 0;
+  for (const auto &ret : rets) {
+    if (ret == redis::CuckooFilterInsertResult::kOk) {
+      ++ok_count;
+    } else if (ret == redis::CuckooFilterInsertResult::kFull) {
+      ++full_count;
+    }
+  }
+
+  EXPECT_GT(ok_count, 0);
+  EXPECT_GT(full_count, 0);
+  EXPECT_EQ(ok_count + full_count, items.size());
+
+  auto metadata = getMetadata(key_);
+  EXPECT_EQ(metadata.size, ok_count);
+}
+
+TEST_F(RedisCuckooFilterTest, InsertDuplicateItems) {
+  std::vector<std::string> items = {"duplicate", "duplicate", "duplicate"};
+  std::vector<redis::CuckooFilterInsertResult> rets(3, redis::CuckooFilterInsertResult::kOk);
+  redis::CuckooFilterInsertOptions options;
+  auto s = cuckoo_->Insert(*ctx_, key_, items, options, rets);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  ASSERT_EQ(rets.size(), 3);
+  for (const auto &ret : rets) {
+    EXPECT_EQ(ret, redis::CuckooFilterInsertResult::kOk);
+  }
+  verifyMetadata(key_, redis::kCFDefaultCapacity, redis::kCFDefaultBucketSize, redis::kCFDefaultMaxIterations,
+                 redis::kCFDefaultExpansion, 3, 1);
+}
+

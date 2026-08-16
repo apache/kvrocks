@@ -124,17 +124,37 @@ rocksdb::Status CuckooChain::Reserve(engine::Context &ctx, const Slice &user_key
   return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
-rocksdb::Status CuckooChain::Add(engine::Context &ctx, const Slice &user_key, const Slice &item, bool *added) {
+rocksdb::Status CuckooChain::Add(engine::Context &ctx, const Slice &user_key, const std::string &item, CuckooFilterInsertResult &ret) {
+  std::vector<CuckooFilterInsertResult> tmp{CuckooFilterInsertResult::kOk};
+  CuckooFilterInsertOptions options;
+  // RedisBloom CF.ADD auto-creates the filter when the key does not exist:
+  // https://redis.io/docs/latest/commands/cf.add/
+  auto s = Insert(ctx, user_key, {item}, options, tmp);
+  ret = tmp[0];
+  return s;
+}
+
+rocksdb::Status CuckooChain::Insert(engine::Context &ctx, const Slice &user_key,
+                                    const std::vector<std::string> &items,
+                                    CuckooFilterInsertOptions &insert_options,
+                                    std::vector<CuckooFilterInsertResult> &ret) {
   std::string ns_key = AppendNamespacePrefix(user_key);
 
   CuckooChainMetadata metadata(false);
   auto s = getCuckooChainMetadata(ctx, ns_key, &metadata);
+
   if (s.IsNotFound()) {
-    // RedisBloom CF.ADD auto-creates the filter when the key does not exist:
-    // https://redis.io/docs/latest/commands/cf.add/
+    if (!insert_options.auto_create) {
+      return s;
+    }
+
+    if (insert_options.capacity < 2) {
+      return rocksdb::Status::InvalidArgument("capacity must be at least 2");
+    }
+
     metadata = CuckooChainMetadata();
     metadata.size = 0;
-    metadata.base_capacity = kCFDefaultCapacity;
+    metadata.base_capacity = insert_options.capacity;
     metadata.bucket_size = kCFDefaultBucketSize;
     metadata.max_iterations = kCFDefaultMaxIterations;
     metadata.expansion = kCFDefaultExpansion;
@@ -148,36 +168,40 @@ rocksdb::Status CuckooChain::Add(engine::Context &ctx, const Slice &user_key, co
   s = validateMetadata(metadata);
   if (!s.ok()) return s;
 
-  // Calculate hash and fingerprint for the item
-  uint64_t hash = CuckooFilterHelper::Hash(item.data(), item.size());
-  uint8_t fingerprint = CuckooFilterHelper::GenerateFingerprint(hash);
+  for (size_t i = 0; i < items.size(); ++i) {
+    const auto &item = items[i];
+    uint64_t hash = CuckooFilterHelper::Hash(item.data(), item.size());
+    uint8_t fingerprint = CuckooFilterHelper::GenerateFingerprint(hash);
 
-  bool inserted = false;
-  s = tryCuckooInsert(ctx, user_key, ns_key, &metadata, hash, fingerprint, &inserted);
-  if (!s.ok()) return s;
-  if (inserted) {
-    *added = true;
-    return rocksdb::Status::OK();
+    bool inserted = false;
+    s = tryCuckooInsert(ctx, user_key, ns_key, &metadata, hash, fingerprint, &inserted);
+    if (!s.ok()) return s;
+    if (inserted) {
+      ret[i] = CuckooFilterInsertResult::kOk;
+      continue;
+    }
+
+    s = tryCuckooKickOut(ctx, user_key, ns_key, &metadata, hash, fingerprint, &inserted);
+    if (!s.ok()) return s;
+    if (inserted) {
+      ret[i] = CuckooFilterInsertResult::kOk;
+      continue;
+    }
+
+    s = expandAndInsertCuckooChain(ctx, user_key, ns_key, &metadata, hash, fingerprint, &inserted);
+    if (!s.ok()) return s;
+    if (inserted) {
+      ret[i] = CuckooFilterInsertResult::kOk;
+      continue;
+    }
+
+    // No expansion allowed and filter is full
+    ret[i] = CuckooFilterInsertResult::kFull;
   }
 
-  s = tryCuckooKickOut(ctx, user_key, ns_key, &metadata, hash, fingerprint, &inserted);
-  if (!s.ok()) return s;
-  if (inserted) {
-    *added = true;
-    return rocksdb::Status::OK();
-  }
-
-  s = expandAndInsertCuckooChain(ctx, user_key, ns_key, &metadata, hash, fingerprint, &inserted);
-  if (!s.ok()) return s;
-  if (inserted) {
-    *added = true;
-    return rocksdb::Status::OK();
-  }
-
-  // No expansion allowed and filter is full
-  *added = false;
-  return rocksdb::Status::Aborted("filter is full");
+  return rocksdb::Status::OK();
 }
+
 
 rocksdb::Status CuckooChain::tryCuckooInsert(engine::Context &ctx, const Slice &user_key, const std::string &ns_key,
                                              CuckooChainMetadata *metadata, uint64_t hash, uint8_t fingerprint,

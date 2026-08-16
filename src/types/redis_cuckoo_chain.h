@@ -21,6 +21,7 @@
 #pragma once
 
 #include "cuckoo_filter.h"
+#include "rocksdb/status.h"
 #include "storage/redis_db.h"
 #include "storage/redis_metadata.h"
 
@@ -35,6 +36,17 @@ const uint16_t kCFDefaultMaxIterations = 20;
 const uint16_t kCFDefaultExpansion = 1;
 const uint16_t kCFMaxExpansion = 32768;
 
+enum class CuckooFilterInsertResult {
+  kOk,
+  kExist,
+  kFull,
+};
+
+struct CuckooFilterInsertOptions {
+  uint64_t capacity = kCFDefaultCapacity;
+  bool auto_create = true;
+};
+
 class CuckooChain : public Database {
  public:
   CuckooChain(engine::Storage *storage, const std::string &ns) : Database(storage, ns) {}
@@ -45,7 +57,10 @@ class CuckooChain : public Database {
 
   // Adds one item to the cuckoo filter.
   // Duplicate items are allowed, so added is true whenever insertion succeeds.
-  rocksdb::Status Add(engine::Context &ctx, const Slice &user_key, const Slice &item, bool *added);
+  rocksdb::Status Add(engine::Context &ctx, const Slice &user_key, const std::string &item, CuckooFilterInsertResult &res);
+
+  rocksdb::Status Insert(engine::Context &ctx, const Slice &user_key, const std::vector<std::string> &items,
+                         CuckooFilterInsertOptions &options, std::vector<CuckooFilterInsertResult> &rets);
 
  private:
   // Loads metadata for a cuckoo filter key.

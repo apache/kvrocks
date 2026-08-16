@@ -18,6 +18,7 @@
  *
  */
 
+#include <cstdlib>
 #include <vector>
 
 #include "command_parser.h"
@@ -134,8 +135,8 @@ class CommandCFAdd : public Commander {
         *output = redis::Integer(1);
         break;
       case CuckooFilterInsertResult::kExist:
-        *output = redis::Integer(0);
-        break;
+        std::cout << "Item exists result in add command is not possible" << std::endl;
+        std::abort();
       case CuckooFilterInsertResult::kFull:
         *output = redis::Error({Status::NotOK, "filter is full"});
         break;
@@ -200,12 +201,16 @@ class CommandCFInsert : public Commander {
 
     *output = redis::MultiLen(items_.size());
     for (const auto &ret : rets) {
-      if (ret == CuckooFilterInsertResult::kOk) {
-        *output += redis::Integer(1);
-      } else if (ret == CuckooFilterInsertResult::kExist) {
-        *output += redis::Integer(0);
-      } else {
-        *output += redis::Error({Status::NotOK, "filter is full"});
+      switch (ret) {
+        case CuckooFilterInsertResult::kOk:
+          *output += redis::Integer(1);
+          break;
+        case CuckooFilterInsertResult::kExist:
+          std::cout << "Item exists result in add command is not possible" << std::endl;
+          std::abort();
+        case CuckooFilterInsertResult::kFull:
+          *output += redis::Integer(-1);
+          break;
       }
     }
 

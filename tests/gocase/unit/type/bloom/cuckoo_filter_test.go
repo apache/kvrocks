@@ -288,7 +288,7 @@ func TestCuckooFilterInsert(t *testing.T) {
 		require.Equal(t, 2, len(vals))
 		for _, v := range vals {
 			// Full items embed an error entry in the multi-bulk response, never int64(1).
-			require.NotEqual(t, int64(1), v)
+			require.Equal(t, int64(-1), v)
 		}
 	})
 

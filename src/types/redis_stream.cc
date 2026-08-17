@@ -582,6 +582,7 @@ rocksdb::Status Stream::AutoClaim(engine::Context &ctx, const Slice &stream_name
 
   auto iter = util::UniqueIterator(ctx, read_options, stream_cf_handle_);
   uint64_t total_claimed_count = 0;
+  std::map<std::string, uint64_t> deleted_consumer_count;
   for (iter->SeekToFirst(); iter->Valid() && count > 0 && attempts > 0; iter->Next()) {
     std::string tmp_group_name;
     StreamEntryID entry_id = groupAndEntryIdFromPelInternalKey(iter->key(), tmp_group_name);
@@ -605,6 +606,9 @@ rocksdb::Status Stream::AutoClaim(engine::Context &ctx, const Slice &stream_name
         deleted_entries.push_back(entry_id);
         s = batch->Delete(stream_cf_handle_, iter->key());
         if (!s.ok()) return s;
+        // The referenced entry was trimmed/XDEL'd; dropping this PEL record must
+        // decrement pending_number below, otherwise the counter drifts up and wraps.
+        deleted_consumer_count[penl_entry.consumer_name] += 1;
         --count;
         continue;
       }
@@ -636,14 +640,34 @@ rocksdb::Status Stream::AutoClaim(engine::Context &ctx, const Slice &stream_name
     }
   }
 
-  if (total_claimed_count > 0 && !pending_entries.empty()) {
+  // A claim keeps the group total (entry moves between consumers); a deleted dangling
+  // entry leaves the PEL, so decrement both its consumer and the group. Saturating.
+  const uint64_t deleted_count = deleted_entries.size();
+  // The current consumer never appears in claimed_consumer_entity_count (we only claim from other
+  // consumers), so keep its own deleted-entry decrement in a scalar and let the map hold only the
+  // other consumers, avoiding a find-and-erase on the map.
+  uint64_t current_consumer_decrement = 0;
+  std::map<std::string, uint64_t> consumer_pending_decrements = claimed_consumer_entity_count;
+  for (const auto &[consumer, cnt] : deleted_consumer_count) {
+    if (consumer == consumer_name) {
+      current_consumer_decrement += cnt;
+    } else {
+      consumer_pending_decrements[consumer] += cnt;
+    }
+  }
+
+  if (total_claimed_count > 0 || deleted_count > 0) {
     current_consumer_metadata.pending_number += total_claimed_count;
+    current_consumer_metadata.pending_number =
+        current_consumer_metadata.pending_number >= current_consumer_decrement
+            ? current_consumer_metadata.pending_number - current_consumer_decrement
+            : 0;
     current_consumer_metadata.last_attempted_interaction_ms = now_ms;
 
     s = batch->Put(stream_cf_handle_, consumer_key, encodeStreamConsumerMetadataValue(current_consumer_metadata));
     if (!s.ok()) return s;
 
-    for (const auto &[consumer, count] : claimed_consumer_entity_count) {
+    for (const auto &[consumer, dec] : consumer_pending_decrements) {
       std::string tmp_consumer_key = internalKeyFromConsumerName(ns_key, metadata, group_name, consumer);
       std::string tmp_consumer_value;
       s = storage_->Get(ctx, ctx.GetReadOptions(), stream_cf_handle_, tmp_consumer_key, &tmp_consumer_value);
@@ -651,8 +675,21 @@ rocksdb::Status Stream::AutoClaim(engine::Context &ctx, const Slice &stream_name
         return s;
       }
       StreamConsumerMetadata tmp_consumer_metadata = decodeStreamConsumerMetadataValue(tmp_consumer_value);
-      tmp_consumer_metadata.pending_number -= count;
+      tmp_consumer_metadata.pending_number =
+          tmp_consumer_metadata.pending_number >= dec ? tmp_consumer_metadata.pending_number - dec : 0;
       s = batch->Put(stream_cf_handle_, tmp_consumer_key, encodeStreamConsumerMetadataValue(tmp_consumer_metadata));
+      if (!s.ok()) return s;
+    }
+
+    if (deleted_count > 0) {
+      std::string group_key = internalKeyFromGroupName(ns_key, metadata, group_name);
+      std::string get_group_value;
+      s = storage_->Get(ctx, ctx.GetReadOptions(), stream_cf_handle_, group_key, &get_group_value);
+      if (!s.ok()) return s;
+      StreamConsumerGroupMetadata group_metadata = decodeStreamConsumerGroupMetadataValue(get_group_value);
+      group_metadata.pending_number =
+          group_metadata.pending_number >= deleted_count ? group_metadata.pending_number - deleted_count : 0;
+      s = batch->Put(stream_cf_handle_, group_key, encodeStreamConsumerGroupMetadataValue(group_metadata));
       if (!s.ok()) return s;
     }
   }

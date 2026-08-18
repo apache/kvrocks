@@ -271,6 +271,8 @@ struct Config {
     bool rate_limiter_auto_tuned;
     bool avoid_unnecessary_blocking_io = true;
     bool partition_filters;
+    bool use_direct_reads = false;
+    bool use_direct_io_for_flush_and_compaction = false;
     int64_t max_compaction_bytes;
     int64_t sst_file_delete_rate_bytes_per_sec = 0;
     uint64_t periodic_compaction_seconds = kDefaultRocksdbPeriodicCompactionSeconds;

@@ -671,6 +671,22 @@ var streamTests = func(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.EqualValues(t, "g1", groups[0].Name)
 		require.EqualValues(t, 3, groups[0].Pending)
 		require.EqualValues(t, "3-0", groups[0].LastDeliveredID)
+
+		// groups[0].Pending above is only the count cached in group metadata; read the PEL
+		// subkeys back with XPENDING's extended form to prove the entries themselves survived
+		// the range tombstone (which stops at the first group/consumer/PEL subkey).
+		pending, err := rdb.XPendingExt(ctx, &redis.XPendingExtArgs{
+			Stream: "mystream",
+			Group:  "g1",
+			Start:  "-",
+			End:    "+",
+			Count:  10,
+		}).Result()
+		require.NoError(t, err)
+		require.Len(t, pending, 3)
+		require.EqualValues(t, "1-0", pending[0].ID)
+		require.EqualValues(t, "2-0", pending[1].ID)
+		require.EqualValues(t, "3-0", pending[2].ID)
 	})
 
 	t.Run("XADD after trimming a stream to empty keeps the new entries visible", func(t *testing.T) {

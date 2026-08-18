@@ -731,8 +731,16 @@ Status SlotMigrator::migrateIncrementalDataByRawKV(uint64_t end_seq, BatchSender
         break;
       }
       case engine::WALItem::Type::kTypeDeleteRange: {
-        // Do nothing in DeleteRange due to it might cross multiple slots. It's only used in
-        // FLUSHDB/FLUSHALL commands for now and maybe we can disable them while migrating.
+        // The WAL extractor only surfaces range deletes confined to a single in-range slot
+        // (e.g. a stream trim), so forwarding is safe; multi-slot ranges (FLUSHDB/FLUSHALL) are
+        // dropped before they reach here.
+        if (item.column_family_id > kMaxColumnFamilyID) {
+          INFO("[migrate] Invalid delete-range column family id: {}", item.column_family_id);
+          continue;
+        }
+        GET_OR_RET(batch_sender->DeleteRange(storage_->GetCFHandle(static_cast<ColumnFamilyID>(item.column_family_id)),
+                                             item.key, item.value));
+        break;
       }
       default:
         break;

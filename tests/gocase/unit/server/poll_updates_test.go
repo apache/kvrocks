@@ -290,6 +290,33 @@ func TestPollUpdates_WithRESPFormat(t *testing.T) {
 		}, pollUpdates.Updates)
 	})
 
+	t.Run("Stream trim", func(t *testing.T) {
+		// Trim removes entries with one range tombstone; POLLUPDATES must still reconstruct an
+		// equivalent command. A partial trim becomes XTRIM MINID <first surviving id>; a trim that
+		// empties the stream becomes XTRIM MAXLEN 0.
+		for _, id := range []string{"1-0", "2-0", "3-0"} {
+			require.NoError(t, rdb0.XAdd(ctx, &redis.XAddArgs{
+				Stream: "trimstream", ID: id, Values: map[string]interface{}{"f": "v"},
+			}).Err())
+		}
+		require.NoError(t, rdb0.XTrimMinID(ctx, "trimstream", "2-0").Err())
+		require.NoError(t, rdb0.XTrimMaxLen(ctx, "trimstream", 0).Err())
+		result, err := rdb0.Do(ctx, "POLLUPDATES", pollUpdates.NextSeq, "MAX", 10, "FORMAT", "RESP").Result()
+		require.NoError(t, err)
+
+		pollUpdates = parsePollUpdatesResult(t, result.(map[any]any), true)
+		require.Len(t, pollUpdates.Updates, 1)
+		require.EqualValues(t, []any{RESPFormat{
+			Commands: [][]string{
+				{"XADD", "trimstream", "1-0", "f", "v"},
+				{"XADD", "trimstream", "2-0", "f", "v"},
+				{"XADD", "trimstream", "3-0", "f", "v"},
+				{"XTRIM", "trimstream", "MINID", "2-0"},
+				{"XTRIM", "trimstream", "MAXLEN", "0"},
+			}},
+		}, pollUpdates.Updates)
+	})
+
 	t.Run("JSON type", func(t *testing.T) {
 		require.NoError(t, rdb0.JSONSet(ctx, "json", "$", `{"field": "value"}`).Err())
 		require.NoError(t, rdb0.JSONDel(ctx, "json", "$.field").Err())

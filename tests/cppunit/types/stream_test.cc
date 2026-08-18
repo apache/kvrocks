@@ -2071,6 +2071,25 @@ TEST_F(RedisStreamTest, TrimAllEntriesPreservesConsumerGroupAndPel) {
   EXPECT_EQ(group_metadata[0].first, group_name);
   EXPECT_EQ(group_metadata[0].second.pending_number, 3);
   EXPECT_EQ(group_metadata[0].second.last_delivered_id.ToString(), id3.ToString());
+
+  // pending_number above is only the count cached in group metadata; read the PEL subkeys
+  // themselves back to prove the range tombstone stopped short of them and left every
+  // delivered id in place.
+  redis::StreamPendingOptions pending_options;
+  pending_options.stream_name = name_;
+  pending_options.group_name = group_name;
+  pending_options.start_id = redis::StreamEntryID::Minimum();
+  pending_options.end_id = redis::StreamEntryID::Maximum();
+  pending_options.with_count = true;  // extended form: populate ext_results from the PEL subkeys
+  pending_options.count = 10;
+  redis::StreamGetPendingEntryResult pending_infos;
+  std::vector<redis::StreamNACK> ext_results;
+  s = stream_->GetPendingEntries(*ctx_, pending_options, pending_infos, ext_results);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(ext_results.size(), 3);
+  EXPECT_EQ(ext_results[0].id.ToString(), id1.ToString());
+  EXPECT_EQ(ext_results[1].id.ToString(), id2.ToString());
+  EXPECT_EQ(ext_results[2].id.ToString(), id3.ToString());
 }
 
 // Entries added after a trim-to-empty carry a higher sequence number than the range

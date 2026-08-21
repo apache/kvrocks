@@ -506,7 +506,7 @@ struct Context {
     keyspace_event_notify_flags_ = notify_flags;
   }
 
-  bool IsKeyspaceEventEnabled(NotifyKeyspaceEventFlag type_flag) const {
+  bool IsKeyspaceEventEnabled(NotifyKeyspaceEventTypeFlag type_flag) const {
     return ShouldNotifyKeyspaceEvent(keyspace_event_notify_flags_, type_flag);
   }
 

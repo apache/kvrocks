@@ -25,23 +25,27 @@
 
 #include "status.h"
 
-// Flags for notify-keyspace-events, separate from RedisType.
-enum NotifyKeyspaceEventFlag {
+enum NotifyKeyspaceEventChannelFlag {
   kNotifyKeyspace = 1 << 0,  // K, keyspace channels
   kNotifyKeyevent = 1 << 1,  // E, keyevent channels
-  kNotifyGeneric = 1 << 2,   // g, emits del
-  kNotifyString = 1 << 3,    // $, emits set
+};
+
+// Event type flags for notify-keyspace-events, separate from RedisType.
+enum NotifyKeyspaceEventTypeFlag {
+  kNotifyGeneric = 1 << 2,  // g, emits del
+  kNotifyString = 1 << 3,   // $, emits set
   // A, supported data classes without K or E.
   kNotifyAll = kNotifyGeneric | kNotifyString,
 };
 
-bool ShouldNotifyKeyspaceEvent(int notify_flags, NotifyKeyspaceEventFlag type_flag);
+bool ShouldNotifyKeyspaceEvent(int notify_flags, NotifyKeyspaceEventTypeFlag type_flag);
 
 struct KeyspaceEvent {
-  KeyspaceEvent(NotifyKeyspaceEventFlag type_flag, std::string_view event, std::string_view ns, std::string_view key)
+  KeyspaceEvent(NotifyKeyspaceEventTypeFlag type_flag, std::string_view event, std::string_view ns,
+                std::string_view key)
       : type_flag(type_flag), event(event), ns(ns), key(key) {}
 
-  NotifyKeyspaceEventFlag type_flag;
+  NotifyKeyspaceEventTypeFlag type_flag;
   int channel_flags = 0;
   std::string event;
   std::string ns;

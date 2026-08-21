@@ -24,7 +24,6 @@
 
 #include "commander.h"
 #include "commands/command_parser.h"
-#include "common/string_util.h"
 #include "error_constants.h"
 #include "server/redis_reply.h"
 #include "server/redis_request.h"

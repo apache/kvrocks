@@ -29,7 +29,7 @@ bool ShouldNotifyKeyspaceEvent(int notify_flags, NotifyKeyspaceEventFlag type_fl
   return (notify_flags & type_flag) != 0 && (notify_flags & (kNotifyKeyspace | kNotifyKeyevent)) != 0;
 }
 
-Status ParseNotifyKeyspaceEventsFlags(const std::string &input, int *flags) {
+StatusOr<int> ParseNotifyKeyspaceEventsFlags(std::string_view input) {
   int result = 0;
   for (const char c : input) {
     switch (c) {
@@ -53,8 +53,7 @@ Status ParseNotifyKeyspaceEventsFlags(const std::string &input, int *flags) {
     }
   }
 
-  *flags = result;
-  return Status::OK();
+  return result;
 }
 
 namespace {

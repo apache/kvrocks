@@ -383,8 +383,7 @@ void Config::initFieldValidator() {
        }},
       {"notify-keyspace-events",
        []([[maybe_unused]] const std::string &k, const std::string &v) -> Status {
-         int flags = 0;
-         return ParseNotifyKeyspaceEventsFlags(v, &flags);
+         return ParseNotifyKeyspaceEventsFlags(v).ToStatus();
        }},
       {"compact-cron",
        [this]([[maybe_unused]] const std::string &k, const std::string &v) -> Status {
@@ -565,7 +564,8 @@ void Config::initFieldCallback() {
            }},
           {"notify-keyspace-events",
            [this]([[maybe_unused]] Server *srv, [[maybe_unused]] const std::string &k, const std::string &v) -> Status {
-             return ParseNotifyKeyspaceEventsFlags(v, &notify_keyspace_events);
+             notify_keyspace_events = GET_OR_RET(ParseNotifyKeyspaceEventsFlags(v));
+             return Status::OK();
            }},
           {"dir",
            [this]([[maybe_unused]] Server *srv, [[maybe_unused]] const std::string &k,

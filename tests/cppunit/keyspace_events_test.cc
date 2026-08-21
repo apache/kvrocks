@@ -93,46 +93,39 @@ TEST(KeyspaceEvents, ContextMovePreservesEventOrder) {
 }
 
 TEST(KeyspaceEvents, ParseFlags) {
-  int flags = 0;
-
   // Empty disables notifications.
-  ASSERT_TRUE(ParseNotifyKeyspaceEventsFlags("", &flags).IsOK());
-  ASSERT_EQ(flags, 0);
+  EXPECT_EQ(ParseNotifyKeyspaceEventsFlags("").ValueOr(-1), 0);
 
   // Each flag maps to one bit.
-  ASSERT_TRUE(ParseNotifyKeyspaceEventsFlags("K", &flags).IsOK());
-  ASSERT_EQ(flags, kNotifyKeyspace);
-  ASSERT_TRUE(ParseNotifyKeyspaceEventsFlags("E", &flags).IsOK());
-  ASSERT_EQ(flags, kNotifyKeyevent);
-  ASSERT_TRUE(ParseNotifyKeyspaceEventsFlags("g", &flags).IsOK());
-  ASSERT_EQ(flags, kNotifyGeneric);
-  ASSERT_TRUE(ParseNotifyKeyspaceEventsFlags("$", &flags).IsOK());
-  ASSERT_EQ(flags, kNotifyString);
+  EXPECT_EQ(ParseNotifyKeyspaceEventsFlags("K").ValueOr(-1), kNotifyKeyspace);
+  EXPECT_EQ(ParseNotifyKeyspaceEventsFlags("E").ValueOr(-1), kNotifyKeyevent);
+  EXPECT_EQ(ParseNotifyKeyspaceEventsFlags("g").ValueOr(-1), kNotifyGeneric);
+  EXPECT_EQ(ParseNotifyKeyspaceEventsFlags("$").ValueOr(-1), kNotifyString);
 
   // KEA enables both channels and set or del.
-  ASSERT_TRUE(ParseNotifyKeyspaceEventsFlags("KEA", &flags).IsOK());
-  ASSERT_TRUE(flags & kNotifyKeyspace);
-  ASSERT_TRUE(flags & kNotifyKeyevent);
-  ASSERT_TRUE(flags & kNotifyGeneric);  // del
-  ASSERT_TRUE(flags & kNotifyString);   // set
+  auto flags = ParseNotifyKeyspaceEventsFlags("KEA");
+  ASSERT_TRUE(flags.IsOK());
+  ASSERT_TRUE(*flags & kNotifyKeyspace);
+  ASSERT_TRUE(*flags & kNotifyKeyevent);
+  ASSERT_TRUE(*flags & kNotifyGeneric);  // del
+  ASSERT_TRUE(*flags & kNotifyString);   // set
 }
 
 TEST(KeyspaceEvents, ParseFlagsAExpansion) {
-  int flags = 0;
-  ASSERT_TRUE(ParseNotifyKeyspaceEventsFlags("A", &flags).IsOK());
+  auto flags = ParseNotifyKeyspaceEventsFlags("A");
+  ASSERT_TRUE(flags.IsOK());
   // A expands to all supported event classes without K or E.
-  ASSERT_EQ(flags, kNotifyAll);
-  ASSERT_FALSE(flags & kNotifyKeyspace);
-  ASSERT_FALSE(flags & kNotifyKeyevent);
-  ASSERT_TRUE(flags & kNotifyGeneric);
-  ASSERT_TRUE(flags & kNotifyString);
+  ASSERT_EQ(*flags, kNotifyAll);
+  ASSERT_FALSE(*flags & kNotifyKeyspace);
+  ASSERT_FALSE(*flags & kNotifyKeyevent);
+  ASSERT_TRUE(*flags & kNotifyGeneric);
+  ASSERT_TRUE(*flags & kNotifyString);
 }
 
 TEST(KeyspaceEvents, ParseFlagsRejectsUnsupported) {
-  int flags = 0;
   // Unsupported flags are rejected.
   for (const auto *bad : {"a", "d", "x", "e", "m", "n", "o", "c", "l", "s", "h", "z", "t", "Kx", "KEl", "?"}) {
-    ASSERT_FALSE(ParseNotifyKeyspaceEventsFlags(bad, &flags).IsOK()) << "should reject: " << bad;
+    ASSERT_FALSE(ParseNotifyKeyspaceEventsFlags(bad).IsOK()) << "should reject: " << bad;
   }
 }
 

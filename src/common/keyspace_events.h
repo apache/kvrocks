@@ -49,7 +49,7 @@ struct KeyspaceEvent {
 };
 
 // Parses notify-keyspace-events flags.
-Status ParseNotifyKeyspaceEventsFlags(const std::string &input, int *flags);
+StatusOr<int> ParseNotifyKeyspaceEventsFlags(std::string_view input);
 
 // Formats the namespace or database scope used in keyspace notification channel names.
 // Default namespace maps to 0; database namespaces map back to db indexes when redis-databases is enabled.

@@ -73,7 +73,7 @@ std::string PercentEncode(const std::string &input) {
 }
 }  // namespace
 
-std::string MapNamespaceToKeyspaceDB(const std::string &ns, int redis_databases) {
+std::string FormatKeyspaceNotificationScope(const std::string &ns, int redis_databases) {
   if (ns == kDefaultNamespace) {
     return "0";
   }

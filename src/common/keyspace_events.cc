@@ -25,7 +25,7 @@
 #include "config/config.h"
 #include "fmt/format.h"
 
-bool ShouldNotifyKeyspaceEvent(int notify_flags, int type_flag) {
+bool ShouldNotifyKeyspaceEvent(int notify_flags, NotifyKeyspaceEventFlag type_flag) {
   return (notify_flags & type_flag) != 0 && (notify_flags & (kNotifyKeyspace | kNotifyKeyevent)) != 0;
 }
 

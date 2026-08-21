@@ -35,7 +35,7 @@ enum NotifyKeyspaceEventFlag {
   kNotifyAll = kNotifyGeneric | kNotifyString,
 };
 
-bool ShouldNotifyKeyspaceEvent(int notify_flags, int type_flag);
+bool ShouldNotifyKeyspaceEvent(int notify_flags, NotifyKeyspaceEventFlag type_flag);
 
 struct KeyspaceEvent {
   int channel_flags;

@@ -516,12 +516,7 @@ struct Context {
   void AddKeyspaceEvent(NotifyKeyspaceEventFlag type_flag, std::string_view event, std::string_view key) {
     if (!IsKeyspaceEventEnabled(type_flag)) return;
     const int channel_flags = keyspace_event_notify_flags_ & (kNotifyKeyspace | kNotifyKeyevent);
-    keyspace_events_.emplace_back(KeyspaceEvent{
-        channel_flags,
-        std::string(event),
-        keyspace_event_ns_,
-        std::string(key),
-    });
+    keyspace_events_.emplace_back(channel_flags, std::string(event), keyspace_event_ns_, std::string(key));
   }
 
   bool HasKeyspaceEvents() const { return !keyspace_events_.empty(); }

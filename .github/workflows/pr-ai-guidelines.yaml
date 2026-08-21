@@ -1,0 +1,73 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+name: "PR AI Guidelines Reminder"
+
+on:
+  pull_request_target:
+    types:
+      - opened
+
+permissions:
+  pull-requests: write
+
+jobs:
+  remind:
+    name: Remind AI-assisted contribution guidelines
+    runs-on: ubuntu-slim
+    if: >
+      github.event.pull_request.user.type != 'Bot'
+    steps:
+      - name: Check recent merged PRs and comment if needed
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          # Count merged PRs against the upstream project repository when the
+          # current repository is a fork (e.g. personal forks used for testing).
+          # Otherwise count against the current repository itself.
+          COUNT_REPO=$(gh api "repos/${REPO}" --jq '.parent.full_name // .full_name')
+          ONE_YEAR_AGO=$(date -u -d '1 year ago' +%Y-%m-%d)
+
+          RECENT_MERGED_COUNT=$(gh search prs \
+            --repo "${COUNT_REPO}" \
+            --author "${AUTHOR}" \
+            --merged-at ">=${ONE_YEAR_AGO}" \
+            --limit 1 \
+            --json number \
+            --jq 'length')
+
+          echo "Author ${AUTHOR} has ${RECENT_MERGED_COUNT} merged PR(s) in ${COUNT_REPO} since ${ONE_YEAR_AGO} (capped at 1)"
+
+          if [ "${RECENT_MERGED_COUNT}" -gt 0 ]; then
+            echo "Skipping comment: author has at least one PR merged within the past year"
+            exit 0
+          fi
+
+          CONTRIBUTING_URL="https://kvrocks.apache.org/community/contributing/"
+          BODY=$(printf '%s\n' \
+            "Hi @${AUTHOR}," \
+            "" \
+            "Thank you for your pull request. Please review our [Contributing Guide](${CONTRIBUTING_URL})." \
+            "" \
+            "Please make sure you understand your changes and explain your reasoning in this pull request. Low-quality pull requests may be closed.")
+
+          gh pr comment "${PR_NUMBER}" --repo "${REPO}" --body "${BODY}"

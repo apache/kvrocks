@@ -486,7 +486,7 @@ REDIS_REGISTER_COMMANDS(Replication, MakeCmdAttr<CommandReplConf>("replconf", -3
                         MakeCmdAttr<CommandPSync>("psync", -2, "read-only no-multi no-script admin", NO_KEY),
                         MakeCmdAttr<CommandFetchMeta>("_fetch_meta", 1, "read-only no-multi no-script admin", NO_KEY),
                         MakeCmdAttr<CommandFetchFile>("_fetch_file", 2, "read-only no-multi no-script admin", NO_KEY),
-                        MakeCmdAttr<CommandDBName>("_db_name", 1, "read-only no-multi", NO_KEY),
+                        MakeCmdAttr<CommandDBName>("_db_name", 1, "read-only no-multi admin", NO_KEY),
                         MakeCmdAttr<CommandWait>("wait", 3, "read-only no-multi no-script blocking", NO_KEY), )
 
 }  // namespace redis

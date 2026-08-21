@@ -45,6 +45,7 @@ const (
 	errMsgLowCutQuantileRange             = "low_cut_percentile and high_cut_percentile should be in [0,1]"
 	errMsgHighCutQuantileRange            = "low_cut_percentile and high_cut_percentile should be in [0,1]"
 	errMsgLowCutQuantileLess              = "low_cut_percentile should be lower than high_cut_percentile"
+	errValueIsNotFloat                    = "value is not a valid float"
 )
 
 type tdigestInfo struct {
@@ -1306,6 +1307,169 @@ func tdigestTestsByRankAndByRevRank(t *testing.T, configs util.KvrocksServerConf
 				rank, ok := v.(string)
 				require.True(t, ok, "expected string but got %T at index %d", v, i)
 				require.Equal(t, expectedStrings[i], rank, "BYREVRANK mismatch at index %d", i)
+			}
+		}
+	})
+
+	t.Run("tdigest.cdf with different arguments", func(t *testing.T) {
+		keyPrefix := "tdigest_cdf_"
+		isRESP3 := configs["resp3-enabled"] == "yes"
+
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.CDF").Err(), errMsgWrongNumberArg)
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.CDF", keyPrefix+"key1").Err(), errMsgWrongNumberArg)
+
+		// non-existent key
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.CDF", keyPrefix+"nonexistent", "1.0").Err(), errMsgKeyNotExist)
+
+		// invalid float value
+		require.ErrorContains(t, rdb.Do(ctx, "TDIGEST.CDF", keyPrefix+"key2", "invalid").Err(), errValueIsNotFloat)
+
+		// create a tdigest and add some data
+		tdigestKey := keyPrefix + "source"
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", tdigestKey).Err())
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.ADD", tdigestKey, "1.0", "2.0", "3.0", "4.0", "5.0").Err())
+
+		// single-value CDF query
+		rsp := rdb.Do(ctx, "TDIGEST.CDF", tdigestKey, "3.0")
+		require.NoError(t, rsp.Err())
+		vals, err := rsp.Slice()
+		require.NoError(t, err)
+		require.Len(t, vals, 1)
+		require.NotEqual(t, "nan", vals[0])
+
+		// multi-value CDF query
+		rsp = rdb.Do(ctx, "TDIGEST.CDF", tdigestKey, "0.0", "2.5", "5.0", "10.0")
+		require.NoError(t, rsp.Err())
+		vals, err = rsp.Slice()
+		require.NoError(t, err)
+		require.Len(t, vals, 4)
+
+		// empty tdigest should return NaN
+		emptyKey := keyPrefix + "empty"
+		require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", emptyKey).Err())
+		rsp = rdb.Do(ctx, "TDIGEST.CDF", emptyKey, "1.0")
+		require.NoError(t, rsp.Err())
+		vals, err = rsp.Slice()
+		require.NoError(t, err)
+		require.Len(t, vals, 1)
+		if isRESP3 {
+			cdf, ok := vals[0].(float64)
+			require.True(t, ok, "expected float64 but got %T", vals[0])
+			require.True(t, math.IsNaN(cdf), "expected NaN but got %v", cdf)
+		} else {
+			require.Equal(t, "nan", vals[0])
+		}
+
+		// Test with an empty digest and multi-valued CDF.
+		rsp = rdb.Do(ctx, "TDIGEST.CDF", emptyKey, "0.5", "1.0", "1.5", "2.2")
+		require.NoError(t, rsp.Err())
+		vals, err = rsp.Slice()
+		require.NoError(t, err)
+		require.Len(t, vals, 4)
+		if isRESP3 {
+			for i, v := range vals {
+				cdf, ok := v.(float64)
+				require.True(t, ok, "expected float64 but got %T at index %d", v, i)
+				require.True(t, math.IsNaN(cdf), "expected NaN but got %v at index %d", cdf, i)
+			}
+		} else {
+			require.Equal(t, []interface{}{"nan", "nan", "nan", "nan"}, vals)
+		}
+
+		{
+			// test with samples, these data are generated from redis tdigest.cdf command
+			var samplesTestKey = keyPrefix + "samples"
+			samples := []string{"42.210704046603865",
+				"35.2057544168016",
+				"12.444722535953744",
+				"-75.17683888127605",
+				"-27.367122500244108",
+				"77.34406489041416",
+				"-48.75891720991832",
+				"-42.93819033339253",
+				"44.855673646883474",
+				"50.891754534273815",
+				"-7.886891965257249",
+				"-89.26236837061113",
+				"48.50939634261886",
+				"59.88989586866117",
+				"32.46873341607849",
+				"-11.729446399857835",
+				"-100.32834587901394",
+				"-10.854053691728382",
+				"31.32150940192227",
+				"-19.568850657626257",
+				"-99.55268951300809",
+				"46.23219381980718",
+				"4.557500453188453",
+				"-52.306747310528394",
+				"50.02350257515229",
+				"27.897077091194205",
+				"-36.101222754212685",
+				"-34.17897261387189",
+				"-91.53560443207508",
+				"46.348114674645984",
+			}
+
+			cdfArgs := []string{
+				"60.01887553433912",
+				"-37.776384417214345",
+				"-82.915002521946",
+				"-87.44554390843862",
+				"31.95001239955863",
+				"-82.89948255423627",
+				"-73.80710164584889",
+				"-78.59695062757828",
+				"-30.343669845908025",
+				"-49.798720052628795",
+			}
+
+			expectedCdfs := []float64{
+				0.9666666666666667,
+				0.26666666666666666,
+				0.13333333333333333,
+				0.13333333333333333,
+				0.6333333333333333,
+				0.13333333333333333,
+				0.16666666666666666,
+				0.13333333333333333,
+				0.3333333333333333,
+				0.2,
+			}
+
+			require.NoError(t, rdb.Do(ctx, "TDIGEST.CREATE", samplesTestKey, "compression", "100").Err())
+
+			var addReqArgs = make([]interface{}, 0, len(samples)+2)
+			addReqArgs = append(addReqArgs, "TDIGEST.ADD", samplesTestKey)
+			for _, sample := range samples {
+				addReqArgs = append(addReqArgs, sample)
+			}
+			require.NoError(t, rdb.Do(ctx, addReqArgs...).Err())
+
+			var cdfReqArgs = make([]interface{}, 0, len(cdfArgs)+2)
+			cdfReqArgs = append(cdfReqArgs, "TDIGEST.CDF", samplesTestKey)
+			for _, arg := range cdfArgs {
+				cdfReqArgs = append(cdfReqArgs, arg)
+			}
+
+			rsp = rdb.Do(ctx, cdfReqArgs...)
+			require.NoError(t, rsp.Err())
+			vals, err = rsp.Slice()
+			require.NoError(t, err)
+			require.Len(t, vals, len(cdfArgs))
+			for i, v := range vals {
+				var cdf float64
+				if isRESP3 {
+					var ok bool
+					cdf, ok = v.(float64)
+					require.True(t, ok, "expected float64 but got %T at index %d", v, i)
+				} else {
+					str, ok := v.(string)
+					require.True(t, ok, "expected string but got %T at index %d", v, i)
+					cdf, err = strconv.ParseFloat(str, 64)
+					require.NoError(t, err)
+				}
+				require.InDelta(t, expectedCdfs[i], cdf, 0.01, "CDF mismatch at index %d", i)
 			}
 		}
 	})

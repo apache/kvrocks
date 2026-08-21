@@ -290,6 +290,33 @@ func TestPollUpdates_WithRESPFormat(t *testing.T) {
 		}, pollUpdates.Updates)
 	})
 
+	t.Run("Stream trim", func(t *testing.T) {
+		// Trim removes entries with one range tombstone; POLLUPDATES must still reconstruct an
+		// equivalent command. A partial trim becomes XTRIM MINID <first surviving id>; a trim that
+		// empties the stream becomes XTRIM MAXLEN 0.
+		for _, id := range []string{"1-0", "2-0", "3-0"} {
+			require.NoError(t, rdb0.XAdd(ctx, &redis.XAddArgs{
+				Stream: "trimstream", ID: id, Values: map[string]interface{}{"f": "v"},
+			}).Err())
+		}
+		require.NoError(t, rdb0.XTrimMinID(ctx, "trimstream", "2-0").Err())
+		require.NoError(t, rdb0.XTrimMaxLen(ctx, "trimstream", 0).Err())
+		result, err := rdb0.Do(ctx, "POLLUPDATES", pollUpdates.NextSeq, "MAX", 10, "FORMAT", "RESP").Result()
+		require.NoError(t, err)
+
+		pollUpdates = parsePollUpdatesResult(t, result.(map[any]any), true)
+		require.Len(t, pollUpdates.Updates, 1)
+		require.EqualValues(t, []any{RESPFormat{
+			Commands: [][]string{
+				{"XADD", "trimstream", "1-0", "f", "v"},
+				{"XADD", "trimstream", "2-0", "f", "v"},
+				{"XADD", "trimstream", "3-0", "f", "v"},
+				{"XTRIM", "trimstream", "MINID", "2-0"},
+				{"XTRIM", "trimstream", "MAXLEN", "0"},
+			}},
+		}, pollUpdates.Updates)
+	})
+
 	t.Run("JSON type", func(t *testing.T) {
 		require.NoError(t, rdb0.JSONSet(ctx, "json", "$", `{"field": "value"}`).Err())
 		require.NoError(t, rdb0.JSONDel(ctx, "json", "$.field").Err())
@@ -348,4 +375,40 @@ func TestPollUpdates_WithStrict(t *testing.T) {
 
 	require.Equal(t, "v0", rdb1.Get(ctx, "k0").Val())
 	require.Equal(t, "v0", rdb1.HGet(ctx, "h0", "f0").Val())
+}
+
+func TestDBNameAdminPermission(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{
+		"requirepass": "admin",
+	})
+	defer srv.Close()
+
+	ctx := context.Background()
+
+	adminClient := srv.NewClientWithOption(&redis.Options{Password: "admin"})
+	defer func() { require.NoError(t, adminClient.Close()) }()
+
+	require.NoError(t, adminClient.Do(ctx, "NAMESPACE", "ADD", "test_ns", "test_token").Err())
+
+	// _db_name replies with a raw inline string rather than a typed RESP reply,
+	// so we use a TCP client to read the response directly.
+	t.Run("Non-admin user should be rejected", func(t *testing.T) {
+		c := srv.NewTCPClient()
+		defer func() { require.NoError(t, c.Close()) }()
+		require.NoError(t, c.WriteArgs("AUTH", "test_token"))
+		c.MustRead(t, "+OK")
+		require.NoError(t, c.WriteArgs("_db_name"))
+		c.MustMatch(t, ".*admin.*")
+	})
+
+	t.Run("Admin user should be allowed", func(t *testing.T) {
+		c := srv.NewTCPClient()
+		defer func() { require.NoError(t, c.Close()) }()
+		require.NoError(t, c.WriteArgs("AUTH", "admin"))
+		c.MustRead(t, "+OK")
+		require.NoError(t, c.WriteArgs("_db_name"))
+		line, err := c.ReadLine()
+		require.NoError(t, err)
+		require.NotEmpty(t, line)
+	})
 }

@@ -479,14 +479,14 @@ int Server::PublishMessage(const std::string &channel, const std::string &msg) {
   return cnt;
 }
 
-void Server::NotifyKeyspaceEvent(int flags, const std::string &event, const std::string &ns, const std::string &key) {
-  const std::string scope = FormatKeyspaceNotificationScope(ns, GetConfig()->redis_databases);
+void Server::NotifyKeyspaceEvent(const KeyspaceEvent &event) {
+  const std::string scope = FormatKeyspaceNotificationScope(event.ns, GetConfig()->redis_databases);
   // Publish keyspace before keyevent for each key.
-  if (flags & kNotifyKeyspace) {
-    PublishMessage("__keyspace@" + scope + "__:" + key, event);
+  if (event.channel_flags & kNotifyKeyspace) {
+    PublishMessage("__keyspace@" + scope + "__:" + event.key, event.event);
   }
-  if (flags & kNotifyKeyevent) {
-    PublishMessage("__keyevent@" + scope + "__:" + event, key);
+  if (event.channel_flags & kNotifyKeyevent) {
+    PublishMessage("__keyevent@" + scope + "__:" + event.event, event.key);
   }
 }
 

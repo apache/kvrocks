@@ -38,7 +38,11 @@ enum NotifyKeyspaceEventFlag {
 bool ShouldNotifyKeyspaceEvent(int notify_flags, NotifyKeyspaceEventFlag type_flag);
 
 struct KeyspaceEvent {
-  int channel_flags;
+  KeyspaceEvent(NotifyKeyspaceEventFlag type_flag, std::string_view event, std::string_view ns, std::string_view key)
+      : type_flag(type_flag), event(event), ns(ns), key(key) {}
+
+  NotifyKeyspaceEventFlag type_flag;
+  int channel_flags = 0;
   std::string event;
   std::string ns;
   std::string key;

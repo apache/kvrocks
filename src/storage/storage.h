@@ -510,11 +510,10 @@ struct Context {
     return ShouldNotifyKeyspaceEvent(keyspace_event_notify_flags_, type_flag);
   }
 
-  void AddKeyspaceEvent(NotifyKeyspaceEventFlag type_flag, std::string_view event, std::string_view ns,
-                        std::string_view key) {
-    if (!IsKeyspaceEventEnabled(type_flag)) return;
-    const int channel_flags = keyspace_event_notify_flags_ & (kNotifyKeyspace | kNotifyKeyevent);
-    keyspace_events_.emplace_back(KeyspaceEvent{channel_flags, std::string(event), std::string(ns), std::string(key)});
+  void AddKeyspaceEvent(KeyspaceEvent event) {
+    if (!IsKeyspaceEventEnabled(event.type_flag)) return;
+    event.channel_flags = keyspace_event_notify_flags_ & (kNotifyKeyspace | kNotifyKeyevent);
+    keyspace_events_.emplace_back(std::move(event));
   }
 
   bool HasKeyspaceEvents() const { return !keyspace_events_.empty(); }

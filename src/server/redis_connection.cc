@@ -733,13 +733,13 @@ void Connection::queueOrPublishKeyspaceEvents(std::vector<KeyspaceEvent> &&event
   }
 
   for (const auto &event : events) {
-    srv_->NotifyKeyspaceEvent(event.channel_flags, event.event, event.ns, event.key);
+    srv_->NotifyKeyspaceEvent(event);
   }
 }
 
 void Connection::FlushKeyspaceEvents() {
   for (const auto &e : pending_keyspace_events_) {
-    srv_->NotifyKeyspaceEvent(e.channel_flags, e.event, e.ns, e.key);
+    srv_->NotifyKeyspaceEvent(e);
   }
   pending_keyspace_events_.clear();
 }

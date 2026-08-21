@@ -655,7 +655,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
       }
       engine::Context ctx(srv_->storage);
       if (cmd_flags & kCmdWrite) {
-        ctx.EnableKeyspaceEventCollection(GetNamespace(), config->notify_keyspace_events);
+        ctx.EnableKeyspaceEventCollection(config->notify_keyspace_events);
       }
 
       std::vector<GlobalIndexer::RecordResult> index_records;

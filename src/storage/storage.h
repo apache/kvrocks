@@ -472,7 +472,6 @@ struct Context {
       storage = ctx.storage;
       snapshot_ = ctx.snapshot_;
       batch = std::move(ctx.batch);
-      keyspace_event_ns_ = std::move(ctx.keyspace_event_ns_);
       keyspace_event_notify_flags_ = ctx.keyspace_event_notify_flags_;
       keyspace_events_ = std::move(ctx.keyspace_events_);
 
@@ -485,7 +484,6 @@ struct Context {
       : storage(ctx.storage),
         batch(std::move(ctx.batch)),
         snapshot_(ctx.snapshot_),
-        keyspace_event_ns_(std::move(ctx.keyspace_event_ns_)),
         keyspace_event_notify_flags_(ctx.keyspace_event_notify_flags_),
         keyspace_events_(std::move(ctx.keyspace_events_)) {
     ctx.storage = nullptr;
@@ -503,9 +501,8 @@ struct Context {
     return snapshot_;
   }
 
-  void EnableKeyspaceEventCollection(const std::string &ns, int notify_flags) {
+  void EnableKeyspaceEventCollection(int notify_flags) {
     if (!ShouldNotifyKeyspaceEvent(notify_flags, kNotifyAll)) return;
-    keyspace_event_ns_ = ns;
     keyspace_event_notify_flags_ = notify_flags;
   }
 
@@ -513,10 +510,11 @@ struct Context {
     return ShouldNotifyKeyspaceEvent(keyspace_event_notify_flags_, type_flag);
   }
 
-  void AddKeyspaceEvent(NotifyKeyspaceEventFlag type_flag, std::string_view event, std::string_view key) {
+  void AddKeyspaceEvent(NotifyKeyspaceEventFlag type_flag, std::string_view event, std::string_view ns,
+                        std::string_view key) {
     if (!IsKeyspaceEventEnabled(type_flag)) return;
     const int channel_flags = keyspace_event_notify_flags_ & (kNotifyKeyspace | kNotifyKeyevent);
-    keyspace_events_.emplace_back(channel_flags, std::string(event), keyspace_event_ns_, std::string(key));
+    keyspace_events_.emplace_back(channel_flags, std::string(event), std::string(ns), std::string(key));
   }
 
   bool HasKeyspaceEvents() const { return !keyspace_events_.empty(); }
@@ -536,7 +534,6 @@ struct Context {
   /// Normally it will be fixed to the latest Snapshot when the Context is constructed.
   /// If is_txn_mode is false, the snapshot is nullptr.
   const rocksdb::Snapshot *snapshot_ = nullptr;
-  std::string keyspace_event_ns_;
   int keyspace_event_notify_flags_ = 0;
   std::vector<KeyspaceEvent> keyspace_events_;
 };

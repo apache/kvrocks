@@ -348,7 +348,7 @@ rocksdb::Status String::Set(engine::Context &ctx, const std::string &user_key, c
   auto s = updateRawValue(ctx, ns_key, new_raw_value);
   if (!s.ok()) return s;
 
-  ctx.AddKeyspaceEvent(kNotifyString, "set", user_key);
+  ctx.AddKeyspaceEvent(kNotifyString, "set", namespace_, user_key);
   return rocksdb::Status::OK();
 }
 

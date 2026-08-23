@@ -690,9 +690,10 @@ TEST_F(RedisCuckooFilterTest, KickOutErrorDiscardsDirtyPages) {
   writePage(makePageKey(key_, metadata, 0, 0), original_page);
   writePage(makePageKey(key_, metadata, 0, 1), std::string(2, static_cast<char>(9)));
 
-  redis::CuckooSubFilter sub_filter(storage_.get(), *ctx_, db_->AppendNamespacePrefix(key_),
+  redis::CuckooPageCache page_cache(storage_.get(), *ctx_, db_->AppendNamespacePrefix(key_),
                                     storage_->IsSlotIdEncoded(), metadata.version, metadata.bucket_size,
-                                    metadata.page_size, 0, num_buckets);
+                                    metadata.page_size);
+  redis::CuckooSubFilter sub_filter(&page_cache, 0, num_buckets);
   bool inserted = true;
   auto s = sub_filter.TryKickOutInsert(hash, fingerprint, metadata.max_iterations, &inserted);
   ASSERT_TRUE(s.IsCorruption()) << s.ToString();
@@ -872,4 +873,3 @@ TEST_F(RedisCuckooFilterTest, InsertDuplicateItems) {
   verifyMetadata(key_, redis::kCFDefaultCapacity, redis::kCFDefaultBucketSize, redis::kCFDefaultMaxIterations,
                  redis::kCFDefaultExpansion, 3, 1);
 }
-

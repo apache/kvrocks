@@ -134,15 +134,14 @@ TEST(KeyspaceEvents, FormatKeyspaceNotificationScope) {
   EXPECT_EQ(FormatKeyspaceNotificationScope(kDefaultNamespace, 0), "0");
   EXPECT_EQ(FormatKeyspaceNotificationScope(kDefaultNamespace, 16), "0");
 
-  // Non-default namespaces are encoded and prefixed.
-  EXPECT_EQ(FormatKeyspaceNotificationScope("0", 0), "ns:0");
-  EXPECT_EQ(FormatKeyspaceNotificationScope("tenantA", 0), "ns:tenantA");
-  EXPECT_EQ(FormatKeyspaceNotificationScope("a.b-c_d", 0), "ns:a.b-c_d");
-  EXPECT_EQ(FormatKeyspaceNotificationScope("db1", 0), "ns:db1");
-  // Unsafe bytes are escaped.
-  EXPECT_EQ(FormatKeyspaceNotificationScope("a b", 0), "ns:a%20b");
-  EXPECT_EQ(FormatKeyspaceNotificationScope("a:b", 0), "ns:a%3Ab");
-  EXPECT_EQ(FormatKeyspaceNotificationScope("100%", 0), "ns:100%25");
+  // Non-default namespaces use their original names.
+  EXPECT_EQ(FormatKeyspaceNotificationScope("0", 0), "0");
+  EXPECT_EQ(FormatKeyspaceNotificationScope("tenantA", 0), "tenantA");
+  EXPECT_EQ(FormatKeyspaceNotificationScope("a.b-c_d", 0), "a.b-c_d");
+  EXPECT_EQ(FormatKeyspaceNotificationScope("db1", 0), "db1");
+  EXPECT_EQ(FormatKeyspaceNotificationScope("a b", 0), "a b");
+  EXPECT_EQ(FormatKeyspaceNotificationScope("a:b", 0), "a:b");
+  EXPECT_EQ(FormatKeyspaceNotificationScope("100%", 0), "100%");
 
   // Redis database namespaces map back to numeric database names when redis-databases is enabled.
   EXPECT_EQ(FormatKeyspaceNotificationScope("db1", 16), "1");

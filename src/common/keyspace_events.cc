@@ -25,7 +25,7 @@
 #include "config/config.h"
 #include "fmt/format.h"
 
-bool ShouldNotifyKeyspaceEvent(int notify_flags, NotifyKeyspaceEventTypeFlag type_flag) {
+bool ShouldNotifyKeyspaceEvent(int notify_flags, KeyspaceEventType type_flag) {
   return (notify_flags & type_flag) != 0 && (notify_flags & (kNotifyKeyspace | kNotifyKeyevent)) != 0;
 }
 
@@ -56,22 +56,6 @@ StatusOr<int> ParseNotifyKeyspaceEventsFlags(std::string_view input) {
   return result;
 }
 
-namespace {
-std::string PercentEncode(const std::string &input) {
-  std::string output;
-  output.reserve(input.size());
-  for (const unsigned char c : input) {
-    if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '.' ||
-        c == '-') {
-      output += static_cast<char>(c);
-    } else {
-      output += fmt::format("%{:02X}", c);
-    }
-  }
-  return output;
-}
-}  // namespace
-
 std::string FormatKeyspaceNotificationScope(const std::string &ns, int redis_databases) {
   if (ns == kDefaultNamespace) {
     return "0";
@@ -79,5 +63,5 @@ std::string FormatKeyspaceNotificationScope(const std::string &ns, int redis_dat
   if (redis_databases > 0 && ns.rfind(kDatabaseNamespacePrefix, 0) == 0) {
     return ns.substr(strlen(kDatabaseNamespacePrefix));
   }
-  return "ns:" + PercentEncode(ns);
+  return ns;
 }

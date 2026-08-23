@@ -25,27 +25,26 @@
 
 #include "status.h"
 
-enum NotifyKeyspaceEventChannelFlag {
+enum KeyspaceEventChannel {
   kNotifyKeyspace = 1 << 0,  // K, keyspace channels
   kNotifyKeyevent = 1 << 1,  // E, keyevent channels
 };
 
 // Event type flags for notify-keyspace-events, separate from RedisType.
-enum NotifyKeyspaceEventTypeFlag {
+enum KeyspaceEventType {
   kNotifyGeneric = 1 << 2,  // g, emits del
   kNotifyString = 1 << 3,   // $, emits set
   // A, supported data classes without K or E.
   kNotifyAll = kNotifyGeneric | kNotifyString,
 };
 
-bool ShouldNotifyKeyspaceEvent(int notify_flags, NotifyKeyspaceEventTypeFlag type_flag);
+bool ShouldNotifyKeyspaceEvent(int notify_flags, KeyspaceEventType type_flag);
 
 struct KeyspaceEvent {
-  KeyspaceEvent(NotifyKeyspaceEventTypeFlag type_flag, std::string_view event, std::string_view ns,
-                std::string_view key)
+  KeyspaceEvent(KeyspaceEventType type_flag, std::string_view event, std::string_view ns, std::string_view key)
       : type_flag(type_flag), event(event), ns(ns), key(key) {}
 
-  NotifyKeyspaceEventTypeFlag type_flag;
+  KeyspaceEventType type_flag;
   int channel_flags = 0;
   std::string event;
   std::string ns;
@@ -57,5 +56,5 @@ StatusOr<int> ParseNotifyKeyspaceEventsFlags(std::string_view input);
 
 // Formats the namespace or database scope used in keyspace notification channel names.
 // Default namespace maps to 0; database namespaces map back to db indexes when redis-databases is enabled.
-// Other namespaces map to ns:encoded-name.
+// Other namespaces use their original names.
 std::string FormatKeyspaceNotificationScope(const std::string &ns, int redis_databases);

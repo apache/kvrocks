@@ -257,3 +257,35 @@ func TestKeyspaceNotifyRedisDatabases(t *testing.T) {
 	expectMessage(t, ctx, pubsub, "__keyevent@1__:del", "db-key")
 	expectNoMessage(t, ctx, pubsub)
 }
+
+func TestKeyspaceNotifyNamespace(t *testing.T) {
+	const (
+		adminPassword  = "admin-password"
+		namespace      = "tenant:1"
+		namespaceToken = "tenant-token"
+	)
+
+	srv := util.StartServer(t, map[string]string{
+		"notify-keyspace-events": "KEA",
+		"requirepass":            adminPassword,
+	})
+	defer srv.Close()
+
+	ctx := context.Background()
+	admin := srv.NewClientWithOption(&redis.Options{Password: adminPassword})
+	defer func() { require.NoError(t, admin.Close()) }()
+	require.NoError(t, admin.Do(ctx, "NAMESPACE", "ADD", namespace, namespaceToken).Err())
+
+	sub := srv.NewClientWithOption(&redis.Options{Password: namespaceToken})
+	defer func() { require.NoError(t, sub.Close()) }()
+	writer := srv.NewClientWithOption(&redis.Options{Password: namespaceToken})
+	defer func() { require.NoError(t, writer.Close()) }()
+
+	pubsub := sub.PSubscribe(ctx, "__keyspace@tenant:1__:*", "__keyevent@tenant:1__:*")
+	defer func() { require.NoError(t, pubsub.Close()) }()
+	drainSubscribeConfirms(t, ctx, pubsub, 2)
+
+	require.NoError(t, writer.Set(ctx, "namespace-key", "v", 0).Err())
+	expectMessage(t, ctx, pubsub, "__keyspace@tenant:1__:namespace-key", "set")
+	expectMessage(t, ctx, pubsub, "__keyevent@tenant:1__:set", "namespace-key")
+}

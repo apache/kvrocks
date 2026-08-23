@@ -135,8 +135,7 @@ class CommandCFAdd : public Commander {
         *output = redis::Integer(1);
         break;
       case CuckooFilterInsertResult::kExist:
-        std::cout << "Item exists result in add command is not possible" << std::endl;
-        std::abort();
+        return {Status::RedisExecErr, "unexpected cuckoo filter insert result"};
       case CuckooFilterInsertResult::kFull:
         *output = redis::Error({Status::NotOK, "filter is full"});
         break;

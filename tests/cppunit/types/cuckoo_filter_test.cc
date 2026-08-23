@@ -811,7 +811,7 @@ TEST_F(RedisCuckooFilterTest, InsertInvalidCapacity) {
 
   options.capacity = std::numeric_limits<uint64_t>::max();
   s = cuckoo_->Insert(*ctx_, key_, items, options, rets);
-  ASSERT_TRUE(s.IsCorruption()) << s.ToString();
+  ASSERT_TRUE(s.IsInvalidArgument()) << s.ToString();
 }
 
 TEST_F(RedisCuckooFilterTest, InsertExistingFilterIgnoresCapacity) {

@@ -47,9 +47,6 @@ rocksdb::Status CuckooChain::validateMetadata(const CuckooChainMetadata &metadat
   if (metadata.page_size < metadata.bucket_size) {
     return rocksdb::Status::Corruption("invalid metadata: page_size is smaller than bucket_size");
   }
-  if (!CuckooFilterHelper::IsCapacitySupported(metadata.base_capacity, metadata.bucket_size)) {
-    return rocksdb::Status::Corruption("invalid metadata: base_capacity is too large");
-  }
   return rocksdb::Status::OK();
 }
 
@@ -150,6 +147,10 @@ rocksdb::Status CuckooChain::Insert(engine::Context &ctx, const Slice &user_key,
 
     if (insert_options.capacity < 2) {
       return rocksdb::Status::InvalidArgument("capacity must be at least 2");
+    }
+
+    if (!CuckooFilterHelper::IsCapacitySupported(insert_options.capacity, kCFDefaultBucketSize)) {
+      return rocksdb::Status::InvalidArgument("capacity is too large");
     }
 
     metadata = CuckooChainMetadata();

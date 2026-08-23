@@ -38,15 +38,20 @@ enum KeyspaceEventType {
   kNotifyAll = kNotifyGeneric | kNotifyString,
 };
 
-bool ShouldNotifyKeyspaceEvent(int notify_flags, KeyspaceEventType type_flag);
+enum class KeyspaceEventName {
+  kSet,
+  kDel,
+};
+
+bool ShouldNotifyKeyspaceEvent(int notify_flags, KeyspaceEventName event);
+std::string_view KeyspaceEventToString(KeyspaceEventName event);
 
 struct KeyspaceEvent {
-  KeyspaceEvent(KeyspaceEventType type_flag, std::string_view event, std::string_view ns, std::string_view key)
-      : type_flag(type_flag), event(event), ns(ns), key(key) {}
+  KeyspaceEvent(KeyspaceEventName event, int channel_flags, std::string_view ns, std::string_view key)
+      : event(event), channel_flags(channel_flags), ns(ns), key(key) {}
 
-  KeyspaceEventType type_flag;
-  int channel_flags = 0;
-  std::string event;
+  KeyspaceEventName event;
+  int channel_flags;
   std::string ns;
   std::string key;
 };

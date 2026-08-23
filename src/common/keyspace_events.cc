@@ -22,11 +22,30 @@
 
 #include <cstring>
 
+#include "common/logging.h"
 #include "config/config.h"
 #include "fmt/format.h"
 
-bool ShouldNotifyKeyspaceEvent(int notify_flags, KeyspaceEventType type_flag) {
-  return (notify_flags & type_flag) != 0 && (notify_flags & (kNotifyKeyspace | kNotifyKeyevent)) != 0;
+bool ShouldNotifyKeyspaceEvent(int notify_flags, KeyspaceEventName event) {
+  if ((notify_flags & (kNotifyKeyspace | kNotifyKeyevent)) == 0) return false;
+
+  switch (event) {
+    case KeyspaceEventName::kSet:
+      return (notify_flags & kNotifyString) != 0;
+    case KeyspaceEventName::kDel:
+      return (notify_flags & kNotifyGeneric) != 0;
+  }
+  UNREACHABLE();
+}
+
+std::string_view KeyspaceEventToString(KeyspaceEventName event) {
+  switch (event) {
+    case KeyspaceEventName::kSet:
+      return "set";
+    case KeyspaceEventName::kDel:
+      return "del";
+  }
+  UNREACHABLE();
 }
 
 StatusOr<int> ParseNotifyKeyspaceEventsFlags(std::string_view input) {

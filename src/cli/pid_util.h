@@ -27,7 +27,7 @@
 #include "unique_fd.h"
 
 inline Status CreatePidFile(const std::string &path) {
-  auto fd = UniqueFD(open(path.data(), O_RDWR | O_CREAT, 0660));
+  auto fd = UniqueFD(open(path.data(), O_RDWR | O_CREAT | O_TRUNC, 0660));
   if (!fd) {
     return Status::FromErrno();
   }

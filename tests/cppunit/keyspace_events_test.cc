@@ -44,16 +44,16 @@ TEST(KeyspaceEvents, ContextFiltersAndCapturesEvent) {
   auto ctx = engine::Context::NoTransactionContext(nullptr);
   EXPECT_FALSE(ctx.HasKeyspaceEvents());
 
-  ctx.AddKeyspaceEvent(KeyspaceEventName::kSet, "tenant", "disabled");
+  ctx.AddKeyspaceEventIfEnabled(KeyspaceEventName::kSet, "tenant", "disabled");
   EXPECT_FALSE(ctx.HasKeyspaceEvents());
 
   ctx.EnableKeyspaceEventCollection(kNotifyKeyspace | kNotifyString);
   EXPECT_TRUE(ctx.IsKeyspaceEventEnabled(KeyspaceEventName::kSet));
   EXPECT_FALSE(ctx.IsKeyspaceEventEnabled(KeyspaceEventName::kDel));
 
-  ctx.AddKeyspaceEvent(KeyspaceEventName::kDel, "tenant", "ignored");
+  ctx.AddKeyspaceEventIfEnabled(KeyspaceEventName::kDel, "tenant", "ignored");
   EXPECT_FALSE(ctx.HasKeyspaceEvents());
-  ctx.AddKeyspaceEvent(KeyspaceEventName::kSet, "tenant", "key");
+  ctx.AddKeyspaceEventIfEnabled(KeyspaceEventName::kSet, "tenant", "key");
 
   auto events = ctx.TakeKeyspaceEvents();
   ASSERT_EQ(events.size(), 1);
@@ -68,8 +68,8 @@ TEST(KeyspaceEvents, ContextFiltersAndCapturesEvent) {
 TEST(KeyspaceEvents, ContextCapturesNamespacePerEvent) {
   auto ctx = engine::Context::NoTransactionContext(nullptr);
   ctx.EnableKeyspaceEventCollection(kNotifyKeyspace | kNotifyString);
-  ctx.AddKeyspaceEvent(KeyspaceEventName::kSet, "tenant-1", "first");
-  ctx.AddKeyspaceEvent(KeyspaceEventName::kSet, "tenant-2", "second");
+  ctx.AddKeyspaceEventIfEnabled(KeyspaceEventName::kSet, "tenant-1", "first");
+  ctx.AddKeyspaceEventIfEnabled(KeyspaceEventName::kSet, "tenant-2", "second");
 
   auto events = ctx.TakeKeyspaceEvents();
   ASSERT_EQ(events.size(), 2);
@@ -80,8 +80,8 @@ TEST(KeyspaceEvents, ContextCapturesNamespacePerEvent) {
 TEST(KeyspaceEvents, ContextMovePreservesEventOrder) {
   auto ctx = engine::Context::NoTransactionContext(nullptr);
   ctx.EnableKeyspaceEventCollection(kNotifyKeyspace | kNotifyKeyevent | kNotifyAll);
-  ctx.AddKeyspaceEvent(KeyspaceEventName::kSet, "tenant", "first");
-  ctx.AddKeyspaceEvent(KeyspaceEventName::kDel, "tenant", "second");
+  ctx.AddKeyspaceEventIfEnabled(KeyspaceEventName::kSet, "tenant", "first");
+  ctx.AddKeyspaceEventIfEnabled(KeyspaceEventName::kDel, "tenant", "second");
 
   auto moved_ctx = std::move(ctx);
   auto assigned_ctx = engine::Context::NoTransactionContext(nullptr);

@@ -507,7 +507,7 @@ struct Context {
     return ShouldNotifyKeyspaceEvent(keyspace_event_notify_flags_, event);
   }
 
-  void AddKeyspaceEvent(KeyspaceEventName event, std::string_view ns, std::string_view key) {
+  void AddKeyspaceEventIfEnabled(KeyspaceEventName event, std::string_view ns, std::string_view key) {
     if (!IsKeyspaceEventEnabled(event)) return;
     const auto channel_flags = keyspace_event_notify_flags_ & (kNotifyKeyspace | kNotifyKeyevent);
     keyspace_events_.emplace_back(event, channel_flags, ns, key);

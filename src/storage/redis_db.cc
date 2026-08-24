@@ -219,7 +219,7 @@ rocksdb::Status Database::MDel(engine::Context &ctx, const std::vector<Slice> &k
   if (!s.ok()) return s;
 
   for (const auto index : deleted_key_indexes) {
-    ctx.AddKeyspaceEvent(KeyspaceEventName::kDel, namespace_, keys[index].ToStringView());
+    ctx.AddKeyspaceEventIfEnabled(KeyspaceEventName::kDel, namespace_, keys[index].ToStringView());
   }
   return rocksdb::Status::OK();
 }

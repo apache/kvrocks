@@ -47,11 +47,11 @@ bool ShouldNotifyKeyspaceEvent(int notify_flags, KeyspaceEventName event);
 std::string_view KeyspaceEventToString(KeyspaceEventName event);
 
 struct KeyspaceEvent {
-  KeyspaceEvent(KeyspaceEventName event, int channel_flags, std::string_view ns, std::string_view key)
+  KeyspaceEvent(KeyspaceEventName event, KeyspaceEventChannel channel_flags, std::string_view ns, std::string_view key)
       : event(event), channel_flags(channel_flags), ns(ns), key(key) {}
 
   KeyspaceEventName event;
-  int channel_flags;
+  KeyspaceEventChannel channel_flags;
   std::string ns;
   std::string key;
 };

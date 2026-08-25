@@ -188,7 +188,7 @@ rocksdb::Status Database::MDel(engine::Context &ctx, const std::vector<Slice> &k
   storage_->MultiGet(ctx, ctx.DefaultMultiGetOptions(), metadata_cf_handle_, slice_keys.size(), slice_keys.data(),
                      pin_values.data(), statuses.data());
 
-  const bool collect_del_events = ctx.IsKeyspaceEventEnabled(KeyspaceEventName::kDel);
+  const bool collect_del_events = ctx.IsKeyspaceEventEnabled(kNotifyGeneric);
   std::vector<size_t> deleted_key_indexes;
   if (collect_del_events) deleted_key_indexes.reserve(keys.size());
 
@@ -219,7 +219,7 @@ rocksdb::Status Database::MDel(engine::Context &ctx, const std::vector<Slice> &k
   if (!s.ok()) return s;
 
   for (const auto index : deleted_key_indexes) {
-    ctx.AddKeyspaceEventIfEnabled(KeyspaceEventName::kDel, namespace_, keys[index].ToStringView());
+    ctx.AddKeyspaceEvent(kNotifyGeneric, "del", namespace_, keys[index].ToStringView());
   }
   return rocksdb::Status::OK();
 }

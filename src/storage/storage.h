@@ -503,15 +503,16 @@ struct Context {
 
   void EnableKeyspaceEventCollection(int notify_flags) { keyspace_event_notify_flags_ = notify_flags; }
 
-  bool IsKeyspaceEventEnabled(KeyspaceEventName event) const {
-    return ShouldNotifyKeyspaceEvent(keyspace_event_notify_flags_, event);
+  bool IsKeyspaceEventEnabled(KeyspaceEventType type_flag) const {
+    return ShouldNotifyKeyspaceEvent(keyspace_event_notify_flags_, type_flag);
   }
 
-  void AddKeyspaceEventIfEnabled(KeyspaceEventName event, std::string_view ns, std::string_view key) {
-    if (!IsKeyspaceEventEnabled(event)) return;
+  void AddKeyspaceEvent(KeyspaceEventType type_flag, std::string_view event, std::string_view ns,
+                        std::string_view key) {
+    if (!IsKeyspaceEventEnabled(type_flag)) return;
     const auto channel_flags =
         static_cast<KeyspaceEventChannel>(keyspace_event_notify_flags_ & (kNotifyKeyspace | kNotifyKeyevent));
-    keyspace_events_.emplace_back(event, channel_flags, ns, key);
+    keyspace_events_.emplace_back(type_flag, event, channel_flags, ns, key);
   }
 
   bool HasKeyspaceEvents() const { return !keyspace_events_.empty(); }

@@ -28,37 +28,29 @@
 #include "storage/storage.h"
 
 TEST(KeyspaceEvents, NotificationRequiresEventClassAndChannel) {
-  EXPECT_FALSE(ShouldNotifyKeyspaceEvent(kNotifyString, KeyspaceEventName::kSet));
-  EXPECT_FALSE(ShouldNotifyKeyspaceEvent(kNotifyKeyspace, KeyspaceEventName::kSet));
-}
-
-TEST(KeyspaceEvents, EventNamesAndTypes) {
-  EXPECT_EQ(KeyspaceEventToString(KeyspaceEventName::kSet), "set");
-  EXPECT_EQ(KeyspaceEventToString(KeyspaceEventName::kDel), "del");
-  EXPECT_TRUE(ShouldNotifyKeyspaceEvent(kNotifyKeyspace | kNotifyString, KeyspaceEventName::kSet));
-  EXPECT_FALSE(ShouldNotifyKeyspaceEvent(kNotifyKeyspace | kNotifyString, KeyspaceEventName::kDel));
-  EXPECT_TRUE(ShouldNotifyKeyspaceEvent(kNotifyKeyspace | kNotifyGeneric, KeyspaceEventName::kDel));
+  EXPECT_FALSE(ShouldNotifyKeyspaceEvent(kNotifyString, kNotifyString));
+  EXPECT_FALSE(ShouldNotifyKeyspaceEvent(kNotifyKeyspace, kNotifyString));
 }
 
 TEST(KeyspaceEvents, ContextFiltersAndCapturesEvent) {
   auto ctx = engine::Context::NoTransactionContext(nullptr);
   EXPECT_FALSE(ctx.HasKeyspaceEvents());
 
-  ctx.AddKeyspaceEventIfEnabled(KeyspaceEventName::kSet, "tenant", "disabled");
+  ctx.AddKeyspaceEvent(kNotifyString, "set", "tenant", "disabled");
   EXPECT_FALSE(ctx.HasKeyspaceEvents());
 
   ctx.EnableKeyspaceEventCollection(kNotifyKeyspace | kNotifyString);
-  EXPECT_TRUE(ctx.IsKeyspaceEventEnabled(KeyspaceEventName::kSet));
-  EXPECT_FALSE(ctx.IsKeyspaceEventEnabled(KeyspaceEventName::kDel));
+  EXPECT_TRUE(ctx.IsKeyspaceEventEnabled(kNotifyString));
+  EXPECT_FALSE(ctx.IsKeyspaceEventEnabled(kNotifyGeneric));
 
-  ctx.AddKeyspaceEventIfEnabled(KeyspaceEventName::kDel, "tenant", "ignored");
+  ctx.AddKeyspaceEvent(kNotifyGeneric, "del", "tenant", "ignored");
   EXPECT_FALSE(ctx.HasKeyspaceEvents());
-  ctx.AddKeyspaceEventIfEnabled(KeyspaceEventName::kSet, "tenant", "key");
+  ctx.AddKeyspaceEvent(kNotifyString, "set", "tenant", "key");
 
   auto events = ctx.TakeKeyspaceEvents();
   ASSERT_EQ(events.size(), 1);
   EXPECT_EQ(events[0].channel_flags, kNotifyKeyspace);
-  EXPECT_EQ(events[0].event, KeyspaceEventName::kSet);
+  EXPECT_EQ(events[0].event, "set");
   EXPECT_EQ(events[0].ns, "tenant");
   EXPECT_EQ(events[0].key, "key");
   EXPECT_FALSE(ctx.HasKeyspaceEvents());
@@ -68,8 +60,8 @@ TEST(KeyspaceEvents, ContextFiltersAndCapturesEvent) {
 TEST(KeyspaceEvents, ContextCapturesNamespacePerEvent) {
   auto ctx = engine::Context::NoTransactionContext(nullptr);
   ctx.EnableKeyspaceEventCollection(kNotifyKeyspace | kNotifyString);
-  ctx.AddKeyspaceEventIfEnabled(KeyspaceEventName::kSet, "tenant-1", "first");
-  ctx.AddKeyspaceEventIfEnabled(KeyspaceEventName::kSet, "tenant-2", "second");
+  ctx.AddKeyspaceEvent(kNotifyString, "set", "tenant-1", "first");
+  ctx.AddKeyspaceEvent(kNotifyString, "set", "tenant-2", "second");
 
   auto events = ctx.TakeKeyspaceEvents();
   ASSERT_EQ(events.size(), 2);
@@ -80,8 +72,8 @@ TEST(KeyspaceEvents, ContextCapturesNamespacePerEvent) {
 TEST(KeyspaceEvents, ContextMovePreservesEventOrder) {
   auto ctx = engine::Context::NoTransactionContext(nullptr);
   ctx.EnableKeyspaceEventCollection(kNotifyKeyspace | kNotifyKeyevent | kNotifyAll);
-  ctx.AddKeyspaceEventIfEnabled(KeyspaceEventName::kSet, "tenant", "first");
-  ctx.AddKeyspaceEventIfEnabled(KeyspaceEventName::kDel, "tenant", "second");
+  ctx.AddKeyspaceEvent(kNotifyString, "set", "tenant", "first");
+  ctx.AddKeyspaceEvent(kNotifyGeneric, "del", "tenant", "second");
 
   auto moved_ctx = std::move(ctx);
   auto assigned_ctx = engine::Context::NoTransactionContext(nullptr);
@@ -90,11 +82,11 @@ TEST(KeyspaceEvents, ContextMovePreservesEventOrder) {
   auto events = assigned_ctx.TakeKeyspaceEvents();
   ASSERT_EQ(events.size(), 2);
   EXPECT_EQ(events[0].channel_flags, kNotifyKeyspace | kNotifyKeyevent);
-  EXPECT_EQ(events[0].event, KeyspaceEventName::kSet);
+  EXPECT_EQ(events[0].event, "set");
   EXPECT_EQ(events[0].ns, "tenant");
   EXPECT_EQ(events[0].key, "first");
   EXPECT_EQ(events[1].channel_flags, kNotifyKeyspace | kNotifyKeyevent);
-  EXPECT_EQ(events[1].event, KeyspaceEventName::kDel);
+  EXPECT_EQ(events[1].event, "del");
   EXPECT_EQ(events[1].ns, "tenant");
   EXPECT_EQ(events[1].key, "second");
   EXPECT_FALSE(assigned_ctx.HasKeyspaceEvents());

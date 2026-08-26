@@ -126,8 +126,9 @@ uint64_t GenerateScriptFlags(uint64_t flags, const std::vector<std::string> &arg
 }
 
 uint64_t GenerateEvalFlags(uint64_t flags, const std::vector<std::string> &, const Config &config) {
+  flags |= kCmdSkipTxnSavepoint;
   if (!config.lua_strict_key_accessing) {
-    return flags | kCmdExclusive;
+    flags |= kCmdExclusive;
   }
 
   return flags;

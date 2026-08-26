@@ -121,8 +121,9 @@ uint64_t GenerateFunctionFlags(uint64_t flags, const std::vector<std::string> &a
 }
 
 uint64_t GenerateFCallFlags(uint64_t flags, const std::vector<std::string> &, const Config &config) {
+  flags |= kCmdSkipTxnSavepoint;
   if (!config.lua_strict_key_accessing) {
-    return flags | kCmdExclusive;
+    flags |= kCmdExclusive;
   }
 
   return flags;

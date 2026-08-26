@@ -22,6 +22,7 @@ package multi
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/apache/kvrocks/tests/gocase/util"
@@ -96,6 +97,79 @@ func TestMulti(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, "visible", get.Val())
 		require.Equal(t, map[string]string{"f0": "v0", "f1": "v1", "f2": "v2"}, hgetall.Val())
+	})
+
+	t.Run("Runtime command errors don't leave partial writes", func(t *testing.T) {
+		largeA := strings.Repeat("A", 64)
+		largeB := strings.Repeat("B", 64)
+		largeC := strings.Repeat("C", 64)
+
+		require.NoError(t, rdb.ConfigSet(ctx, "rocksdb.write_options.write_batch_max_bytes", "0").Err())
+		require.NoError(t, rdb.Del(ctx, "txhash", "after").Err())
+		require.NoError(t, rdb.HSet(ctx, "txhash", "f1", "old1", "f2", "old2", "f3", "old3").Err())
+		require.NoError(t, rdb.ConfigSet(ctx, "rocksdb.write_options.write_batch_max_bytes", "180").Err())
+		defer func() {
+			require.NoError(t, rdb.ConfigSet(ctx, "rocksdb.write_options.write_batch_max_bytes", "0").Err())
+		}()
+
+		require.NoError(t, rdb.Do(ctx, "MULTI").Err())
+		require.NoError(t, rdb.Do(ctx, "HSET", "txhash", "f1", largeA, "f2", largeB, "f3", largeC).Err())
+		require.NoError(t, rdb.Do(ctx, "SET", "after", "ok").Err())
+		require.NoError(t, rdb.Do(ctx, "HMGET", "txhash", "f1", "f2", "f3").Err())
+
+		replies := rdb.Do(ctx, "EXEC").Val().([]interface{})
+		require.Len(t, replies, 3)
+		require.ErrorContains(t, replies[0].(error), "Memory limit reached")
+		require.Equal(t, "OK", replies[1])
+		require.Equal(t, []interface{}{"old1", "old2", "old3"}, replies[2])
+		require.Equal(t, []interface{}{"old1", "old2", "old3"}, rdb.HMGet(ctx, "txhash", "f1", "f2", "f3").Val())
+		require.Equal(t, "ok", rdb.Get(ctx, "after").Val())
+	})
+
+	t.Run("EVAL runtime errors preserve successful nested commands", func(t *testing.T) {
+		require.NoError(t, rdb.ConfigSet(ctx, "rocksdb.write_options.write_batch_max_bytes", "0").Err())
+		require.NoError(t, rdb.Del(ctx, "scriptkey", "after-script").Err())
+
+		require.NoError(t, rdb.Do(ctx, "MULTI").Err())
+		require.NoError(t, rdb.Do(ctx, "EVAL",
+			"redis.call('SET', KEYS[1], 'v'); return redis.call('HGET', KEYS[1], 'field')", "1", "scriptkey").Err())
+		require.NoError(t, rdb.Do(ctx, "SET", "after-script", "ok").Err())
+
+		replies := rdb.Do(ctx, "EXEC").Val().([]interface{})
+		require.Len(t, replies, 2)
+		require.ErrorContains(t, replies[0].(error), "WRONGTYPE")
+		require.Equal(t, "OK", replies[1])
+		require.Equal(t, "v", rdb.Get(ctx, "scriptkey").Val())
+		require.Equal(t, "ok", rdb.Get(ctx, "after-script").Val())
+	})
+
+	t.Run("redis.pcall rolls back partial writes from its failed command", func(t *testing.T) {
+		largeA := strings.Repeat("A", 64)
+		largeB := strings.Repeat("B", 64)
+		largeC := strings.Repeat("C", 64)
+
+		require.NoError(t, rdb.ConfigSet(ctx, "rocksdb.write_options.write_batch_max_bytes", "0").Err())
+		require.NoError(t, rdb.Del(ctx, "pcall-hash", "pcall-after").Err())
+		require.NoError(t, rdb.HSet(ctx, "pcall-hash", "f1", "old1", "f2", "old2", "f3", "old3").Err())
+		require.NoError(t, rdb.ConfigSet(ctx, "rocksdb.write_options.write_batch_max_bytes", "180").Err())
+		defer func() {
+			require.NoError(t, rdb.ConfigSet(ctx, "rocksdb.write_options.write_batch_max_bytes", "0").Err())
+		}()
+
+		script := `
+			local result = redis.pcall('HSET', KEYS[1], 'f1', ARGV[1], 'f2', ARGV[2], 'f3', ARGV[3])
+			redis.call('SET', KEYS[2], 'ok')
+			return result
+		`
+		require.NoError(t, rdb.Do(ctx, "MULTI").Err())
+		require.NoError(t, rdb.Do(ctx, "EVAL", script, "2", "pcall-hash", "pcall-after", largeA, largeB, largeC).Err())
+
+		replies := rdb.Do(ctx, "EXEC").Val().([]interface{})
+		require.Len(t, replies, 1)
+		require.ErrorContains(t, replies[0].(error), "Memory limit reached")
+		require.Equal(t, []interface{}{"old1", "old2", "old3"},
+			rdb.HMGet(ctx, "pcall-hash", "f1", "f2", "f3").Val())
+		require.Equal(t, "ok", rdb.Get(ctx, "pcall-after").Val())
 	})
 
 	t.Run("EXEC fails if there are errors while queueing commands #1", func(t *testing.T) {

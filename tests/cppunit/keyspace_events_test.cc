@@ -27,13 +27,6 @@
 #include "config/config.h"
 #include "storage/storage.h"
 
-TEST(KeyspaceEvents, NotificationRequiresEventClassAndChannel) {
-  EXPECT_FALSE(ShouldNotifyKeyspaceEvent(kNotifyNoChannel, kNotifyString, kNotifyString));
-  EXPECT_FALSE(ShouldNotifyKeyspaceEvent(kNotifyKeyspace, kNotifyNoType, kNotifyString));
-  EXPECT_FALSE(ShouldNotifyKeyspaceEvent(kNotifyKeyspace, kNotifyGeneric, kNotifyString));
-  EXPECT_TRUE(ShouldNotifyKeyspaceEvent(kNotifyKeyspace, kNotifyString, kNotifyString));
-}
-
 TEST(KeyspaceEvents, ContextFiltersAndCapturesEvent) {
   auto ctx = engine::Context::NoTransactionContext(nullptr);
   EXPECT_FALSE(ctx.HasKeyspaceEvents());

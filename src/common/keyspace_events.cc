@@ -25,11 +25,6 @@
 #include "config/config.h"
 #include "fmt/format.h"
 
-bool ShouldNotifyKeyspaceEvent(KeyspaceEventChannel channel_flags, KeyspaceEventType type_flags,
-                               KeyspaceEventType type_flag) {
-  return channel_flags != kNotifyNoChannel && (type_flags & type_flag) != 0;
-}
-
 StatusOr<std::pair<KeyspaceEventChannel, KeyspaceEventType>> ParseNotifyKeyspaceEventsFlags(std::string_view input) {
   int channel_flags = 0;
   int type_flags = 0;

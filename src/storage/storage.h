@@ -509,7 +509,7 @@ struct Context {
   }
 
   bool IsKeyspaceEventEnabled(KeyspaceEventType type_flag) const {
-    return ShouldNotifyKeyspaceEvent(keyspace_event_channel_flags_, keyspace_event_type_flags_, type_flag);
+    return keyspace_event_channel_flags_ != kNotifyNoChannel && (keyspace_event_type_flags_ & type_flag) != 0;
   }
 
   void AddKeyspaceEvent(KeyspaceEventType type_flag, std::string_view event, std::string_view ns,

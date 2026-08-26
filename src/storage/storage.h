@@ -472,7 +472,8 @@ struct Context {
       storage = ctx.storage;
       snapshot_ = ctx.snapshot_;
       batch = std::move(ctx.batch);
-      keyspace_event_notify_flags_ = ctx.keyspace_event_notify_flags_;
+      keyspace_event_channel_flags_ = ctx.keyspace_event_channel_flags_;
+      keyspace_event_type_flags_ = ctx.keyspace_event_type_flags_;
       keyspace_events_ = std::move(ctx.keyspace_events_);
 
       ctx.storage = nullptr;
@@ -484,7 +485,8 @@ struct Context {
       : storage(ctx.storage),
         batch(std::move(ctx.batch)),
         snapshot_(ctx.snapshot_),
-        keyspace_event_notify_flags_(ctx.keyspace_event_notify_flags_),
+        keyspace_event_channel_flags_(ctx.keyspace_event_channel_flags_),
+        keyspace_event_type_flags_(ctx.keyspace_event_type_flags_),
         keyspace_events_(std::move(ctx.keyspace_events_)) {
     ctx.storage = nullptr;
     ctx.snapshot_ = nullptr;
@@ -501,18 +503,19 @@ struct Context {
     return snapshot_;
   }
 
-  void EnableKeyspaceEventCollection(int notify_flags) { keyspace_event_notify_flags_ = notify_flags; }
+  void EnableKeyspaceEventCollection(KeyspaceEventChannel channel_flags, KeyspaceEventType type_flags) {
+    keyspace_event_channel_flags_ = channel_flags;
+    keyspace_event_type_flags_ = type_flags;
+  }
 
   bool IsKeyspaceEventEnabled(KeyspaceEventType type_flag) const {
-    return ShouldNotifyKeyspaceEvent(keyspace_event_notify_flags_, type_flag);
+    return ShouldNotifyKeyspaceEvent(keyspace_event_channel_flags_, keyspace_event_type_flags_, type_flag);
   }
 
   void AddKeyspaceEvent(KeyspaceEventType type_flag, std::string_view event, std::string_view ns,
                         std::string_view key) {
     if (!IsKeyspaceEventEnabled(type_flag)) return;
-    const auto channel_flags =
-        static_cast<KeyspaceEventChannel>(keyspace_event_notify_flags_ & (kNotifyKeyspace | kNotifyKeyevent));
-    keyspace_events_.emplace_back(type_flag, event, channel_flags, ns, key);
+    keyspace_events_.emplace_back(type_flag, event, keyspace_event_channel_flags_, ns, key);
   }
 
   bool HasKeyspaceEvents() const { return !keyspace_events_.empty(); }
@@ -532,7 +535,8 @@ struct Context {
   /// Normally it will be fixed to the latest Snapshot when the Context is constructed.
   /// If is_txn_mode is false, the snapshot is nullptr.
   const rocksdb::Snapshot *snapshot_ = nullptr;
-  int keyspace_event_notify_flags_ = 0;
+  KeyspaceEventChannel keyspace_event_channel_flags_ = kNotifyNoChannel;
+  KeyspaceEventType keyspace_event_type_flags_ = kNotifyNoType;
   std::vector<KeyspaceEvent> keyspace_events_;
 };
 

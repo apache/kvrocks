@@ -564,7 +564,9 @@ void Config::initFieldCallback() {
            }},
           {"notify-keyspace-events",
            [this]([[maybe_unused]] Server *srv, [[maybe_unused]] const std::string &k, const std::string &v) -> Status {
-             notify_keyspace_events = GET_OR_RET(ParseNotifyKeyspaceEventsFlags(v));
+             const auto flags = GET_OR_RET(ParseNotifyKeyspaceEventsFlags(v));
+             notify_keyspace_event_channels = flags.first;
+             notify_keyspace_event_types = flags.second;
              return Status::OK();
            }},
           {"dir",

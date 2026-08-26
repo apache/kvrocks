@@ -25,35 +25,37 @@
 #include "config/config.h"
 #include "fmt/format.h"
 
-bool ShouldNotifyKeyspaceEvent(int notify_flags, KeyspaceEventType type_flag) {
-  return (notify_flags & type_flag) != 0 && (notify_flags & (kNotifyKeyspace | kNotifyKeyevent)) != 0;
+bool ShouldNotifyKeyspaceEvent(KeyspaceEventChannel channel_flags, KeyspaceEventType type_flags,
+                               KeyspaceEventType type_flag) {
+  return channel_flags != kNotifyNoChannel && (type_flags & type_flag) != 0;
 }
 
-StatusOr<int> ParseNotifyKeyspaceEventsFlags(std::string_view input) {
-  int result = 0;
+StatusOr<std::pair<KeyspaceEventChannel, KeyspaceEventType>> ParseNotifyKeyspaceEventsFlags(std::string_view input) {
+  int channel_flags = 0;
+  int type_flags = 0;
   for (const char c : input) {
     switch (c) {
       case 'K':
-        result |= kNotifyKeyspace;
+        channel_flags |= kNotifyKeyspace;
         break;
       case 'E':
-        result |= kNotifyKeyevent;
+        channel_flags |= kNotifyKeyevent;
         break;
       case 'A':
-        result |= kNotifyAll;
+        type_flags |= kNotifyAll;
         break;
       case 'g':
-        result |= kNotifyGeneric;
+        type_flags |= kNotifyGeneric;
         break;
       case '$':
-        result |= kNotifyString;
+        type_flags |= kNotifyString;
         break;
       default:
         return {Status::NotOK, fmt::format("unsupported notify-keyspace-events flag: '{}'", c)};
     }
   }
 
-  return result;
+  return std::pair{static_cast<KeyspaceEventChannel>(channel_flags), static_cast<KeyspaceEventType>(type_flags)};
 }
 
 std::string FormatKeyspaceNotificationScope(const std::string &ns, int redis_databases) {

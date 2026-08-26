@@ -32,6 +32,7 @@
 
 #include "config_type.h"
 #include "cron.h"
+#include "keyspace_events.h"
 #include "spdlog/common.h"
 #include "status.h"
 #include "storage/redis_metadata.h"
@@ -220,7 +221,8 @@ struct Config {
   bool txn_context_enabled = false;
 
   // Parsed notify-keyspace-events flags.
-  int notify_keyspace_events = 0;
+  KeyspaceEventChannel notify_keyspace_event_channels = kNotifyNoChannel;
+  KeyspaceEventType notify_keyspace_event_types = kNotifyNoType;
 
   bool skip_block_cache_deallocation_on_close = false;
 

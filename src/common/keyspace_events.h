@@ -22,23 +22,27 @@
 
 #include <string>
 #include <string_view>
+#include <utility>
 
 #include "status.h"
 
 enum KeyspaceEventChannel {
+  kNotifyNoChannel = 0,
   kNotifyKeyspace = 1 << 0,  // K, keyspace channels
   kNotifyKeyevent = 1 << 1,  // E, keyevent channels
 };
 
 // Event type flags for notify-keyspace-events, separate from RedisType.
 enum KeyspaceEventType {
-  kNotifyGeneric = 1 << 2,  // g, emits del
-  kNotifyString = 1 << 3,   // $, emits set
+  kNotifyNoType = 0,
+  kNotifyGeneric = 1 << 0,  // g, emits del
+  kNotifyString = 1 << 1,   // $, emits set
   // A, supported data classes without K or E.
   kNotifyAll = kNotifyGeneric | kNotifyString,
 };
 
-bool ShouldNotifyKeyspaceEvent(int notify_flags, KeyspaceEventType type_flag);
+bool ShouldNotifyKeyspaceEvent(KeyspaceEventChannel channel_flags, KeyspaceEventType type_flags,
+                               KeyspaceEventType type_flag);
 
 struct KeyspaceEvent {
   KeyspaceEvent(KeyspaceEventType type_flag, std::string_view event, KeyspaceEventChannel channel_flags,
@@ -52,8 +56,8 @@ struct KeyspaceEvent {
   std::string key;
 };
 
-// Parses notify-keyspace-events flags.
-StatusOr<int> ParseNotifyKeyspaceEventsFlags(std::string_view input);
+// Parses notify-keyspace-events flags into channel flags followed by event type flags.
+StatusOr<std::pair<KeyspaceEventChannel, KeyspaceEventType>> ParseNotifyKeyspaceEventsFlags(std::string_view input);
 
 // Formats the namespace or database scope used in keyspace notification channel names.
 // Default namespace maps to 0; database namespaces map back to db indexes when redis-databases is enabled.

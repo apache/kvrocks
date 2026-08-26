@@ -28,8 +28,10 @@
 #include "storage/storage.h"
 
 TEST(KeyspaceEvents, NotificationRequiresEventClassAndChannel) {
-  EXPECT_FALSE(ShouldNotifyKeyspaceEvent(kNotifyString, kNotifyString));
-  EXPECT_FALSE(ShouldNotifyKeyspaceEvent(kNotifyKeyspace, kNotifyString));
+  EXPECT_FALSE(ShouldNotifyKeyspaceEvent(kNotifyNoChannel, kNotifyString, kNotifyString));
+  EXPECT_FALSE(ShouldNotifyKeyspaceEvent(kNotifyKeyspace, kNotifyNoType, kNotifyString));
+  EXPECT_FALSE(ShouldNotifyKeyspaceEvent(kNotifyKeyspace, kNotifyGeneric, kNotifyString));
+  EXPECT_TRUE(ShouldNotifyKeyspaceEvent(kNotifyKeyspace, kNotifyString, kNotifyString));
 }
 
 TEST(KeyspaceEvents, ContextFiltersAndCapturesEvent) {
@@ -39,7 +41,10 @@ TEST(KeyspaceEvents, ContextFiltersAndCapturesEvent) {
   ctx.AddKeyspaceEvent(kNotifyString, "set", "tenant", "disabled");
   EXPECT_FALSE(ctx.HasKeyspaceEvents());
 
-  ctx.EnableKeyspaceEventCollection(kNotifyKeyspace | kNotifyString);
+  ctx.EnableKeyspaceEventCollection(kNotifyNoChannel, kNotifyString);
+  EXPECT_FALSE(ctx.IsKeyspaceEventEnabled(kNotifyString));
+
+  ctx.EnableKeyspaceEventCollection(kNotifyKeyspace, kNotifyString);
   EXPECT_TRUE(ctx.IsKeyspaceEventEnabled(kNotifyString));
   EXPECT_FALSE(ctx.IsKeyspaceEventEnabled(kNotifyGeneric));
 
@@ -59,7 +64,7 @@ TEST(KeyspaceEvents, ContextFiltersAndCapturesEvent) {
 
 TEST(KeyspaceEvents, ContextCapturesNamespacePerEvent) {
   auto ctx = engine::Context::NoTransactionContext(nullptr);
-  ctx.EnableKeyspaceEventCollection(kNotifyKeyspace | kNotifyString);
+  ctx.EnableKeyspaceEventCollection(kNotifyKeyspace, kNotifyString);
   ctx.AddKeyspaceEvent(kNotifyString, "set", "tenant-1", "first");
   ctx.AddKeyspaceEvent(kNotifyString, "set", "tenant-2", "second");
 
@@ -70,8 +75,9 @@ TEST(KeyspaceEvents, ContextCapturesNamespacePerEvent) {
 }
 
 TEST(KeyspaceEvents, ContextMovePreservesEventOrder) {
+  const auto channel_flags = static_cast<KeyspaceEventChannel>(kNotifyKeyspace | kNotifyKeyevent);
   auto ctx = engine::Context::NoTransactionContext(nullptr);
-  ctx.EnableKeyspaceEventCollection(kNotifyKeyspace | kNotifyKeyevent | kNotifyAll);
+  ctx.EnableKeyspaceEventCollection(channel_flags, kNotifyAll);
   ctx.AddKeyspaceEvent(kNotifyString, "set", "tenant", "first");
   ctx.AddKeyspaceEvent(kNotifyGeneric, "del", "tenant", "second");
 
@@ -81,11 +87,11 @@ TEST(KeyspaceEvents, ContextMovePreservesEventOrder) {
 
   auto events = assigned_ctx.TakeKeyspaceEvents();
   ASSERT_EQ(events.size(), 2);
-  EXPECT_EQ(events[0].channel_flags, kNotifyKeyspace | kNotifyKeyevent);
+  EXPECT_EQ(events[0].channel_flags, channel_flags);
   EXPECT_EQ(events[0].event, "set");
   EXPECT_EQ(events[0].ns, "tenant");
   EXPECT_EQ(events[0].key, "first");
-  EXPECT_EQ(events[1].channel_flags, kNotifyKeyspace | kNotifyKeyevent);
+  EXPECT_EQ(events[1].channel_flags, channel_flags);
   EXPECT_EQ(events[1].event, "del");
   EXPECT_EQ(events[1].ns, "tenant");
   EXPECT_EQ(events[1].key, "second");
@@ -94,32 +100,35 @@ TEST(KeyspaceEvents, ContextMovePreservesEventOrder) {
 
 TEST(KeyspaceEvents, ParseFlags) {
   // Empty disables notifications.
-  EXPECT_EQ(ParseNotifyKeyspaceEventsFlags("").ValueOr(-1), 0);
+  auto empty_flags = ParseNotifyKeyspaceEventsFlags("");
+  ASSERT_TRUE(empty_flags.IsOK());
+  EXPECT_EQ(empty_flags->first, kNotifyNoChannel);
+  EXPECT_EQ(empty_flags->second, kNotifyNoType);
 
-  // Each flag maps to one bit.
-  EXPECT_EQ(ParseNotifyKeyspaceEventsFlags("K").ValueOr(-1), kNotifyKeyspace);
-  EXPECT_EQ(ParseNotifyKeyspaceEventsFlags("E").ValueOr(-1), kNotifyKeyevent);
-  EXPECT_EQ(ParseNotifyKeyspaceEventsFlags("g").ValueOr(-1), kNotifyGeneric);
-  EXPECT_EQ(ParseNotifyKeyspaceEventsFlags("$").ValueOr(-1), kNotifyString);
+  // Channel and event type flags are parsed into independent masks.
+  auto channel_flags = ParseNotifyKeyspaceEventsFlags("KE");
+  ASSERT_TRUE(channel_flags.IsOK());
+  EXPECT_EQ(channel_flags->first, kNotifyKeyspace | kNotifyKeyevent);
+  EXPECT_EQ(channel_flags->second, kNotifyNoType);
+
+  auto type_flags = ParseNotifyKeyspaceEventsFlags("g$");
+  ASSERT_TRUE(type_flags.IsOK());
+  EXPECT_EQ(type_flags->first, kNotifyNoChannel);
+  EXPECT_EQ(type_flags->second, kNotifyGeneric | kNotifyString);
 
   // KEA enables both channels and set or del.
   auto flags = ParseNotifyKeyspaceEventsFlags("KEA");
   ASSERT_TRUE(flags.IsOK());
-  ASSERT_TRUE(*flags & kNotifyKeyspace);
-  ASSERT_TRUE(*flags & kNotifyKeyevent);
-  ASSERT_TRUE(*flags & kNotifyGeneric);  // del
-  ASSERT_TRUE(*flags & kNotifyString);   // set
+  EXPECT_EQ(flags->first, kNotifyKeyspace | kNotifyKeyevent);
+  EXPECT_EQ(flags->second, kNotifyAll);
 }
 
 TEST(KeyspaceEvents, ParseFlagsAExpansion) {
   auto flags = ParseNotifyKeyspaceEventsFlags("A");
   ASSERT_TRUE(flags.IsOK());
   // A expands to all supported event classes without K or E.
-  ASSERT_EQ(*flags, kNotifyAll);
-  ASSERT_FALSE(*flags & kNotifyKeyspace);
-  ASSERT_FALSE(*flags & kNotifyKeyevent);
-  ASSERT_TRUE(*flags & kNotifyGeneric);
-  ASSERT_TRUE(*flags & kNotifyString);
+  EXPECT_EQ(flags->first, kNotifyNoChannel);
+  EXPECT_EQ(flags->second, kNotifyAll);
 }
 
 TEST(KeyspaceEvents, ParseFlagsRejectsUnsupported) {

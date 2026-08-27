@@ -512,8 +512,8 @@ struct Context {
     return keyspace_event_channel_flags_ != kNotifyNoChannel && (keyspace_event_type_flags_ & type_flag) != 0;
   }
 
-  void AddKeyspaceEvent(KeyspaceEventType type_flag, std::string_view event, std::string_view ns,
-                        std::string_view key) {
+  void AddKeyspaceEventIfEnabled(KeyspaceEventType type_flag, std::string_view event, std::string_view ns,
+                                 std::string_view key) {
     if (!IsKeyspaceEventEnabled(type_flag)) return;
     keyspace_events_.emplace_back(type_flag, event, keyspace_event_channel_flags_, ns, key);
   }

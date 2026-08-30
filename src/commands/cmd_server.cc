@@ -1684,6 +1684,26 @@ class CommandFlushBlockCache : public Commander {
   }
 };
 
+class CommandFlushWAL : public Commander {
+ public:
+  Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, [[maybe_unused]] Connection *conn,
+                 std::string *output) override {
+    if (srv->GetConfig()->rocks_db.write_options.disable_wal) {
+      return {Status::RedisExecErr, "flushwal is meaningless with the disable_wal option"};
+    }
+
+    // Flush the WAL buffer to the WAL file and fsync it. With
+    // rocksdb.write_options.sync set to no, this is what makes every write
+    // accepted before this point durable across a process or machine crash.
+    auto s = srv->storage->GetDB()->FlushWAL(/*sync=*/true);
+    if (!s.ok()) return {Status::RedisExecErr, s.ToString()};
+
+    *output = redis::RESP_OK;
+    INFO("FLUSHWAL is triggered and executed successfully");
+    return Status::OK();
+  }
+};
+
 class CommandLatency : public Commander {
  public:
   Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
@@ -1824,5 +1844,6 @@ REDIS_REGISTER_COMMANDS(
     MakeCmdAttr<CommandSST>("sst", -3, "write exclusive admin", 1, 1, 1),
     MakeCmdAttr<CommandFlushMemTable>("flushmemtable", -1, "exclusive write admin", NO_KEY),
     MakeCmdAttr<CommandFlushBlockCache>("flushblockcache", 1, "exclusive write admin", NO_KEY),
+    MakeCmdAttr<CommandFlushWAL>("flushwal", 1, "read-only admin", NO_KEY),
     MakeCmdAttr<CommandLatency>("latency", -2, "read-only admin", NO_KEY), )
 }  // namespace redis

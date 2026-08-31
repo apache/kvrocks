@@ -2186,11 +2186,25 @@ func TestStreamOffset(t *testing.T) {
 		require.EqualValues(t, 3, groups[0].EntriesRead)
 		require.EqualValues(t, 3, groups[0].Lag)
 
-		// A normal XREADGROUP after the clamp advances the cursor and keeps incrementing
-		// entries_read, so it can run past entries_added (kvrocks does not recompute it from
-		// the delivered ID the way Redis does). The serve-path guard in CheckLagValid must
-		// still keep the unsigned lag from underflowing to ~2^64: XINFO GROUPS stays decodable
-		// and, with every entry now read, reports lag 0.
+		// An XREADGROUP after the clamp must not keep incrementing the clamped counter
+		// past entries-added: with the cursor behind the first entry, Redis recomputes
+		// entries-read from the delivered ID (streamReplyWithRange). A partial read of 2
+		// of the 3 entries must report entries-read 2 and lag 1, exactly as Redis does.
+		require.NoError(t, rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    groupName,
+			Consumer: "c1",
+			Count:    2,
+			Streams:  []string{streamName, ">"},
+		}).Err())
+		require.NoError(t, rdb.Do(ctx, "XINFO", "GROUPS", streamName).Err())
+		groups, err = rdb.XInfoGroups(ctx, streamName).Result()
+		require.NoError(t, err)
+		require.Len(t, groups, 1)
+		require.EqualValues(t, 2, groups[0].EntriesRead)
+		require.EqualValues(t, 1, groups[0].Lag)
+
+		// Reading the remaining entry leaves the group fully caught up: entries-read
+		// equals entries-added and lag is 0.
 		require.NoError(t, rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
 			Group:    groupName,
 			Consumer: "c1",
@@ -2201,6 +2215,7 @@ func TestStreamOffset(t *testing.T) {
 		groups, err = rdb.XInfoGroups(ctx, streamName).Result()
 		require.NoError(t, err)
 		require.Len(t, groups, 1)
+		require.EqualValues(t, 3, groups[0].EntriesRead)
 		require.EqualValues(t, 0, groups[0].Lag)
 	})
 

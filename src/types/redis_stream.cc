@@ -1370,8 +1370,8 @@ static void CheckLagValid(const StreamMetadata &stream_metadata, StreamConsumerG
              group_metadata.entries_read <= static_cast<int64_t>(stream_metadata.entries_added) &&
              !StreamRangeHasTombstones(stream_metadata, group_metadata.last_delivered_id)) {
     // Guard entries_read <= entries_added: the subtraction is served as an unsigned lag, so
-    // an entries_read ahead of entries_added (e.g. a post-clamp XREADGROUP still incrementing
-    // the counter) would underflow to ~2^64 and overflow the signed-64 integer clients decode
+    // an entries_read ahead of entries_added (stored by versions before the ENTRIESREAD
+    // clamp) would underflow to ~2^64 and overflow the signed-64 integer clients decode
     // the reply as. Falling through to the estimate path keeps XINFO GROUPS decodable.
     group_metadata.lag = stream_metadata.entries_added - group_metadata.entries_read;
     valid = true;
@@ -1555,6 +1555,7 @@ rocksdb::Status Stream::RangeWithPending(engine::Context &ctx, const Slice &stre
       return s;
     }
     StreamEntryID maxid = {0, 0};
+    StreamEntryID cursor = consumergroup_metadata.last_delivered_id;
     for (const auto &entry : *entries) {
       StreamEntryID id;
       Status st = ParseStreamEntryID(entry.key, &id);
@@ -1570,10 +1571,19 @@ rocksdb::Status Stream::RangeWithPending(engine::Context &ctx, const Slice &stre
         std::string pel_value = encodeStreamPelEntryValue(pel_entry);
         s = batch->Put(stream_cf_handle_, pel_key, pel_value);
         if (!s.ok()) return s;
-        consumergroup_metadata.entries_read += 1;
+        // Mirror Redis streamReplyWithRange: with the cursor at/after the first entry and no
+        // tombstones ahead, the counter can be incremented; a cursor behind the first entry
+        // (e.g. after a clamped ENTRIESREAD) must be recomputed from the delivered ID instead.
+        if (consumergroup_metadata.entries_read != -1 && cursor >= metadata.first_entry_id &&
+            !StreamRangeHasTombstones(metadata, cursor)) {
+          consumergroup_metadata.entries_read += 1;
+        } else {
+          consumergroup_metadata.entries_read = StreamEstimateDistanceFromFirstEverEntry(metadata, id);
+        }
         consumergroup_metadata.pending_number += 1;
         consumer_metadata.pending_number += 1;
       }
+      cursor = id;
     }
     if (maxid > consumergroup_metadata.last_delivered_id) {
       consumergroup_metadata.last_delivered_id = maxid;

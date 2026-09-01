@@ -64,7 +64,7 @@ jobs:
         uses: crate-ci/typos@v1.49.0
         with:
           config: .github/config/typos.toml
-      - uses: apache/skywalking-eyes/header@v0.8.0
+      - uses: apache/skywalking-eyes/header@v0.9.0
         with:
           config: .github/config/licenserc.yml
 

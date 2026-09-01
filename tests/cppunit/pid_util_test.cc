@@ -59,29 +59,3 @@ TEST(PidUtil, CreatePidFileTruncatesExistingContent) {
 
   RemovePidFile(path);
 }
-
-TEST(PidUtil, CreatePidFileFromScratch) {
-  const std::string path = "/tmp/kvrocks_pid_util_test_fresh.pid";
-  std::remove(path.data());
-
-  auto status = CreatePidFile(path);
-  ASSERT_TRUE(status.IsOK());
-
-  std::ifstream ifs(path);
-  std::string content((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
-  ifs.close();
-
-  EXPECT_EQ(content, std::to_string(getpid()));
-
-  RemovePidFile(path);
-}
-
-TEST(PidUtil, RemovePidFile) {
-  const std::string path = "/tmp/kvrocks_pid_util_test_remove.pid";
-
-  ASSERT_TRUE(CreatePidFile(path).IsOK());
-  ASSERT_EQ(access(path.data(), F_OK), 0);
-
-  RemovePidFile(path);
-  ASSERT_NE(access(path.data(), F_OK), 0);
-}

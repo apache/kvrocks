@@ -21,13 +21,12 @@
 #include "cli/pid_util.h"
 
 #include <fcntl.h>
+#include <gtest/gtest.h>
 #include <unistd.h>
 
 #include <cstdio>
 #include <fstream>
 #include <string>
-
-#include <gtest/gtest.h>
 
 TEST(PidUtil, CreatePidFileTruncatesExistingContent) {
   // Simulate a stale PID file whose content is longer than the current PID.

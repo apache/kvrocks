@@ -34,8 +34,21 @@ namespace redis {
 
 class CuckooPageCache {
  public:
+  struct SlotMutation {
+    uint8_t OldFingerprint() const { return old_fingerprint_; }
+
+    uint16_t filter_index_ = 0;
+    uint32_t num_buckets_ = 0;
+    uint32_t bucket_index_ = 0;
+    uint32_t slot_idx_ = 0;
+    uint8_t old_fingerprint_ = 0;
+    bool page_was_dirty_ = false;
+  };
+
   CuckooPageCache(engine::Storage *storage, engine::Context &ctx, const Slice &ns_key, bool slot_id_encoded,
                   uint64_t version, uint8_t bucket_size, uint32_t page_size);
+
+  uint8_t BucketSize() const { return bucket_size_; }
 
   rocksdb::Status PrefetchBuckets(uint16_t filter_index, uint32_t num_buckets, uint32_t bucket1_index,
                                   uint32_t bucket2_index);
@@ -45,6 +58,9 @@ class CuckooPageCache {
                                 uint8_t *fingerprint);
   rocksdb::Status SetBucketSlot(uint16_t filter_index, uint32_t num_buckets, uint32_t bucket_index, uint32_t slot_idx,
                                 uint8_t fingerprint);
+  rocksdb::Status SetBucketSlotWithUndo(uint16_t filter_index, uint32_t num_buckets, uint32_t bucket_index,
+                                        uint32_t slot_idx, uint8_t fingerprint, SlotMutation *mutation);
+  rocksdb::Status RestoreBucketSlot(const SlotMutation &mutation);
   rocksdb::Status WriteBackDirtyPages(rocksdb::WriteBatchBase *batch);
 
   void DiscardCachedPages();

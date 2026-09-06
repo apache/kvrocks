@@ -26,7 +26,7 @@
 
 namespace redis {
 
-class CuckooSubFilter;
+class CuckooPageCache;
 
 // Default values for a newly created cuckoo filter.
 const uint32_t kCFDefaultCapacity = 1024;
@@ -54,14 +54,16 @@ class CuckooChain : public Database {
   static rocksdb::Status validateMetadata(const CuckooChainMetadata &metadata);
 
   rocksdb::Status tryCuckooInsert(engine::Context &ctx, const Slice &user_key, const std::string &ns_key,
-                                  CuckooChainMetadata *metadata, uint64_t hash, uint8_t fingerprint, bool *inserted);
+                                  CuckooChainMetadata *metadata, CuckooPageCache &pages, uint64_t hash,
+                                  uint8_t fingerprint, bool *inserted);
   rocksdb::Status tryCuckooKickOut(engine::Context &ctx, const Slice &user_key, const std::string &ns_key,
-                                   CuckooChainMetadata *metadata, uint64_t hash, uint8_t fingerprint, bool *inserted);
+                                   CuckooChainMetadata *metadata, CuckooPageCache &pages, uint64_t hash,
+                                   uint8_t fingerprint, bool *inserted);
   rocksdb::Status expandAndInsertCuckooChain(engine::Context &ctx, const Slice &user_key, const std::string &ns_key,
-                                             CuckooChainMetadata *metadata, uint64_t hash, uint8_t fingerprint,
-                                             bool *inserted);
-  rocksdb::Status commitSubFilterAndMetadata(engine::Context &ctx, const Slice &user_key, const std::string &ns_key,
-                                             CuckooChainMetadata *metadata, CuckooSubFilter *sub_filter);
+                                             CuckooChainMetadata *metadata, CuckooPageCache &pages, uint64_t hash,
+                                             uint8_t fingerprint, bool *inserted);
+  rocksdb::Status commitPagesAndMetadata(engine::Context &ctx, const Slice &user_key, const std::string &ns_key,
+                                         CuckooChainMetadata *metadata, CuckooPageCache &pages);
 };
 
 }  // namespace redis

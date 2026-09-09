@@ -50,6 +50,12 @@ func expectMessage(t *testing.T, ctx context.Context, pubsub *redis.PubSub, chan
 	require.Equal(t, payload, m.Payload)
 }
 
+func expectEvent(t *testing.T, ctx context.Context, pubsub *redis.PubSub, key, event string) {
+	t.Helper()
+	expectMessage(t, ctx, pubsub, "__keyspace@0__:"+key, event)
+	expectMessage(t, ctx, pubsub, "__keyevent@0__:"+event, key)
+}
+
 // expectNoMessage checks that no message arrives soon.
 func expectNoMessage(t *testing.T, ctx context.Context, pubsub *redis.PubSub) {
 	t.Helper()
@@ -77,19 +83,126 @@ func TestKeyspaceNotify(t *testing.T) {
 		expectMessage(t, ctx, pubsub, "__keyevent@0__:set", "foo")
 	})
 
-	t.Run("SETEX publishes set from the shared Set API", func(t *testing.T) {
-		require.NoError(t, rdb.Do(ctx, "SETEX", "setex-key", 60, "value").Err())
-		expectMessage(t, ctx, pubsub, "__keyspace@0__:setex-key", "set")
-		expectMessage(t, ctx, pubsub, "__keyevent@0__:set", "setex-key")
+	t.Run("SETEX and PSETEX publish set", func(t *testing.T) {
+		commands := [][]any{
+			{"SETEX", "setex-key", 60, "value"},
+			{"PSETEX", "psetex-key", 60000, "value"},
+		}
+		for _, command := range commands {
+			require.NoError(t, rdb.Do(ctx, command...).Err())
+			key := command[1].(string)
+			expectEvent(t, ctx, pubsub, key, "set")
+		}
+		expectNoMessage(t, ctx, pubsub)
 	})
 
-	t.Run("SET NX on existing key publishes nothing", func(t *testing.T) {
-		require.NoError(t, rdb.Set(ctx, "nxkey", "v1", 0).Err())
-		expectMessage(t, ctx, pubsub, "__keyspace@0__:nxkey", "set")
-		expectMessage(t, ctx, pubsub, "__keyevent@0__:set", "nxkey")
+	t.Run("SETNX and GETSET publish set after a write", func(t *testing.T) {
+		cmd := rdb.Do(ctx, "SETNX", "setnx-key", "value")
+		require.NoError(t, cmd.Err())
+		require.EqualValues(t, 1, cmd.Val())
+		expectEvent(t, ctx, pubsub, "setnx-key", "set")
 
-		// NX fails, so nothing is published.
-		require.NoError(t, rdb.SetNX(ctx, "nxkey", "v2", 0).Err())
+		cmd = rdb.Do(ctx, "SETNX", "setnx-key", "skipped")
+		require.NoError(t, cmd.Err())
+		require.EqualValues(t, 0, cmd.Val())
+		expectNoMessage(t, ctx, pubsub)
+
+		cmd = rdb.Do(ctx, "GETSET", "setnx-key", "new-value")
+		require.NoError(t, cmd.Err())
+		require.Equal(t, "value", cmd.Val())
+		expectEvent(t, ctx, pubsub, "setnx-key", "set")
+	})
+
+	t.Run("MSET and MSETNX publish set for every written key", func(t *testing.T) {
+		require.NoError(t, rdb.Do(ctx, "MSET", "mset-1", "v1", "mset-2", "v2").Err())
+		expectEvent(t, ctx, pubsub, "mset-1", "set")
+		expectEvent(t, ctx, pubsub, "mset-2", "set")
+
+		cmd := rdb.Do(ctx, "MSETNX", "msetnx-1", "v1", "msetnx-2", "v2")
+		require.NoError(t, cmd.Err())
+		require.EqualValues(t, 1, cmd.Val())
+		expectEvent(t, ctx, pubsub, "msetnx-1", "set")
+		expectEvent(t, ctx, pubsub, "msetnx-2", "set")
+
+		cmd = rdb.Do(ctx, "MSETNX", "msetnx-1", "new-value", "msetnx-skipped", "value")
+		require.NoError(t, cmd.Err())
+		require.EqualValues(t, 0, cmd.Val())
+		expectNoMessage(t, ctx, pubsub)
+	})
+
+	t.Run("MSETEX publishes set for every written key", func(t *testing.T) {
+		cmd := rdb.Do(ctx, "MSETEX", 2, "msetex-1", "v1", "msetex-2", "v2")
+		require.NoError(t, cmd.Err())
+		require.EqualValues(t, 1, cmd.Val())
+		expectEvent(t, ctx, pubsub, "msetex-1", "set")
+		expectEvent(t, ctx, pubsub, "msetex-2", "set")
+		expectNoMessage(t, ctx, pubsub)
+
+		cmd = rdb.Do(ctx, "MSETEX", 2, "msetex-nx-1", "v1", "msetex-nx-2", "v2", "NX")
+		require.NoError(t, cmd.Err())
+		require.EqualValues(t, 1, cmd.Val())
+		expectEvent(t, ctx, pubsub, "msetex-nx-1", "set")
+		expectEvent(t, ctx, pubsub, "msetex-nx-2", "set")
+
+		cmd = rdb.Do(ctx, "MSETEX", 2, "msetex-nx-1", "skipped", "msetex-nx-3", "skipped", "NX")
+		require.NoError(t, cmd.Err())
+		require.EqualValues(t, 0, cmd.Val())
+		expectNoMessage(t, ctx, pubsub)
+	})
+
+	t.Run("APPEND and SETRANGE publish their command events", func(t *testing.T) {
+		require.NoError(t, rdb.Append(ctx, "append-key", "value").Err())
+		expectEvent(t, ctx, pubsub, "append-key", "append")
+		require.NoError(t, rdb.Append(ctx, "append-key", "").Err())
+		expectEvent(t, ctx, pubsub, "append-key", "append")
+
+		require.NoError(t, rdb.SetRange(ctx, "setrange-key", 2, "value").Err())
+		expectEvent(t, ctx, pubsub, "setrange-key", "setrange")
+		require.NoError(t, rdb.SetRange(ctx, "setrange-key", 0, "").Err())
+		expectNoMessage(t, ctx, pubsub)
+	})
+
+	t.Run("increment commands publish Redis-compatible events", func(t *testing.T) {
+		commands := [][]any{
+			{"INCR", "incr-key"},
+			{"DECR", "decr-key"},
+			{"INCRBY", "incrby-key", 2},
+			{"DECRBY", "decrby-key", 2},
+			{"INCRBYFLOAT", "incrbyfloat-key", 1.5},
+		}
+		for _, command := range commands {
+			require.NoError(t, rdb.Do(ctx, command...).Err())
+			key := command[1].(string)
+			event := "incrby"
+			if command[0] == "INCRBYFLOAT" {
+				event = "incrbyfloat"
+			}
+			expectEvent(t, ctx, pubsub, key, event)
+		}
+
+		require.NoError(t, rdb.Set(ctx, "incr-overflow", "9223372036854775807", 0).Err())
+		expectEvent(t, ctx, pubsub, "incr-overflow", "set")
+		require.Error(t, rdb.Incr(ctx, "incr-overflow").Err())
+		expectNoMessage(t, ctx, pubsub)
+	})
+
+	t.Run("CAS publishes set only after a write", func(t *testing.T) {
+		cmd := rdb.Do(ctx, "CAS", "cas-key", "old", "new")
+		require.NoError(t, cmd.Err())
+		require.EqualValues(t, -1, cmd.Val())
+		expectNoMessage(t, ctx, pubsub)
+
+		require.NoError(t, rdb.Set(ctx, "cas-key", "old", 0).Err())
+		expectEvent(t, ctx, pubsub, "cas-key", "set")
+		cmd = rdb.Do(ctx, "CAS", "cas-key", "other", "new")
+		require.NoError(t, cmd.Err())
+		require.EqualValues(t, 0, cmd.Val())
+		expectNoMessage(t, ctx, pubsub)
+
+		cmd = rdb.Do(ctx, "CAS", "cas-key", "old", "new")
+		require.NoError(t, cmd.Err())
+		require.EqualValues(t, 1, cmd.Val())
+		expectEvent(t, ctx, pubsub, "cas-key", "set")
 		expectNoMessage(t, ctx, pubsub)
 	})
 

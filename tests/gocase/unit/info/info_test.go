@@ -210,7 +210,6 @@ func TestInfoFormat(t *testing.T) {
 		// numeric field -> JSON number (Go float64)
 		require.IsType(t, float64(0), info["Server"]["tcp_port"])
 		require.Greater(t, info["Server"]["tcp_port"].(float64), float64(0))
-		// string field -> JSON string
 		// only the requested section should be present
 		require.Len(t, info, 1)
 	})

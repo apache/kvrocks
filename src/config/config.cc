@@ -35,7 +35,6 @@
 #include <utility>
 #include <vector>
 
-#include "common/keyspace_events.h"
 #include "common/string_util.h"
 #include "config_type.h"
 #include "config_util.h"
@@ -193,7 +192,6 @@ Config::Config() {
       {"compact-cron", false, new StringField(&compact_cron_str_, "")},
       {"bgsave-cron", false, new StringField(&bgsave_cron_str_, "")},
       {"dbsize-scan-cron", false, new StringField(&dbsize_scan_cron_str_, "")},
-      {"notify-keyspace-events", false, new StringField(&notify_keyspace_events_str_, "")},
       {"replica-announce-ip", false, new StringField(&replica_announce_ip, "")},
       {"replica-announce-port", false, new UInt32Field(&replica_announce_port, 0, 0, PORT_LIMIT)},
       {"compaction-checker-range", false, new StringField(&compaction_checker_range_str_, "")},
@@ -250,11 +248,6 @@ Config::Config() {
       {"redis-cursor-compatible", false, new YesNoField(&redis_cursor_compatible, true)},
       {"redis-databases", true, new IntField(&redis_databases, 0, 0, INT_MAX)},
       {"resp3-enabled", false, new YesNoField(&resp3_enabled, true)},
-      {"hash-encoding-mode", false,
-       new EnumField<HashSubkeyEncodingMode>(&hash_encoding_mode, hash_subkey_encoding_modes,
-                                             HashSubkeyEncodingMode::kLegacy)},
-      {"hash-length-mode", false,
-       new EnumField<HashLengthMode>(&hash_length_mode, hash_length_modes, HashLengthMode::kAccurate)},
       {"repl-namespace-enabled", false, new YesNoField(&repl_namespace_enabled, false)},
       {"proto-max-bulk-len", false,
        new IntWithUnitField<uint64_t>(&proto_max_bulk_len, std::to_string(512 * MiB), 1 * MiB,
@@ -380,10 +373,6 @@ void Config::initFieldValidator() {
            return {Status::NotOK, "masterauth is duplicated with namespace tokens"};
          }
          return Status::OK();
-       }},
-      {"notify-keyspace-events",
-       []([[maybe_unused]] const std::string &k, const std::string &v) -> Status {
-         return ParseNotifyKeyspaceEventsFlags(v).ToStatus();
        }},
       {"compact-cron",
        [this]([[maybe_unused]] const std::string &k, const std::string &v) -> Status {
@@ -560,13 +549,6 @@ void Config::initFieldCallback() {
            [](Server *srv, [[maybe_unused]] const std::string &k, [[maybe_unused]] const std::string &v) -> Status {
              if (!srv) return Status::OK();
              srv->AdjustWorkerThreads();
-             return Status::OK();
-           }},
-          {"notify-keyspace-events",
-           [this]([[maybe_unused]] Server *srv, [[maybe_unused]] const std::string &k, const std::string &v) -> Status {
-             const auto flags = GET_OR_RET(ParseNotifyKeyspaceEventsFlags(v));
-             notify_keyspace_event_channels = flags.first;
-             notify_keyspace_event_types = flags.second;
              return Status::OK();
            }},
           {"dir",

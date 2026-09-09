@@ -345,11 +345,7 @@ rocksdb::Status String::Set(engine::Context &ctx, const std::string &user_key, c
   metadata.expire = expire;
   metadata.Encode(&new_raw_value);
   new_raw_value.append(value);
-  auto s = updateRawValue(ctx, ns_key, new_raw_value);
-  if (!s.ok()) return s;
-
-  ctx.AddKeyspaceEventIfEnabled(kNotifyString, "set", namespace_, user_key);
-  return rocksdb::Status::OK();
+  return updateRawValue(ctx, ns_key, new_raw_value);
 }
 
 rocksdb::Status String::SetEX(engine::Context &ctx, const std::string &user_key, const std::string &value,

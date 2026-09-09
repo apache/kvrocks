@@ -41,7 +41,6 @@
 
 #include "commands/command_parser.h"
 #include "commands/commander.h"
-#include "common/keyspace_events.h"
 #include "common/string_util.h"
 #include "config/config.h"
 #include "fmt/format.h"
@@ -477,17 +476,6 @@ int Server::PublishMessage(const std::string &channel, const std::string &msg) {
   }
 
   return cnt;
-}
-
-void Server::NotifyKeyspaceEvent(const KeyspaceEvent &event) {
-  const std::string scope = FormatKeyspaceNotificationScope(event.ns, GetConfig()->redis_databases);
-  // Publish keyspace before keyevent for each key.
-  if (event.channel_flags & kNotifyKeyspace) {
-    PublishMessage("__keyspace@" + scope + "__:" + event.key, event.event);
-  }
-  if (event.channel_flags & kNotifyKeyevent) {
-    PublishMessage("__keyevent@" + scope + "__:" + event.event, event.key);
-  }
 }
 
 void Server::SubscribeChannel(const std::string &channel, redis::Connection *conn) {

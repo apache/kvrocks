@@ -132,7 +132,8 @@ class CommandCFAdd : public Commander {
 };
 
 // Register the CF.RESERVE and CF.ADD commands
-REDIS_REGISTER_COMMANDS(CuckooFilter, MakeCmdAttr<CommandCFReserve>("cf.reserve", -3, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandCFAdd>("cf.add", 3, "write", 1, 1, 1))
+// CuckooFilter commands are excluded from the 2.17.0 release.
+// REDIS_REGISTER_COMMANDS(CuckooFilter, MakeCmdAttr<CommandCFReserve>("cf.reserve", -3, "write", 1, 1, 1),
+//                         MakeCmdAttr<CommandCFAdd>("cf.add", 3, "write", 1, 1, 1))
 
 }  // namespace redis

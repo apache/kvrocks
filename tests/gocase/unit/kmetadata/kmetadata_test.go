@@ -120,7 +120,7 @@ func TestKMetadata(t *testing.T) {
 		},
 		{
 			Name:    "hash-encoding-mode",
-			Options: []string{"legacy", "field-expiration"},
+			Options: []string{"legacy"},
 		},
 		{
 			Name:    "json-storage-format",

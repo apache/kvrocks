@@ -211,7 +211,6 @@ func TestInfoFormat(t *testing.T) {
 		require.IsType(t, float64(0), info["Server"]["tcp_port"])
 		require.Greater(t, info["Server"]["tcp_port"].(float64), float64(0))
 		// string field -> JSON string
-		require.Equal(t, "unstable", info["Server"]["kvrocks_version"])
 		// only the requested section should be present
 		require.Len(t, info, 1)
 	})

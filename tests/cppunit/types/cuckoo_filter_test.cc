@@ -107,6 +107,46 @@ class RedisCuckooFilterTest : public TestBase {
         .Encode();
   }
 
+  uint32_t bucketsPerPage(const CuckooChainMetadata &metadata) {
+    return std::max<uint32_t>(1, metadata.page_size / metadata.bucket_size);
+  }
+
+  uint32_t pageIndexForBucket(const CuckooChainMetadata &metadata, uint32_t bucket_index) {
+    return bucket_index / bucketsPerPage(metadata);
+  }
+
+  uint32_t bucketOffsetInPage(const CuckooChainMetadata &metadata, uint32_t bucket_index) {
+    return (bucket_index % bucketsPerPage(metadata)) * metadata.bucket_size;
+  }
+
+  void placeFingerprint(const std::string &key, const CuckooChainMetadata &metadata, uint16_t filter_index,
+                        uint32_t num_buckets, uint32_t bucket_index, uint32_t slot_index, uint8_t fingerprint) {
+    ASSERT_LT(bucket_index, num_buckets);
+    ASSERT_LT(slot_index, metadata.bucket_size);
+    auto page_index = pageIndexForBucket(metadata, bucket_index);
+    auto first_bucket = page_index * bucketsPerPage(metadata);
+    auto page_bucket_count = std::min(bucketsPerPage(metadata), num_buckets - first_bucket);
+    std::string page;
+    auto page_key = makePageKey(key, metadata, filter_index, page_index);
+    auto s = readPage(page_key, &page);
+    if (s.IsNotFound()) {
+      page.assign(page_bucket_count * metadata.bucket_size, 0);
+    } else {
+      ASSERT_TRUE(s.ok()) << s.ToString();
+      ASSERT_EQ(page.size(), page_bucket_count * metadata.bucket_size);
+    }
+    page[bucketOffsetInPage(metadata, bucket_index) + slot_index] = static_cast<char>(fingerprint);
+    writePage(page_key, page);
+  }
+
+  uint8_t readFingerprint(const std::string &key, const CuckooChainMetadata &metadata, uint16_t filter_index,
+                          uint32_t bucket_index, uint32_t slot_index) {
+    std::string page;
+    auto s = readPage(makePageKey(key, metadata, filter_index, pageIndexForBucket(metadata, bucket_index)), &page);
+    EXPECT_TRUE(s.ok()) << s.ToString();
+    return static_cast<uint8_t>(page[bucketOffsetInPage(metadata, bucket_index) + slot_index]);
+  }
+
   rocksdb::Status readPage(const std::string &page_key, std::string *value) {
     return storage_->Get(*ctx_, ctx_->GetReadOptions(), storage_->GetCFHandle(ColumnFamilyID::PrimarySubkey), page_key,
                          value);
@@ -742,4 +782,165 @@ TEST_F(RedisCuckooFilterTest, ExpansionWritesNewFilterIndexPage) {
   s = readPage(makePageKey(key_, metadata, metadata.n_filters - 1, 0), &page);
   ASSERT_TRUE(s.ok()) << s.ToString();
   EXPECT_EQ(page.size(), expected_page_size);
+}
+
+TEST_F(RedisCuckooFilterTest, DeleteMissingKeyReturnsNotFound) {
+  bool deleted = true;
+  auto s = cuckoo_->Delete(*ctx_, key_, "missing", &deleted);
+  EXPECT_TRUE(s.IsNotFound()) << s.ToString();
+  EXPECT_NE(s.ToString().find("Not found"), std::string::npos);
+}
+
+TEST_F(RedisCuckooFilterTest, DeleteBasicClearsOneItem) {
+  reserveAndVerify(key_, 1000, 4, 500, 2);
+  addAndVerify(key_, "item", 1000, 4, 500, 2, 1);
+
+  bool deleted = false;
+  auto s = cuckoo_->Delete(*ctx_, key_, "item", &deleted);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  EXPECT_TRUE(deleted);
+  verifyMetadata(key_, 1000, 4, 500, 2, 0, 1, 1);
+
+  deleted = true;
+  s = cuckoo_->Delete(*ctx_, key_, "item", &deleted);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  EXPECT_FALSE(deleted);
+  verifyMetadata(key_, 1000, 4, 500, 2, 0, 1, 1);
+}
+
+TEST_F(RedisCuckooFilterTest, DeleteDuplicateItemsOneAtATime) {
+  reserveAndVerify(key_, 1000, 4, 500, 2);
+  for (int i = 0; i < 3; ++i) {
+    addAndVerify(key_, "duplicate", 1000, 4, 500, 2, i + 1);
+  }
+
+  for (int i = 0; i < 3; ++i) {
+    bool deleted = false;
+    auto s = cuckoo_->Delete(*ctx_, key_, "duplicate", &deleted);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    EXPECT_TRUE(deleted);
+    verifyMetadata(key_, 1000, 4, 500, 2, 2 - i, 1, i + 1);
+  }
+
+  bool deleted = true;
+  auto s = cuckoo_->Delete(*ctx_, key_, "duplicate", &deleted);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  EXPECT_FALSE(deleted);
+  verifyMetadata(key_, 1000, 4, 500, 2, 0, 1, 3);
+}
+
+TEST_F(RedisCuckooFilterTest, DeleteMissingItemDoesNotMutateMetadata) {
+  reserveAndVerify(key_, 1000, 4, 500, 2);
+  addAndVerify(key_, "known", 1000, 4, 500, 2, 1);
+
+  auto metadata = getMetadata(key_);
+  uint32_t num_buckets = 0;
+  auto s = redis::CuckooFilterHelper::GetFilterNumBuckets(metadata.base_capacity, metadata.expansion,
+                                                          metadata.bucket_size, 0, &num_buckets);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  auto known_hash = redis::CuckooFilterHelper::Hash("known");
+  auto known_fp = redis::CuckooFilterHelper::GenerateFingerprint(known_hash);
+  auto known_bucket1 = static_cast<uint32_t>(known_hash % num_buckets);
+  auto known_bucket2 = static_cast<uint32_t>(redis::CuckooFilterHelper::GetAltHash(known_fp, known_hash) % num_buckets);
+
+  std::string missing_item;
+  for (int i = 0; i < 10000; ++i) {
+    auto candidate = "missing_" + std::to_string(i);
+    auto hash = redis::CuckooFilterHelper::Hash(candidate);
+    auto fp = redis::CuckooFilterHelper::GenerateFingerprint(hash);
+    auto bucket1 = static_cast<uint32_t>(hash % num_buckets);
+    auto bucket2 = static_cast<uint32_t>(redis::CuckooFilterHelper::GetAltHash(fp, hash) % num_buckets);
+    if (fp != known_fp || (bucket1 != known_bucket1 && bucket1 != known_bucket2 && bucket2 != known_bucket1 &&
+                           bucket2 != known_bucket2)) {
+      missing_item = candidate;
+      break;
+    }
+  }
+  ASSERT_FALSE(missing_item.empty());
+
+  bool deleted = true;
+  s = cuckoo_->Delete(*ctx_, key_, missing_item, &deleted);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  EXPECT_FALSE(deleted);
+  verifyMetadata(key_, 1000, 4, 500, 2, 1, 1, 0);
+}
+
+TEST_F(RedisCuckooFilterTest, DeleteSearchesNewestFilterFirst) {
+  CuckooChainMetadata metadata;
+  metadata.size = 100;
+  metadata.base_capacity = 2;
+  metadata.bucket_size = 1;
+  metadata.max_iterations = 1;
+  metadata.expansion = 1;
+  metadata.n_filters = 2;
+  metadata.num_deleted_items = 0;
+  metadata.page_size = 1;
+  writeMetadata(key_, metadata);
+
+  const std::string item = "item";
+  auto hash = redis::CuckooFilterHelper::Hash(item);
+  auto fingerprint = redis::CuckooFilterHelper::GenerateFingerprint(hash);
+  uint32_t num_buckets = 0;
+  auto s = redis::CuckooFilterHelper::GetFilterNumBuckets(metadata.base_capacity, metadata.expansion,
+                                                          metadata.bucket_size, 0, &num_buckets);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  auto bucket = static_cast<uint32_t>(hash % num_buckets);
+  placeFingerprint(key_, metadata, 0, num_buckets, bucket, 0, fingerprint);
+  placeFingerprint(key_, metadata, 1, num_buckets, bucket, 0, fingerprint);
+
+  bool deleted = false;
+  s = cuckoo_->Delete(*ctx_, key_, item, &deleted);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  EXPECT_TRUE(deleted);
+
+  auto stored_metadata = getMetadata(key_);
+  EXPECT_EQ(stored_metadata.n_filters, 2);
+  EXPECT_EQ(readFingerprint(key_, stored_metadata, 0, bucket, 0), fingerprint);
+  std::string page;
+  s = readPage(makePageKey(key_, stored_metadata, 1, pageIndexForBucket(stored_metadata, bucket)), &page);
+  EXPECT_TRUE(s.IsNotFound()) << s.ToString();
+}
+
+TEST_F(RedisCuckooFilterTest, DeleteDoesNotCompactFilters) {
+  CuckooChainMetadata metadata;
+  metadata.size = 8;
+  metadata.base_capacity = 2;
+  metadata.bucket_size = 2;
+  metadata.max_iterations = 1;
+  metadata.expansion = 1;
+  metadata.n_filters = 2;
+  metadata.num_deleted_items = 1;
+  metadata.page_size = 4;
+  writeMetadata(key_, metadata);
+
+  uint32_t num_buckets = 0;
+  auto s = redis::CuckooFilterHelper::GetFilterNumBuckets(metadata.base_capacity, metadata.expansion,
+                                                          metadata.bucket_size, 0, &num_buckets);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  ASSERT_EQ(num_buckets, 2);
+
+  const std::string item = "delete_me";
+  auto hash = redis::CuckooFilterHelper::Hash(item);
+  auto fingerprint = redis::CuckooFilterHelper::GenerateFingerprint(hash);
+  auto delete_bucket = static_cast<uint32_t>(hash % num_buckets);
+  auto movable_bucket = static_cast<uint32_t>((delete_bucket + 1) % num_buckets);
+  constexpr uint8_t movable_fingerprint = 77;
+  placeFingerprint(key_, metadata, 1, num_buckets, delete_bucket, 0, fingerprint);
+  placeFingerprint(key_, metadata, 1, num_buckets, movable_bucket, 0, movable_fingerprint);
+
+  bool deleted = false;
+  s = cuckoo_->Delete(*ctx_, key_, item, &deleted);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  EXPECT_TRUE(deleted);
+
+  auto stored_metadata = getMetadata(key_);
+  EXPECT_EQ(stored_metadata.size, 7);
+  EXPECT_EQ(stored_metadata.n_filters, 2);
+  EXPECT_EQ(stored_metadata.num_deleted_items, 2);
+  EXPECT_EQ(readFingerprint(key_, stored_metadata, 1, movable_bucket, 0), movable_fingerprint);
+  EXPECT_EQ(readFingerprint(key_, stored_metadata, 1, delete_bucket, 0), 0);
+
+  std::string page;
+  s = readPage(makePageKey(key_, metadata, 1, 0), &page);
+  EXPECT_TRUE(s.ok()) << s.ToString();
 }

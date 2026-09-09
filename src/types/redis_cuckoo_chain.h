@@ -47,6 +47,9 @@ class CuckooChain : public Database {
   // Duplicate items are allowed, so added is true whenever insertion succeeds.
   rocksdb::Status Add(engine::Context &ctx, const Slice &user_key, const Slice &item, bool *added);
 
+  // Deletes one matching fingerprint from the cuckoo filter.
+  rocksdb::Status Delete(engine::Context &ctx, const Slice &user_key, const Slice &item, bool *deleted);
+
  private:
   // Loads metadata for a cuckoo filter key.
   rocksdb::Status getCuckooChainMetadata(engine::Context &ctx, const Slice &ns_key, CuckooChainMetadata *metadata);
@@ -62,6 +65,8 @@ class CuckooChain : public Database {
                                              bool *inserted);
   rocksdb::Status commitSubFilterAndMetadata(engine::Context &ctx, const Slice &user_key, const std::string &ns_key,
                                              CuckooChainMetadata *metadata, CuckooSubFilter *sub_filter);
+  rocksdb::Status commitDelete(engine::Context &ctx, const Slice &user_key, const std::string &ns_key,
+                               CuckooChainMetadata *metadata, CuckooSubFilter *sub_filter);
 };
 
 }  // namespace redis

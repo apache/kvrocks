@@ -238,6 +238,43 @@ TEST_F(RedisCuckooPageCacheTest, SetBucketSlotWritesOnlyTargetSlot) {
   EXPECT_EQ(page, expected);
 }
 
+TEST_F(RedisCuckooPageCacheTest, SkipsWritingNewPageWhenItBecomesEmpty) {
+  auto metadata = makeMetadata(1);
+  redis::CuckooPageCache pages(storage_.get(), *ctx_, ns_key_, storage_->IsSlotIdEncoded(), metadata.version,
+                               metadata.bucket_size, metadata.page_size);
+
+  auto s = pages.SetBucketSlot(0, 1, 0, 0, 88);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  s = pages.SetBucketSlot(0, 1, 0, 0, 0);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+
+  auto batch = storage_->GetWriteBatchBase();
+  s = pages.WriteBackDirtyPages(batch.Get());
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  EXPECT_EQ(batch->GetWriteBatch()->Count(), 0);
+}
+
+TEST_F(RedisCuckooPageCacheTest, DeletesExistingPageWhenItBecomesEmpty) {
+  auto metadata = makeMetadata(1);
+  auto page_key = makePageKey(metadata, 0, 0);
+  writePage(page_key, std::string{static_cast<char>(88)});
+  redis::CuckooPageCache pages(storage_.get(), *ctx_, ns_key_, storage_->IsSlotIdEncoded(), metadata.version,
+                               metadata.bucket_size, metadata.page_size);
+
+  auto s = pages.SetBucketSlot(0, 1, 0, 0, 0);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+
+  auto batch = storage_->GetWriteBatchBase();
+  s = pages.WriteBackDirtyPages(batch.Get());
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  EXPECT_EQ(batch->GetWriteBatch()->Count(), 1);
+  commitBatch(batch.Get());
+
+  std::string page;
+  s = readPage(page_key, &page);
+  EXPECT_TRUE(s.IsNotFound()) << s.ToString();
+}
+
 TEST_F(RedisCuckooPageCacheTest, InvalidBucketAndSlotArguments) {
   auto metadata = makeMetadata(4);
   redis::CuckooPageCache pages(storage_.get(), *ctx_, ns_key_, storage_->IsSlotIdEncoded(), metadata.version,

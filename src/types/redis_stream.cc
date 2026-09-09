@@ -1151,11 +1151,47 @@ rocksdb::Status Stream::Len(engine::Context &ctx, const Slice &stream_name, cons
 
 rocksdb::Status Stream::range(engine::Context &ctx, const std::string &ns_key, const StreamMetadata &metadata,
                               const StreamRangeOptions &options, std::vector<StreamEntry> *entries) const {
-  std::string start_key = internalKeyFromEntryID(ns_key, metadata, options.start);
-  std::string end_key = internalKeyFromEntryID(ns_key, metadata, options.end);
+  if (metadata.size == 0) {
+    return rocksdb::Status::OK();
+  }
+
+  if ((!options.reverse && options.end < options.start) || (options.reverse && options.start < options.end)) {
+    return rocksdb::Status::OK();
+  }
+
+  // Metadata is the logical stream frontier; raw keys outside it may remain after an interrupted migration.
+  StreamRangeOptions range_options = options;
+  if (options.reverse) {
+    if (options.start < metadata.first_entry_id || options.end > metadata.last_entry_id) {
+      return rocksdb::Status::OK();
+    }
+    if (options.start > metadata.last_entry_id) {
+      range_options.start = metadata.last_entry_id;
+      range_options.exclude_start = false;
+    }
+    if (options.end < metadata.first_entry_id) {
+      range_options.end = metadata.first_entry_id;
+      range_options.exclude_end = false;
+    }
+  } else {
+    if (options.end < metadata.first_entry_id || options.start > metadata.last_entry_id) {
+      return rocksdb::Status::OK();
+    }
+    if (options.start < metadata.first_entry_id) {
+      range_options.start = metadata.first_entry_id;
+      range_options.exclude_start = false;
+    }
+    if (options.end > metadata.last_entry_id) {
+      range_options.end = metadata.last_entry_id;
+      range_options.exclude_end = false;
+    }
+  }
+
+  std::string start_key = internalKeyFromEntryID(ns_key, metadata, range_options.start);
+  std::string end_key = internalKeyFromEntryID(ns_key, metadata, range_options.end);
 
   if (start_key == end_key) {
-    if (options.exclude_start || options.exclude_end) {
+    if (range_options.exclude_start || range_options.exclude_end) {
       return rocksdb::Status::OK();
     }
 
@@ -1171,11 +1207,7 @@ rocksdb::Status Stream::range(engine::Context &ctx, const std::string &ns_key, c
       return rocksdb::Status::InvalidArgument(rv.Msg());
     }
 
-    entries->emplace_back(options.start.ToString(), std::move(values));
-    return rocksdb::Status::OK();
-  }
-
-  if ((!options.reverse && options.end < options.start) || (options.reverse && options.start < options.end)) {
+    entries->emplace_back(range_options.start.ToString(), std::move(values));
     return rocksdb::Status::OK();
   }
 
@@ -1191,20 +1223,21 @@ rocksdb::Status Stream::range(engine::Context &ctx, const std::string &ns_key, c
 
   auto iter = util::UniqueIterator(ctx, read_options, stream_cf_handle_);
   iter->Seek(start_key);
-  if (options.reverse && (!iter->Valid() || iter->key().ToString() != start_key)) {
+  if (range_options.reverse && (!iter->Valid() || iter->key().ToString() != start_key)) {
     iter->SeekForPrev(start_key);
   }
 
-  for (; iter->Valid() && (options.reverse ? iter->key().ToString() >= end_key : iter->key().ToString() <= end_key);
-       options.reverse ? iter->Prev() : iter->Next()) {
+  for (;
+       iter->Valid() && (range_options.reverse ? iter->key().ToString() >= end_key : iter->key().ToString() <= end_key);
+       range_options.reverse ? iter->Prev() : iter->Next()) {
     if (identifySubkeyType(iter->key()) != StreamSubkeyType::StreamEntry) {
       continue;
     }
-    if (options.exclude_start && iter->key().ToString() == start_key) {
+    if (range_options.exclude_start && iter->key().ToString() == start_key) {
       continue;
     }
 
-    if (options.exclude_end && iter->key().ToString() == end_key) {
+    if (range_options.exclude_end && iter->key().ToString() == end_key) {
       break;
     }
 
@@ -1216,7 +1249,7 @@ rocksdb::Status Stream::range(engine::Context &ctx, const std::string &ns_key, c
 
     entries->emplace_back(entryIDFromInternalKey(iter->key()).ToString(), std::move(values));
 
-    if (options.with_count && entries->size() == options.count) {
+    if (range_options.with_count && entries->size() == range_options.count) {
       break;
     }
   }

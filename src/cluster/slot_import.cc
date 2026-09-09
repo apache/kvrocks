@@ -57,12 +57,6 @@ Status SlotImport::Success(const SlotRange &slot_range) {
     return {Status::NotOK, fmt::format("mismatch slot, importing slot(s): {}, but got: {}", import_slot_range_.String(),
                                        slot_range.String())};
   }
-
-  Status s = srv_->cluster->SetSlotRangeImported(import_slot_range_);
-  if (!s.IsOK()) {
-    return {Status::NotOK, fmt::format("unable to set imported status: {}", slot_range.String())};
-  }
-
   import_status_ = kImportSuccess;
   return Status::OK();
 }
@@ -109,6 +103,9 @@ Status SlotImport::StopForLinkError() {
   }
 
   import_status_ = kImportFailed;
+  if (srv_->cluster) {
+    srv_->cluster->ClearImportingSlotRange();
+  }
   return Status::OK();
 }
 

@@ -24,7 +24,6 @@
 #include <bitset>
 #include <map>
 #include <memory>
-#include <set>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -77,7 +76,7 @@ class Cluster {
   Status SetNodeId(const std::string &node_id);
   Status SetSlotRanges(const std::vector<SlotRange> &slot_ranges, const std::string &node_id, int64_t version);
   Status SetSlotRangeMigrated(const SlotRange &slot_range, const std::string &ip_port);
-  Status SetSlotRangeImported(const SlotRange &slot_range);
+  void ClearImportingSlotRange();
   Status GetSlotsInfo(std::vector<SlotInfo> *slot_infos);
   Status GetClusterInfo(std::string *cluster_infos);
   int64_t GetVersion() const { return version_; }
@@ -116,5 +115,4 @@ class Cluster {
   std::shared_ptr<ClusterNode> slots_nodes_[kClusterSlots];
 
   std::map<int, std::string> migrated_slots_;
-  std::set<int> imported_slots_;
 };

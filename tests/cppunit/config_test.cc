@@ -139,6 +139,8 @@ TEST(Config, GetAndSet) {
       {"rocksdb.compression_max_dict_bytes", "16384"},
       {"rocksdb.compression_zstd_max_train_bytes", "262144"},
       {"rocksdb.wal_compression", "no"},
+      {"rocksdb.use_direct_reads", "yes"},
+      {"rocksdb.use_direct_io_for_flush_and_compaction", "yes"},
       {"histogram-bucket-boundaries", "10,100,1000,10000"},
 
   };
@@ -146,6 +148,33 @@ TEST(Config, GetAndSet) {
     s = config.Set(nullptr, iter.first, iter.second);
     ASSERT_FALSE(s.IsOK());
   }
+}
+
+TEST(Config, DirectIO) {
+  const char *path = "test_direct_io.conf";
+  unlink(path);
+
+  Config config;
+  // Both options are off by default.
+  EXPECT_FALSE(config.rocks_db.use_direct_reads);
+  EXPECT_FALSE(config.rocks_db.use_direct_io_for_flush_and_compaction);
+
+  // ... and are parsed from the configuration file.
+  std::ofstream output_file(path, std::ios::out);
+  output_file << "rocksdb.use_direct_reads yes" << "\n";
+  output_file << "rocksdb.use_direct_io_for_flush_and_compaction yes" << "\n";
+  output_file.close();
+  ASSERT_TRUE(config.Load(CLIOptions(path)).IsOK());
+  EXPECT_TRUE(config.rocks_db.use_direct_reads);
+  EXPECT_TRUE(config.rocks_db.use_direct_io_for_flush_and_compaction);
+
+  std::vector<std::string> values;
+  config.Get("rocksdb.use_direct_reads", &values);
+  ASSERT_EQ(values.size(), 2);
+  EXPECT_EQ(values[0], "rocksdb.use_direct_reads");
+  EXPECT_EQ(values[1], "yes");
+
+  unlink(path);
 }
 
 TEST(Config, GetRenameCommand) {

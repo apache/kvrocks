@@ -117,6 +117,58 @@ TEST_F(ClusterTest, CluseterSetNodes) {
   ASSERT_TRUE(cluster.GetVersion() == 1);
 }
 
+TEST_F(ClusterTest, ClusterSetNodesWithRedisStyleAddress) {
+  Status s;
+
+  auto config = storage_->GetConfig();
+  // don't start workers
+  config->workers = 0;
+  Server server(storage_.get(), config);
+  // we don't need the server resource, so just stop it once it's started
+  server.Stop();
+  server.Join();
+
+  Cluster cluster(&server, {"127.0.0.1"}, 3002);
+
+  // master with bus port
+  const std::string master_with_bus =
+      "67ed2db8d677e59ec4a4cefb06858cf2a1a89fa1 127.0.0.1:30002@40002 "
+      "master - 0-16383";
+  s = cluster.SetClusterNodes(master_with_bus, 1, false);
+  ASSERT_TRUE(s.IsOK());
+
+  // master without bus port
+  const std::string master_without_bus =
+      "67ed2db8d677e59ec4a4cefb06858cf2a1a89fa1 127.0.0.1:30002 "
+      "master - 0-16383";
+  s = cluster.SetClusterNodes(master_without_bus, 2, false);
+  ASSERT_TRUE(s.IsOK());
+
+  // slave with bus port
+  const std::string slave_with_bus =
+      "07c37dfeb235213a872192d90877d0cd55635b91 127.0.0.1:30004@40004 "
+      "slave 67ed2db8d677e59ec4a4cefb06858cf2a1a89fa1\n"
+      "67ed2db8d677e59ec4a4cefb06858cf2a1a89fa1 127.0.0.1:30002@40002 "
+      "master - 0-16383";
+  s = cluster.SetClusterNodes(slave_with_bus, 3, false);
+  ASSERT_TRUE(s.IsOK());
+
+  // bracketed IPv6 host
+  const std::string ipv6_master =
+      "67ed2db8d677e59ec4a4cefb06858cf2a1a89fa1 [::1]:30002 "
+      "master - 0-16383";
+  s = cluster.SetClusterNodes(ipv6_master, 4, false);
+  ASSERT_TRUE(s.IsOK());
+
+  // malformed combined address
+  const std::string invalid_combined_address =
+      "67ed2db8d677e59ec4a4cefb06858cf2a1a89fa1 127.0.0.1:unknown@40002 "
+      "master - 0-16383";
+  s = cluster.SetClusterNodes(invalid_combined_address, 5, false);
+  ASSERT_FALSE(s.IsOK());
+  ASSERT_TRUE(s.Msg() == "Invalid cluster node port");
+}
+
 TEST_F(ClusterTest, CluseterGetNodes) {
   const std::string nodes =
       "07c37dfeb235213a872192d90877d0cd55635b91 127.0.0.1 30004 "

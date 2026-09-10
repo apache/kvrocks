@@ -154,6 +154,18 @@ func TestClusterNodes(t *testing.T) {
 		require.Contains(t, nodes, "0-100")
 		require.Contains(t, nodes, "slave")
 	})
+
+	t.Run("accept Redis-style combined address", func(t *testing.T) {
+		// the combined "host:port[@bus]" notation as printed by CLUSTER NODES
+		clusterNodes := fmt.Sprintf("%s %s:%d@%d master - 0-300", nodeID, srv.Host(), srv.Port(), srv.Port()+10000)
+		require.NoError(t, rdb.Do(ctx, "clusterx", "SETNODES", clusterNodes, "3").Err())
+		require.EqualValues(t, "3", rdb.Do(ctx, "clusterx", "version").Val())
+
+		// the same address without the bus port
+		clusterNodes = fmt.Sprintf("%s %s:%d master - 0-300", nodeID, srv.Host(), srv.Port())
+		require.NoError(t, rdb.Do(ctx, "clusterx", "SETNODES", clusterNodes, "4").Err())
+		require.EqualValues(t, "4", rdb.Do(ctx, "clusterx", "version").Val())
+	})
 }
 
 func TestClusterReplicas(t *testing.T) {

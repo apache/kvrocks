@@ -566,6 +566,8 @@ Status SlotMigrator::sendMigrationBatch(BatchSender *batch) {
 
 Status SlotMigrator::sendSnapshot() {
   uint64_t start_ts = util::GetTimeStampMS();
+  uint64_t subkey_seeks = 0;
+  uint64_t subkey_iterator_reuses = 0;
   auto slot_range = slot_range_.load();
   INFO("[migrate] Migrating snapshot of slot(s) {} by raw key value", slot_range.String());
 
@@ -611,7 +613,12 @@ Status SlotMigrator::sendSnapshot() {
       continue;
     }
 
-    for (subkey_iter->Seek(); subkey_iter->Valid(); subkey_iter->Next()) {
+    if (subkey_iter->Seek()) {
+      subkey_seeks++;
+    } else {
+      subkey_iterator_reuses++;
+    }
+    for (; subkey_iter->Valid(); subkey_iter->Next()) {
       GET_OR_RET(batch_sender.Put(subkey_iter->ColumnFamilyHandle(), subkey_iter->Key(), subkey_iter->Value()));
       if (batch_sender.IsFull()) {
         GET_OR_RET(sendMigrationBatch(&batch_sender));
@@ -637,9 +644,9 @@ Status SlotMigrator::sendSnapshot() {
   auto elapsed = util::GetTimeStampMS() - start_ts;
   INFO(
       "[migrate] Succeed to migrate snapshot range, slot(s): {}, elapsed: {} ms, sent: {} bytes, rate: {:.2f} kb/s, "
-      "batches: {}, entries: {}",
+      "batches: {}, entries: {}, subkey seeks: {}, subkey iterator reuses: {}",
       slot_range.String(), elapsed, batch_sender.GetSentBytes(), batch_sender.GetRate(start_ts),
-      batch_sender.GetSentBatchesNum(), batch_sender.GetEntriesNum());
+      batch_sender.GetSentBatchesNum(), batch_sender.GetEntriesNum(), subkey_seeks, subkey_iterator_reuses);
 
   return Status::OK();
 }

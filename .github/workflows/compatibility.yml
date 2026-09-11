@@ -1,0 +1,111 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+name: Compatibility Tests
+
+on:
+  push:
+    branches: [unstable]
+  pull_request:
+    paths:
+      - 'src/storage/**'
+      - 'src/types/**'
+      - 'src/commands/**'
+      - 'src/config/**'
+      - 'tests/gocase/**'
+  release:
+    types: [published]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build current kvrocks image
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v6
+
+      # The old-version images are pulled from Docker Hub by the test; only
+      # the "new" side is built here, once, and handed to the parallel test
+      # jobs. Uses the same buildx method as the nightly image build; push
+      # defaults to false, so the image stays local.
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd
+
+      - name: Build current kvrocks image
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          load: true
+          tags: apache/kvrocks:current
+
+      - name: Save image
+        run: docker save apache/kvrocks:current | gzip > /tmp/kvrocks-current.tar.gz
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: kvrocks-current-image
+          path: /tmp/kvrocks-current.tar.gz
+          retention-days: 1
+
+  compatibility-test:
+    name: "${{ matrix.version }} -> current"
+    runs-on: ubuntu-22.04
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        version: [v2.3.0, v2.6.0, v2.7.0, v2.10.0, v2.14.0, v2.15.0]
+    env:
+      KVROCKS_OLD_VERSION: ${{ matrix.version }}
+      # Test old-version data against the PR's own build, not the released
+      # :latest image, so an encoding regression in the change under test
+      # is caught.
+      KVROCKS_NEW_VERSION: current
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: kvrocks-current-image
+          path: /tmp
+
+      - name: Load image
+        run: gunzip -c /tmp/kvrocks-current.tar.gz | docker load
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: 'tests/gocase/go.mod'
+          cache: false
+
+      # Pull the old-version image up front so the test does not race a lazy
+      # pull inside the container lifecycle.
+      - name: Pull old kvrocks image
+        run: docker pull docker.io/apache/kvrocks:${KVROCKS_OLD_VERSION#v}
+
+      # Each job runs on a fresh runner, so GOCACHE starts empty and the go
+      # test result cache cannot replay one version's result for another.
+      # KVROCKS_OLD_VERSION is read at runtime and is NOT part of the go test
+      # cache key, so if a shared cache is ever added (actions/cache on
+      # GOCACHE, or collapsing the matrix into a single looping job), version
+      # the cache key or pass -count=1 to go test.
+      - name: Run compatibility test
+        run: |
+          cd tests/gocase
+          go test -tags compat -run TestCompatibilityAllTypes ./integration/compatibility/

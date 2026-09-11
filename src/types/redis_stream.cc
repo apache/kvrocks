@@ -720,6 +720,18 @@ rocksdb::Status Stream::AutoClaim(engine::Context &ctx, const Slice &stream_name
 
   return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
+
+// Mirror Redis (t_stream.c, XGROUP CREATE/SETID): an ENTRIESREAD past entries_added is
+// clamped down on write. lag is stored and served unsigned (entries_added - entries_read),
+// so an out-of-range entries_read underflows it to ~2^64 and overflows the signed-64 integer
+// clients decode the RESP reply as, breaking XINFO GROUPS.
+static int64_t ClampEntriesRead(int64_t entries_read, uint64_t entries_added) {
+  if (entries_read >= 0 && static_cast<uint64_t>(entries_read) > entries_added) {
+    return static_cast<int64_t>(entries_added);
+  }
+  return entries_read;
+}
+
 rocksdb::Status Stream::CreateGroup(engine::Context &ctx, const Slice &stream_name,
                                     const StreamXGroupCreateOptions &options, const std::string &group_name) {
   std::string ns_key = AppendNamespacePrefix(stream_name);
@@ -743,7 +755,7 @@ rocksdb::Status Stream::CreateGroup(engine::Context &ctx, const Slice &stream_na
       return rocksdb::Status::InvalidArgument(s.Msg());
     }
   }
-  consumer_group_metadata.entries_read = options.entries_read;
+  consumer_group_metadata.entries_read = ClampEntriesRead(options.entries_read, metadata.entries_added);
   std::string entry_key = internalKeyFromGroupName(ns_key, metadata, group_name);
   std::string entry_value = encodeStreamConsumerGroupMetadataValue(consumer_group_metadata);
 
@@ -976,7 +988,7 @@ rocksdb::Status Stream::GroupSetId(engine::Context &ctx, const Slice &stream_nam
       return rocksdb::Status::InvalidArgument(s.Msg());
     }
   }
-  consumer_group_metadata.entries_read = options.entries_read;
+  consumer_group_metadata.entries_read = ClampEntriesRead(options.entries_read, metadata.entries_added);
   std::string entry_value = encodeStreamConsumerGroupMetadataValue(consumer_group_metadata);
 
   auto batch = storage_->GetWriteBatchBase();
@@ -1341,11 +1353,26 @@ static int64_t StreamEstimateDistanceFromFirstEverEntry(const StreamMetadata &me
 
 static void CheckLagValid(const StreamMetadata &stream_metadata, StreamConsumerGroupMetadata &group_metadata) {
   bool valid = false;
-  if (stream_metadata.entries_added == 0) {
+  if (stream_metadata.entries_added == 0 || stream_metadata.size == 0) {
+    // Nothing was ever added, or every entry has since been deleted: the group is fully
+    // caught up. Mirrors Redis streamReplyWithCGLag.
     group_metadata.lag = 0;
     valid = true;
+  } else if (group_metadata.last_delivered_id < stream_metadata.first_entry_id &&
+             stream_metadata.max_deleted_entry_id < stream_metadata.first_entry_id) {
+    // Cursor and max tombstone are both behind the first live entry, so every remaining
+    // entry is unread: lag is the current stream length. Mirrors Redis streamReplyWithCGLag
+    // and avoids trusting an entries_read that XGROUP SETID/ENTRIESREAD set inconsistently
+    // with last-delivered-id.
+    group_metadata.lag = stream_metadata.size;
+    valid = true;
   } else if (group_metadata.entries_read != -1 &&
+             group_metadata.entries_read <= static_cast<int64_t>(stream_metadata.entries_added) &&
              !StreamRangeHasTombstones(stream_metadata, group_metadata.last_delivered_id)) {
+    // Guard entries_read <= entries_added: the subtraction is served as an unsigned lag, so
+    // an entries_read ahead of entries_added (stored by versions before the ENTRIESREAD
+    // clamp) would underflow to ~2^64 and overflow the signed-64 integer clients decode
+    // the reply as. Falling through to the estimate path keeps XINFO GROUPS decodable.
     group_metadata.lag = stream_metadata.entries_added - group_metadata.entries_read;
     valid = true;
   } else {
@@ -1528,6 +1555,7 @@ rocksdb::Status Stream::RangeWithPending(engine::Context &ctx, const Slice &stre
       return s;
     }
     StreamEntryID maxid = {0, 0};
+    StreamEntryID cursor = consumergroup_metadata.last_delivered_id;
     for (const auto &entry : *entries) {
       StreamEntryID id;
       Status st = ParseStreamEntryID(entry.key, &id);
@@ -1543,10 +1571,19 @@ rocksdb::Status Stream::RangeWithPending(engine::Context &ctx, const Slice &stre
         std::string pel_value = encodeStreamPelEntryValue(pel_entry);
         s = batch->Put(stream_cf_handle_, pel_key, pel_value);
         if (!s.ok()) return s;
-        consumergroup_metadata.entries_read += 1;
+        // Mirror Redis streamReplyWithRange: with the cursor at/after the first entry and no
+        // tombstones ahead, the counter can be incremented; a cursor behind the first entry
+        // (e.g. after a clamped ENTRIESREAD) must be recomputed from the delivered ID instead.
+        if (consumergroup_metadata.entries_read != -1 && cursor >= metadata.first_entry_id &&
+            !StreamRangeHasTombstones(metadata, cursor)) {
+          consumergroup_metadata.entries_read += 1;
+        } else {
+          consumergroup_metadata.entries_read = StreamEstimateDistanceFromFirstEverEntry(metadata, id);
+        }
         consumergroup_metadata.pending_number += 1;
         consumer_metadata.pending_number += 1;
       }
+      cursor = id;
     }
     if (maxid > consumergroup_metadata.last_delivered_id) {
       consumergroup_metadata.last_delivered_id = maxid;

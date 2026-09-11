@@ -2234,6 +2234,89 @@ func TestStreamOffset(t *testing.T) {
 		// add xpending to this test case when it is supported
 	})
 
+	t.Run("XGROUP CREATE/SETID clamp ENTRIESREAD to entries-added (matches Redis)", func(t *testing.T) {
+		streamName := "x-entries-read"
+		groupName := "grp"
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+		for _, id := range []string{"1-0", "2-0", "3-0"} {
+			require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: streamName, ID: id, Values: map[string]interface{}{"f": "v"}}).Err())
+		}
+		// entries-added is 3; ENTRIESREAD far beyond it must be clamped down on write, as
+		// Redis does. Otherwise the stored value is served back and the unsigned lag
+		// (entries_added - entries_read) underflows to ~2^64, overflowing the signed-64
+		// integer clients decode the RESP reply as and breaking XINFO GROUPS.
+		require.NoError(t, rdb.Do(ctx, "XGROUP", "CREATE", streamName, groupName, "0", "ENTRIESREAD", 1000000).Err())
+
+		// The reply must stay decodable, and entries-read is clamped to entries-added. The
+		// cursor is at 0-0 (behind the first entry), so lag is the full stream length, 3.
+		require.NoError(t, rdb.Do(ctx, "XINFO", "GROUPS", streamName).Err())
+		groups, err := rdb.XInfoGroups(ctx, streamName).Result()
+		require.NoError(t, err)
+		require.Len(t, groups, 1)
+		require.EqualValues(t, 3, groups[0].EntriesRead)
+		require.EqualValues(t, 3, groups[0].Lag)
+
+		// XGROUP SETID clamps the same way.
+		require.NoError(t, rdb.Do(ctx, "XGROUP", "SETID", streamName, groupName, "0", "ENTRIESREAD", 1000000).Err())
+		require.NoError(t, rdb.Do(ctx, "XINFO", "GROUPS", streamName).Err())
+		groups, err = rdb.XInfoGroups(ctx, streamName).Result()
+		require.NoError(t, err)
+		require.Len(t, groups, 1)
+		require.EqualValues(t, 3, groups[0].EntriesRead)
+		require.EqualValues(t, 3, groups[0].Lag)
+
+		// An XREADGROUP after the clamp must not keep incrementing the clamped counter
+		// past entries-added: with the cursor behind the first entry, Redis recomputes
+		// entries-read from the delivered ID (streamReplyWithRange). A partial read of 2
+		// of the 3 entries must report entries-read 2 and lag 1, exactly as Redis does.
+		require.NoError(t, rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    groupName,
+			Consumer: "c1",
+			Count:    2,
+			Streams:  []string{streamName, ">"},
+		}).Err())
+		require.NoError(t, rdb.Do(ctx, "XINFO", "GROUPS", streamName).Err())
+		groups, err = rdb.XInfoGroups(ctx, streamName).Result()
+		require.NoError(t, err)
+		require.Len(t, groups, 1)
+		require.EqualValues(t, 2, groups[0].EntriesRead)
+		require.EqualValues(t, 1, groups[0].Lag)
+
+		// Reading the remaining entry leaves the group fully caught up: entries-read
+		// equals entries-added and lag is 0.
+		require.NoError(t, rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    groupName,
+			Consumer: "c1",
+			Count:    10,
+			Streams:  []string{streamName, ">"},
+		}).Err())
+		require.NoError(t, rdb.Do(ctx, "XINFO", "GROUPS", streamName).Err())
+		groups, err = rdb.XInfoGroups(ctx, streamName).Result()
+		require.NoError(t, err)
+		require.Len(t, groups, 1)
+		require.EqualValues(t, 3, groups[0].EntriesRead)
+		require.EqualValues(t, 0, groups[0].Lag)
+	})
+
+	t.Run("XINFO GROUPS lag is 0 when the stream is emptied (matches Redis)", func(t *testing.T) {
+		streamName := "x-empty-lag"
+		groupName := "grp"
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+		for _, id := range []string{"1-0", "2-0", "3-0"} {
+			require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: streamName, ID: id, Values: map[string]interface{}{"f": "v"}}).Err())
+		}
+		require.NoError(t, rdb.XGroupCreate(ctx, streamName, groupName, "0").Err())
+
+		// Delete every entry: the stream is empty (size 0) but entries-added stays 3. Redis
+		// reports lag 0 here, and the reply must stay decodable.
+		require.NoError(t, rdb.XDel(ctx, streamName, "1-0", "2-0", "3-0").Err())
+		require.NoError(t, rdb.Do(ctx, "XINFO", "GROUPS", streamName).Err())
+		groups, err := rdb.XInfoGroups(ctx, streamName).Result()
+		require.NoError(t, err)
+		require.Len(t, groups, 1)
+		require.EqualValues(t, 0, groups[0].Lag)
+	})
+
 	t.Run("XAUTOCLAIM decrements pending_number when sweeping deleted entries", func(t *testing.T) {
 		streamName := "x"
 		groupName := "grp"

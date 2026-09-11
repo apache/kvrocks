@@ -19,6 +19,8 @@
  */
 
 #include <gtest/gtest.h>
+#include <rocksdb/transaction_log.h>
+#include <rocksdb/write_batch.h>
 
 #include <memory>
 #include <random>
@@ -1318,4 +1320,113 @@ TEST_F(TimeSeriesTest, DelComprehensive) {
       {{0, 155}}                               // test4
   };
   check(expected_samples);
+}
+
+// Dedicated fixture with a large write_buffer_size so the WAL is not flushed (and
+// therefore not archived/deleted) while the test inspects it. The shared TestBase
+// uses write_buffer_size = 1, which flushes on nearly every write and would make
+// WAL inspection racy.
+class TimeSeriesWALTest : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    const char *path = "test_ts_wal.conf";
+    unlink(path);
+    std::ofstream output_file(path, std::ios::out);
+    output_file << "";
+
+    auto s = config_.Load(CLIOptions(path));
+    config_.db_dir = "testdb_ts_wal";
+    config_.rocks_db.compression = rocksdb::CompressionType::kNoCompression;
+    config_.rocks_db.write_buffer_size = 64 * 1024 * 1024;
+    storage_ = std::make_unique<engine::Storage>(&config_);
+    s = storage_->Open();
+    ASSERT_TRUE(s.IsOK());
+    ctx_ = std::make_unique<engine::Context>(storage_.get());
+    ts_db_ = std::make_unique<redis::TimeSeries>(storage_.get(), "ts_namespace");
+    key_ = "test_ts_wal_key";
+  }
+
+  void TearDown() override {
+    ts_db_.reset();
+    ctx_.reset();
+    storage_.reset();
+    std::error_code ec;
+    std::filesystem::remove_all(config_.db_dir, ec);
+    unlink("test_ts_wal.conf");
+  }
+
+  Config config_;
+  std::unique_ptr<engine::Storage> storage_;
+  std::unique_ptr<engine::Context> ctx_;
+  std::unique_ptr<redis::TimeSeries> ts_db_;
+  std::string key_;
+};
+
+// Regression test: the first write to an empty time series must not emit a delete
+// for the empty key. In upsertCommonInBatch, latest_chunk_key stays empty when the
+// source series has no persisted chunk yet; the buggy condition still ran
+// batch->Delete(latest_chunk_key) because new_key != "", leaving an empty-key
+// tombstone in the WAL.
+TEST_F(TimeSeriesWALTest, FirstAddToEmptySeriesDoesNotDeleteEmptyKey) {
+  redis::TSCreateOption option;
+  option.retention_time = 3600;
+  option.chunk_size = 1024;
+
+  // An empty time series: metadata exists but no chunk has been persisted.
+  ASSERT_TRUE(ts_db_->Create(*ctx_, key_, option).ok());
+
+  // Sequence right before the first Add, so the WAL scan below covers only this Add.
+  auto seq_before_add = storage_->LatestSeqNumber();
+
+  TSSample sample{1000, 12.3};
+  TSChunk::AddResult result;
+  ASSERT_TRUE(ts_db_->Add(*ctx_, key_, sample, option, &result).ok());
+
+  // Scan every WAL batch produced by the Add; none of them may delete the empty key.
+  ASSERT_TRUE(storage_->WALHasNewData(seq_before_add + 1));
+  std::unique_ptr<rocksdb::TransactionLogIterator> iter;
+  ASSERT_TRUE(storage_->GetWALIter(seq_before_add + 1, &iter).IsOK());
+
+  // WriteBatch::Iterate aborts as soon as a record hits an un-overridden Handler
+  // method (the base class returns InvalidArgument). The first Add emits puts (and
+  // possibly range deletes) alongside the delete we care about, so override every
+  // mutator as a no-op and only inspect DeleteCF, where the empty-key tombstone
+  // would appear.
+  class EmptyKeyDeleteDetector : public rocksdb::WriteBatch::Handler {
+   public:
+    rocksdb::Status PutCF([[maybe_unused]] uint32_t column_family_id, [[maybe_unused]] const rocksdb::Slice &key,
+                          [[maybe_unused]] const rocksdb::Slice &value) override {
+      return rocksdb::Status::OK();
+    }
+    rocksdb::Status MergeCF([[maybe_unused]] uint32_t column_family_id, [[maybe_unused]] const rocksdb::Slice &key,
+                            [[maybe_unused]] const rocksdb::Slice &value) override {
+      return rocksdb::Status::OK();
+    }
+    rocksdb::Status SingleDeleteCF([[maybe_unused]] uint32_t column_family_id,
+                                   [[maybe_unused]] const rocksdb::Slice &key) override {
+      return rocksdb::Status::OK();
+    }
+    rocksdb::Status DeleteRangeCF([[maybe_unused]] uint32_t column_family_id,
+                                  [[maybe_unused]] const rocksdb::Slice &begin_key,
+                                  [[maybe_unused]] const rocksdb::Slice &end_key) override {
+      return rocksdb::Status::OK();
+    }
+    rocksdb::Status DeleteCF([[maybe_unused]] uint32_t column_family_id, const rocksdb::Slice &key) override {
+      if (key.empty()) found_empty_key_delete_ = true;
+      return rocksdb::Status::OK();
+    }
+    bool FoundEmptyKeyDelete() const { return found_empty_key_delete_; }
+
+   private:
+    bool found_empty_key_delete_ = false;
+  };
+
+  EmptyKeyDeleteDetector detector;
+  while (iter->Valid()) {
+    auto batch = iter->GetBatch();
+    ASSERT_TRUE(batch.writeBatchPtr->Iterate(&detector).ok());
+    iter->Next();
+  }
+
+  EXPECT_FALSE(detector.FoundEmptyKeyDelete()) << "first Add to an empty series should not delete the empty key";
 }

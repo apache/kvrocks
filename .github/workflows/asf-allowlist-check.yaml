@@ -15,15 +15,34 @@
 # specific language governing permissions and limitations
 # under the License.
 
-include_guard()
+name: ASF Allowlist Check
 
-include(cmake/utils.cmake)
+on:
+  workflow_dispatch:
+  # Detect allowlist removals and expiry warnings even without workflow changes.
+  schedule:
+    - cron: "17 3 * * 1"
+  pull_request:
+    paths:
+      - ".github/**"
+  push:
+    branches:
+      - unstable
+    paths:
+      - ".github/**"
 
-FetchContent_DeclareGitHubWithMirror(jsoncons
-  danielaparker/jsoncons v1.9.0
-  MD5=36f6dfd0f4352aad450fbf4bf0035f8a
-)
+permissions:
+  contents: read
 
-FetchContent_MakeAvailableWithArgs(jsoncons
-  JSONCONS_BUILD_TESTS=OFF
-)
+jobs:
+  asf-allowlist-check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: apache/infrastructure-actions/allowlist-check@61dcea11f19e2bbe1263f14d72235e8da17d3ad0 # allowlist-check/v1.0.0
+        with:
+          # Cover both .yml and .yaml files.
+          scan-glob: ".github/**/*.y*ml"

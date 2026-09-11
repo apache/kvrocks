@@ -15,15 +15,22 @@
 # specific language governing permissions and limitations
 # under the License.
 
-include_guard()
-
-include(cmake/utils.cmake)
-
-FetchContent_DeclareGitHubWithMirror(jsoncons
-  danielaparker/jsoncons v1.9.0
-  MD5=36f6dfd0f4352aad450fbf4bf0035f8a
-)
-
-FetchContent_MakeAvailableWithArgs(jsoncons
-  JSONCONS_BUILD_TESTS=OFF
-)
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    # Give ASF Infrastructure time to approve new action releases first.
+    cooldown:
+      default-days: 4
+    commit-message:
+      prefix: ci
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+      github-actions-security:
+        applies-to: security-updates
+        patterns:
+          - "*"

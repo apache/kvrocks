@@ -116,7 +116,7 @@ struct JsonValue {
     jsoncons::cbor::cbor_options options;
     options.max_nesting_depth(max_nesting_depth);
 
-    jsoncons::cbor::basic_cbor_encoder<jsoncons::string_sink<std::string>> encoder{*buffer, options};
+    jsoncons::cbor::basic_cbor_encoder<jsoncons::bytes_sink<std::string>> encoder{*buffer, options};
     std::error_code ec;
     value.dump(encoder, ec);
     if (ec) {

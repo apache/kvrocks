@@ -107,9 +107,11 @@ std::vector<rocksdb::Status> String::getValues(engine::Context &ctx, const std::
   return statuses;
 }
 
-rocksdb::Status String::updateRawValue(engine::Context &ctx, const std::string &ns_key, const std::string &raw_value) {
+rocksdb::Status String::updateRawValue(engine::Context &ctx, const std::string &ns_key, const std::string &raw_value,
+                                       std::optional<RedisCommand> command) {
   auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisString);
+  if (command) log_data.GetArguments()->emplace_back(std::to_string(*command));
   auto s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) return s;
   s = batch->Put(metadata_cf_handle_, ns_key, raw_value);
@@ -345,7 +347,7 @@ rocksdb::Status String::Set(engine::Context &ctx, const std::string &user_key, c
   metadata.expire = expire;
   metadata.Encode(&new_raw_value);
   new_raw_value.append(value);
-  auto s = updateRawValue(ctx, ns_key, new_raw_value);
+  auto s = updateRawValue(ctx, ns_key, new_raw_value, kRedisCmdSet);
   if (!s.ok()) return s;
 
   ctx.AddKeyspaceEventIfEnabled(kNotifyString, "set", namespace_, user_key);

@@ -408,10 +408,41 @@ rocksdb::Status WriteBatchExtractor::DeleteCF(uint32_t column_family_id, const S
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status WriteBatchExtractor::DeleteRangeCF([[maybe_unused]] uint32_t column_family_id,
-                                                   [[maybe_unused]] const Slice &begin_key,
-                                                   [[maybe_unused]] const Slice &end_key) {
-  // Do nothing with DeleteRange operations
+rocksdb::Status WriteBatchExtractor::DeleteRangeCF(uint32_t column_family_id, const Slice &begin_key,
+                                                   const Slice &end_key) {
+  // The only range delete over user entries is a stream trim (redis_stream.cc). Reconstruct the
+  // equivalent command so RESP update consumers stay in sync, mirroring how a per-entry stream
+  // delete becomes XDEL. Ranges on other column families (FLUSHDB/FLUSHALL) are left alone.
+  if (column_family_id != static_cast<uint32_t>(ColumnFamilyID::Stream)) {
+    return rocksdb::Status::OK();
+  }
+
+  InternalKey begin_ikey(begin_key, is_slot_id_encoded_);
+  Slice begin_sub = begin_ikey.GetSubKey();
+  // Group/consumer/PEL subkeys are UINT64_MAX-prefixed and sort above every entry; a trim range
+  // begins at a real entry id, so a UINT64_MAX prefix marks an XGROUP DESTROY range to skip.
+  uint64_t begin_marker = 0;
+  GetFixed64(&begin_sub, &begin_marker);
+  if (begin_marker == UINT64_MAX) {
+    return rocksdb::Status::OK();
+  }
+
+  std::string user_key = begin_ikey.GetKey().ToString();
+  InternalKey end_ikey(end_key, is_slot_id_encoded_);
+  std::vector<std::string> command_args;
+  if (end_ikey.GetVersion() != begin_ikey.GetVersion()) {
+    // Full trim: the end bound is the next-version prefix, so every entry was removed.
+    command_args = {"XTRIM", user_key, "MAXLEN", "0"};
+  } else {
+    // Partial trim: the end bound is the first surviving entry, so trim everything below it.
+    Slice end_sub = end_ikey.GetSubKey();
+    redis::StreamEntryID first_survivor;
+    GetFixed64(&end_sub, &first_survivor.ms);
+    GetFixed64(&end_sub, &first_survivor.seq);
+    command_args = {"XTRIM", user_key, "MINID", first_survivor.ToString()};
+  }
+
+  resp_commands_[""].emplace_back(redis::ArrayOfBulkStrings(command_args));
   return rocksdb::Status::OK();
 }
 

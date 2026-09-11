@@ -170,3 +170,93 @@ TEST(Storage, ReplDataManagerRejectsUnsafeFilenames) {
   std::filesystem::remove_all("test_repl_file_validation_dir", ec);
   ASSERT_FALSE(ec);
 }
+
+TEST(Storage, GetFullReplDataInfoRejectsEmptyCheckpoint) {
+  std::error_code ec;
+
+  const std::string test_dir = "test_empty_checkpoint";
+  Config config;
+  config.db_dir = test_dir + "/db";
+  config.checkpoint_dir = test_dir + "/checkpoint";
+  config.slot_id_encoded = false;
+
+  std::filesystem::remove_all(test_dir, ec);
+  ASSERT_FALSE(ec);
+  std::filesystem::create_directory(test_dir, ec);
+  ASSERT_FALSE(ec);
+
+  auto storage = std::make_unique<engine::Storage>(&config);
+  auto s = storage->Open();
+  ASSERT_TRUE(s.IsOK()) << s.Msg();
+
+  auto ctx = engine::Context(storage.get());
+  rocksdb::WriteBatch batch;
+  batch.Put("k", "v");
+  ASSERT_TRUE(storage->Write(ctx, rocksdb::WriteOptions(), &batch).ok());
+
+  std::string files;
+  s = engine::Storage::ReplDataManager::GetFullReplDataInfo(storage.get(), &files);
+  ASSERT_TRUE(s.IsOK()) << s.Msg();
+
+  std::filesystem::remove_all(config.checkpoint_dir, ec);
+  ASSERT_FALSE(ec);
+  std::filesystem::create_directory(config.checkpoint_dir, ec);
+  ASSERT_FALSE(ec);
+
+  files.clear();
+  s = engine::Storage::ReplDataManager::GetFullReplDataInfo(storage.get(), &files);
+  EXPECT_FALSE(s.IsOK());
+  EXPECT_TRUE(files.empty());
+
+  std::filesystem::remove_all(test_dir, ec);
+  ASSERT_FALSE(ec);
+}
+
+TEST(Storage, TryPurgeCheckpoint) {
+  std::error_code ec;
+
+  const std::string test_dir = "test_purge_checkpoint";
+  Config config;
+  config.db_dir = test_dir + "/db";
+  config.checkpoint_dir = test_dir + "/checkpoint";
+  config.slot_id_encoded = false;
+
+  std::filesystem::remove_all(test_dir, ec);
+  ASSERT_FALSE(ec);
+  std::filesystem::create_directory(test_dir, ec);
+  ASSERT_FALSE(ec);
+
+  auto storage = std::make_unique<engine::Storage>(&config);
+  auto s = storage->Open();
+  ASSERT_TRUE(s.IsOK()) << s.Msg();
+
+  auto ctx = engine::Context(storage.get());
+  rocksdb::WriteBatch batch;
+  batch.Put("k", "v");
+  ASSERT_TRUE(storage->Write(ctx, rocksdb::WriteOptions(), &batch).ok());
+
+  std::string files;
+  s = engine::Storage::ReplDataManager::GetFullReplDataInfo(storage.get(), &files);
+  ASSERT_TRUE(s.IsOK()) << s.Msg();
+
+  storage->SetCheckpointAccessTimeSecs(storage->GetCheckpointAccessTimeSecs() - 60);
+
+  s = storage->TryPurgeCheckpoint(/*fetch_file_threads=*/1);
+  ASSERT_TRUE(s.IsOK()) << s.Msg();
+  EXPECT_TRUE(storage->ExistCheckpoint());
+
+  s = storage->TryPurgeCheckpoint(/*fetch_file_threads=*/0);
+  ASSERT_TRUE(s.IsOK()) << s.Msg();
+  EXPECT_FALSE(storage->ExistCheckpoint());
+  EXPECT_FALSE(std::filesystem::exists(config.checkpoint_dir + ".trash"));
+  EXPECT_EQ(storage->GetCheckpointCreateTimeSecs(), 0);
+  EXPECT_EQ(storage->GetCheckpointAccessTimeSecs(), 0);
+
+  files.clear();
+  s = engine::Storage::ReplDataManager::GetFullReplDataInfo(storage.get(), &files);
+  ASSERT_TRUE(s.IsOK()) << s.Msg();
+  EXPECT_TRUE(storage->ExistCheckpoint());
+
+  std::filesystem::remove_all(test_dir, ec);
+  ASSERT_FALSE(ec);
+}

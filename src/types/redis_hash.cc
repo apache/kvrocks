@@ -25,6 +25,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <limits>
 #include <optional>
 #include <random>
 #include <unordered_map>
@@ -52,6 +53,9 @@ struct HashFieldState {
   std::string value;
   uint64_t expire = 0;
 };
+
+constexpr const char *kHashFieldExpirationLegacyEncodingError =
+    "hash field expiration is not supported by legacy hash encoding";
 
 bool IsFieldExpired(uint64_t expire, uint64_t now) { return expire != 0 && expire < now; }
 
@@ -83,6 +87,11 @@ void ApplyMissingToPersistent(HashMetadata *metadata) {
     metadata->persist += 1;
     ClearBoundsIfNoTtlCandidates(metadata);
   }
+}
+
+void ApplyMissingToTTL(HashMetadata *metadata, uint64_t expire_at) {
+  ExpandExpireBounds(metadata, expire_at);
+  metadata->size += 1;
 }
 
 void ApplyPersistentToTTL(HashMetadata *metadata, uint64_t expire_at) {
@@ -169,6 +178,155 @@ bool HExpireConditionPasses(HashFieldExpireCondition condition, const HashFieldS
       }
   }
   return false;
+}
+
+rocksdb::Status ValidateHashFieldExpirationMetadata(const HashMetadata &metadata) {
+  if (metadata.persist > metadata.size) {
+    return rocksdb::Status::Corruption("invalid hash field expiration metadata: persist exceeds size");
+  }
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status ValidateMissingFieldTransition(const HashMetadata &metadata) {
+  auto s = ValidateHashFieldExpirationMetadata(metadata);
+  if (!s.ok()) return s;
+  if (metadata.size == std::numeric_limits<uint64_t>::max()) {
+    return rocksdb::Status::Corruption("invalid hash field expiration metadata: size overflow");
+  }
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status ValidatePersistentFieldTransition(const HashMetadata &metadata) {
+  auto s = ValidateHashFieldExpirationMetadata(metadata);
+  if (!s.ok()) return s;
+  if (metadata.size == 0 || metadata.persist == 0) {
+    return rocksdb::Status::Corruption("invalid hash field expiration metadata: no persistent field to update");
+  }
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status ValidateTTLFieldTransition(const HashMetadata &metadata) {
+  auto s = ValidateHashFieldExpirationMetadata(metadata);
+  if (!s.ok()) return s;
+  if (metadata.size == 0 || metadata.persist == metadata.size) {
+    return rocksdb::Status::Corruption("invalid hash field expiration metadata: no TTL field to update");
+  }
+  return rocksdb::Status::OK();
+}
+
+bool HashMetadataEqual(const HashMetadata &lhs, const HashMetadata &rhs) {
+  return static_cast<const Metadata &>(lhs) == static_cast<const Metadata &>(rhs) && lhs.mode == rhs.mode &&
+         lhs.persist == rhs.persist && lhs.lower == rhs.lower && lhs.upper == rhs.upper;
+}
+
+class HashBatchWriter {
+ public:
+  explicit HashBatchWriter(rocksdb::WriteBatchBase *batch) : batch_(batch) {}
+
+  rocksdb::Status Put(const Slice &key, const Slice &value) {
+    auto s = ensureLogData();
+    if (!s.ok()) return s;
+    s = batch_->Put(key, value);
+    if (s.ok()) storage_mutated_ = true;
+    return s;
+  }
+
+  rocksdb::Status Put(rocksdb::ColumnFamilyHandle *column_family, const Slice &key, const Slice &value) {
+    auto s = ensureLogData();
+    if (!s.ok()) return s;
+    s = batch_->Put(column_family, key, value);
+    if (s.ok()) storage_mutated_ = true;
+    return s;
+  }
+
+  rocksdb::Status Delete(const Slice &key) {
+    auto s = ensureLogData();
+    if (!s.ok()) return s;
+    s = batch_->Delete(key);
+    if (s.ok()) storage_mutated_ = true;
+    return s;
+  }
+
+  rocksdb::Status Delete(rocksdb::ColumnFamilyHandle *column_family, const Slice &key) {
+    auto s = ensureLogData();
+    if (!s.ok()) return s;
+    s = batch_->Delete(column_family, key);
+    if (s.ok()) storage_mutated_ = true;
+    return s;
+  }
+
+  bool HasStorageMutation() const { return storage_mutated_; }
+
+ private:
+  rocksdb::Status ensureLogData() {
+    if (has_log_data_) return rocksdb::Status::OK();
+    WriteBatchLogData log_data(kRedisHash);
+    auto s = batch_->PutLogData(log_data.Encode());
+    if (s.ok()) has_log_data_ = true;
+    return s;
+  }
+
+  rocksdb::WriteBatchBase *batch_;
+  bool has_log_data_ = false;
+  bool storage_mutated_ = false;
+};
+
+rocksdb::Status LoadFieldStates(engine::Storage *storage, engine::Context &ctx, const HashMetadata &metadata,
+                                const std::string &ns_key, const std::vector<Slice> &fields, uint64_t now,
+                                bool read_existing, std::unordered_map<std::string, HashFieldState> *states) {
+  states->clear();
+  states->reserve(fields.size());
+
+  std::vector<std::string> unique_fields;
+  unique_fields.reserve(fields.size());
+  for (const auto &field : fields) {
+    bool inserted = states->emplace(field.ToString(), HashFieldState{}).second;
+    if (inserted) unique_fields.emplace_back(field.ToString());
+  }
+
+  if (!read_existing || unique_fields.empty()) return rocksdb::Status::OK();
+
+  std::vector<std::string> encoded_keys;
+  encoded_keys.reserve(unique_fields.size());
+  for (const auto &field : unique_fields) {
+    encoded_keys.emplace_back(InternalKey(ns_key, field, metadata.version, storage->IsSlotIdEncoded()).Encode());
+  }
+
+  std::vector<rocksdb::Slice> keys;
+  keys.reserve(encoded_keys.size());
+  for (const auto &key : encoded_keys) keys.emplace_back(key);
+
+  std::vector<rocksdb::PinnableSlice> raw_values(keys.size());
+  std::vector<rocksdb::Status> statuses(keys.size());
+  storage->MultiGet(ctx, ctx.DefaultMultiGetOptions(), storage->GetDB()->DefaultColumnFamily(), keys.size(),
+                    keys.data(), raw_values.data(), statuses.data());
+
+  for (size_t i = 0; i < unique_fields.size(); ++i) {
+    if (statuses[i].IsNotFound()) continue;
+    if (!statuses[i].ok()) return statuses[i];
+    auto s = DecodeFieldState(metadata, Slice(raw_values[i]), now, &states->at(unique_fields[i]));
+    if (!s.ok()) return s;
+  }
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status FinalizeHashMetadata(const HashMetadata &original_metadata, bool metadata_existed,
+                                     HashMetadata *metadata, rocksdb::ColumnFamilyHandle *metadata_cf_handle,
+                                     const std::string &ns_key, HashBatchWriter *writer) {
+  auto s = ValidateHashFieldExpirationMetadata(*metadata);
+  if (!s.ok()) return s;
+
+  ClearBoundsIfNoTtlCandidates(metadata);
+  if (metadata_existed && metadata->size == 0) {
+    return writer->Delete(metadata_cf_handle, ns_key);
+  }
+  if (metadata->size == 0 || (metadata_existed && HashMetadataEqual(original_metadata, *metadata))) {
+    return rocksdb::Status::OK();
+  }
+
+  std::string encoded_metadata;
+  metadata->Encode(&encoded_metadata);
+  return writer->Put(metadata_cf_handle, ns_key, encoded_metadata);
 }
 
 }  // namespace
@@ -492,6 +650,298 @@ rocksdb::Status Hash::MGet(engine::Context &ctx, const Slice &user_key, const st
       values->emplace_back("");
     }
     statuses->emplace_back(statuses_vector[i]);
+  }
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status Hash::SetFieldsWithExpire(engine::Context &ctx, const Slice &user_key,
+                                          const std::vector<FieldValue> &field_values, const HashSetExOptions &options,
+                                          bool *applied, std::optional<uint64_t> now_ms) {
+  *applied = false;
+
+  std::string ns_key = AppendNamespacePrefix(user_key);
+  HashMetadata metadata(false);
+  auto s = getMetadata(ctx, ns_key, &metadata);
+  bool metadata_existed = s.ok();
+  if (s.IsNotFound()) {
+    if (options.condition == HashFieldSetCondition::kFXX) return rocksdb::Status::OK();
+    metadata = createMetadataForWrite();
+    if (metadata.IsLegacySubkeyEncoding()) {
+      return rocksdb::Status::InvalidArgument(kHashFieldExpirationLegacyEncodingError);
+    }
+  } else if (!s.ok()) {
+    return s;
+  } else if (metadata.IsLegacySubkeyEncoding()) {
+    return rocksdb::Status::InvalidArgument(kHashFieldExpirationLegacyEncodingError);
+  }
+
+  s = ValidateHashFieldExpirationMetadata(metadata);
+  if (!s.ok()) return s;
+  HashMetadata original_metadata = metadata;
+  uint64_t now = now_ms.value_or(util::GetTimeStampMS());
+
+  std::vector<Slice> fields;
+  fields.reserve(field_values.size());
+  for (const auto &field_value : field_values) fields.emplace_back(field_value.field);
+
+  std::unordered_map<std::string, HashFieldState> state_cache;
+  s = LoadFieldStates(storage_, ctx, metadata, ns_key, fields, now, metadata_existed, &state_cache);
+  if (!s.ok()) return s;
+
+  auto make_sub_key = [&](const std::string &field) {
+    return InternalKey(ns_key, field, metadata.version, storage_->IsSlotIdEncoded()).Encode();
+  };
+
+  std::vector<std::string> expired_cleanup_keys;
+  bool condition_passed = true;
+  if (options.condition != HashFieldSetCondition::kNone) {
+    for (const auto &field_value : field_values) {
+      HashFieldState &state = state_cache.at(field_value.field);
+      if (state.kind == HashFieldStateKind::kExpiredTTLPhysical) {
+        s = ValidateTTLFieldTransition(metadata);
+        if (!s.ok()) return s;
+        ApplyTTLToDeleted(&metadata);
+        expired_cleanup_keys.emplace_back(make_sub_key(field_value.field));
+        state = HashFieldState{};
+      }
+
+      bool exists = state.kind == HashFieldStateKind::kPersistent || state.kind == HashFieldStateKind::kLiveTTL;
+      if ((options.condition == HashFieldSetCondition::kFNX && exists) ||
+          (options.condition == HashFieldSetCondition::kFXX && !exists)) {
+        condition_passed = false;
+        break;
+      }
+    }
+  }
+
+  auto batch = storage_->GetWriteBatchBase();
+  HashBatchWriter writer(batch.Get());
+  for (const auto &sub_key : expired_cleanup_keys) {
+    s = writer.Delete(sub_key);
+    if (!s.ok()) return s;
+  }
+
+  if (!condition_passed) {
+    s = FinalizeHashMetadata(original_metadata, metadata_existed, &metadata, metadata_cf_handle_, ns_key, &writer);
+    if (!s.ok()) return s;
+    if (writer.HasStorageMutation()) {
+      s = storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+      if (!s.ok()) return s;
+    }
+    return rocksdb::Status::OK();
+  }
+
+  std::unordered_set<std::string_view> seen_fields;
+  std::vector<const FieldValue *> unique_field_values;
+  seen_fields.reserve(field_values.size());
+  unique_field_values.reserve(field_values.size());
+  for (auto iter = field_values.rbegin(); iter != field_values.rend(); ++iter) {
+    if (seen_fields.emplace(iter->field).second) unique_field_values.emplace_back(&*iter);
+  }
+  std::reverse(unique_field_values.begin(), unique_field_values.end());
+
+  bool immediate =
+      options.ttl_action == HashSetExOptions::TTLAction::kSet && IsImmediateExpire(options.expire_at_ms, now);
+  for (const auto *field_value : unique_field_values) {
+    HashFieldState &state = state_cache.at(field_value->field);
+    std::string sub_key = make_sub_key(field_value->field);
+
+    if (immediate) {
+      if (state.kind == HashFieldStateKind::kMissing) continue;
+      if (state.kind == HashFieldStateKind::kPersistent) {
+        s = ValidatePersistentFieldTransition(metadata);
+        if (!s.ok()) return s;
+        ApplyPersistentToDeleted(&metadata);
+      } else {
+        s = ValidateTTLFieldTransition(metadata);
+        if (!s.ok()) return s;
+        ApplyTTLToDeleted(&metadata);
+      }
+      s = writer.Delete(sub_key);
+      if (!s.ok()) return s;
+      state = HashFieldState{};
+      continue;
+    }
+
+    uint64_t target_expire = 0;
+    switch (options.ttl_action) {
+      case HashSetExOptions::TTLAction::kDiscard:
+        break;
+      case HashSetExOptions::TTLAction::kKeep:
+        if (state.kind == HashFieldStateKind::kLiveTTL || state.kind == HashFieldStateKind::kExpiredTTLPhysical) {
+          target_expire = state.expire;
+        }
+        break;
+      case HashSetExOptions::TTLAction::kSet:
+        target_expire = options.expire_at_ms;
+        break;
+    }
+
+    switch (state.kind) {
+      case HashFieldStateKind::kMissing:
+        s = ValidateMissingFieldTransition(metadata);
+        if (!s.ok()) return s;
+        if (target_expire == 0) {
+          ApplyMissingToPersistent(&metadata);
+        } else {
+          ApplyMissingToTTL(&metadata, target_expire);
+        }
+        break;
+      case HashFieldStateKind::kPersistent:
+        if (target_expire != 0) {
+          s = ValidatePersistentFieldTransition(metadata);
+          if (!s.ok()) return s;
+          ApplyPersistentToTTL(&metadata, target_expire);
+        }
+        break;
+      case HashFieldStateKind::kLiveTTL:
+      case HashFieldStateKind::kExpiredTTLPhysical:
+        s = ValidateTTLFieldTransition(metadata);
+        if (!s.ok()) return s;
+        if (target_expire == 0) {
+          ApplyTTLToPersistent(&metadata);
+        } else {
+          ApplyTTLToTTL(&metadata, target_expire);
+        }
+        break;
+    }
+
+    s = writer.Put(sub_key, metadata.EncodeSubkeyValue(field_value->value, target_expire));
+    if (!s.ok()) return s;
+    state.value = field_value->value;
+    state.expire = target_expire;
+    if (target_expire == 0) {
+      state.kind = HashFieldStateKind::kPersistent;
+    } else if (IsFieldExpired(target_expire, now)) {
+      state.kind = HashFieldStateKind::kExpiredTTLPhysical;
+    } else {
+      state.kind = HashFieldStateKind::kLiveTTL;
+    }
+  }
+
+  s = FinalizeHashMetadata(original_metadata, metadata_existed, &metadata, metadata_cf_handle_, ns_key, &writer);
+  if (!s.ok()) return s;
+  if (writer.HasStorageMutation()) {
+    s = storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+    if (!s.ok()) return s;
+  }
+  *applied = true;
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status Hash::GetFieldsWithExpire(engine::Context &ctx, const Slice &user_key, const std::vector<Slice> &fields,
+                                          const HashGetExOptions &options, std::vector<std::string> *values,
+                                          std::vector<rocksdb::Status> *statuses, std::optional<uint64_t> now_ms) {
+  values->clear();
+  statuses->clear();
+  values->reserve(fields.size());
+  statuses->reserve(fields.size());
+
+  std::string ns_key = AppendNamespacePrefix(user_key);
+  HashMetadata metadata(false);
+  auto s = getMetadata(ctx, ns_key, &metadata);
+  if (s.IsNotFound()) {
+    values->resize(fields.size());
+    statuses->resize(fields.size(), rocksdb::Status::NotFound());
+    return rocksdb::Status::OK();
+  }
+  if (!s.ok()) return s;
+  if (metadata.IsLegacySubkeyEncoding()) {
+    return rocksdb::Status::InvalidArgument(kHashFieldExpirationLegacyEncodingError);
+  }
+
+  s = ValidateHashFieldExpirationMetadata(metadata);
+  if (!s.ok()) return s;
+  HashMetadata original_metadata = metadata;
+  uint64_t now = now_ms.value_or(util::GetTimeStampMS());
+
+  std::unordered_map<std::string, HashFieldState> state_cache;
+  s = LoadFieldStates(storage_, ctx, metadata, ns_key, fields, now, true, &state_cache);
+  if (!s.ok()) return s;
+
+  auto batch = storage_->GetWriteBatchBase();
+  HashBatchWriter writer(batch.Get());
+  auto make_sub_key = [&](const std::string &field) {
+    return InternalKey(ns_key, field, metadata.version, storage_->IsSlotIdEncoded()).Encode();
+  };
+  bool immediate =
+      options.ttl_action == HashGetExOptions::TTLAction::kSet && IsImmediateExpire(options.expire_at_ms, now);
+
+  for (const auto &field_slice : fields) {
+    std::string field = field_slice.ToString();
+    HashFieldState &state = state_cache.at(field);
+    std::string sub_key = make_sub_key(field);
+
+    if (state.kind == HashFieldStateKind::kMissing) {
+      values->emplace_back();
+      statuses->emplace_back(rocksdb::Status::NotFound());
+      continue;
+    }
+    if (state.kind == HashFieldStateKind::kExpiredTTLPhysical) {
+      values->emplace_back();
+      statuses->emplace_back(rocksdb::Status::NotFound());
+      s = ValidateTTLFieldTransition(metadata);
+      if (!s.ok()) return s;
+      ApplyTTLToDeleted(&metadata);
+      s = writer.Delete(sub_key);
+      if (!s.ok()) return s;
+      state = HashFieldState{};
+      continue;
+    }
+
+    values->emplace_back(state.value);
+    statuses->emplace_back(rocksdb::Status::OK());
+
+    if (options.ttl_action == HashGetExOptions::TTLAction::kNone) continue;
+    if (options.ttl_action == HashGetExOptions::TTLAction::kPersist) {
+      if (state.kind == HashFieldStateKind::kPersistent) continue;
+      s = ValidateTTLFieldTransition(metadata);
+      if (!s.ok()) return s;
+      ApplyTTLToPersistent(&metadata);
+      s = writer.Put(sub_key, metadata.EncodeSubkeyValue(state.value));
+      if (!s.ok()) return s;
+      state.kind = HashFieldStateKind::kPersistent;
+      state.expire = 0;
+      continue;
+    }
+
+    if (immediate) {
+      if (state.kind == HashFieldStateKind::kPersistent) {
+        s = ValidatePersistentFieldTransition(metadata);
+        if (!s.ok()) return s;
+        ApplyPersistentToDeleted(&metadata);
+      } else {
+        s = ValidateTTLFieldTransition(metadata);
+        if (!s.ok()) return s;
+        ApplyTTLToDeleted(&metadata);
+      }
+      s = writer.Delete(sub_key);
+      if (!s.ok()) return s;
+      state = HashFieldState{};
+      continue;
+    }
+
+    if (state.kind == HashFieldStateKind::kLiveTTL && state.expire == options.expire_at_ms) continue;
+    if (state.kind == HashFieldStateKind::kPersistent) {
+      s = ValidatePersistentFieldTransition(metadata);
+      if (!s.ok()) return s;
+      ApplyPersistentToTTL(&metadata, options.expire_at_ms);
+    } else {
+      s = ValidateTTLFieldTransition(metadata);
+      if (!s.ok()) return s;
+      ApplyTTLToTTL(&metadata, options.expire_at_ms);
+    }
+    s = writer.Put(sub_key, metadata.EncodeSubkeyValue(state.value, options.expire_at_ms));
+    if (!s.ok()) return s;
+    state.kind = HashFieldStateKind::kLiveTTL;
+    state.expire = options.expire_at_ms;
+  }
+
+  s = FinalizeHashMetadata(original_metadata, true, &metadata, metadata_cf_handle_, ns_key, &writer);
+  if (!s.ok()) return s;
+  if (writer.HasStorageMutation()) {
+    s = storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+    if (!s.ok()) return s;
   }
   return rocksdb::Status::OK();
 }

@@ -188,6 +188,17 @@ rocksdb::Status WALBatchExtractor::DeleteCF(uint32_t column_family_id, const roc
 
 rocksdb::Status WALBatchExtractor::DeleteRangeCF(uint32_t column_family_id, const rocksdb::Slice &begin_key,
                                                  const rocksdb::Slice &end_key) {
+  if (slot_range_.IsValid()) {
+    // A range delete can be migrated only when it is confined to a single in-range slot. A stream
+    // trim (and XGROUP DESTROY) deletes one key's subkeys, so begin/end share that key's slot;
+    // a FLUSHDB/FLUSHALL range spans the whole column family across slots and cannot be applied
+    // slot-scoped, so drop it as before.
+    auto begin_slot_id = ExtractSlotId(begin_key);
+    auto end_slot_id = ExtractSlotId(end_key);
+    if (begin_slot_id != end_slot_id || !slot_range_.Contains(begin_slot_id)) {
+      return rocksdb::Status::OK();
+    }
+  }
   items_.emplace_back(WALItem::Type::kTypeDeleteRange, column_family_id, begin_key.ToString(), end_key.ToString());
   return rocksdb::Status::OK();
 }

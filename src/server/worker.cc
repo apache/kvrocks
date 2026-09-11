@@ -495,13 +495,30 @@ void Worker::UnpauseConnection(int fd, uint64_t id) {
 Status Worker::Reply(int fd, const std::string &reply) {
   std::unique_lock<std::mutex> lock(conns_mu_);
   auto iter = conns_.find(fd);
-  if (iter != conns_.end()) {
-    iter->second->SetLastInteraction();
-    redis::Reply(iter->second->Output(), reply);
+  if (iter == conns_.end()) {
+    return {Status::NotOK, "connection doesn't exist"};
+  }
+
+  // A connection that is scheduled to close doesn't need any more replies
+  // since its pending output will be dropped when it's freed, but it's still
+  // counted as a receiver like Redis does, as it remains subscribed until
+  // the connection is freed.
+  if (iter->second->IsFlagEnabled(redis::Connection::kCloseAsync)) {
     return Status::OK();
   }
 
-  return {Status::NotOK, "connection doesn't exist"};
+  iter->second->SetLastInteraction();
+  redis::Reply(iter->second->Output(), reply);
+  if (iter->second->IsExceedOutputBufferLimit()) {
+    WARN("[worker] Client {} (id={}) scheduled to be closed ASAP for overcoming of output buffer limits, obuf: {}",
+         iter->second->GetAddr(), iter->second->GetID(), evbuffer_get_length(iter->second->Output()));
+    srv->stats.IncrClientOutputBufferLimitDisconnections();
+    // The message was already appended to the output buffer before the
+    // connection was scheduled to close, so the subscriber is still counted
+    // as a receiver of the message, the same as Redis.
+    iter->second->Close(true /* is_async */);
+  }
+  return Status::OK();
 }
 
 void Worker::BecomeMonitorConn(redis::Connection *conn) {

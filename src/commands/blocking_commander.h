@@ -69,6 +69,19 @@ class BlockingCommander : public Commander,
   }
 
   void OnWrite(bufferevent *bev) {
+    // The connection might be scheduled to close while it's blocked, e.g. it
+    // exceeded the output buffer limit or was killed by the CLIENT KILL command.
+    // The manually triggered write callback lands here instead of
+    // Connection::OnWrite since the blocking command replaced the bufferevent
+    // callbacks, so the close must be handled here as well, the same way as
+    // the EOF handling in OnEvent.
+    if (conn_->IsFlagEnabled(Connection::kCloseAsync) || conn_->IsFlagEnabled(Connection::kCloseAfterReply)) {
+      if (timer_) timer_.reset();
+      UnblockKeys();
+      conn_->Close();
+      return;
+    }
+
     bool done{false};
     {
       // The blocking command should not be executed when the server is in exclusive state,

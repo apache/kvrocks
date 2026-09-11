@@ -23,6 +23,7 @@
 
 #include <mutex>
 #include <nonstd/span.hpp>
+#include <optional>
 #include <shared_mutex>
 
 #include "commands/commander.h"
@@ -93,9 +94,58 @@ std::string Connection::ToString() {
       evbuffer_get_length(Input()), evbuffer_get_length(Output()), last_cmd_, set_info_.lib_name, set_info_.lib_ver);
 }
 
-void Connection::Close() {
+void Connection::Close(bool is_async) {
+  if (is_async) {
+    // Only the first caller should schedule the close since concurrent reply
+    // paths (e.g. publishers on other workers) may race here.
+    if (flags_.fetch_or(kCloseAsync) & kCloseAsync) return;
+
+    // The write callback of a stuck client may never be invoked since its output
+    // buffer cannot drain, so trigger the callback manually instead of waiting
+    // for it. Ignoring watermarks is required because the write callback is only
+    // triggered when the output buffer size is not larger than the low watermark.
+    // The callback is deferred(BEV_OPT_DEFER_CALLBACKS) and runs in the owner
+    // worker's event loop, where it's safe to free the connection.
+    bufferevent_trigger(bev_, EV_WRITE, BEV_TRIG_IGNORE_WATERMARKS | BEV_TRIG_DEFER_CALLBACKS);
+    return;
+  }
+
   if (close_cb) close_cb(GetFD());
   owner_->FreeConnection(this);
+}
+
+bool Connection::IsExceedOutputBufferLimit() {
+  // Connections that are already scheduled to close don't need to be checked
+  // again. The replication stream is written to the socket directly instead of
+  // going through the connection output buffer, so the slave kind is not
+  // applicable here: slow replicas are handled by max-replication-lag and
+  // replication-send-timeout-ms.
+  if (IsFlagEnabled(kCloseAsync) || IsFlagEnabled(kCloseAfterReply) || IsFlagEnabled(kSlave)) return false;
+
+  auto kind = GetClientType() == kTypePubsub ? ClientKind::kPubsub : ClientKind::kNormal;
+  const auto &limit = srv_->GetConfig()->GetClientOutputBufferLimit(kind);
+  uint64_t hard_limit_bytes = limit.hard_limit_bytes.load(std::memory_order_relaxed);
+  uint64_t soft_limit_bytes = limit.soft_limit_bytes.load(std::memory_order_relaxed);
+  if (hard_limit_bytes == 0 && soft_limit_bytes == 0) return false;
+
+  uint64_t used_bytes = evbuffer_get_length(Output());
+  if (hard_limit_bytes != 0 && used_bytes >= hard_limit_bytes) return true;
+
+  if (soft_limit_bytes != 0) {
+    if (used_bytes >= soft_limit_bytes) {
+      int64_t soft_limit_seconds = limit.soft_limit_seconds.load(std::memory_order_relaxed);
+      int64_t now = util::GetTimeStamp();
+      int64_t reached_time = obuf_soft_limit_reached_time_.load(std::memory_order_relaxed);
+      if (reached_time == 0) {
+        obuf_soft_limit_reached_time_.store(now, std::memory_order_relaxed);
+      } else if (now - reached_time > soft_limit_seconds) {
+        return true;
+      }
+    } else {
+      obuf_soft_limit_reached_time_.store(0, std::memory_order_relaxed);
+    }
+  }
+  return false;
 }
 
 void Connection::Detach() { owner_->DetachConnection(this); }
@@ -152,6 +202,11 @@ void Connection::OnEvent(bufferevent *bev, int16_t events) {
 }
 
 void Connection::Reply(const std::string &msg) {
+  // Connections scheduled to be closed asynchronously don't need any more
+  // replies, the pending output buffer is dropped when the connection is freed.
+  if (IsFlagEnabled(kCloseAsync)) {
+    return;
+  }
   if (reply_mode_ == ReplyMode::SKIP) {
     reply_mode_ = ReplyMode::ON;
     return;
@@ -165,6 +220,13 @@ void Connection::Reply(const std::string &msg) {
     queued_replies_.push_back(msg);
   } else {
     redis::Reply(bufferevent_get_output(bev_), msg);
+    if (IsExceedOutputBufferLimit()) {
+      WARN(
+          "[connection] Client {} (id={}) scheduled to be closed ASAP for overcoming of output buffer limits, obuf: {}",
+          addr_, id_, evbuffer_get_length(Output()));
+      srv_->stats.IncrClientOutputBufferLimitDisconnections();
+      Close(true /* is_async */);
+    }
   }
 }
 
@@ -198,7 +260,8 @@ uint64_t Connection::GetIdleTime() const { return static_cast<uint64_t>(util::Ge
 uint64_t Connection::GetClientType() const {
   if (IsFlagEnabled(kSlave)) return kTypeSlave;
 
-  if (!subscribe_channels_.empty() || !subscribe_patterns_.empty()) return kTypePubsub;
+  if (!subscribe_channels_.empty() || !subscribe_patterns_.empty() || !subscribe_shard_channels_.empty())
+    return kTypePubsub;
 
   return kTypeNormal;
 }
@@ -222,9 +285,10 @@ void Connection::DisableFlag(Flag flag) { flags_ &= (~flag); }
 bool Connection::IsFlagEnabled(Flag flag) const { return (flags_ & flag) > 0; }
 
 bool Connection::CanMigrate() const {
-  return !is_running_                                                    // reading or writing
-         && !IsFlagEnabled(redis::Connection::kCloseAfterReply)          // close after reply
-         && saved_current_command_ == nullptr                            // not executing blocking command like BLPOP
+  return !is_running_                                            // reading or writing
+         && !IsFlagEnabled(redis::Connection::kCloseAfterReply)  // close after reply
+         && !IsFlagEnabled(redis::Connection::kCloseAsync)  // async close might be pending on the current event base
+         && saved_current_command_ == nullptr               // not executing blocking command like BLPOP
          && subscribe_channels_.empty() && subscribe_patterns_.empty();  // not subscribing any channel
 }
 
@@ -434,7 +498,8 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     if (cmd_tokens.empty()) continue;
 
     bool is_multi_exec = IsFlagEnabled(Connection::kMultiExec);
-    if (IsFlagEnabled(redis::Connection::kCloseAfterReply) && !is_multi_exec) break;
+    if ((IsFlagEnabled(Connection::kCloseAfterReply) || IsFlagEnabled(Connection::kCloseAsync)) && !is_multi_exec)
+      break;
     auto multi_error_exit = MakeScopeExit([&] {
       if (is_multi_exec) multi_error_ = true;
     });
@@ -570,6 +635,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     }
 
     SetLastCmd(cmd_name);
+    std::vector<KeyspaceEvent> keyspace_events;
     {
       std::optional<MultiLockGuard> guard;
       if (cmd_flags & kCmdWrite) {
@@ -588,6 +654,9 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
         guard.emplace(srv_->storage->GetLockManager(), lock_keys);
       }
       engine::Context ctx(srv_->storage);
+      if (cmd_flags & kCmdWrite) {
+        ctx.EnableKeyspaceEventCollection(config->notify_keyspace_event_channels, config->notify_keyspace_event_types);
+      }
 
       std::vector<GlobalIndexer::RecordResult> index_records;
       if (!srv_->index_mgr.index_map.empty() && IsCmdForIndexing(cmd_flags, attributes->category) &&
@@ -615,6 +684,13 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
           WARN("[connection] index updating failed for key: {}", record.key);
         }
       }
+      if (ctx.HasKeyspaceEvents()) {
+        keyspace_events = ctx.TakeKeyspaceEvents();
+      }
+    }
+    // Nested Lua and function commands reuse their outer context. Publish only after index updates and key unlocking.
+    if (!keyspace_events.empty()) {
+      queueOrPublishKeyspaceEvents(std::move(keyspace_events));
     }
 
     if (!(cmd_flags & redis::kCmdSkipMonitor)) {
@@ -645,10 +721,40 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
   }
 }
 
+void Connection::queueOrPublishKeyspaceEvents(std::vector<KeyspaceEvent> &&events) {
+  if (events.empty()) return;
+
+  if (in_exec_) {
+    // Queue transaction events until commit.
+    for (auto &event : events) {
+      pending_keyspace_events_.emplace_back(std::move(event));
+    }
+    return;
+  }
+
+  for (const auto &event : events) {
+    srv_->NotifyKeyspaceEvent(event);
+  }
+}
+
+void Connection::FlushKeyspaceEvents() {
+  for (const auto &e : pending_keyspace_events_) {
+    srv_->NotifyKeyspaceEvent(e);
+  }
+  pending_keyspace_events_.clear();
+}
+
 void Connection::ResetMultiExec() {
   in_exec_ = false;
   multi_error_ = false;
   multi_cmds_.clear();
+  // Drop events from failed or aborted transactions.
+  pending_keyspace_events_.clear();
+  // Retain capacity for typical transactions, but request releasing unusually large buffers.
+  constexpr std::size_t kMaxRetainedKeyspaceEvents = 1024;
+  if (pending_keyspace_events_.capacity() > kMaxRetainedKeyspaceEvents) {
+    pending_keyspace_events_.shrink_to_fit();
+  }
   DisableFlag(Connection::kMultiExec);
 }
 

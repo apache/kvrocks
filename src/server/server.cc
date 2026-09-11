@@ -41,6 +41,7 @@
 
 #include "commands/command_parser.h"
 #include "commands/commander.h"
+#include "common/keyspace_events.h"
 #include "common/string_util.h"
 #include "config/config.h"
 #include "fmt/format.h"
@@ -476,6 +477,17 @@ int Server::PublishMessage(const std::string &channel, const std::string &msg) {
   }
 
   return cnt;
+}
+
+void Server::NotifyKeyspaceEvent(const KeyspaceEvent &event) {
+  const std::string scope = FormatKeyspaceNotificationScope(event.ns, GetConfig()->redis_databases);
+  // Publish keyspace before keyevent for each key.
+  if (event.channel_flags & kNotifyKeyspace) {
+    PublishMessage("__keyspace@" + scope + "__:" + event.key, event.event);
+  }
+  if (event.channel_flags & kNotifyKeyevent) {
+    PublishMessage("__keyevent@" + scope + "__:" + event.event, event.key);
+  }
 }
 
 void Server::SubscribeChannel(const std::string &channel, redis::Connection *conn) {
@@ -956,21 +968,9 @@ void Server::cron() {
 
     // No replica uses this checkpoint, we can remove it.
     if (counter != 0 && counter % 100 == 0) {
-      int64_t create_time_secs = storage->GetCheckpointCreateTimeSecs();
-      int64_t access_time_secs = storage->GetCheckpointAccessTimeSecs();
-
-      if (storage->ExistCheckpoint()) {
-        // TODO(shooterit): support to config the alive time of checkpoint
-        int64_t now_secs = util::GetTimeStamp<std::chrono::seconds>();
-        if ((GetFetchFileThreadNum() == 0 && now_secs - access_time_secs > 30) ||
-            (now_secs - create_time_secs > 24 * 60 * 60)) {
-          auto s = rocksdb::DestroyDB(config_->checkpoint_dir, rocksdb::Options());
-          if (!s.ok()) {
-            WARN("[server] Fail to clean checkpoint, error: {}", s.ToString());
-          } else {
-            INFO("[server] Clean checkpoint successfully");
-          }
-        }
+      auto s = storage->TryPurgeCheckpoint(GetFetchFileThreadNum());
+      if (!s.IsOK()) {
+        WARN("[server] Fail to clean checkpoint, error: {}", s.Msg());
       }
     }
     // check if DB need to be resumed every minute
@@ -1406,6 +1406,8 @@ Server::InfoEntries Server::GetStatsInfo() {
   entries.emplace_back("sync_full", stats.fullsync_count.load());
   entries.emplace_back("sync_partial_ok", stats.psync_ok_count.load());
   entries.emplace_back("sync_partial_err", stats.psync_err_count.load());
+  entries.emplace_back("client_output_buffer_limit_disconnections",
+                       stats.client_output_buffer_limit_disconnections.load());
 
   auto db_stats = storage->GetDBStats();
   entries.emplace_back("keyspace_hits", db_stats->keyspace_hits.load());

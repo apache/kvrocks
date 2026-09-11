@@ -30,6 +30,7 @@
 #include <vector>
 
 #include "commands/commander.h"
+#include "common/keyspace_events.h"
 #include "event_util.h"
 #include "redis_request.h"
 #include "server/redis_reply.h"
@@ -62,13 +63,24 @@ class Connection : public EvbufCallbackBase<Connection> {
   Connection(const Connection &) = delete;
   Connection &operator=(const Connection &) = delete;
 
-  void Close();
+  // Closes the connection immediately by default. Pass is_async=true to
+  // schedule the close on the owner worker's event loop instead, which is
+  // required when the connection is being closed from another thread or
+  // while it's still executing commands.
+  void Close(bool is_async = false);
   void Detach();
   void OnRead(bufferevent *bev);
   void OnWrite(bufferevent *bev);
   void OnEvent(bufferevent *bev, int16_t events);
   void SendFile(int fd);
   std::string ToString();
+
+  // Returns true if the connection output buffer size exceeds the configured
+  // client-output-buffer-limit of its client kind, following the same hard/soft
+  // limit semantics as Redis. It should be checked every time data is appended
+  // to the connection output buffer, and the caller is responsible for closing
+  // the connection when it returns true.
+  bool IsExceedOutputBufferLimit();
 
   void Reply(const std::string &msg);
   const std::vector<std::string> &GetQueuedReplies() const;
@@ -197,6 +209,8 @@ class Connection : public EvbufCallbackBase<Connection> {
   void ResetMultiExec();
   std::deque<redis::CommandTokens> *GetMultiExecCommands() { return &multi_cmds_; }
 
+  void FlushKeyspaceEvents();
+
   std::function<void(int)> close_cb = nullptr;
 
   std::set<std::string> watched_keys;
@@ -207,6 +221,9 @@ class Connection : public EvbufCallbackBase<Connection> {
   ReplyMode GetReplyMode() const { return reply_mode_; }
 
  private:
+  // Queues events while EXEC is running; publishes them otherwise.
+  void queueOrPublishKeyspaceEvents(std::vector<KeyspaceEvent> &&events);
+
   uint64_t id_ = 0;
   std::atomic<int> flags_ = 0;
   std::string ns_;
@@ -237,6 +254,8 @@ class Connection : public EvbufCallbackBase<Connection> {
   bool multi_error_ = false;
   std::atomic<bool> is_running_ = false;
   std::deque<redis::CommandTokens> multi_cmds_;
+
+  std::vector<KeyspaceEvent> pending_keyspace_events_;
   bool in_script_ = false;
 
   bool importing_ = false;
@@ -246,6 +265,10 @@ class Connection : public EvbufCallbackBase<Connection> {
   std::vector<std::string> queued_replies_;
 
   bool is_paused_ = false;
+
+  // The first time the output buffer size was found to exceed the soft limit
+  // of client-output-buffer-limit, or 0 if it's currently below the limit.
+  std::atomic<int64_t> obuf_soft_limit_reached_time_ = 0;
 };
 
 }  // namespace redis

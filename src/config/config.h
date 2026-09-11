@@ -23,6 +23,7 @@
 #include <rocksdb/options.h>
 #include <sys/resource.h>
 
+#include <atomic>
 #include <map>
 #include <memory>
 #include <set>
@@ -31,6 +32,7 @@
 
 #include "config_type.h"
 #include "cron.h"
+#include "keyspace_events.h"
 #include "spdlog/common.h"
 #include "status.h"
 #include "storage/redis_metadata.h"
@@ -44,6 +46,22 @@ class Storage;
 constexpr const uint32_t PORT_LIMIT = 65535;
 
 enum SupervisedMode { kSupervisedNone = 0, kSupervisedAutoDetect, kSupervisedSystemd, kSupervisedUpStart };
+
+enum class ClientKind {
+  kNormal = 0,
+  kSlave = 1,
+  kPubsub = 2,
+  kCount = 3,
+};
+
+// Limits are read from reply paths that may run outside the worker threads
+// (e.g. WAIT wakeups from the feed-replica thread), so keep the fields atomic
+// instead of guarding them with the command exclusivity guard.
+struct ClientOutputBufferLimit {
+  std::atomic<uint64_t> hard_limit_bytes = 0;
+  std::atomic<uint64_t> soft_limit_bytes = 0;
+  std::atomic<int64_t> soft_limit_seconds = 0;
+};
 
 constexpr const char *TLS_AUTH_CLIENTS_NO = "no";
 constexpr const char *TLS_AUTH_CLIENTS_OPTIONAL = "optional";
@@ -109,6 +127,11 @@ struct Config {
   spdlog::level::level_enum log_level = spdlog::level::info;
   int backlog = 511;
   int maxclients = 10000;
+  ClientOutputBufferLimit client_output_buffer_limits[static_cast<size_t>(ClientKind::kCount)];
+
+  ClientOutputBufferLimit &GetClientOutputBufferLimit(ClientKind kind) {
+    return client_output_buffer_limits[static_cast<size_t>(kind)];
+  }
   int max_backup_to_keep = 1;
   int max_backup_keep_hours = 24;
   int slowlog_log_slower_than = 100000;
@@ -196,6 +219,10 @@ struct Config {
 
   // Enable transactional mode in engine::Context
   bool txn_context_enabled = false;
+
+  // Parsed notify-keyspace-events flags.
+  KeyspaceEventChannel notify_keyspace_event_channels = kNotifyNoChannel;
+  KeyspaceEventType notify_keyspace_event_types = kNotifyNoType;
 
   bool skip_block_cache_deallocation_on_close = false;
 
@@ -292,6 +319,8 @@ struct Config {
   std::string compaction_checker_range_str_;
   std::string compaction_checker_cron_str_;
   std::string profiling_sample_commands_str_;
+  std::string client_output_buffer_limit_str_;
+  std::string notify_keyspace_events_str_;
   std::map<std::string, std::unique_ptr<ConfigField>> fields_;
   std::vector<std::string> rename_command_;
   std::string histogram_bucket_boundaries_str_;
@@ -299,6 +328,7 @@ struct Config {
 
   void initFieldValidator();
   void initFieldCallback();
+  Status parseClientOutputBufferLimits(const std::string &v);
   Status parseConfigFromPair(const std::pair<std::string, std::string> &input, int line_number);
   Status parseConfigFromString(const std::string &input, int line_number);
   bool checkFieldValueIsDefault(const std::string &key, const std::string &value) const;

@@ -116,6 +116,47 @@ rocksdb::Status CuckooPageCache::SetBucketSlot(uint16_t filter_index, uint32_t n
   return rocksdb::Status::OK();
 }
 
+rocksdb::Status CuckooPageCache::SetBucketSlotWithUndo(uint16_t filter_index, uint32_t num_buckets,
+                                                       uint32_t bucket_index, uint32_t slot_idx, uint8_t fingerprint,
+                                                       SlotMutation *mutation) {
+  if (slot_idx >= bucket_size_) return rocksdb::Status::InvalidArgument("invalid cuckoo filter bucket slot");
+
+  BucketRef bucket;
+  auto s = ensureBucketLoaded(filter_index, num_buckets, bucket_index, &bucket);
+  if (!s.ok()) return s;
+
+  mutation->filter_index_ = filter_index;
+  mutation->num_buckets_ = num_buckets;
+  mutation->bucket_index_ = bucket_index;
+  mutation->slot_idx_ = slot_idx;
+  mutation->old_fingerprint_ = getBucketRefSlot(bucket, slot_idx);
+  mutation->page_was_dirty_ = bucket.page->is_dirty;
+  setBucketRefSlot(bucket, slot_idx, fingerprint);
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status CuckooPageCache::RestoreBucketSlot(const SlotMutation &mutation) {
+  if (mutation.slot_idx_ >= bucket_size_) {
+    return rocksdb::Status::Corruption("invalid cuckoo filter slot mutation");
+  }
+
+  BucketLocation location;
+  auto s = resolveBucketLocation(mutation.filter_index_, mutation.num_buckets_, mutation.bucket_index_, &location);
+  if (!s.ok()) return s;
+
+  auto it = pages_.find(location.page_key);
+  if (it == pages_.end()) return rocksdb::Status::Corruption("cuckoo filter slot mutation page is not cached");
+
+  auto offset = location.offset + mutation.slot_idx_;
+  if (offset >= it->second.data.size()) {
+    return rocksdb::Status::Corruption("invalid cuckoo filter slot mutation");
+  }
+
+  it->second.data[offset] = static_cast<char>(mutation.old_fingerprint_);
+  it->second.is_dirty = mutation.page_was_dirty_;
+  return rocksdb::Status::OK();
+}
+
 rocksdb::Status CuckooPageCache::WriteBackDirtyPages(rocksdb::WriteBatchBase *batch) {
   for (const auto &entry : pages_) {
     if (!entry.second.is_dirty) continue;

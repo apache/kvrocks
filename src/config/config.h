@@ -91,6 +91,8 @@ const std::vector<ConfigEnum<spdlog::level::level_enum>> slowlog_dump_logfile_le
 
 enum class BlockCacheType { kCacheTypeLRU = 0, kCacheTypeHCC };
 
+enum class MasterLeaseMode { kDisabled, kLogOnly, kBlockWrite };
+
 struct CLIOptions {
   std::string conf_file;
   std::vector<std::pair<std::string, std::string>> cli_options;
@@ -216,6 +218,9 @@ struct Config {
   // json
   int json_max_nesting_depth = 1024;
   JsonStorageFormat json_storage_format = JsonStorageFormat::JSON;
+
+  // master lease
+  MasterLeaseMode master_lease_mode = MasterLeaseMode::kDisabled;
 
   // Enable transactional mode in engine::Context
   bool txn_context_enabled = false;

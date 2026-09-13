@@ -1337,7 +1337,7 @@ class TimeSeriesWALTest : public ::testing::Test {
     auto s = config_.Load(CLIOptions(path));
     config_.db_dir = "testdb_ts_wal";
     config_.rocks_db.compression = rocksdb::CompressionType::kNoCompression;
-    config_.rocks_db.write_buffer_size = 64 * 1024 * 1024;
+    config_.rocks_db.write_buffer_size = 64;
     storage_ = std::make_unique<engine::Storage>(&config_);
     s = storage_->Open();
     ASSERT_TRUE(s.IsOK());

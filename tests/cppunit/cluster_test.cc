@@ -167,6 +167,14 @@ TEST_F(ClusterTest, ClusterSetNodesWithRedisStyleAddress) {
   s = cluster.SetClusterNodes(invalid_combined_address, 5, false);
   ASSERT_FALSE(s.IsOK());
   ASSERT_TRUE(s.Msg() == "Invalid cluster node port");
+
+  // an old-layout line with an IPv6 host must not be mistaken for the
+  // combined form (the host contains ':' but fields[2] is the port)
+  const std::string ipv6_host_old_format =
+      "67ed2db8d677e59ec4a4cefb06858cf2a1a89fa1 ::1 30002 "
+      "master - 0-16383";
+  s = cluster.SetClusterNodes(ipv6_host_old_format, 6, false);
+  ASSERT_TRUE(s.IsOK());
 }
 
 TEST_F(ClusterTest, CluseterGetNodes) {

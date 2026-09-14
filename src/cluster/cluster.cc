@@ -784,16 +784,28 @@ Status Cluster::parseClusterNodes(const std::string &nodes_str, ClusterNodes *no
     std::vector<std::string> fields = util::Split(node_str, " ");
 
     // Also accept the Redis-style combined address "<host>:<port>[@<bus_port>]"
-    // (the same format GetClusterNodes prints). Normalize it to the plain
+    // (the same format GetClusterNodes prints). Detect it by checking whether
+    // the role keyword lands on fields[2] instead of fields[3] -- checking
+    // for ':' in the host field would misclassify the old layout when the
+    // host is an IPv6 address. The combined form is normalized to the plain
     // "<host> <port>" layout so the parser below stays unchanged.
-    if (fields.size() >= 2 && fields[1].find(':') != std::string::npos) {
-      std::string addr_host;
-      uint16_t addr_port = 0;
-      if (!ParseNodeAddress(fields[1], &addr_host, &addr_port)) {
-        return {Status::ClusterInvalidInfo, "Invalid cluster node port"};
+    if (fields.size() >= 3) {
+      bool role_on_addr = false;
+      for (const auto &flag : util::Split(fields[2], ",")) {
+        if (util::EqualICase(flag, "master") || util::EqualICase(flag, "slave") || util::EqualICase(flag, "replica")) {
+          role_on_addr = true;
+          break;
+        }
       }
-      fields[1] = addr_host;
-      fields.insert(fields.begin() + 2, std::to_string(addr_port));
+      if (role_on_addr) {
+        std::string addr_host;
+        uint16_t addr_port = 0;
+        if (!ParseNodeAddress(fields[1], &addr_host, &addr_port)) {
+          return {Status::ClusterInvalidInfo, "Invalid cluster node port"};
+        }
+        fields[1] = addr_host;
+        fields.insert(fields.begin() + 2, std::to_string(addr_port));
+      }
     }
 
     if (fields.size() < 5) {

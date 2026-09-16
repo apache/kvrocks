@@ -759,6 +759,12 @@ static bool ParseNodeAddress(const std::string &addr, std::string *host, uint16_
   }
   auto at = port_part.find('@');
   if (at != std::string::npos) {
+    // The bus port is not used for connectivity, but it must still be a
+    // valid port rather than silently accepting garbage like "@foo".
+    auto bus_port = port_part.substr(at + 1);
+    if (!ParseInt<uint16_t>(bus_port, 10)) {
+      return false;
+    }
     port_part = port_part.substr(0, at);
   }
   auto parse_result = ParseInt<uint16_t>(port_part, 10);

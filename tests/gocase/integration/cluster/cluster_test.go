@@ -165,6 +165,11 @@ func TestClusterNodes(t *testing.T) {
 		clusterNodes = fmt.Sprintf("%s %s:%d master - 0-300", nodeID, srv.Host(), srv.Port())
 		require.NoError(t, rdb.Do(ctx, "clusterx", "SETNODES", clusterNodes, "4").Err())
 		require.EqualValues(t, "4", rdb.Do(ctx, "clusterx", "version").Val())
+
+		// a malformed bus port must be rejected even though the bus port
+		// itself is not used for connectivity
+		clusterNodes = fmt.Sprintf("%s %s:%d@not-a-port master - 0-300", nodeID, srv.Host(), srv.Port())
+		require.ErrorContains(t, rdb.Do(ctx, "clusterx", "SETNODES", clusterNodes, "5").Err(), "Invalid cluster node")
 	})
 }
 

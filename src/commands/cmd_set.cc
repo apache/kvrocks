@@ -207,6 +207,7 @@ class CommandSRandMember : public Commander {
       }
 
       count_ = *parse_result;
+      with_count_ = true;
     }
     return Commander::Parse(args);
   }
@@ -219,12 +220,18 @@ class CommandSRandMember : public Commander {
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
-    *output = conn->SetOfBulkStrings(members);
+
+    if (with_count_) {
+      *output = redis::ArrayOfBulkStrings(members);
+    } else {
+      *output = members.empty() ? conn->NilString() : redis::BulkString(members.front());
+    }
     return Status::OK();
   }
 
  private:
   int count_ = 1;
+  bool with_count_ = false;
 };
 
 class CommandSMove : public Commander {

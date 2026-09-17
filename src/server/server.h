@@ -218,6 +218,9 @@ class Server {
   int GetFetchFileThreadNum() const { return fetch_file_threads_num_; }
 
   int PublishMessage(const std::string &channel, const std::string &msg);
+
+  // Publishes a keyspace event through the channels selected when it was collected.
+  void NotifyKeyspaceEvent(const KeyspaceEvent &event);
   void SubscribeChannel(const std::string &channel, redis::Connection *conn);
   void UnsubscribeChannel(const std::string &channel, redis::Connection *conn);
   void GetChannelsByPattern(const std::string &pattern, std::vector<std::string> *channels);

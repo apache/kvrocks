@@ -23,11 +23,8 @@ on:
   pull_request:
     paths:
       - '.github/workflows/compatibility.yml'
-      - 'src/storage/**'
-      - 'src/types/**'
-      - 'src/commands/**'
-      - 'src/config/**'
-      - 'tests/gocase/**'
+      - 'src/**'
+      - 'tests/**'
   release:
     types: [published]
 

@@ -23,6 +23,8 @@ on:
   pull_request:
     paths:
       - '.github/workflows/compatibility.yml'
+      - 'Dockerfile'
+      - 'kvrocks.conf'
       - 'src/**'
       - 'tests/**'
   release:

@@ -28,12 +28,14 @@
 #include <rocksdb/status.h>
 
 #include <algorithm>
+#include <cstdint>
 #include <iterator>
 #include <limits>
 #include <memory>
 #include <range/v3/algorithm/minmax.hpp>
 #include <range/v3/range/conversion.hpp>
 #include <range/v3/view/join.hpp>
+#include <range/v3/view/map.hpp>
 #include <range/v3/view/transform.hpp>
 #include <vector>
 
@@ -568,6 +570,41 @@ rocksdb::Status TDigest::Merge(engine::Context& ctx, const Slice& dest_digest,
   }
 
   return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+}
+
+rocksdb::Status TDigest::CDF(engine::Context& ctx, const Slice& digest_name, const std::vector<double>& inputs,
+                             TDigestCDFResult* result) {
+  auto ns_key = AppendNamespacePrefix(digest_name);
+  TDigestMetadata metadata;
+  {
+    LockGuard guard(storage_->GetLockManager(), ns_key);
+
+    if (auto status = getMetaDataByNsKey(ctx, ns_key, &metadata); !status.ok()) {
+      return status;
+    }
+
+    if (metadata.total_observations == 0) {
+      result->cdf_values = std::vector<double>(inputs.size(), std::numeric_limits<double>::quiet_NaN());
+      return rocksdb::Status::OK();
+    }
+
+    if (auto status = mergeNodes(ctx, ns_key, &metadata); !status.ok()) {
+      return status;
+    }
+  }
+
+  std::vector<Centroid> centroids;
+  if (auto status = dumpCentroids(ctx, ns_key, metadata, &centroids); !status.ok()) {
+    return status;
+  }
+
+  auto dump_centroids = DummyCentroids<false>(metadata, centroids);
+  if (auto status = TDigestCDF(centroids, dump_centroids.Min(), dump_centroids.Max(), dump_centroids.TotalWeight(),
+                               inputs, &result->cdf_values);
+      !status.IsOK()) {
+    return rocksdb::Status::InvalidArgument(status.Msg());
+  }
+  return rocksdb::Status::OK();
 }
 
 rocksdb::Status TDigest::GetMetaData(engine::Context& context, const Slice& digest_name, TDigestMetadata* metadata) {

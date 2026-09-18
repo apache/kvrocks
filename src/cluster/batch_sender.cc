@@ -52,6 +52,16 @@ Status BatchSender::Delete(rocksdb::ColumnFamilyHandle *cf, const rocksdb::Slice
   entries_num_++;
   return Status::OK();
 }
+Status BatchSender::DeleteRange(rocksdb::ColumnFamilyHandle *cf, const rocksdb::Slice &begin,
+                                const rocksdb::Slice &end) {
+  auto s = write_batch_.DeleteRange(cf, begin, end);
+  if (!s.ok()) {
+    return {Status::NotOK, fmt::format("failed to delete range from migration batch, {}", s.ToString())};
+  }
+  pending_entries_++;
+  entries_num_++;
+  return Status::OK();
+}
 
 Status BatchSender::PutLogData(const rocksdb::Slice &blob) {
   auto s = write_batch_.PutLogData(blob);

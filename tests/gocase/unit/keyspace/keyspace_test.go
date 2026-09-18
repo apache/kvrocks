@@ -53,6 +53,9 @@ func TestKeyspace(t *testing.T) {
 		require.NoError(t, rdb.Set(ctx, "foo3", "c", 0).Err())
 		require.EqualValues(t, 3, rdb.Del(ctx, "foo1", "foo2", "foo3").Val())
 		require.Equal(t, []interface{}{nil, nil, nil}, rdb.MGet(ctx, "foo1", "foo2", "foo3").Val())
+
+		require.NoError(t, rdb.Set(ctx, "foo-dup", "a", 0).Err())
+		require.EqualValues(t, 1, rdb.Del(ctx, "foo-dup", "foo-dup").Val())
 	})
 
 	t.Run("KEYS with pattern", func(t *testing.T) {

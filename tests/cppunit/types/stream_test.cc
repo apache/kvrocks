@@ -2017,6 +2017,177 @@ TEST_F(RedisStreamTest, TrimWithMinIdGreaterThanLastEntryID) {
   EXPECT_EQ(length, 0);
 }
 
+// Trimming every entry away must leave the consumer group, its delivery cursor and its
+// pending (PEL) entries intact: the range-delete used by trim stops at the first
+// group/consumer/PEL subkey, which sorts above every entry key.
+TEST_F(RedisStreamTest, TrimAllEntriesPreservesConsumerGroupAndPel) {
+  redis::StreamAddOptions add_options;
+  redis::StreamEntryID id1, id2, id3;
+  add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("1-0");
+  auto s = stream_->Add(*ctx_, name_, add_options, {"k1", "v1"}, &id1);
+  EXPECT_TRUE(s.ok());
+  add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("2-0");
+  s = stream_->Add(*ctx_, name_, add_options, {"k2", "v2"}, &id2);
+  EXPECT_TRUE(s.ok());
+  add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("3-0");
+  s = stream_->Add(*ctx_, name_, add_options, {"k3", "v3"}, &id3);
+  EXPECT_TRUE(s.ok());
+
+  std::string group_name = "g1";
+  std::string consumer_name = "c1";
+  redis::StreamXGroupCreateOptions create_options = {false, 0, "0-0"};
+  s = stream_->CreateGroup(*ctx_, name_, create_options, group_name);
+  EXPECT_TRUE(s.ok());
+
+  // Deliver all three entries into the group's PEL.
+  redis::StreamRangeOptions range_options;
+  range_options.start = redis::StreamEntryID::Minimum();
+  range_options.end = redis::StreamEntryID::Maximum();
+  range_options.count = 10;
+  range_options.with_count = true;
+  range_options.exclude_start = true;
+  std::vector<redis::StreamEntry> delivered;
+  s = stream_->RangeWithPending(*ctx_, name_, range_options, &delivered, group_name, consumer_name, false, true);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(delivered.size(), 3);
+
+  redis::StreamTrimOptions options;
+  options.strategy = redis::StreamTrimStrategy::MinID;
+  options.min_id = redis::StreamEntryID{4, 0};
+  uint64_t trimmed = 0;
+  s = stream_->Trim(*ctx_, name_, options, &trimmed);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(trimmed, 3);
+
+  uint64_t length = 0;
+  s = stream_->Len(*ctx_, name_, redis::StreamLenOptions{}, &length);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(length, 0);
+
+  std::vector<std::pair<std::string, redis::StreamConsumerGroupMetadata>> group_metadata;
+  s = stream_->GetGroupInfo(*ctx_, name_, group_metadata);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(group_metadata.size(), 1);
+  EXPECT_EQ(group_metadata[0].first, group_name);
+  EXPECT_EQ(group_metadata[0].second.pending_number, 3);
+  EXPECT_EQ(group_metadata[0].second.last_delivered_id.ToString(), id3.ToString());
+
+  // pending_number above is only the count cached in group metadata; read the PEL subkeys
+  // themselves back to prove the range tombstone stopped short of them and left every
+  // delivered id in place.
+  redis::StreamPendingOptions pending_options;
+  pending_options.stream_name = name_;
+  pending_options.group_name = group_name;
+  pending_options.start_id = redis::StreamEntryID::Minimum();
+  pending_options.end_id = redis::StreamEntryID::Maximum();
+  pending_options.with_count = true;  // extended form: populate ext_results from the PEL subkeys
+  pending_options.count = 10;
+  redis::StreamGetPendingEntryResult pending_infos;
+  std::vector<redis::StreamNACK> ext_results;
+  s = stream_->GetPendingEntries(*ctx_, pending_options, pending_infos, ext_results);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(ext_results.size(), 3);
+  EXPECT_EQ(ext_results[0].id.ToString(), id1.ToString());
+  EXPECT_EQ(ext_results[1].id.ToString(), id2.ToString());
+  EXPECT_EQ(ext_results[2].id.ToString(), id3.ToString());
+}
+
+// Entries added after a trim-to-empty carry a higher sequence number than the range
+// tombstone, so they must stay visible even though their ids fall inside the deleted range.
+TEST_F(RedisStreamTest, TrimToEmptyThenAddedEntriesRemainVisible) {
+  redis::StreamAddOptions add_options;
+  redis::StreamEntryID id;
+  for (const char *ts : {"1-0", "2-0", "3-0"}) {
+    add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy(ts);
+    auto s = stream_->Add(*ctx_, name_, add_options, {"k", "v"}, &id);
+    EXPECT_TRUE(s.ok());
+  }
+
+  redis::StreamTrimOptions options;
+  options.strategy = redis::StreamTrimStrategy::MinID;
+  options.min_id = redis::StreamEntryID{100, 0};
+  uint64_t trimmed = 0;
+  auto s = stream_->Trim(*ctx_, name_, options, &trimmed);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(trimmed, 3);
+
+  redis::StreamEntryID id4, id5;
+  add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("10-0");
+  s = stream_->Add(*ctx_, name_, add_options, {"k4", "v4"}, &id4);
+  EXPECT_TRUE(s.ok());
+  add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("11-0");
+  s = stream_->Add(*ctx_, name_, add_options, {"k5", "v5"}, &id5);
+  EXPECT_TRUE(s.ok());
+
+  uint64_t length = 0;
+  s = stream_->Len(*ctx_, name_, redis::StreamLenOptions{}, &length);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(length, 2);
+
+  redis::StreamRangeOptions range_options;
+  range_options.start = redis::StreamEntryID::Minimum();
+  range_options.end = redis::StreamEntryID::Maximum();
+  std::vector<redis::StreamEntry> entries;
+  s = stream_->Range(*ctx_, name_, range_options, &entries);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(entries.size(), 2);
+  EXPECT_EQ(entries[0].key, id4.ToString());
+  CheckStreamEntryValues(entries[0].values, {"k4", "v4"});
+  EXPECT_EQ(entries[1].key, id5.ToString());
+  CheckStreamEntryValues(entries[1].values, {"k5", "v5"});
+}
+
+// Repeated forward MINID trims interleaved with adds must leave exactly the surviving
+// entries and correct first/max-deleted bookkeeping.
+TEST_F(RedisStreamTest, RepeatedMinIdTrimKeepsExactSurvivors) {
+  redis::StreamAddOptions add_options;
+  redis::StreamEntryID id;
+  for (const char *ts : {"1-0", "2-0", "3-0", "4-0", "5-0"}) {
+    add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy(ts);
+    auto s = stream_->Add(*ctx_, name_, add_options, {"k", "v"}, &id);
+    EXPECT_TRUE(s.ok());
+  }
+
+  redis::StreamTrimOptions options;
+  options.strategy = redis::StreamTrimStrategy::MinID;
+  options.min_id = redis::StreamEntryID{3, 0};
+  uint64_t trimmed = 0;
+  auto s = stream_->Trim(*ctx_, name_, options, &trimmed);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(trimmed, 2);
+
+  add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("6-0");
+  s = stream_->Add(*ctx_, name_, add_options, {"k6", "v6"}, &id);
+  EXPECT_TRUE(s.ok());
+
+  options.min_id = redis::StreamEntryID{5, 0};
+  trimmed = 0;
+  s = stream_->Trim(*ctx_, name_, options, &trimmed);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(trimmed, 2);
+
+  uint64_t length = 0;
+  s = stream_->Len(*ctx_, name_, redis::StreamLenOptions{}, &length);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(length, 2);
+
+  redis::StreamRangeOptions range_options;
+  range_options.start = redis::StreamEntryID::Minimum();
+  range_options.end = redis::StreamEntryID::Maximum();
+  std::vector<redis::StreamEntry> entries;
+  s = stream_->Range(*ctx_, name_, range_options, &entries);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(entries.size(), 2);
+  EXPECT_EQ(entries[0].key, (redis::StreamEntryID{5, 0}).ToString());
+  EXPECT_EQ(entries[1].key, (redis::StreamEntryID{6, 0}).ToString());
+
+  redis::StreamInfo info;
+  s = stream_->GetStreamInfo(*ctx_, name_, false, 0, &info);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(info.recorded_first_entry_id.ToString(), (redis::StreamEntryID{5, 0}).ToString());
+  EXPECT_EQ(info.max_deleted_entry_id.ToString(), (redis::StreamEntryID{4, 0}).ToString());
+}
+
 TEST_F(RedisStreamTest, StreamInfoOnNonExistingStream) {
   redis::StreamInfo info;
   auto s = stream_->GetStreamInfo(*ctx_, name_, false, 0, &info);

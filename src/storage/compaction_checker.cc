@@ -82,7 +82,7 @@ void CompactionChecker::PickCompactionFilesForCf(const engine::ColumnFamilyConfi
 
     for (const auto &property_iter : iter.second->user_collected_properties) {
       if (property_iter.first == "total_keys") {
-        auto parse_result = ParseInt<int>(property_iter.second, 10);
+        auto parse_result = ParseInt<int64_t>(property_iter.second, 10);
         if (!parse_result) {
           ERROR("[compaction checker] Parse total_keys error: {}", parse_result.Msg());
           continue;
@@ -90,7 +90,7 @@ void CompactionChecker::PickCompactionFilesForCf(const engine::ColumnFamilyConfi
         total_keys = *parse_result;
       }
       if (property_iter.first == "deleted_keys") {
-        auto parse_result = ParseInt<int>(property_iter.second, 10);
+        auto parse_result = ParseInt<int64_t>(property_iter.second, 10);
         if (!parse_result) {
           ERROR("[compaction checker] Parse deleted_keys error: {}", parse_result.Msg());
           continue;

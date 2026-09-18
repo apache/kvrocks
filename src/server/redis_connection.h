@@ -30,6 +30,7 @@
 #include <vector>
 
 #include "commands/commander.h"
+#include "common/keyspace_events.h"
 #include "event_util.h"
 #include "redis_request.h"
 #include "server/redis_reply.h"
@@ -208,6 +209,8 @@ class Connection : public EvbufCallbackBase<Connection> {
   void ResetMultiExec();
   std::deque<redis::CommandTokens> *GetMultiExecCommands() { return &multi_cmds_; }
 
+  void FlushKeyspaceEvents();
+
   std::function<void(int)> close_cb = nullptr;
 
   std::set<std::string> watched_keys;
@@ -218,6 +221,9 @@ class Connection : public EvbufCallbackBase<Connection> {
   ReplyMode GetReplyMode() const { return reply_mode_; }
 
  private:
+  // Queues events while EXEC is running; publishes them otherwise.
+  void queueOrPublishKeyspaceEvents(std::vector<KeyspaceEvent> &&events);
+
   uint64_t id_ = 0;
   std::atomic<int> flags_ = 0;
   std::string ns_;
@@ -248,6 +254,8 @@ class Connection : public EvbufCallbackBase<Connection> {
   bool multi_error_ = false;
   std::atomic<bool> is_running_ = false;
   std::deque<redis::CommandTokens> multi_cmds_;
+
+  std::vector<KeyspaceEvent> pending_keyspace_events_;
   bool in_script_ = false;
 
   bool importing_ = false;

@@ -39,6 +39,7 @@ class CuckooSubFilter {
   uint32_t NumBuckets() const { return num_buckets_; }
 
   rocksdb::Status TryInsert(uint64_t hash, uint8_t fingerprint, bool *inserted);
+  rocksdb::Status Contains(uint64_t hash, uint8_t fingerprint, bool *exists);
   // Performs speculative kick-out mutations in the page cache. On success, dirty pages remain staged for
   // WriteToBatch(); on inserted=false or non-OK status, cached pages are discarded before returning.
   rocksdb::Status TryKickOutInsert(uint64_t hash, uint8_t fingerprint, uint16_t max_iterations, bool *inserted);

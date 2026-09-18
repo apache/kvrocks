@@ -124,19 +124,17 @@ Status Cluster::SetSlotRanges(const std::vector<SlotRange> &slot_ranges, const s
       to_assign_node->slots[slot] = true;
       slots_nodes_[slot] = to_assign_node;
 
-      // Clear data of migrated slot or record of imported slot
+      // Clear data of migrated slot
       if (old_node == myself_ && old_node != to_assign_node) {
-        // If slot is migrated from this node
         if (migrated_slots_.count(slot) > 0) {
           auto s = srv_->slot_migrator->ClearKeysOfSlotRange(ctx, kDefaultNamespace, SlotRange::GetPoint(slot));
           if (!s.ok()) {
             ERROR("failed to clear data of migrated slot: {}", s.ToString());
           }
           migrated_slots_.erase(slot);
-        }
-        // If slot is imported into this node
-        if (imported_slots_.count(slot) > 0) {
-          imported_slots_.erase(slot);
+          if (migrated_slots_.empty()) {
+            srv_->slot_migrator->ReleaseForbiddenSlotRange();
+          }
         }
       }
     }
@@ -206,7 +204,7 @@ Status Cluster::SetClusterNodes(const std::string &nodes_str, int64_t version, b
     return s.Prefixed("failed to set master-replica replication");
   }
 
-  // Clear data of migrated slots
+  // Clear data of migrated slots and drop stale forbidden state.
   if (!migrated_slots_.empty()) {
     engine::Context ctx(srv_->storage);
     for (const auto &[slot, _] : migrated_slots_) {
@@ -217,10 +215,10 @@ Status Cluster::SetClusterNodes(const std::string &nodes_str, int64_t version, b
         }
       }
     }
+    srv_->slot_migrator->ReleaseForbiddenSlotRange();
   }
-  // Clear migrated and imported slot info
+  // Clear migrated slot info
   migrated_slots_.clear();
-  imported_slots_.clear();
 
   return Status::OK();
 }
@@ -278,6 +276,12 @@ Status Cluster::SetMasterSlaveRepl() {
 
 bool Cluster::IsNotMaster() { return myself_ == nullptr || myself_->role != kClusterMaster || srv_->IsSlave(); }
 
+void Cluster::ClearImportingSlotRange() {
+  if (myself_) {
+    myself_->importing_slot_range = {-1, -1};
+  }
+}
+
 Status Cluster::SetSlotRangeMigrated(const SlotRange &slot_range, const std::string &ip_port) {
   if (!slot_range.IsValid()) {
     return {Status::NotOK, errSlotRangeInvalid};
@@ -289,19 +293,6 @@ Status Cluster::SetSlotRangeMigrated(const SlotRange &slot_range, const std::str
   auto exclusivity = srv_->WorkExclusivityGuard();
   for (auto slot = slot_range.start; slot <= slot_range.end; slot++) {
     migrated_slots_[slot] = ip_port;
-  }
-  return Status::OK();
-}
-
-Status Cluster::SetSlotRangeImported(const SlotRange &slot_range) {
-  if (!slot_range.IsValid()) {
-    return {Status::NotOK, errSlotRangeInvalid};
-  }
-
-  // It is called by command 'cluster import'. When executing the command, the
-  // exclusive lock has been locked. Therefore, it can't be locked again.
-  for (auto slot = slot_range.start; slot <= slot_range.end; slot++) {
-    imported_slots_.insert(slot);
   }
   return Status::OK();
 }
@@ -389,11 +380,13 @@ Status Cluster::ImportSlotRange(redis::Connection *conn, const SlotRange &slot_r
     case kImportSuccess:
       s = srv_->slot_import->Success(slot_range);
       if (!s.IsOK()) return s;
+      ClearImportingSlotRange();
       INFO("[import] Mark the importing slot(s) {} as succeed", slot_range.String());
       break;
     case kImportFailed:
       s = srv_->slot_import->Fail(slot_range);
       if (!s.IsOK()) return s;
+      ClearImportingSlotRange();
       INFO("[import] Mark the importing slot(s) {} as failed", slot_range.String());
       break;
     default:
@@ -914,10 +907,10 @@ Status Cluster::CanExecByMySelf(const redis::CommandAttributes *attributes, cons
 
   if (myself_ && myself_ == slots_nodes_[slot]) {
     // We use central controller to manage the topology of the cluster.
-    // Server can't change the topology directly, so we record the migrated slots
-    // to move the requests of the migrated slots to the destination node.
-    if (migrated_slots_.count(slot) > 0) {  // I'm not serving the migrated slot
-      return {Status::RedisMoved, fmt::format("{} {}", slot, migrated_slots_[slot])};
+    // Server can't change the topology directly, so reject writes to migrated slots
+    // until the controller confirms their owner with a topology update.
+    if (migrated_slots_.count(slot) > 0 && (flags & redis::kCmdWrite)) {
+      return {Status::RedisTryAgain, "Slot migration finished, waiting for topology update"};
     }
     // To keep data consistency, slot will be forbidden write while sending the last incremental data.
     // During this phase, the requests of the migrating slot has to be rejected.
@@ -935,13 +928,6 @@ Status Cluster::CanExecByMySelf(const redis::CommandAttributes *attributes, cons
     // although the slot is not belong to itself. Therefore, we record the importing slot
     // and mark the importing connection to accept the importing data.
     return Status::OK();  // I'm serving the importing connection or asking connection
-  }
-
-  if (myself_ && imported_slots_.count(slot)) {
-    // After the slot is migrated, new requests of the migrated slot will be moved to
-    // the destination server. Before the central controller change the topology, the destination
-    // server should record the imported slots to accept new data of the imported slots.
-    return Status::OK();  // I'm serving the imported slot
   }
 
   if (myself_ && myself_->role == kClusterSlave && !(flags & redis::kCmdWrite) &&
@@ -984,7 +970,6 @@ Status Cluster::Reset() {
     n = nullptr;
   }
   migrated_slots_.clear();
-  imported_slots_.clear();
 
   // The migrator's forbidden slot range persists past a successful migration
   // and is only harmless while slots_nodes_[slot] no longer points at us.

@@ -26,7 +26,7 @@ on:
       - 'Dockerfile'
       - 'kvrocks.conf'
       - 'src/**'
-      - 'tests/**'
+      - 'tests/gocase/integration/compatibility/**'
   release:
     types: [published]
 

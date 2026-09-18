@@ -36,7 +36,7 @@ enum KeyspaceEventChannel {
 enum KeyspaceEventType {
   kNotifyNoType = 0,
   kNotifyGeneric = 1 << 0,  // g, emits del
-  kNotifyString = 1 << 1,   // $, emits set
+  kNotifyString = 1 << 1,   // $, string events
   // A, supported data classes without K or E.
   kNotifyAll = kNotifyGeneric | kNotifyString,
 };

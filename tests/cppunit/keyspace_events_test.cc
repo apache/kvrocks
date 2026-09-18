@@ -109,7 +109,7 @@ TEST(KeyspaceEvents, ParseFlags) {
   EXPECT_EQ(type_flags->first, kNotifyNoChannel);
   EXPECT_EQ(type_flags->second, kNotifyGeneric | kNotifyString);
 
-  // KEA enables both channels and set or del.
+  // KEA enables both channels and every supported event class.
   auto flags = ParseNotifyKeyspaceEventsFlags("KEA");
   ASSERT_TRUE(flags.IsOK());
   EXPECT_EQ(flags->first, kNotifyKeyspace | kNotifyKeyevent);

@@ -460,6 +460,8 @@ class TimeSeriesMetadata : public Metadata {
   uint64_t chunk_size;
   ChunkType chunk_type;
   DuplicatePolicy duplicate_policy;
+  uint64_t ignore_max_time_diff;
+  double ignore_max_val_diff;
   std::string source_key;
   uint64_t last_timestamp = 0;  // Approximate last timestamp, used for compaction filter
 
@@ -468,14 +470,18 @@ class TimeSeriesMetadata : public Metadata {
         retention_time(0),
         chunk_size(0),
         chunk_type(ChunkType::UNCOMPRESSED),
-        duplicate_policy(DuplicatePolicy::BLOCK) {}
+        duplicate_policy(DuplicatePolicy::BLOCK),
+        ignore_max_time_diff(0),
+        ignore_max_val_diff(0.0) {}
   TimeSeriesMetadata(uint64_t retention_time, uint64_t chunk_size, ChunkType chunk_type,
                      DuplicatePolicy duplicate_policy, bool generate_version = true)
       : Metadata(kRedisTimeSeries, generate_version),
         retention_time(retention_time),
         chunk_size(chunk_size),
         chunk_type(chunk_type),
-        duplicate_policy(duplicate_policy) {}
+        duplicate_policy(duplicate_policy),
+        ignore_max_time_diff(0),
+        ignore_max_val_diff(0.0) {}
 
   void SetSourceKey(Slice key);
 

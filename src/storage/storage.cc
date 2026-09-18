@@ -232,6 +232,13 @@ rocksdb::Options Storage::InitRocksDBOptions() {
   // avoid blocking io on iteration
   // see https://github.com/facebook/rocksdb/wiki/IO#avoid-blocking-io
   options.avoid_unnecessary_blocking_io = config_->rocks_db.avoid_unnecessary_blocking_io;
+
+  // Optionally bypass the OS page cache with O_DIRECT. This bounds the process's memory footprint
+  // to the RocksDB block cache instead of letting the (buffered-read) page cache grow, which is
+  // useful under a hard memory limit; reads then rely on the block cache, so size it accordingly.
+  // see https://github.com/facebook/rocksdb/wiki/Direct-IO
+  options.use_direct_reads = config_->rocks_db.use_direct_reads;
+  options.use_direct_io_for_flush_and_compaction = config_->rocks_db.use_direct_io_for_flush_and_compaction;
   return options;
 }
 

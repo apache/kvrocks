@@ -49,6 +49,8 @@ class CuckooPageCache {
 
   void DiscardCachedPages();
 
+  uint8_t GetBucketSize() const { return bucket_size_; }
+
  private:
   struct PageEntry {
     std::string data;

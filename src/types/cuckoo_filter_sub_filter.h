@@ -31,9 +31,7 @@ namespace redis {
 
 class CuckooSubFilter {
  public:
-  CuckooSubFilter(engine::Storage *storage, engine::Context &ctx, const Slice &ns_key, bool slot_id_encoded,
-                  uint64_t version, uint8_t bucket_size, uint32_t page_size, uint16_t filter_index,
-                  uint32_t num_buckets);
+  CuckooSubFilter(CuckooPageCache *pages, uint16_t filter_index, uint32_t num_buckets);
 
   uint16_t Index() const { return filter_index_; }
   uint32_t NumBuckets() const { return num_buckets_; }
@@ -51,7 +49,7 @@ class CuckooSubFilter {
   uint8_t bucket_size_ = 0;
   uint16_t filter_index_ = 0;
   uint32_t num_buckets_ = 0;
-  CuckooPageCache pages_;
+  CuckooPageCache *pages_;
 };
 
 }  // namespace redis

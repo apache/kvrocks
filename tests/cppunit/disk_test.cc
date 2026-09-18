@@ -264,8 +264,8 @@ TEST_F(RedisDiskTest, CuckooFilterDisk) {
   uint64_t key_size = 0;
   EXPECT_TRUE(disk->GetKeySize(*ctx_, key_, kRedisCuckooFilter, &key_size).ok());
 
-  bool added = false;
-  EXPECT_TRUE(cuckoo->Add(*ctx_, key_, "item", &added).ok());
-  EXPECT_TRUE(added);
+  redis::CuckooFilterInsertResult added = redis::CuckooFilterInsertResult::kOk;
+  EXPECT_TRUE(cuckoo->Add(*ctx_, key_, "item", added).ok());
+  EXPECT_TRUE(added == redis::CuckooFilterInsertResult::kOk);
   EXPECT_TRUE(disk->GetKeySize(*ctx_, key_, kRedisCuckooFilter, &key_size).ok());
 }

@@ -330,4 +330,26 @@ rocksdb::Status HyperLogLog::getRegisters(engine::Context &ctx, const Slice &ns_
   return rocksdb::Status::OK();
 }
 
+rocksdb::Status HyperLogLog::Get(engine::Context &ctx, const Slice &user_key, std::string *value) {
+  std::string ns_key = AppendNamespacePrefix(user_key);
+  std::vector<std::string> register_segments;
+  auto s = getRegisters(ctx, ns_key, &register_segments);
+  if (!s.ok()) return s;
+
+  value->clear();
+  value->append("HYLL", 4);
+  value->push_back(0);
+  value->append(3, 0);
+  value->append(8, 0);
+
+  for (const auto &segment : register_segments) {
+    if (segment.empty()) {
+      value->append(kHyperLogLogSegmentBytes, 0);
+    } else {
+      value->append(segment);
+    }
+  }
+  return rocksdb::Status::OK();
+}
+
 }  // namespace redis

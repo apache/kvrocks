@@ -579,6 +579,89 @@ rocksdb::Status Bitmap::BitOp(engine::Context &ctx, BitOpFlags op_flag, const st
             apply_fast_path_op([](uint64_t &a, uint64_t b) { a |= b; });
           } else if (op_flag == kBitOpXor) {
             apply_fast_path_op([](uint64_t &a, uint64_t b) { a ^= b; });
+          } else if (op_flag == kBitOpDiff) {
+            // DIFF: dest = X & ~(Y1 | Y2 | ...)
+            while (frag_minlen >= sizeof(uint64_t) * 4) {
+              uint64_t y_or[4] = {0};
+              for (uint64_t i = 1; i < frag_numkeys; i++) {
+                y_or[0] |= lp[i][0];
+                y_or[1] |= lp[i][1];
+                y_or[2] |= lp[i][2];
+                y_or[3] |= lp[i][3];
+                lp[i] += 4;
+              }
+              lres[0] &= ~y_or[0];
+              lres[1] &= ~y_or[1];
+              lres[2] &= ~y_or[2];
+              lres[3] &= ~y_or[3];
+              lres += 4;
+              j += sizeof(uint64_t) * 4;
+              frag_minlen -= sizeof(uint64_t) * 4;
+            }
+          } else if (op_flag == kBitOpDiff1) {
+            // DIFF1: dest = (Y1 | Y2 | ...) & ~X
+            while (frag_minlen >= sizeof(uint64_t) * 4) {
+              uint64_t y_or[4] = {0};
+              for (uint64_t i = 1; i < frag_numkeys; i++) {
+                y_or[0] |= lp[i][0];
+                y_or[1] |= lp[i][1];
+                y_or[2] |= lp[i][2];
+                y_or[3] |= lp[i][3];
+                lp[i] += 4;
+              }
+              lres[0] = y_or[0] & ~lres[0];
+              lres[1] = y_or[1] & ~lres[1];
+              lres[2] = y_or[2] & ~lres[2];
+              lres[3] = y_or[3] & ~lres[3];
+              lres += 4;
+              j += sizeof(uint64_t) * 4;
+              frag_minlen -= sizeof(uint64_t) * 4;
+            }
+          } else if (op_flag == kBitOpAndor) {
+            // ANDOR: dest = X & (Y1 | Y2 | ...)
+            while (frag_minlen >= sizeof(uint64_t) * 4) {
+              uint64_t y_or[4] = {0};
+              for (uint64_t i = 1; i < frag_numkeys; i++) {
+                y_or[0] |= lp[i][0];
+                y_or[1] |= lp[i][1];
+                y_or[2] |= lp[i][2];
+                y_or[3] |= lp[i][3];
+                lp[i] += 4;
+              }
+              lres[0] &= y_or[0];
+              lres[1] &= y_or[1];
+              lres[2] &= y_or[2];
+              lres[3] &= y_or[3];
+              lres += 4;
+              j += sizeof(uint64_t) * 4;
+              frag_minlen -= sizeof(uint64_t) * 4;
+            }
+          } else if (op_flag == kBitOpOne) {
+            // ONE: dest = 1 if exactly one input has bit set
+            while (frag_minlen >= sizeof(uint64_t) * 4) {
+              for (uint64_t k = 0; k < 4; k++) {
+                uint64_t count[64] = {0};
+                for (uint64_t i = 0; i < frag_numkeys; i++) {
+                  for (int bit = 0; bit < 64; bit++) {
+                    if (lp[i][k] & (1ULL << bit)) {
+                      count[bit]++;
+                    }
+                  }
+                }
+                lres[k] = 0;
+                for (int bit = 0; bit < 64; bit++) {
+                  if (count[bit] == 1) {
+                    lres[k] |= (1ULL << bit);
+                  }
+                }
+              }
+              for (uint64_t i = 0; i < frag_numkeys; i++) {
+                lp[i] += 4;
+              }
+              lres += 4;
+              j += sizeof(uint64_t) * 4;
+              frag_minlen -= sizeof(uint64_t) * 4;
+            }
           } else if (op_flag == kBitOpNot) {
             while (frag_minlen >= sizeof(uint64_t) * 4) {
               lres[0] = ~lres[0];
@@ -595,23 +678,89 @@ rocksdb::Status Bitmap::BitOp(engine::Context &ctx, BitOpFlags op_flag, const st
 
         uint8_t output = 0, byte = 0;
         for (; j < frag_maxlen; j++) {
-          output = (fragments[0].size() <= j) ? 0 : fragments[0][j];
-          if (op_flag == kBitOpNot) output = ~output;
-          for (uint64_t i = 1; i < frag_numkeys; i++) {
-            byte = (fragments[i].size() <= j) ? 0 : fragments[i][j];
-            switch (op_flag) {
-              case kBitOpAnd:
+          switch (op_flag) {
+            case kBitOpAnd:
+              output = (fragments[0].size() <= j) ? 0 : fragments[0][j];
+              for (uint64_t i = 1; i < frag_numkeys; i++) {
+                byte = (fragments[i].size() <= j) ? 0 : fragments[i][j];
                 output &= byte;
-                break;
-              case kBitOpOr:
+              }
+              break;
+            case kBitOpOr:
+              output = (fragments[0].size() <= j) ? 0 : fragments[0][j];
+              for (uint64_t i = 1; i < frag_numkeys; i++) {
+                byte = (fragments[i].size() <= j) ? 0 : fragments[i][j];
                 output |= byte;
-                break;
-              case kBitOpXor:
+              }
+              break;
+            case kBitOpXor:
+              output = (fragments[0].size() <= j) ? 0 : fragments[0][j];
+              for (uint64_t i = 1; i < frag_numkeys; i++) {
+                byte = (fragments[i].size() <= j) ? 0 : fragments[i][j];
                 output ^= byte;
-                break;
-              default:
-                break;
+              }
+              break;
+            case kBitOpNot:
+              output = (fragments[0].size() <= j) ? 0 : fragments[0][j];
+              output = ~output;
+              break;
+            case kBitOpDiff: {
+              // DIFF: dest[i] = X[i] & ~(Y1[i] | Y2[i] | ...)
+              // BITOP DIFF destkey X [Y1 Y2 ...]
+              uint8_t x = (fragments[0].size() <= j) ? 0 : fragments[0][j];
+              uint8_t y_or = 0;
+              for (uint64_t i = 1; i < frag_numkeys; i++) {
+                byte = (fragments[i].size() <= j) ? 0 : fragments[i][j];
+                y_or |= byte;
+              }
+              output = x & ~y_or;
+              break;
             }
+            case kBitOpDiff1: {
+              // DIFF1: dest[i] = (Y1[i] | Y2[i] | ...) & ~X[i]
+              // BITOP DIFF1 destkey X [Y1 Y2 ...]
+              uint8_t x = (fragments[0].size() <= j) ? 0 : fragments[0][j];
+              uint8_t y_or = 0;
+              for (uint64_t i = 1; i < frag_numkeys; i++) {
+                byte = (fragments[i].size() <= j) ? 0 : fragments[i][j];
+                y_or |= byte;
+              }
+              output = y_or & ~x;
+              break;
+            }
+            case kBitOpAndor: {
+              // ANDOR: dest[i] = X[i] & (Y1[i] | Y2[i] | ...)
+              // BITOP ANDOR destkey X [Y1 Y2 ...]
+              uint8_t x = (fragments[0].size() <= j) ? 0 : fragments[0][j];
+              uint8_t y_or = 0;
+              for (uint64_t i = 1; i < frag_numkeys; i++) {
+                byte = (fragments[i].size() <= j) ? 0 : fragments[i][j];
+                y_or |= byte;
+              }
+              output = x & y_or;
+              break;
+            }
+            case kBitOpOne: {
+              // ONE: dest[i] = 1 if exactly one input has bit set
+              // BITOP ONE destkey X1 [X2 X3 ...]
+              output = 0;
+              for (int bit = 0; bit < 8; bit++) {
+                int count = 0;
+                for (uint64_t i = 0; i < frag_numkeys; i++) {
+                  byte = (fragments[i].size() <= j) ? 0 : fragments[i][j];
+                  if (byte & (1 << bit)) {
+                    count++;
+                  }
+                }
+                if (count == 1) {
+                  output |= (1 << bit);
+                }
+              }
+              break;
+            }
+            default:
+              output = 0;
+              break;
           }
           frag_res[j] = output;
         }

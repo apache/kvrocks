@@ -68,18 +68,19 @@ class Geo : public ZSet {
   rocksdb::Status Pos(engine::Context &ctx, const Slice &user_key, const std::vector<Slice> &members,
                       std::map<std::string, GeoPoint> *geo_points);
   rocksdb::Status Radius(engine::Context &ctx, const Slice &user_key, double longitude, double latitude,
-                         double radius_meters, int count, DistanceSort sort, const std::string &store_key,
-                         bool store_distance, double unit_conversion, std::vector<GeoPoint> *geo_points);
-  rocksdb::Status RadiusByMember(engine::Context &ctx, const Slice &user_key, const Slice &member, double radius_meters,
-                                 int count, DistanceSort sort, const std::string &store_key, bool store_distance,
-                                 double unit_conversion, std::vector<GeoPoint> *geo_points);
-  rocksdb::Status Search(engine::Context &ctx, const Slice &user_key, GeoShape geo_shape, OriginPointType point_type,
-                         std::string &member, int count, DistanceSort sort, bool store_distance, double unit_conversion,
+                         double radius_meters, bool has_count, size_t count, DistanceSort sort,
+                         const std::string &store_key, bool store_distance, double unit_conversion,
                          std::vector<GeoPoint> *geo_points);
+  rocksdb::Status RadiusByMember(engine::Context &ctx, const Slice &user_key, const Slice &member, double radius_meters,
+                                 bool has_count, size_t count, DistanceSort sort, const std::string &store_key,
+                                 bool store_distance, double unit_conversion, std::vector<GeoPoint> *geo_points);
+  rocksdb::Status Search(engine::Context &ctx, const Slice &user_key, GeoShape geo_shape, OriginPointType point_type,
+                         std::string &member, bool has_count, size_t count, DistanceSort sort, bool store_distance,
+                         double unit_conversion, std::vector<GeoPoint> *geo_points);
   rocksdb::Status SearchStore(engine::Context &ctx, const Slice &user_key, GeoShape geo_shape,
-                              OriginPointType point_type, std::string &member, int count, DistanceSort sort,
-                              const std::string &store_key, bool store_distance, double unit_conversion,
-                              std::vector<GeoPoint> *geo_points);
+                              OriginPointType point_type, std::string &member, bool has_count, size_t count,
+                              DistanceSort sort, const std::string &store_key, bool store_distance,
+                              double unit_conversion, std::vector<GeoPoint> *geo_points);
   rocksdb::Status Get(engine::Context &ctx, const Slice &user_key, const Slice &member, GeoPoint *geo_point);
   rocksdb::Status MGet(engine::Context &ctx, const Slice &user_key, const std::vector<Slice> &members,
                        std::map<std::string, GeoPoint> *geo_points);

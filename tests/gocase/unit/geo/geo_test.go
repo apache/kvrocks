@@ -297,6 +297,13 @@ var testGeo = func(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.EqualValues(t, []redis.GeoLocation([]redis.GeoLocation{{Name: "central park n/q/r", Longitude: 0, Latitude: 0, Dist: 0, GeoHash: 0}, {Name: "4545", Longitude: 0, Latitude: 0, Dist: 0, GeoHash: 0}, {Name: "union square", Longitude: 0, Latitude: 0, Dist: 0, GeoHash: 0}}), rdb.GeoRadius(ctx, "count_points", -73.9798091, 40.7598464, &redis.GeoRadiusQuery{Radius: 3, Unit: "km", Sort: "asc", Count: 10}).Val())
 	})
 
+	t.Run("GEORADIUS with non-positive COUNT returns parse error", func(t *testing.T) {
+		for _, count := range []string{"0", "-1"} {
+			require.EqualError(t, rdb.Do(ctx, "GEORADIUS", "nyc", -73.9798091, 40.7598464, 3, "km", "COUNT", count).Err(),
+				"ERR COUNT must be > 0")
+		}
+	})
+
 	t.Run("GEORADIUS HUGE, (redis issue #2767)", func(t *testing.T) {
 		require.NoError(t, rdb.GeoAdd(ctx, "users", &redis.GeoLocation{Name: "user_000000", Longitude: -47.271613776683807, Latitude: -54.534504198047678}).Err())
 		require.EqualValues(t, 1, len(rdb.GeoRadius(ctx, "users", 0, 0, &redis.GeoRadiusQuery{Radius: 50000, Unit: "km", WithCoord: true}).Val()))
@@ -349,6 +356,13 @@ var testGeo = func(t *testing.T, configs util.KvrocksServerConfigs) {
 			&redis.GeoLocation{Name: "lic market", Longitude: -73.9454966, Latitude: 40.747533}).Val())
 
 		require.EqualValues(t, []redis.GeoLocation([]redis.GeoLocation{{Name: "wtc one", Longitude: 0, Latitude: 0, Dist: 0, GeoHash: 0}, {Name: "union square", Longitude: 0, Latitude: 0, Dist: 0, GeoHash: 0}, {Name: "4545", Longitude: 0, Latitude: 0, Dist: 0, GeoHash: 0}, {Name: "central park n/q/r", Longitude: 0, Latitude: 0, Dist: 0, GeoHash: 0}, {Name: "lic market", Longitude: 0, Latitude: 0, Dist: 0, GeoHash: 0}}), rdb.GeoRadiusByMember(ctx, "count_member_points", "wtc one", &redis.GeoRadiusQuery{Radius: 7, Unit: "km", Count: 10}).Val())
+	})
+
+	t.Run("GEORADIUSBYMEMBER with non-positive COUNT returns parse error", func(t *testing.T) {
+		for _, count := range []string{"0", "-1"} {
+			require.EqualError(t, rdb.Do(ctx, "GEORADIUSBYMEMBER", "nyc", "wtc one", 7, "km", "COUNT", count).Err(),
+				"ERR COUNT must be > 0")
+		}
 	})
 
 	t.Run("GEORADIUSBYMEMBER store option", func(t *testing.T) {
@@ -447,6 +461,14 @@ var testGeo = func(t *testing.T, configs util.KvrocksServerConfigs) {
 			rdb.GeoSearch(ctx, "points", &redis.GeoSearchQuery{BoxWidth: 200, BoxHeight: 200, BoxUnit: "km", Member: "Washington", Sort: "DESC"}).Val())
 	})
 
+	t.Run("GEOSEARCH with non-positive COUNT returns parse error", func(t *testing.T) {
+		for _, count := range []string{"0", "-1"} {
+			require.EqualError(t,
+				rdb.Do(ctx, "GEOSEARCH", "points", "FROMMEMBER", "Washington", "BYBOX", 200, 200, "km", "COUNT", count).Err(),
+				"ERR COUNT must be > 0")
+		}
+	})
+
 	t.Run("GEOSEARCHSTORE errors", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "points").Err())
 		require.NoError(t, rdb.Del(ctx, "points2").Err())
@@ -525,6 +547,13 @@ var testGeo = func(t *testing.T, configs util.KvrocksServerConfigs) {
 			}).Val())
 		require.EqualValues(t, 1, rdb.ZCard(ctx, "points2").Val())
 		require.EqualValues(t, []string{"Baltimore"}, rdb.ZRange(ctx, "points2", 0, -1).Val())
+	})
+
+	t.Run("GEOSEARCHSTORE with non-positive COUNT returns parse error", func(t *testing.T) {
+		for _, count := range []string{"0", "-1"} {
+			require.EqualError(t, rdb.Do(ctx, "GEOSEARCHSTORE", "dst", "points", "FROMMEMBER", "Washington",
+				"BYBOX", 200, 200, "km", "COUNT", count).Err(), "ERR COUNT must be > 0")
+		}
 	})
 
 	t.Run("GEOSEARCHSTORE will overwrite the dst key", func(t *testing.T) {

@@ -349,3 +349,60 @@ func TestMultiServerIntrospection(t *testing.T) {
 		}, 5*time.Second, 100*time.Millisecond)
 	})
 }
+
+func TestWalGet(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{})
+	defer srv.Close()
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+	for _, args := range [][]interface{}{
+		{"walget"}, {"walget", "0"}, {"walget", "-1"}, {"walget", "abc"},
+		{"walget", "18446744073709551616"}, {"walget", "1", "bad"},
+		{"walget", "1", "detail", "extra"}, {"walget", "18446744073709551615"},
+	} {
+		require.Error(t, rdb.Do(ctx, args...).Err())
+	}
+	require.NoError(t, rdb.MSet(ctx, "wal-key-1", "value-1", "wal-key-2", "value-2").Err())
+	latest, err := strconv.ParseInt(util.FindInfoEntry(rdb, "master_repl_offset", "replication"), 10, 64)
+	require.NoError(t, err)
+	require.Positive(t, latest)
+	detail, err := rdb.Do(ctx, "walget", latest, "DeTaIl").StringSlice()
+	require.NoError(t, err)
+	require.Contains(t, strings.Join(detail, "\n"), "user_key=wal-key-1")
+	require.Contains(t, strings.Join(detail, "\n"), "user_value=value-2")
+	start := strings.TrimPrefix(detail[0], "start_seq=")
+	first, err := rdb.Do(ctx, "walget", start, "detail").StringSlice()
+	require.NoError(t, err)
+	require.Equal(t, first, detail)
+	summary, err := rdb.Do(ctx, "walget", latest).StringSlice()
+	require.NoError(t, err)
+	require.NotContains(t, strings.Join(summary, "\n"), "user_value=")
+}
+
+func TestWalGetPropagate(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{})
+	defer srv.Close()
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+	source := "return 42"
+	sha, err := rdb.ScriptLoad(ctx, source).Result()
+	require.NoError(t, err)
+	latest := util.FindInfoEntry(rdb, "master_repl_offset", "replication")
+	detail, err := rdb.Do(ctx, "walget", latest, "detail").StringSlice()
+	require.NoError(t, err)
+	output := strings.Join(detail, "\n")
+	require.Contains(t, output, "cf=propagate")
+	require.Contains(t, output, "propagate_type=lua_script")
+	require.Contains(t, output, "sha="+sha)
+	require.Contains(t, output, "source="+source)
+	require.NoError(t, rdb.ScriptFlush(ctx).Err())
+	latest = util.FindInfoEntry(rdb, "master_repl_offset", "replication")
+	detail, err = rdb.Do(ctx, "walget", latest, "detail").StringSlice()
+	require.NoError(t, err)
+	output = strings.ToLower(strings.Join(detail, "\n"))
+	require.Contains(t, output, "propagate_type=command")
+	require.Contains(t, output, "command_arg_0=script")
+	require.Contains(t, output, "command_arg_1=flush")
+}

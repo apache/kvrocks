@@ -1780,8 +1780,36 @@ class CommandLatency : public Commander {
   }
 };
 
+class CommandWalGet : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() > 3 || (args.size() == 3 && !util::EqualICase(args[2], "detail"))) {
+      return {Status::RedisParseErr, "syntax error"};
+    }
+    auto seq = ParseInt<uint64_t>(args[1], 10);
+    if (!seq || *seq == 0) return {Status::RedisParseErr, errValueNotInteger};
+    seq_ = *seq;
+    detail_ = args.size() == 3;
+    return Status::OK();
+  }
+
+  Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, [[maybe_unused]] Connection *conn,
+                 std::string *output) override {
+    std::vector<std::string> entries;
+    auto s = srv->storage->WalGet(seq_, detail_, &entries);
+    if (!s.IsOK()) return s;
+    *output = redis::ArrayOfBulkStrings(entries);
+    return Status::OK();
+  }
+
+ private:
+  uint64_t seq_ = 0;
+  bool detail_ = false;
+};
+
 REDIS_REGISTER_COMMANDS(
-    Server, MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loading auth", NO_KEY),
+    Server, MakeCmdAttr<CommandWalGet>("walget", -2, "read-only no-multi no-script admin", NO_KEY),
+    MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loading auth", NO_KEY),
     MakeCmdAttr<CommandPing>("ping", -1, "read-only", NO_KEY),
     MakeCmdAttr<CommandSelect>("select", 2, "read-only", NO_KEY),
     MakeCmdAttr<CommandInfo>("info", -1, "read-only ok-loading", NO_KEY),

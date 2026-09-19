@@ -69,6 +69,7 @@ github:
     '2.14': {}
     '2.15': {}
     '2.16': {}
+    '2.17': {}
 
 notifications:
   commits:      commits@kvrocks.apache.org

@@ -30,6 +30,7 @@
 #include <csignal>
 #include <future>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -40,6 +41,7 @@
 #include "fmt/ostream.h"
 #include "io_util.h"
 #include "logging.h"
+#include "parse_util.h"
 #include "rocksdb/write_batch.h"
 #include "rocksdb_crc32c.h"
 #include "scope_exit.h"
@@ -47,6 +49,7 @@
 #include "server/server.h"
 #include "status.h"
 #include "storage/batch_debugger.h"
+#include "storage/redis_db.h"
 #include "thread_util.h"
 #include "time_util.h"
 #include "unique_fd.h"
@@ -56,6 +59,44 @@
 #include <openssl/err.h>
 #include <openssl/ssl.h>
 #endif
+
+namespace {
+
+struct ParsedKeyspaceEventContext {
+  KeyspaceEventType type_flag;
+  std::string_view event;
+};
+
+std::optional<ParsedKeyspaceEventContext> ParseKeyspaceEventContext(const rocksdb::Slice &blob) {
+  if (blob.empty() || ServerLogData::IsServerLogData(blob.data())) return std::nullopt;
+
+  redis::WriteBatchLogData log_data;
+  if (!log_data.Decode(blob).IsOK()) return std::nullopt;
+
+  const auto *args = log_data.GetArguments();
+  if (args->empty()) return std::nullopt;
+
+  auto command = ParseInt<int>(args->front(), 10);
+  if (!command) return std::nullopt;
+
+  switch (static_cast<RedisCommand>(*command)) {
+    case kRedisCmdSet:
+      if (log_data.GetRedisType() == kRedisString) {
+        return ParsedKeyspaceEventContext{kNotifyString, "set"};
+      }
+      break;
+    case kRedisCmdDel:
+      if (log_data.GetRedisType() == kRedisNone) {
+        return ParsedKeyspaceEventContext{kNotifyGeneric, "del"};
+      }
+      break;
+    default:
+      break;
+  }
+  return std::nullopt;
+}
+
+}  // namespace
 
 FeedSlaveThread::FeedSlaveThread(Server *srv, redis::Connection *conn, rocksdb::SequenceNumber next_repl_seq)
     : srv_(srv),
@@ -1155,7 +1196,10 @@ void ReplicationThread::TimerCB(int, int16_t) {
 }
 
 Status ReplicationThread::parseWriteBatch(const rocksdb::WriteBatch &write_batch) {
-  WriteBatchHandler write_batch_handler;
+  const auto *config = srv_->GetConfig();
+  const bool keyspace_notifications_enabled = config->notify_keyspace_event_channels != kNotifyNoChannel &&
+                                              (config->notify_keyspace_event_types & kNotifyAll) != 0;
+  WriteBatchHandler write_batch_handler(keyspace_notifications_enabled);
 
   auto db_status = write_batch.Iterate(&write_batch_handler);
   if (!db_status.ok()) return {Status::NotOK, "failed to iterate over write batch: " + db_status.ToString()};
@@ -1193,6 +1237,20 @@ Status ReplicationThread::parseWriteBatch(const rocksdb::WriteBatch &write_batch
     case kBatchTypeNone:
       break;
   }
+
+  if (keyspace_notifications_enabled && write_batch_handler.HasKeyspaceEvents()) {
+    KeyspaceEventBatchHandler keyspace_event_handler(storage_->IsSlotIdEncoded());
+    db_status = write_batch.Iterate(&keyspace_event_handler);
+    if (!db_status.ok()) {
+      WARN("[notify] failed to inspect replicated batch for keyspace notifications: {}", db_status.ToString());
+    } else {
+      for (const auto &event : keyspace_event_handler.Events()) {
+        if ((config->notify_keyspace_event_types & event.type_flag) == 0) continue;
+        srv_->NotifyKeyspaceEvent(
+            KeyspaceEvent(event.type_flag, event.event, config->notify_keyspace_event_channels, event.ns, event.key));
+      }
+    }
+  }
   return Status::OK();
 }
 
@@ -1227,5 +1285,59 @@ rocksdb::Status WriteBatchHandler::PutCF(uint32_t column_family_id, const rocksd
     kv_ = std::make_pair(key.ToString(), value.ToString());
     return rocksdb::Status::OK();
   }
+  return rocksdb::Status::OK();
+}
+
+void WriteBatchHandler::LogData(const rocksdb::Slice &blob) {
+  if (detect_keyspace_events_ && ParseKeyspaceEventContext(blob)) has_keyspace_events_ = true;
+}
+
+void KeyspaceEventBatchHandler::LogData(const rocksdb::Slice &blob) {
+  current_type_flag_ = kNotifyNoType;
+  current_event_ = {};
+
+  auto event_context = ParseKeyspaceEventContext(blob);
+  if (!event_context) return;
+
+  current_type_flag_ = event_context->type_flag;
+  current_event_ = event_context->event;
+}
+
+rocksdb::Status KeyspaceEventBatchHandler::PutCF(uint32_t column_family_id, const rocksdb::Slice &key,
+                                                 const rocksdb::Slice &value) {
+  if (current_event_ == "set") {
+    return handleSet(column_family_id, key, value);
+  } else {
+    return rocksdb::Status::OK();
+  }
+}
+
+rocksdb::Status KeyspaceEventBatchHandler::DeleteCF(uint32_t column_family_id, const rocksdb::Slice &key) {
+  if (current_event_ == "del") {
+    return handleDel(column_family_id, key);
+  } else {
+    return rocksdb::Status::OK();
+  }
+}
+
+rocksdb::Status KeyspaceEventBatchHandler::handleSet(uint32_t column_family_id, const rocksdb::Slice &key,
+                                                     const rocksdb::Slice &value) {
+  if (column_family_id != static_cast<uint32_t>(ColumnFamilyID::Metadata)) return rocksdb::Status::OK();
+
+  Metadata metadata(kRedisNone, false);
+  if (auto s = metadata.Decode(value); !s.ok() || metadata.Type() != kRedisString) {
+    return rocksdb::Status::OK();
+  }
+
+  auto [ns, user_key] = ExtractNamespaceKey<std::string>(key, is_slot_id_encoded_);
+  keyspace_events_.emplace_back(current_type_flag_, current_event_, kNotifyNoChannel, ns, user_key);
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status KeyspaceEventBatchHandler::handleDel(uint32_t column_family_id, const rocksdb::Slice &key) {
+  if (column_family_id != static_cast<uint32_t>(ColumnFamilyID::Metadata)) return rocksdb::Status::OK();
+
+  auto [ns, user_key] = ExtractNamespaceKey<std::string>(key, is_slot_id_encoded_);
+  keyspace_events_.emplace_back(current_type_flag_, current_event_, kNotifyNoChannel, ns, user_key);
   return rocksdb::Status::OK();
 }

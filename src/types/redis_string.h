@@ -138,7 +138,8 @@ class String : public Database {
   rocksdb::Status getRawValue(engine::Context &ctx, const std::string &ns_key, std::string *raw_value);
   std::vector<rocksdb::Status> getRawValues(engine::Context &ctx, const std::vector<Slice> &keys,
                                             std::vector<std::string> *raw_values);
-  rocksdb::Status updateRawValue(engine::Context &ctx, const std::string &ns_key, const std::string &raw_value);
+  rocksdb::Status updateRawValue(engine::Context &ctx, const std::string &ns_key, const std::string &raw_value,
+                                 std::optional<RedisCommand> command = std::nullopt);
 };
 
 }  // namespace redis

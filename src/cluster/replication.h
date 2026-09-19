@@ -27,6 +27,7 @@
 #include <deque>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <tuple>
 #include <utility>
@@ -230,6 +231,8 @@ class ReplicationThread : private EventCallbackBase<ReplicationThread> {
  */
 class WriteBatchHandler : public rocksdb::WriteBatch::Handler {
  public:
+  explicit WriteBatchHandler(bool detect_keyspace_events = false) : detect_keyspace_events_(detect_keyspace_events) {}
+
   rocksdb::Status PutCF(uint32_t column_family_id, const rocksdb::Slice &key, const rocksdb::Slice &value) override;
   rocksdb::Status DeleteCF([[maybe_unused]] uint32_t column_family_id,
                            [[maybe_unused]] const rocksdb::Slice &key) override {
@@ -240,11 +243,39 @@ class WriteBatchHandler : public rocksdb::WriteBatch::Handler {
                                 [[maybe_unused]] const rocksdb::Slice &end_key) override {
     return rocksdb::Status::OK();
   }
+  void LogData(const rocksdb::Slice &blob) override;
   WriteBatchType Type() { return type_; }
   std::string Key() const { return kv_.first; }
   std::string Value() const { return kv_.second; }
+  bool HasKeyspaceEvents() const { return has_keyspace_events_; }
 
  private:
   std::pair<std::string, std::string> kv_;
   WriteBatchType type_ = kBatchTypeNone;
+  bool detect_keyspace_events_ = false;
+  bool has_keyspace_events_ = false;
+};
+
+class KeyspaceEventBatchHandler : public rocksdb::WriteBatch::Handler {
+ public:
+  explicit KeyspaceEventBatchHandler(bool is_slot_id_encoded) : is_slot_id_encoded_(is_slot_id_encoded) {}
+
+  rocksdb::Status PutCF(uint32_t column_family_id, const rocksdb::Slice &key, const rocksdb::Slice &value) override;
+  rocksdb::Status DeleteCF(uint32_t column_family_id, const rocksdb::Slice &key) override;
+  rocksdb::Status DeleteRangeCF([[maybe_unused]] uint32_t column_family_id,
+                                [[maybe_unused]] const rocksdb::Slice &begin_key,
+                                [[maybe_unused]] const rocksdb::Slice &end_key) override {
+    return rocksdb::Status::OK();
+  }
+  void LogData(const rocksdb::Slice &blob) override;
+  const std::vector<KeyspaceEvent> &Events() const { return keyspace_events_; }
+
+ private:
+  rocksdb::Status handleSet(uint32_t column_family_id, const rocksdb::Slice &key, const rocksdb::Slice &value);
+  rocksdb::Status handleDel(uint32_t column_family_id, const rocksdb::Slice &key);
+
+  bool is_slot_id_encoded_ = false;
+  KeyspaceEventType current_type_flag_ = kNotifyNoType;
+  std::string_view current_event_;
+  std::vector<KeyspaceEvent> keyspace_events_;
 };

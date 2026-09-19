@@ -233,6 +233,36 @@ func TestKeyspaceNotifyDisabled(t *testing.T) {
 	require.Error(t, rdb.ConfigSet(ctx, "notify-keyspace-events", "KEl").Err())
 }
 
+func TestKeyspaceNotifyOnReplica(t *testing.T) {
+	master := util.StartServer(t, map[string]string{})
+	defer master.Close()
+	masterClient := master.NewClient()
+	defer func() { require.NoError(t, masterClient.Close()) }()
+
+	replica := util.StartServer(t, map[string]string{"notify-keyspace-events": "KEA"})
+	defer replica.Close()
+	replicaClient := replica.NewClient()
+	defer func() { require.NoError(t, replicaClient.Close()) }()
+
+	ctx := context.Background()
+	util.SlaveOf(t, replicaClient, master)
+	util.WaitForSync(t, replicaClient)
+
+	subscriber := replica.NewClient()
+	defer func() { require.NoError(t, subscriber.Close()) }()
+	pubsub := subscriber.PSubscribe(ctx, "__keyspace@0__:*", "__keyevent@0__:*")
+	defer func() { require.NoError(t, pubsub.Close()) }()
+	drainSubscribeConfirms(t, ctx, pubsub, 2)
+
+	require.NoError(t, masterClient.Set(ctx, "replicated-key", "value", 0).Err())
+	expectMessage(t, ctx, pubsub, "__keyspace@0__:replicated-key", "set")
+	expectMessage(t, ctx, pubsub, "__keyevent@0__:set", "replicated-key")
+
+	require.EqualValues(t, 1, masterClient.Del(ctx, "replicated-key").Val())
+	expectMessage(t, ctx, pubsub, "__keyspace@0__:replicated-key", "del")
+	expectMessage(t, ctx, pubsub, "__keyevent@0__:del", "replicated-key")
+}
+
 func TestKeyspaceNotifyRedisDatabases(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{"notify-keyspace-events": "KEA", "redis-databases": "16"})
 	defer srv.Close()

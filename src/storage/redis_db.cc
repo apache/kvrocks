@@ -171,7 +171,7 @@ rocksdb::Status Database::MDel(engine::Context &ctx, const std::vector<Slice> &k
   }
 
   auto batch = storage_->GetWriteBatchBase();
-  WriteBatchLogData log_data(kRedisNone);
+  WriteBatchLogData log_data(kRedisNone, {std::to_string(kRedisCmdDel)});
   auto s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) {
     return s;

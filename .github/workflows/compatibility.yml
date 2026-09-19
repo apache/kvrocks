@@ -24,8 +24,13 @@ on:
     paths:
       - '.github/workflows/compatibility.yml'
       - 'Dockerfile'
+      - 'x.py'
+      - 'CMakeLists.txt'
+      - 'cmake/**'
       - 'kvrocks.conf'
       - 'src/**'
+      - 'tests/gocase/go.mod'
+      - 'tests/gocase/go.sum'
       - 'tests/gocase/integration/compatibility/**'
   release:
     types: [published]

@@ -126,7 +126,8 @@ func TestPollUpdatesHashFieldExpiration(t *testing.T) {
 			})
 
 			t.Run("key TTL and hash log arguments coexist", func(t *testing.T) {
-				at := time.Now().Add(time.Minute).UnixMilli()
+				// Legacy metadata stores key expiration with second precision.
+				at := time.Now().Add(time.Minute).Truncate(time.Second).UnixMilli()
 				require.NoError(t, src.HSet(ctx, "key-ttl", "f", "v").Err())
 				require.NoError(t, src.Do(ctx, "PEXPIREAT", "key-ttl", at).Err())
 				require.NoError(t, src.HSet(ctx, "key-ttl", "g", "w").Err())

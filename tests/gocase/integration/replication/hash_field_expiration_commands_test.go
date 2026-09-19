@@ -47,6 +47,117 @@ func waitForHashFieldToExpire(t *testing.T, rdb *redis.Client, ctx context.Conte
 	}, 5*time.Second, 50*time.Millisecond)
 }
 
+func TestHashFieldExpirationReplication(t *testing.T) {
+	ctx := context.Background()
+	master := util.StartServer(t, util.KvrocksServerConfigs{
+		"hash-encoding-mode":               "legacy",
+		"rocksdb.disable_auto_compactions": "yes",
+		"use-rsid-psync":                   "yes",
+	})
+	defer master.Close()
+	masterClient := master.NewClient()
+	defer func() { require.NoError(t, masterClient.Close()) }()
+
+	replica := util.StartServer(t, util.KvrocksServerConfigs{
+		"hash-encoding-mode":               "legacy",
+		"rocksdb.disable_auto_compactions": "yes",
+		"use-rsid-psync":                   "yes",
+	})
+	defer replica.Close()
+	replicaClient := replica.NewClient()
+	defer func() { require.NoError(t, replicaClient.Close()) }()
+
+	legacyKey := "legacy-hash"
+	binaryValue := "\x00\x00\x00\x00\x00\x00\x00\x00value\xff"
+	require.NoError(t, masterClient.HSet(ctx, legacyKey, "field", binaryValue).Err())
+	require.NoError(t, masterClient.ConfigSet(ctx, "hash-encoding-mode", "field-expiration").Err())
+	key := "hfe-hash"
+	require.NoError(t, masterClient.HSet(ctx, key, "persistent", binaryValue, "live", "10", "expired", "gone").Err())
+	expireAt := time.Now().Add(10 * time.Minute).UnixMilli()
+	require.NoError(t, masterClient.Do(ctx, "hpexpireat", key, expireAt, "FIELDS", 1, "live").Err())
+	expiredValue, err := masterClient.HGet(ctx, key, "expired").Result()
+	require.NoError(t, err)
+	require.Equal(t, "gone", expiredValue)
+	expiredResult, err := masterClient.Do(ctx, "hpexpire", key, 1000, "FIELDS", 1, "expired").Result()
+	require.NoError(t, err)
+	requireHFEArray(t, expiredResult, int64(1))
+	require.NoError(t, masterClient.PExpireAt(ctx, key, time.Now().Add(20*time.Minute)).Err())
+	// This field must already be expired on the source before the checkpoint is taken.
+	waitForHashFieldToExpire(t, masterClient, ctx, key, "expired")
+
+	metadata := util.GetKMetadata(t, masterClient, ctx, key)
+	require.Equal(t, "field-expiration", metadata.Mode)
+	require.Equal(t, int64(3), metadata.Size)
+	require.Equal(t, int64(1), metadata.Persist)
+
+	requireReplicatedHash := func(t *testing.T, values map[string]string, expires ...interface{}) {
+		t.Helper()
+		util.WaitForOffsetSync(t, masterClient, replicaClient, 5*time.Second)
+		got, err := replicaClient.HGetAll(ctx, key).Result()
+		require.NoError(t, err)
+		require.Equal(t, values, got)
+		fieldExpires, err := replicaClient.Do(ctx, "hpexpiretime", key, "FIELDS", 3, "persistent", "live", "expired").Result()
+		require.NoError(t, err)
+		requireHFEArray(t, fieldExpires, expires...)
+		require.Equal(t, util.GetKMetadata(t, masterClient, ctx, key), util.GetKMetadata(t, replicaClient, ctx, key))
+	}
+
+	expiringKey := "hfe-full-sync-expiry"
+	require.NoError(t, masterClient.HSet(ctx, expiringKey, "field", "value", "keeper", "persistent").Err())
+	fieldExpireAt := time.Now().Add(3 * time.Second).UnixMilli()
+	require.NoError(t, masterClient.Do(ctx, "hpexpireat", expiringKey, fieldExpireAt, "FIELDS", 1, "field").Err())
+
+	// Distinct replication histories force a checkpoint transfer even while the source WAL is retained.
+	util.SlaveOf(t, replicaClient, master)
+	util.WaitForSync(t, replicaClient)
+	require.Equal(t, "1", util.FindInfoEntry(masterClient, "sync_full"))
+	requireReplicatedHash(t, map[string]string{"persistent": binaryValue, "live": "10"}, int64(-1), expireAt, int64(-2))
+	require.Equal(t, metadata, util.GetKMetadata(t, replicaClient, ctx, key))
+	got, err := replicaClient.HGet(ctx, legacyKey, "field").Result()
+	require.NoError(t, err)
+	require.Equal(t, binaryValue, got)
+	require.Equal(t, "legacy", util.GetKMetadata(t, replicaClient, ctx, legacyKey).Mode)
+
+	got, err = replicaClient.HGet(ctx, expiringKey, "field").Result()
+	require.NoError(t, err)
+	require.Equal(t, "value", got)
+	fieldExpires, err := replicaClient.Do(ctx, "hpexpiretime", expiringKey, "FIELDS", 1, "field").Result()
+	require.NoError(t, err)
+	requireHFEArray(t, fieldExpires, fieldExpireAt)
+	waitForHashFieldToExpire(t, replicaClient, ctx, expiringKey, "field")
+	require.GreaterOrEqual(t, time.Now().UnixMilli(), fieldExpireAt)
+	fields, err := replicaClient.HGetAll(ctx, expiringKey).Result()
+	require.NoError(t, err)
+	require.Equal(t, map[string]string{"keeper": "persistent"}, fields)
+
+	// Subsequent updates must use WAL replication without another full sync.
+	require.NoError(t, masterClient.HIncrBy(ctx, key, "live", 5).Err())
+	requireReplicatedHash(t, map[string]string{"persistent": binaryValue, "live": "15"}, int64(-1), expireAt, int64(-2))
+	require.Equal(t, metadata, util.GetKMetadata(t, replicaClient, ctx, key))
+
+	require.NoError(t, masterClient.Do(ctx, "hpexpireat", key, expireAt, "FIELDS", 1, "persistent").Err())
+	requireReplicatedHash(t, map[string]string{"persistent": binaryValue, "live": "15"}, expireAt, expireAt, int64(-2))
+	require.NoError(t, masterClient.Do(ctx, "hpersist", key, "FIELDS", 1, "live").Err())
+	requireReplicatedHash(t, map[string]string{"persistent": binaryValue, "live": "15"}, expireAt, int64(-1), int64(-2))
+	require.NoError(t, masterClient.HSet(ctx, key, "persistent", "updated").Err())
+	requireReplicatedHash(t, map[string]string{"persistent": "updated", "live": "15"}, int64(-1), int64(-1), int64(-2))
+
+	require.NoError(t, masterClient.HSet(ctx, legacyKey, "field", binaryValue+"updated").Err())
+	util.WaitForOffsetSync(t, masterClient, replicaClient, 5*time.Second)
+	got, err = replicaClient.HGet(ctx, legacyKey, "field").Result()
+	require.NoError(t, err)
+	require.Equal(t, binaryValue+"updated", got)
+	require.Equal(t, "legacy", util.GetKMetadata(t, replicaClient, ctx, legacyKey).Mode)
+
+	incrementalExpireAt := time.Now().Add(3 * time.Second).UnixMilli()
+	require.NoError(t, masterClient.Do(ctx, "hpexpireat", key, incrementalExpireAt, "FIELDS", 1, "live").Err())
+	requireReplicatedHash(t, map[string]string{"persistent": "updated", "live": "15"}, int64(-1), incrementalExpireAt, int64(-2))
+	waitForHashFieldToExpire(t, replicaClient, ctx, key, "live")
+	require.GreaterOrEqual(t, time.Now().UnixMilli(), incrementalExpireAt)
+	requireReplicatedHash(t, map[string]string{"persistent": "updated"}, int64(-1), int64(-2), int64(-2))
+	require.Equal(t, "1", util.FindInfoEntry(masterClient, "sync_full"))
+}
+
 func TestHashFieldExpirationHSetExHGetExReplication(t *testing.T) {
 	configs := util.KvrocksServerConfigs{
 		"hash-encoding-mode":               "field-expiration",

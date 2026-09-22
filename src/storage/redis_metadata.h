@@ -99,6 +99,7 @@ enum RedisCommand {
   kRedisCmdBitOp,
   kRedisCmdBitfield,
   kRedisCmdLMove,
+  kRedisCmdHSet,
 };
 
 constexpr const char *kErrMsgWrongType = "WRONGTYPE Operation against a key holding the wrong kind of value";

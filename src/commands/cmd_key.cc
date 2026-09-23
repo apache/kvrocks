@@ -27,6 +27,7 @@
 #include "server/server.h"
 #include "storage/redis_db.h"
 #include "time_util.h"
+#include "types/redis_string.h"
 
 namespace redis {
 
@@ -127,8 +128,26 @@ class CommandMoveX : public Commander {
 
 class CommandObject : public Commander {
  public:
+  Status Parse(const std::vector<std::string> &args) override {
+    subcommand_ = util::ToLower(args[1]);
+    if (subcommand_ == "help" && args.size() == 2) {
+      return Status::OK();
+    }
+    if ((subcommand_ == "dump" || subcommand_ == "encoding") && args.size() == 3) {
+      return Status::OK();
+    }
+    return {Status::RedisInvalidCmd, errUnknownSubcommandOrWrongArguments};
+  }
+
+  static CommandKeyRange Range(const std::vector<std::string> &args) {
+    if (args.size() > 2 && util::ToLower(args[1]) != "help") {
+      return {2, 2, 1};
+    }
+    return {0, 0, 0};
+  }
+
   Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
-    if (util::ToLower(args_[1]) == "dump") {
+    if (subcommand_ == "dump") {
       redis::Database redis(srv->storage, conn->GetNamespace());
       std::vector<std::string> infos;
 
@@ -141,11 +160,73 @@ class CommandObject : public Commander {
       for (const auto &info : infos) {
         output->append(redis::BulkString(info));
       }
-    } else {
-      return {Status::RedisExecErr, "object subcommand must be dump"};
+    } else if (subcommand_ == "encoding") {
+      redis::Database redis(srv->storage, conn->GetNamespace());
+      RedisType type = kRedisNone;
+
+      auto s = redis.Type(ctx, args_[2], &type);
+      if (!s.ok()) {
+        return {Status::RedisExecErr, s.ToString()};
+      }
+
+      switch (type) {
+        case kRedisNone:
+          *output = conn->NilString();
+          break;
+        case kRedisString: {
+          redis::String string_db(srv->storage, conn->GetNamespace());
+          std::string value;
+          s = string_db.Get(ctx, args_[2], &value);
+          if (!s.ok()) {
+            if (s.IsNotFound()) {
+              *output = conn->NilString();
+              return Status::OK();
+            }
+            return {Status::RedisExecErr, s.ToString()};
+          }
+          auto parse_res = ParseInt<int64_t>(value, 10);
+          if (parse_res.IsOK()) {
+            *output = redis::BulkString("int");
+          } else {
+            *output = redis::BulkString("raw");
+          }
+          break;
+        }
+        case kRedisList:
+          *output = redis::BulkString("quicklist");
+          break;
+        case kRedisHash:
+        case kRedisSet:
+          *output = redis::BulkString("hashtable");
+          break;
+        case kRedisZSet:
+          *output = redis::BulkString("skiplist");
+          break;
+        case kRedisStream:
+          *output = redis::BulkString("stream");
+          break;
+        case kRedisJson:
+          *output = redis::BulkString("json");
+          break;
+        default:
+          *output = redis::BulkString("raw");
+          break;
+      }
+    } else if (subcommand_ == "help") {
+      std::vector<std::string> help = {
+          "HELP",
+          "    Print this help message.",
+          "DUMP <key>",
+          "    Return the raw database information about the key.",
+          "ENCODING <key>",
+          "    Return the kind of internal representation used in the storage engine for a key."};
+      *output = redis::ArrayOfBulkStrings(help);
     }
     return Status::OK();
   }
+
+ private:
+  std::string subcommand_;
 };
 
 class CommandTTL : public Commander {
@@ -640,7 +721,7 @@ REDIS_REGISTER_COMMANDS(Key, MakeCmdAttr<CommandTTL>("ttl", 2, "read-only", 1, 1
                         MakeCmdAttr<CommandType>("type", 2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandMove>("move", 3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandMoveX>("movex", 3, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandObject>("object", 3, "read-only", 2, 2, 1),
+                        MakeCmdAttr<CommandObject>("object", -2, "read-only", CommandObject::Range),
                         MakeCmdAttr<CommandExists>("exists", -2, "read-only", 1, -1, 1),
                         MakeCmdAttr<CommandPersist>("persist", 2, "write", 1, 1, 1),
                         MakeCmdAttr<CommandExpire>("expire", 3, "write", 1, 1, 1),

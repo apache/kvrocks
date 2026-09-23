@@ -263,6 +263,21 @@ func TestHashFieldExpirationFiltersReadsWithoutMutatingMetadata(t *testing.T) {
 	})
 }
 
+func TestHashFieldExpirationRecreatesHashWithoutStaleKeyTTL(t *testing.T) {
+	runWithFieldExpirationHash(t, func(t *testing.T, rdb *redis.Client, ctx context.Context) {
+		key := "hfe-recreate-after-expiration"
+		require.Equal(t, int64(1), rdb.HSet(ctx, key, "old", "value").Val())
+		requireIntArray(t, rdb.Do(ctx, "hexpire", key, 120, "FIELDS", 1, "old").Val(), []int64{1})
+		require.NoError(t, rdb.Expire(ctx, key, 60*time.Second).Err())
+		requireIntArray(t, rdb.Do(ctx, "hexpire", key, 2, "FIELDS", 1, "old").Val(), []int64{1})
+		waitHashFieldExpired(t, rdb, ctx, key, "old")
+
+		require.Equal(t, int64(1), rdb.HSet(ctx, key, "new", "value").Val())
+		require.Equal(t, time.Duration(-1), rdb.TTL(ctx, key).Val())
+		require.Equal(t, "value", rdb.HGet(ctx, key, "new").Val())
+	})
+}
+
 func TestHashFieldExpirationWriteCleanupMetadata(t *testing.T) {
 	runWithFieldExpirationHash(t, func(t *testing.T, rdb *redis.Client, ctx context.Context) {
 		makeExpired := func(t *testing.T, key, value string) {

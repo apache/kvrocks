@@ -1024,6 +1024,15 @@ rocksdb::Status Hash::MSet(engine::Context &ctx, const Slice &user_key, const st
   HashMetadata metadata = createMetadataForWrite();
   rocksdb::Status s = getMetadata(ctx, ns_key, &metadata);
   if (!s.ok() && !s.IsNotFound()) return s;
+  if (s.ok() && metadata.IsFieldExpirationEncoding() && metadata.persist == 0 && metadata.size > 0) {
+    uint64_t now = util::GetTimeStampMS();
+    uint64_t live_fields = 0;
+    s = scanAndRepair(ctx, ns_key, &metadata, now, &live_fields);
+    if (!s.ok()) return s;
+    if (live_fields == 0) {
+      metadata = createMetadataForWrite();
+    }
+  }
   bool had_existing_fields = s.ok() && metadata.size > 0;
   bool ttl_updated = false;
   if (expire > 0 && metadata.expire != expire) {

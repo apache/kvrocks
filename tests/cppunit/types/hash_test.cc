@@ -19,6 +19,7 @@
  */
 
 #include <gtest/gtest.h>
+#include <rocksdb/transaction_log.h>
 
 #include <algorithm>
 #include <cassert>
@@ -293,6 +294,183 @@ TEST_F(RedisHashTest, MGetAndMSet) {
   EXPECT_TRUE(s.ok());
   EXPECT_EQ(static_cast<int>(fields_.size()), ret);
   s = hash_->Del(*ctx_, key_);
+}
+
+TEST_F(RedisHashTest, GetDelPreservesRequestOrderWithDuplicatesAndBinaryValues) {
+  const uint64_t now = 4'000'000'000'000;
+  const std::string binary_field("b\0f", 3);
+  const std::string binary_value("v\0x", 3);
+  uint64_t added = 0;
+  auto s =
+      hash_->MSet(*ctx_, key_, {{binary_field, binary_value}, {"", ""}, {"plain", "short"}, {"K", "k"}}, false, &added);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  ASSERT_EQ(added, 4);
+
+  redis::Database db(storage_.get(), "hash_ns");
+  const std::string ns_key = db.AppendNamespacePrefix(key_);
+  HashMetadata before(false);
+  ASSERT_TRUE(db.GetMetadata(*ctx_, {kRedisHash}, ns_key, &before).ok());
+  ASSERT_EQ(before.mode, HashSubkeyEncodingMode::kLegacy);
+  ASSERT_EQ(before.persist, 0);
+
+  const auto sequence = storage_->LatestSeqNumber();
+  std::vector<std::string> values;
+  std::vector<rocksdb::Status> statuses;
+  s = hash_->GetDel(*ctx_, key_, {binary_field, "missing", "", "plain", binary_field, "", "plain"}, &values, &statuses,
+                    now);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  ASSERT_EQ(values.size(), 7);
+  ASSERT_EQ(statuses.size(), 7);
+  EXPECT_TRUE(statuses[0].ok());
+  EXPECT_EQ(values[0], binary_value);
+  EXPECT_TRUE(statuses[2].ok());
+  EXPECT_EQ(values[2], "");
+  EXPECT_TRUE(statuses[3].ok());
+  EXPECT_EQ(values[3], "short");
+  for (size_t i : {1, 4, 5, 6}) {
+    EXPECT_TRUE(statuses[i].IsNotFound()) << statuses[i].ToString();
+  }
+  EXPECT_EQ(storage_->LatestSeqNumber(), sequence + 4);
+
+  HashMetadata after(false);
+  ASSERT_TRUE(db.GetMetadata(*ctx_, {kRedisHash}, ns_key, &after).ok());
+  EXPECT_EQ(after.size, 1);
+  EXPECT_EQ(after.mode, before.mode);
+  EXPECT_EQ(after.version, before.version);
+  EXPECT_EQ(after.expire, before.expire);
+  EXPECT_EQ(after.flags, before.flags);
+  std::string raw_value;
+  for (const auto &field : {binary_field, std::string{}, std::string{"plain"}}) {
+    const auto sub_key = InternalKey(ns_key, field, before.version, storage_->IsSlotIdEncoded()).Encode();
+    EXPECT_TRUE(storage_->Get(*ctx_, ctx_->GetReadOptions(), sub_key, &raw_value).IsNotFound());
+  }
+
+  s = hash_->GetDel(*ctx_, key_, {"K", "K"}, &values, &statuses);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  ASSERT_EQ(values.size(), 2);
+  ASSERT_EQ(statuses.size(), 2);
+  EXPECT_TRUE(statuses[0].ok());
+  EXPECT_EQ(values[0], "k");
+  EXPECT_TRUE(statuses[1].IsNotFound());
+  EXPECT_EQ(storage_->LatestSeqNumber(), sequence + 6);
+  std::string raw_metadata;
+  EXPECT_TRUE(db.GetRawMetadata(*ctx_, ns_key, &raw_metadata).IsNotFound());
+  const auto keeper_key = InternalKey(ns_key, "K", before.version, storage_->IsSlotIdEncoded()).Encode();
+  EXPECT_TRUE(storage_->Get(*ctx_, ctx_->GetReadOptions(), keeper_key, &raw_value).IsNotFound());
+}
+
+TEST_F(RedisHashTest, GetDelMissingAndEmptyRequestsDoNotWrite) {
+  const uint64_t now = 4'000'000'000'000;
+  uint64_t added = 0;
+  ASSERT_TRUE(hash_->Set(*ctx_, key_, "K", "k", &added).ok());
+  redis::Database db(storage_.get(), "hash_ns");
+  std::string raw_before;
+  ASSERT_TRUE(db.GetRawMetadata(*ctx_, db.AppendNamespacePrefix(key_), &raw_before).ok());
+  const auto sequence = storage_->LatestSeqNumber();
+
+  std::vector<std::string> values = {"stale"};
+  std::vector<rocksdb::Status> statuses = {rocksdb::Status::OK()};
+  for (const auto &key : {std::string{"missing-key"}, key_}) {
+    auto s = hash_->GetDel(*ctx_, key, {"M", "M"}, &values, &statuses, now);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    ASSERT_EQ(values.size(), 2);
+    ASSERT_EQ(statuses.size(), 2);
+    EXPECT_TRUE(statuses[0].IsNotFound());
+    EXPECT_TRUE(statuses[1].IsNotFound());
+    EXPECT_EQ(storage_->LatestSeqNumber(), sequence);
+  }
+  auto s = hash_->GetDel(*ctx_, key_, {}, &values, &statuses, now);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  EXPECT_TRUE(values.empty());
+  EXPECT_TRUE(statuses.empty());
+  EXPECT_EQ(storage_->LatestSeqNumber(), sequence);
+  std::string raw_after;
+  ASSERT_TRUE(db.GetRawMetadata(*ctx_, db.AppendNamespacePrefix(key_), &raw_after).ok());
+  EXPECT_EQ(raw_after, raw_before);
+  EXPECT_TRUE(db.GetRawMetadata(*ctx_, db.AppendNamespacePrefix("missing-key"), &raw_after).IsNotFound());
+  std::string value;
+  ASSERT_TRUE(hash_->Get(*ctx_, key_, "K", &value).ok());
+  EXPECT_EQ(value, "k");
+}
+
+TEST_F(RedisHashTest, GetDelUsesActualEncodingAndOneLoggedBatch) {
+  struct BatchHandler : rocksdb::WriteBatch::Handler {
+    rocksdb::Status PutCF(uint32_t cf, const Slice &key, const Slice &) override {
+      puts.emplace_back(cf, key.ToString());
+      return rocksdb::Status::OK();
+    }
+    rocksdb::Status DeleteCF(uint32_t cf, const Slice &key) override {
+      deletes.emplace_back(cf, key.ToString());
+      return rocksdb::Status::OK();
+    }
+    void LogData(const Slice &blob) override { logs.emplace_back(blob.ToString()); }
+    std::vector<std::pair<uint32_t, std::string>> puts;
+    std::vector<std::pair<uint32_t, std::string>> deletes;
+    std::vector<std::string> logs;
+  };
+
+  const uint64_t now = 4'000'000'000'000;
+  redis::Database db(storage_.get(), "hash_ns");
+  auto *metadata_cf = storage_->GetCFHandle(ColumnFamilyID::Metadata);
+  for (auto mode : {HashSubkeyEncodingMode::kLegacy, HashSubkeyEncodingMode::kFieldExpiration}) {
+    SCOPED_TRACE(static_cast<int>(mode));
+    const std::string key = "hgetdel-actual-encoding-" + std::to_string(static_cast<int>(mode));
+    const std::string ns_key = db.AppendNamespacePrefix(key);
+    HashMetadata metadata(true, mode);
+    metadata.size = 2;
+    if (metadata.IsFieldExpirationEncoding()) {
+      metadata.persist = 1;
+      metadata.lower = now + 1;
+      metadata.upper = now + 1;
+    }
+    const auto field_key = InternalKey(ns_key, "f", metadata.version, storage_->IsSlotIdEncoded()).Encode();
+    const auto keeper_key = InternalKey(ns_key, "K", metadata.version, storage_->IsSlotIdEncoded()).Encode();
+    std::string encoded_metadata;
+    metadata.Encode(&encoded_metadata);
+    auto batch = storage_->GetWriteBatchBase();
+    ASSERT_TRUE(batch->Put(metadata_cf, ns_key, encoded_metadata).ok());
+    ASSERT_TRUE(batch->Put(field_key, metadata.EncodeSubkeyValue("value", metadata.lower)).ok());
+    ASSERT_TRUE(batch->Put(keeper_key, metadata.EncodeSubkeyValue("k")).ok());
+    ASSERT_TRUE(storage_->Write(*ctx_, storage_->DefaultWriteOptions(), batch->GetWriteBatch()).ok());
+    const auto sequence = storage_->LatestSeqNumber();
+
+    std::vector<std::string> values;
+    std::vector<rocksdb::Status> statuses;
+    auto s = hash_->GetDel(*ctx_, key, {"f", "f"}, &values, &statuses, now);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    ASSERT_EQ(values.size(), 2);
+    ASSERT_EQ(statuses.size(), 2);
+    EXPECT_EQ(values[0], "value");
+    EXPECT_TRUE(statuses[0].ok());
+    EXPECT_TRUE(statuses[1].IsNotFound());
+    EXPECT_EQ(storage_->LatestSeqNumber(), sequence + 2);
+    HashMetadata after(false);
+    ASSERT_TRUE(db.GetMetadata(*ctx_, {kRedisHash}, ns_key, &after).ok());
+    EXPECT_EQ(after.mode, mode);
+    EXPECT_EQ(after.size, 1);
+    EXPECT_EQ(after.persist, metadata.IsFieldExpirationEncoding() ? 1 : 0);
+    EXPECT_EQ(after.lower, 0);
+    EXPECT_EQ(after.upper, 0);
+    EXPECT_EQ(after.version, metadata.version);
+
+    std::unique_ptr<rocksdb::TransactionLogIterator> iter;
+    s = storage_->GetDB()->GetUpdatesSince(sequence + 1, &iter);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    ASSERT_TRUE(iter->Valid());
+    auto result = iter->GetBatch();
+    EXPECT_EQ(result.sequence, sequence + 1);
+    ASSERT_NE(result.writeBatchPtr, nullptr);
+    EXPECT_EQ(result.writeBatchPtr->Count(), 2);
+    BatchHandler handler;
+    ASSERT_TRUE(result.writeBatchPtr->Iterate(&handler).ok());
+    EXPECT_EQ(handler.puts, (std::vector<std::pair<uint32_t, std::string>>{{metadata_cf->GetID(), ns_key}}));
+    EXPECT_EQ(handler.deletes, (std::vector<std::pair<uint32_t, std::string>>{
+                                   {storage_->GetDB()->DefaultColumnFamily()->GetID(), field_key}}));
+    EXPECT_EQ(std::count(handler.logs.begin(), handler.logs.end(), redis::WriteBatchLogData(mode).Encode()), 1);
+    iter->Next();
+    EXPECT_FALSE(iter->Valid());
+    EXPECT_TRUE(iter->status().ok()) << iter->status().ToString();
+  }
 }
 
 TEST_F(RedisHashTest, MSetAndDeleteRepeated) {
@@ -937,6 +1115,256 @@ TEST_F(RedisHashFieldExpirationEncodingTest, DeleteHandlesPersistentLiveExpiredM
   ASSERT_EQ(fields.size(), 1);
   EXPECT_EQ(fields[0].field, "keeper");
   EXPECT_EQ(fields[0].value, "4");
+}
+
+TEST_F(RedisHashFieldExpirationEncodingTest, GetDelHandlesAllFieldStatesAndDuplicatesInRequestOrder) {
+  const std::string key = "hgetdel-state-matrix";
+  const uint64_t now = 4'000'000'000'000;
+  createFourStateHash(key, now - 1, now + 60'000);
+  const auto sequence = storage_->LatestSeqNumber();
+
+  std::vector<std::string> values;
+  std::vector<rocksdb::Status> statuses;
+  auto s = hash_->GetDel(*ctx_, key, {"L", "X", "P", "X", "L", "M", "P"}, &values, &statuses, now);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  expectGetResults(values, statuses, {"l", std::nullopt, "p", std::nullopt, std::nullopt, std::nullopt, std::nullopt});
+  EXPECT_EQ(storage_->LatestSeqNumber(), sequence + 4);
+  expectHashMetadata(key, 1, 1, 0, 0);
+  std::string raw_value;
+  for (const auto &field : {"L", "X", "P"}) {
+    EXPECT_TRUE(getRawHashValue(key, field, &raw_value).IsNotFound());
+  }
+  EXPECT_EQ(decodedHashValue(key, "K"), (std::pair<std::string, uint64_t>{"k", 0}));
+
+  s = hash_->GetDel(*ctx_, key, {"L", "X", "P", "M"}, &values, &statuses, now);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  expectGetResults(values, statuses, {std::nullopt, std::nullopt, std::nullopt, std::nullopt});
+  EXPECT_EQ(storage_->LatestSeqNumber(), sequence + 4);
+  expectHashMetadata(key, 1, 1, 0, 0);
+}
+
+TEST_F(RedisHashFieldExpirationEncodingTest, GetDelPreservesKeyIdentityAndRemainingTTLUntilLastDeletion) {
+  const std::string key = "hgetdel-metadata-lifecycle";
+  const uint64_t now = 4'000'000'000'000;
+  const uint64_t expired_at = now - 1;
+  const uint64_t live_expire = now + 60'000;
+  createFourStateHash(key, expired_at, live_expire);
+  HashMetadata before = hashMetadata(key);
+  before.expire = now + 600'000;
+  ASSERT_TRUE(putHashMetadata(key, before).ok());
+
+  std::vector<std::string> values;
+  std::vector<rocksdb::Status> statuses;
+  auto s = hash_->GetDel(*ctx_, key, {"X", "P"}, &values, &statuses, now);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  expectGetResults(values, statuses, {std::nullopt, "p"});
+  expectHashMetadata(key, 2, 1, expired_at, live_expire);
+  HashMetadata after = hashMetadata(key);
+  EXPECT_EQ(after.version, before.version);
+  EXPECT_EQ(after.expire, before.expire);
+  EXPECT_EQ(after.flags, before.flags);
+  EXPECT_EQ(decodedHashValue(key, "L"), (std::pair<std::string, uint64_t>{"l", live_expire}));
+  EXPECT_EQ(decodedHashValue(key, "K"), (std::pair<std::string, uint64_t>{"k", 0}));
+
+  s = hash_->GetDel(*ctx_, key, {"L"}, &values, &statuses, now);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  expectGetResults(values, statuses, {"l"});
+  expectHashMetadata(key, 1, 1, 0, 0);
+  after = hashMetadata(key);
+  EXPECT_EQ(after.version, before.version);
+  EXPECT_EQ(after.expire, before.expire);
+  EXPECT_EQ(after.flags, before.flags);
+
+  s = hash_->GetDel(*ctx_, key, {"K"}, &values, &statuses, now);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  expectGetResults(values, statuses, {"k"});
+  std::string raw_value;
+  EXPECT_TRUE(db_->GetRawMetadata(*ctx_, db_->AppendNamespacePrefix(key), &raw_value).IsNotFound());
+  for (const auto &field : {"P", "L", "X", "K"}) {
+    EXPECT_TRUE(storage_->Get(*ctx_, ctx_->GetReadOptions(), hashSubKey(key, field, before), &raw_value).IsNotFound());
+  }
+}
+
+TEST_F(RedisHashFieldExpirationEncodingTest, GetDelCleansExpiredPhysicalOnceButNeverConsumesGhosts) {
+  const std::string key = "hgetdel-expired-and-ghost";
+  const uint64_t now = 4'000'000'000'000;
+  const uint64_t expired_at = now - 2;
+  const uint64_t ghost_expire = now - 1;
+  createKeeperAndGhost(key, ghost_expire);
+  uint64_t added = 0;
+  ASSERT_TRUE(hash_->Set(*ctx_, key, "X", "x", &added).ok());
+  ASSERT_EQ(added, 1);
+  ASSERT_TRUE(putRawHashValue(key, "X", expired_at, "x").ok());
+  HashMetadata before = hashMetadata(key);
+  before.persist = 1;
+  before.lower = expired_at;
+  ASSERT_TRUE(putHashMetadata(key, before).ok());
+  const auto sequence = storage_->LatestSeqNumber();
+  std::string raw_before;
+  ASSERT_TRUE(db_->GetRawMetadata(*ctx_, db_->AppendNamespacePrefix(key), &raw_before).ok());
+
+  std::vector<std::string> values;
+  std::vector<rocksdb::Status> statuses;
+  auto s = hash_->GetDel(*ctx_, key, {"G", "M", "G"}, &values, &statuses, now);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  expectGetResults(values, statuses, {std::nullopt, std::nullopt, std::nullopt});
+  EXPECT_EQ(storage_->LatestSeqNumber(), sequence);
+  std::string raw_after;
+  ASSERT_TRUE(db_->GetRawMetadata(*ctx_, db_->AppendNamespacePrefix(key), &raw_after).ok());
+  EXPECT_EQ(raw_after, raw_before);
+  EXPECT_EQ(decodedHashValue(key, "X"), (std::pair<std::string, uint64_t>{"x", expired_at}));
+
+  s = hash_->GetDel(*ctx_, key, {"X", "G", "X", "M"}, &values, &statuses, now);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  expectGetResults(values, statuses, {std::nullopt, std::nullopt, std::nullopt, std::nullopt});
+  EXPECT_EQ(storage_->LatestSeqNumber(), sequence + 2);
+  expectHashMetadata(key, 2, 1, expired_at, ghost_expire);
+  std::string raw_value;
+  EXPECT_TRUE(getRawHashValue(key, "X", &raw_value).IsNotFound());
+  EXPECT_TRUE(getRawHashValue(key, "G", &raw_value).IsNotFound());
+  EXPECT_EQ(decodedHashValue(key, "K"), (std::pair<std::string, uint64_t>{"k", 0}));
+
+  s = hash_->GetDel(*ctx_, key, {"X", "G", "X", "M"}, &values, &statuses, now);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  expectGetResults(values, statuses, {std::nullopt, std::nullopt, std::nullopt, std::nullopt});
+  EXPECT_EQ(storage_->LatestSeqNumber(), sequence + 2);
+  expectHashMetadata(key, 2, 1, expired_at, ghost_expire);
+}
+
+TEST_F(RedisHashFieldExpirationEncodingTest, GetDelDeletesLastTTLFieldAtExpiryBoundaries) {
+  const uint64_t now = 4'000'000'000'000;
+  for (uint64_t expire : {now - 1, now, now + 1}) {
+    SCOPED_TRACE(expire);
+    const std::string key = "hgetdel-expiry-boundary-" + std::to_string(expire);
+    uint64_t added = 0;
+    ASSERT_TRUE(hash_->Set(*ctx_, key, "f", "value", &added).ok());
+    ASSERT_EQ(added, 1);
+    ASSERT_TRUE(putRawHashValue(key, "f", expire, "value").ok());
+    HashMetadata metadata = hashMetadata(key);
+    metadata.persist = 0;
+    metadata.lower = expire;
+    metadata.upper = expire;
+    ASSERT_TRUE(putHashMetadata(key, metadata).ok());
+    const auto sequence = storage_->LatestSeqNumber();
+
+    std::vector<std::string> values;
+    std::vector<rocksdb::Status> statuses;
+    auto s = hash_->GetDel(*ctx_, key, {"f", "f", "M"}, &values, &statuses, now);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    const std::optional<std::string> expected = expire < now ? std::nullopt : std::make_optional<std::string>("value");
+    expectGetResults(values, statuses, {expected, std::nullopt, std::nullopt});
+    EXPECT_EQ(storage_->LatestSeqNumber(), sequence + 2);
+    std::string raw_value;
+    EXPECT_TRUE(db_->GetRawMetadata(*ctx_, db_->AppendNamespacePrefix(key), &raw_value).IsNotFound());
+    EXPECT_TRUE(storage_->Get(*ctx_, ctx_->GetReadOptions(), hashSubKey(key, "f", metadata), &raw_value).IsNotFound());
+  }
+}
+
+TEST_F(RedisHashFieldExpirationEncodingTest, GetDelMetadataErrorsDoNotCommitEarlierDeletions) {
+  const uint64_t now = 4'000'000'000'000;
+  for (const auto &[name, persist, fields] : std::vector<std::tuple<std::string, uint64_t, std::vector<Slice>>>{
+           {"persist-exceeds-size", 5, {"P"}},
+           {"no-persistent-field", 0, {"L", "P"}},
+           {"no-live-ttl-field", 4, {"P", "L"}},
+           {"no-expired-ttl-field", 3, {"L", "X"}},
+       }) {
+    SCOPED_TRACE(name);
+    const std::string key = "hgetdel-invalid-metadata-" + name;
+    createFourStateHash(key, now - 1, now + 60'000);
+    HashMetadata metadata = hashMetadata(key);
+    metadata.persist = persist;
+    if (metadata.size == metadata.persist) {
+      metadata.lower = 0;
+      metadata.upper = 0;
+    }
+    ASSERT_TRUE(putHashMetadata(key, metadata).ok());
+    std::string raw_before;
+    ASSERT_TRUE(db_->GetRawMetadata(*ctx_, db_->AppendNamespacePrefix(key), &raw_before).ok());
+    std::vector<std::pair<std::string, std::string>> field_values;
+    for (const auto &field : {"P", "L", "X", "K"}) {
+      field_values.emplace_back(field, rawHashValue(key, field, &metadata));
+    }
+    const auto sequence = storage_->LatestSeqNumber();
+
+    std::vector<std::string> values;
+    std::vector<rocksdb::Status> statuses;
+    auto s = hash_->GetDel(*ctx_, key, fields, &values, &statuses, now);
+    EXPECT_FALSE(s.ok());
+    EXPECT_EQ(storage_->LatestSeqNumber(), sequence);
+    std::string raw_after;
+    ASSERT_TRUE(db_->GetRawMetadata(*ctx_, db_->AppendNamespacePrefix(key), &raw_after).ok());
+    EXPECT_EQ(raw_after, raw_before);
+    for (const auto &[field, raw_value] : field_values) {
+      EXPECT_EQ(rawHashValue(key, field, &metadata), raw_value);
+    }
+  }
+}
+
+TEST_F(RedisHashFieldExpirationEncodingTest, GetDelMetadataErrorRollsBackSharedTransactionBatch) {
+  const std::string key = "hgetdel-transaction-error";
+  const uint64_t now = 4'000'000'000'000;
+  createFourStateHash(key, now - 1, now + 60'000);
+  HashMetadata metadata = hashMetadata(key);
+  metadata.persist = 0;
+  ASSERT_TRUE(putHashMetadata(key, metadata).ok());
+  std::string raw_before;
+  ASSERT_TRUE(db_->GetRawMetadata(*ctx_, db_->AppendNamespacePrefix(key), &raw_before).ok());
+
+  ASSERT_TRUE(storage_->BeginTxn().IsOK());
+  uint64_t added = 0;
+  ASSERT_TRUE(hash_->Set(*ctx_, "before-getdel", "field", "committed", &added).ok());
+  auto batch = storage_->GetWriteBatchBase();
+  auto count = batch->GetWriteBatch()->Count();
+  std::vector<std::string> values;
+  std::vector<rocksdb::Status> statuses;
+  auto s = hash_->GetDel(*ctx_, key, {"L", "P"}, &values, &statuses, now);
+  EXPECT_TRUE(s.IsCorruption()) << s.ToString();
+  EXPECT_EQ(batch->GetWriteBatch()->Count(), count);
+  ASSERT_TRUE(hash_->Set(*ctx_, "after-getdel", "field", "committed", &added).ok());
+  ASSERT_TRUE(storage_->CommitTxn().IsOK());
+
+  std::string raw_after;
+  ASSERT_TRUE(db_->GetRawMetadata(*ctx_, db_->AppendNamespacePrefix(key), &raw_after).ok());
+  EXPECT_EQ(raw_after, raw_before);
+  EXPECT_EQ(decodedHashValue(key, "L"), (std::pair<std::string, uint64_t>{"l", now + 60'000}));
+  EXPECT_EQ(decodedHashValue(key, "P"), (std::pair<std::string, uint64_t>{"p", 0}));
+  for (const auto &other_key : {"before-getdel", "after-getdel"}) {
+    std::string value;
+    ASSERT_TRUE(hash_->Get(*ctx_, other_key, "field", &value).ok());
+    EXPECT_EQ(value, "committed");
+  }
+}
+
+TEST_F(RedisHashFieldExpirationEncodingTest, GetDelCorruptRawFieldDoesNotCommitEarlierDeletions) {
+  const uint64_t now = 4'000'000'000'000;
+  for (size_t length : {size_t{0}, HashMetadata::kFieldExpirationPrefixSize - 1}) {
+    SCOPED_TRACE(length);
+    const std::string key = "hgetdel-corrupt-field-" + std::to_string(length);
+    createFourStateHash(key, now - 1, now + 60'000);
+    HashMetadata metadata = hashMetadata(key);
+    auto batch = storage_->GetWriteBatchBase();
+    ASSERT_TRUE(batch->Put(hashSubKey(key, "L", metadata), std::string(length, '\0')).ok());
+    ASSERT_TRUE(storage_->Write(*ctx_, storage_->DefaultWriteOptions(), batch->GetWriteBatch()).ok());
+    std::string raw_before;
+    ASSERT_TRUE(db_->GetRawMetadata(*ctx_, db_->AppendNamespacePrefix(key), &raw_before).ok());
+    std::vector<std::pair<std::string, std::string>> field_values;
+    for (const auto &field : {"P", "L", "X", "K"}) {
+      field_values.emplace_back(field, rawHashValue(key, field, &metadata));
+    }
+    const auto sequence = storage_->LatestSeqNumber();
+
+    std::vector<std::string> values;
+    std::vector<rocksdb::Status> statuses;
+    auto s = hash_->GetDel(*ctx_, key, {"P", "X", "L", "L"}, &values, &statuses, now);
+    EXPECT_FALSE(s.ok());
+    EXPECT_EQ(storage_->LatestSeqNumber(), sequence);
+    std::string raw_after;
+    ASSERT_TRUE(db_->GetRawMetadata(*ctx_, db_->AppendNamespacePrefix(key), &raw_after).ok());
+    EXPECT_EQ(raw_after, raw_before);
+    for (const auto &[field, raw_value] : field_values) {
+      EXPECT_EQ(rawHashValue(key, field, &metadata), raw_value);
+    }
+  }
 }
 
 TEST_F(RedisHashFieldExpirationEncodingTest, MSetHandlesPersistentLiveExpiredAndGhostFields) {

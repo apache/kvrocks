@@ -224,3 +224,104 @@ func TestHashFieldExpirationHSetExHGetExReplication(t *testing.T) {
 	require.Equal(t, util.GetKMetadata(t, masterClient, ctx, cleanupKey),
 		util.GetKMetadata(t, replicaClient, ctx, cleanupKey))
 }
+
+func TestHashFieldExpirationHGetDelReplication(t *testing.T) {
+	ctx := context.Background()
+	configs := util.KvrocksServerConfigs{
+		"hash-encoding-mode":               "legacy",
+		"rocksdb.disable_auto_compactions": "yes",
+		"use-rsid-psync":                   "yes",
+	}
+	master := util.StartServer(t, configs)
+	defer master.Close()
+	masterClient := master.NewClient()
+	defer func() { require.NoError(t, masterClient.Close()) }()
+	replica := util.StartServer(t, configs)
+	defer replica.Close()
+	replicaClient := replica.NewClient()
+	defer func() { require.NoError(t, replicaClient.Close()) }()
+
+	modes := []string{"legacy", "field-expiration"}
+	phases := []string{"full-sync", "incremental"}
+	binaryValue := "\x00\x00\x00\x00\x00\x00\x00\x01value\xff"
+	fieldExpireAt := time.Now().Add(10 * time.Minute).UnixMilli()
+	keyExpireAt := time.Now().Add(20 * time.Minute).Truncate(time.Second).UnixMilli()
+	for _, mode := range modes {
+		require.NoError(t, masterClient.ConfigSet(ctx, "hash-encoding-mode", mode).Err())
+		for _, phase := range phases {
+			key := "hgetdel-" + mode + "-" + phase
+			require.NoError(t, masterClient.HSet(ctx, key, "removed", binaryValue, "live", "ttl", "keeper", "persistent").Err())
+			require.NoError(t, masterClient.HSet(ctx, key+"-all", "first", binaryValue, "last", "value").Err())
+			if mode == "field-expiration" {
+				require.NoError(t, masterClient.Do(ctx, "HPEXPIREAT", key, fieldExpireAt, "FIELDS", 2, "removed", "live").Err())
+				require.NoError(t, masterClient.Do(ctx, "HPEXPIREAT", key+"-all", fieldExpireAt, "FIELDS", 1, "last").Err())
+			}
+			require.NoError(t, masterClient.Do(ctx, "PEXPIREAT", key, keyExpireAt).Err())
+		}
+	}
+
+	deleteFields := func(t *testing.T, phase string) {
+		t.Helper()
+		for _, mode := range modes {
+			otherMode := "legacy"
+			if mode == "legacy" {
+				otherMode = "field-expiration"
+			}
+			require.NoError(t, masterClient.ConfigSet(ctx, "hash-encoding-mode", otherMode).Err())
+			key := "hgetdel-" + mode + "-" + phase
+			got, err := masterClient.Do(ctx, "HGETDEL", key, "FIELDS", 3, "removed", "missing", "removed").Result()
+			require.NoError(t, err)
+			requireHFEArray(t, got, binaryValue, nil, nil)
+			got, err = masterClient.Do(ctx, "HGETDEL", key+"-all", "FIELDS", 4, "first", "first", "missing", "last").Result()
+			require.NoError(t, err)
+			requireHFEArray(t, got, binaryValue, nil, nil, "value")
+		}
+	}
+	checkReplicated := func(t *testing.T, phase string) {
+		t.Helper()
+		util.WaitForOffsetSync(t, masterClient, replicaClient, 5*time.Second)
+		for _, mode := range modes {
+			key := "hgetdel-" + mode + "-" + phase
+			for _, client := range []*redis.Client{masterClient, replicaClient} {
+				values, err := client.HGetAll(ctx, key).Result()
+				require.NoError(t, err)
+				require.Equal(t, map[string]string{"live": "ttl", "keeper": "persistent"}, values)
+				exists, err := client.Exists(ctx, key+"-all").Result()
+				require.NoError(t, err)
+				require.Zero(t, exists)
+				at, err := client.Do(ctx, "PEXPIRETIME", key).Int64()
+				require.NoError(t, err)
+				require.Equal(t, keyExpireAt, at)
+				metadata := util.GetKMetadata(t, client, ctx, key)
+				require.Equal(t, mode, metadata.Mode)
+				require.Equal(t, int64(2), metadata.Size)
+				if mode == "field-expiration" {
+					require.Equal(t, int64(1), metadata.Persist)
+					got, err := client.Do(ctx, "HPEXPIRETIME", key, "FIELDS", 3, "removed", "live", "keeper").Result()
+					require.NoError(t, err)
+					requireHFEArray(t, got, int64(-2), fieldExpireAt, int64(-1))
+				}
+			}
+			require.Equal(t, util.GetKMetadata(t, masterClient, ctx, key), util.GetKMetadata(t, replicaClient, ctx, key))
+		}
+	}
+
+	deleteFields(t, "full-sync")
+	util.SlaveOf(t, replicaClient, master)
+	util.WaitForSync(t, replicaClient)
+	require.Equal(t, "1", util.FindInfoEntry(masterClient, "sync_full"))
+	checkReplicated(t, "full-sync")
+	for _, mode := range modes {
+		values, err := replicaClient.HGetAll(ctx, "hgetdel-"+mode+"-incremental-all").Result()
+		require.NoError(t, err)
+		require.Equal(t, map[string]string{"first": binaryValue, "last": "value"}, values)
+	}
+	deleteFields(t, "incremental")
+	checkReplicated(t, "incremental")
+	for _, mode := range modes {
+		key := "hgetdel-" + mode + "-incremental"
+		require.ErrorContains(t, replicaClient.Do(ctx, "HGETDEL", key, "FIELDS", 1, "keeper").Err(), "READONLY")
+	}
+	checkReplicated(t, "full-sync")
+	require.Equal(t, "1", util.FindInfoEntry(masterClient, "sync_full"))
+}

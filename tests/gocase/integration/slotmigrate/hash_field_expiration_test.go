@@ -90,6 +90,48 @@ func TestSlotMigrateHashFieldExpiration(t *testing.T) {
 				"persistent": binaryValue, "live": "10", "persist": "20", "overwrite": "old", "deleted": "gone",
 			}
 			expires := []interface{}{int64(-1), expireAt, expireAt, expireAt, expireAt, int64(-2)}
+			getDelModes := []string{"legacy", "field-expiration"}
+			getDelMetadata := make(map[string]util.KMetadataResponse)
+			getDelKeyExpireAt := time.Now().Add(20 * time.Minute).Truncate(time.Second).UnixMilli()
+			for _, mode := range getDelModes {
+				getDelKey := fmt.Sprintf("hgetdel-%s_{%s}", mode, util.SlotTable[slot])
+				require.NoError(t, sourceClient.ConfigSet(ctx, "hash-encoding-mode", mode).Err())
+				require.NoError(t, sourceClient.HSet(ctx, getDelKey, "removed", binaryValue, "live", "ttl", "keeper", "persistent").Err())
+				require.NoError(t, sourceClient.HSet(ctx, getDelKey+"-all", "first", binaryValue, "last", "value").Err())
+				if mode == "field-expiration" {
+					require.NoError(t, sourceClient.Do(ctx, "hpexpireat", getDelKey, expireAt, "FIELDS", 2, "removed", "live").Err())
+					require.NoError(t, sourceClient.Do(ctx, "hpexpireat", getDelKey+"-all", expireAt, "FIELDS", 1, "last").Err())
+				}
+				require.NoError(t, sourceClient.Do(ctx, "pexpireat", getDelKey, getDelKeyExpireAt).Err())
+				require.ErrorContains(t, destinationClient.Do(ctx, "hgetdel", getDelKey, "FIELDS", 1, "keeper").Err(), "MOVED")
+			}
+			deleteFields := func() {
+				for _, mode := range getDelModes {
+					otherMode := "legacy"
+					if mode == "legacy" {
+						otherMode = "field-expiration"
+					}
+					require.NoError(t, sourceClient.ConfigSet(ctx, "hash-encoding-mode", otherMode).Err())
+					getDelKey := fmt.Sprintf("hgetdel-%s_{%s}", mode, util.SlotTable[slot])
+					got, err := sourceClient.Do(ctx, "hgetdel", getDelKey, "FIELDS", 3, "removed", "missing", "removed").Result()
+					require.NoError(t, err)
+					require.Equal(t, []interface{}{binaryValue, nil, nil}, got)
+					got, err = sourceClient.Do(ctx, "hgetdel", getDelKey+"-all", "FIELDS", 4, "first", "first", "missing", "last").Result()
+					require.NoError(t, err)
+					require.Equal(t, []interface{}{binaryValue, nil, nil, "value"}, got)
+					exists, err := sourceClient.Exists(ctx, getDelKey+"-all").Result()
+					require.NoError(t, err)
+					require.Zero(t, exists)
+					metadata := util.GetKMetadata(t, sourceClient, ctx, getDelKey)
+					require.Equal(t, mode, metadata.Mode)
+					require.Equal(t, int64(2), metadata.Size)
+					if mode == "field-expiration" {
+						require.Equal(t, int64(1), metadata.Persist)
+					}
+					getDelMetadata[getDelKey] = metadata
+				}
+				require.NoError(t, sourceClient.ConfigSet(ctx, "hash-encoding-mode", "field-expiration").Err())
+			}
 			var fieldExpireAt int64
 			expiringKey, expiringField, expiringValue := key, "live", "11"
 			if phase == "wal" {
@@ -106,6 +148,7 @@ func TestSlotMigrateHashFieldExpiration(t *testing.T) {
 				// Import starts only after the source has acquired its snapshot.
 				waitForImportState(t, destinationClient, slot, "start")
 				requireMigrateState(t, sourceClient, slot, SlotMigrationStateStarted)
+				deleteFields()
 
 				require.NoError(t, sourceClient.HIncrBy(ctx, key, "live", 5).Err())
 				require.NoError(t, sourceClient.Do(ctx, "hpexpireat", key, expireAt+60000, "FIELDS", 1, "persistent").Err())
@@ -124,6 +167,7 @@ func TestSlotMigrateHashFieldExpiration(t *testing.T) {
 				delete(values, "deleted")
 				expires = []interface{}{expireAt + 60000, expireAt, int64(-1), int64(-1), int64(-2), int64(-2)}
 			} else {
+				deleteFields()
 				fieldExpireAt = time.Now().Add(3 * time.Second).UnixMilli()
 				require.NoError(t, sourceClient.Do(ctx, "hpexpireat", key, fieldExpireAt, "FIELDS", 1, "live").Err())
 				expires[1] = fieldExpireAt
@@ -202,6 +246,27 @@ func TestSlotMigrateHashFieldExpiration(t *testing.T) {
 				require.NoError(t, err)
 				require.Equal(t, map[string]string{"field": "created-during-migration"}, newValue)
 			}
+			t.Run("hgetdel", func(t *testing.T) {
+				for _, mode := range getDelModes {
+					getDelKey := fmt.Sprintf("hgetdel-%s_{%s}", mode, util.SlotTable[slot])
+					require.ErrorContains(t, sourceClient.Do(ctx, "hgetdel", getDelKey, "FIELDS", 1, "keeper").Err(), "MOVED")
+					got, err := destinationClient.HGetAll(ctx, getDelKey).Result()
+					require.NoError(t, err)
+					require.Equal(t, map[string]string{"live": "ttl", "keeper": "persistent"}, got)
+					require.Equal(t, getDelMetadata[getDelKey], util.GetKMetadata(t, destinationClient, ctx, getDelKey))
+					at, err := destinationClient.Do(ctx, "pexpiretime", getDelKey).Int64()
+					require.NoError(t, err)
+					require.Equal(t, getDelKeyExpireAt, at)
+					if mode == "field-expiration" {
+						expires, err := destinationClient.Do(ctx, "hpexpiretime", getDelKey, "FIELDS", 3, "removed", "live", "keeper").Result()
+						require.NoError(t, err)
+						require.Equal(t, []interface{}{int64(-2), expireAt, int64(-1)}, expires)
+					}
+					exists, err := destinationClient.Exists(ctx, getDelKey+"-all").Result()
+					require.NoError(t, err)
+					require.Zero(t, exists)
+				}
+			})
 		})
 	}
 }

@@ -90,6 +90,9 @@ class Hash : public SubKeyScanner {
                       uint64_t *added_cnt);
   rocksdb::Status Delete(engine::Context &ctx, const Slice &user_key, const std::vector<Slice> &fields,
                          uint64_t *deleted_cnt);
+  rocksdb::Status GetDel(engine::Context &ctx, const Slice &user_key, const std::vector<Slice> &fields,
+                         std::vector<std::string> *values, std::vector<rocksdb::Status> *statuses,
+                         std::optional<uint64_t> now_ms = std::nullopt);
   rocksdb::Status IncrBy(engine::Context &ctx, const Slice &user_key, const Slice &field, int64_t increment,
                          int64_t *new_value);
   rocksdb::Status IncrByFloat(engine::Context &ctx, const Slice &user_key, const Slice &field, double increment,

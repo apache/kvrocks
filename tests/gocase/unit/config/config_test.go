@@ -522,3 +522,26 @@ func TestConfigDailyOffpeakTimeUTC(t *testing.T) {
 		require.EqualValues(t, "", result[parameter])
 	})
 }
+
+func TestConfigDirectIO(t *testing.T) {
+	t.Parallel()
+	srv := util.StartServer(t, map[string]string{})
+	defer srv.Close()
+
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	// The direct-I/O options are off by default and, being applied only when the DB is opened,
+	// are read-only at runtime (a CONFIG SET must be rejected rather than silently no-op).
+	for _, parameter := range []string{
+		"rocksdb.use_direct_reads",
+		"rocksdb.use_direct_io_for_flush_and_compaction",
+	} {
+		result, err := rdb.ConfigGet(ctx, parameter).Result()
+		require.NoError(t, err)
+		require.EqualValues(t, "no", result[parameter])
+
+		require.Error(t, rdb.ConfigSet(ctx, parameter, "yes").Err())
+	}
+}

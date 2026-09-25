@@ -162,3 +162,85 @@ func TestPubSubShard(t *testing.T) {
 		}
 	})
 }
+
+func TestSPublish(t *testing.T) {
+	ctx := context.Background()
+
+	srv := util.StartServer(t, map[string]string{})
+	defer srv.Close()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	t.Run("SPUBLISH to no subscribers", func(t *testing.T) {
+		// Should return 0 when no subscribers
+		n, err := rdb.Do(ctx, "SPUBLISH", "mychannel", "hello").Int()
+		require.NoError(t, err)
+		require.EqualValues(t, 0, n)
+	})
+
+	t.Run("SPUBLISH to one subscriber", func(t *testing.T) {
+		pubsub := rdb.SSubscribe(ctx, "mychannel")
+		defer pubsub.Close()
+
+		// Receive the subscription message
+		receiveType(t, pubsub, &redis.Subscription{})
+		require.EqualValues(t, 1, receiveType(t, pubsub, &redis.Subscription{}).Count)
+
+		// Publish message
+		n, err := rdb.Do(ctx, "SPUBLISH", "mychannel", "hello world").Int()
+		require.NoError(t, err)
+		require.EqualValues(t, 1, n)
+
+		// Receive the message
+		msg := receiveType(t, pubsub, &redis.Message{})
+		require.EqualValues(t, "mychannel", msg.Channel)
+		require.EqualValues(t, "hello world", msg.Payload)
+	})
+
+	t.Run("SPUBLISH to multiple subscribers", func(t *testing.T) {
+		channel := "testchannel{tag}"
+
+		pubsub1 := rdb.SSubscribe(ctx, channel)
+		defer pubsub1.Close()
+		receiveType(t, pubsub1, &redis.Subscription{})
+
+		pubsub2 := rdb.SSubscribe(ctx, channel)
+		defer pubsub2.Close()
+		receiveType(t, pubsub2, &redis.Subscription{})
+
+		// Publish message
+		n, err := rdb.Do(ctx, "SPUBLISH", channel, "message from spublish").Int()
+		require.NoError(t, err)
+		require.EqualValues(t, 2, n)
+
+		// Both subscribers should receive the message
+		msg1 := receiveType(t, pubsub1, &redis.Message{})
+		require.EqualValues(t, "message from spublish", msg1.Payload)
+
+		msg2 := receiveType(t, pubsub2, &redis.Message{})
+		require.EqualValues(t, "message from spublish", msg2.Payload)
+	})
+
+	t.Run("SPUBLISH with cluster enabled", func(t *testing.T) {
+		csrv := util.StartServer(t, map[string]string{"cluster-enabled": "yes"})
+		defer csrv.Close()
+		crdb := csrv.NewClient()
+		defer func() { require.NoError(t, crdb.Close()) }()
+
+		nodeID := "test_node_id_12345678901234567890123456789012"
+		require.NoError(t, crdb.Do(ctx, "clusterx", "SETNODEID", nodeID).Err())
+		clusterNodes := fmt.Sprintf("%s %s %d master - 0-16383", nodeID, csrv.Host(), csrv.Port())
+		require.NoError(t, crdb.Do(ctx, "clusterx", "SETNODES", clusterNodes, "1").Err())
+
+		pubsub := crdb.SSubscribe(ctx, "mychannel{tag}")
+		defer pubsub.Close()
+		receiveType(t, pubsub, &redis.Subscription{})
+
+		n, err := crdb.Do(ctx, "SPUBLISH", "mychannel{tag}", "cluster message").Int()
+		require.NoError(t, err)
+		require.EqualValues(t, 1, n)
+
+		msg := receiveType(t, pubsub, &redis.Message{})
+		require.EqualValues(t, "cluster message", msg.Payload)
+	})
+}

@@ -22,6 +22,7 @@
 #include "cluster/slot_import.h"
 #include "cluster/sync_migrate_context.h"
 #include "commander.h"
+#include "common/time_util.h"
 #include "error_constants.h"
 #include "status.h"
 
@@ -243,8 +244,25 @@ class CommandClusterX : public Commander {
       return CommandTable::ParseSlotRanges(args.back(), slot_ranges_);
     }
 
+    // CLUSTERX HEARTBEAT <master_node_id> <lease_ms> <election_version>
+    if (subcommand_ == "heartbeat") {
+      if (args.size() != 5) return {Status::RedisParseErr, errWrongNumOfArguments};
+      master_node_id_ = args[2];
+
+      auto parse_lease_ms = ParseInt<uint64_t>(args[3], 10);
+      if (!parse_lease_ms) return {Status::RedisParseErr, "lease_ms is not an integer or out of range"};
+      if (*parse_lease_ms == 0) return {Status::RedisParseErr, "invalid lease_ms: must be greater than 0"};
+      lease_ms_ = *parse_lease_ms;
+
+      auto parse_election_version = ParseInt<uint64_t>(args[4], 10);
+      if (!parse_election_version)
+        return {Status::RedisParseErr, "election_version is not an integer or out of range"};
+      election_version_ = *parse_election_version;
+      return Status::OK();
+    }
+
     return {Status::RedisParseErr,
-            "CLUSTERX command, CLUSTERX VERSION|MYID|SETNODEID|SETNODES|SETSLOT|MIGRATE|FLUSHSLOTS"};
+            "CLUSTERX command, CLUSTERX VERSION|MYID|SETNODEID|SETNODES|SETSLOT|MIGRATE|FLUSHSLOTS|HEARTBEAT"};
   }
 
   Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
@@ -310,6 +328,22 @@ class CommandClusterX : public Commander {
       }
 
       *output = redis::RESP_OK;
+    } else if (subcommand_ == "heartbeat") {
+      // Only renew lease if master_node_id matches our own node id and we are a cluster master.
+      // Slave nodes and nodes with a different id fall through and return normal node info.
+      if (master_node_id_ == srv->cluster->GetMyId() && !srv->cluster->IsNotMaster()) {
+        uint64_t local_ver = srv->storage->GetLocalElectionVersion();
+        if (election_version_ < local_ver) {
+          // Stale controller: do not renew the lease. Return an error so the controller can investigate.
+          return {Status::RedisExecErr,
+                  fmt::format("election version mismatch: local={}, received={}", local_ver, election_version_)};
+        }
+        srv->storage->UpdateLease(election_version_, util::GetTimeStampMS() + lease_ms_);
+      }
+      // Return the same node info format as the INFO command (Replication + Keyspace sections)
+      // so the controller can reuse parseClusterNodeInfo() for both paths.
+      // Only two sections are returned to keep the response lightweight.
+      *output = conn->VerbatimString("txt", srv->GetInfo(conn->GetNamespace(), {"Replication", "Keyspace"}));
     } else {
       return {Status::RedisExecErr, "Invalid cluster command options"};
     }
@@ -330,6 +364,11 @@ class CommandClusterX : public Commander {
   bool sync_migrate_ = false;
   int sync_migrate_timeout_ = 0;
   std::unique_ptr<SyncMigrateContext> sync_migrate_ctx_ = nullptr;
+
+  // HEARTBEAT fields
+  std::string master_node_id_;
+  uint64_t lease_ms_ = 0;
+  uint64_t election_version_ = 0;
 };
 
 static uint64_t GenerateClusterFlag(uint64_t flags, const std::vector<std::string> &args) {

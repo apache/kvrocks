@@ -60,7 +60,7 @@ rocksdb::Status CuckooChain::Reserve(engine::Context &ctx, const Slice &user_key
     return rocksdb::Status::InvalidArgument("capacity must be larger than 0");
   }
 
-  // RedisBloom requires minimum capacity to ensure at least one bucket can be created
+  // Require minimum capacity to ensure at least one bucket can be created
   // With load factor 0.955, capacity=1 and bucket_size=4 results in 0 buckets
   if (capacity < 2) {
     return rocksdb::Status::InvalidArgument("capacity must be at least 2");
@@ -289,6 +289,65 @@ rocksdb::Status CuckooChain::commitSubFilterAndMetadata(engine::Context &ctx, co
   if (!s.ok()) return s;
 
   return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+}
+
+rocksdb::Status CuckooChain::Exists(engine::Context &ctx, const Slice &user_key, const Slice &item, bool *exists) {
+  std::vector<bool> result;
+  auto s = MExists(ctx, user_key, std::vector<std::string>{item.ToString()}, &result);
+  if (!s.ok()) return s;
+  *exists = result[0];
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status CuckooChain::MExists(engine::Context &ctx, const Slice &user_key, const std::vector<std::string> &items,
+                                     std::vector<bool> *exists) {
+  exists->assign(items.size(), false);
+  std::string ns_key = AppendNamespacePrefix(user_key);
+
+  CuckooChainMetadata metadata(false);
+  auto s = getCuckooChainMetadata(ctx, ns_key, &metadata);
+  if (s.IsNotFound()) return rocksdb::Status::OK();
+  if (!s.ok()) return s;
+
+  s = validateMetadata(metadata);
+  if (!s.ok()) return s;
+
+  std::vector<uint64_t> hashes(items.size());
+  std::vector<uint8_t> fingerprints(items.size());
+  for (size_t i = 0; i < items.size(); ++i) {
+    hashes[i] = CuckooFilterHelper::Hash(items[i].data(), items[i].size());
+    fingerprints[i] = CuckooFilterHelper::GenerateFingerprint(hashes[i]);
+    CHECK(fingerprints[i] != 0);
+  }
+
+  size_t found_count = 0;
+  for (int filter_idx = static_cast<int>(metadata.n_filters) - 1; filter_idx >= 0; --filter_idx) {
+    auto current_filter_idx = static_cast<uint16_t>(filter_idx);
+    uint32_t num_buckets = 0;
+    s = CuckooFilterHelper::GetFilterNumBuckets(metadata.base_capacity, metadata.expansion, metadata.bucket_size,
+                                                current_filter_idx, &num_buckets);
+    if (!s.ok()) return s;
+
+    CuckooSubFilter sub_filter(storage_, ctx, ns_key, storage_->IsSlotIdEncoded(), metadata.version,
+                               metadata.bucket_size, metadata.page_size, current_filter_idx, num_buckets);
+    for (size_t i = 0; i < items.size(); ++i) {
+      if ((*exists)[i]) continue;
+
+      bool item_exists = false;
+      s = sub_filter.Contains(hashes[i], fingerprints[i], &item_exists);
+      if (!s.ok()) return s;
+      if (item_exists) {
+        (*exists)[i] = true;
+        ++found_count;
+      }
+    }
+
+    if (found_count == items.size()) {
+      break;
+    }
+  }
+
+  return rocksdb::Status::OK();
 }
 
 }  // namespace redis

@@ -61,7 +61,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Check typos
-        uses: crate-ci/typos@v1.50.1
+        uses: crate-ci/typos@v1.50.2
         with:
           config: .github/config/typos.toml
       - uses: apache/skywalking-eyes/header@v0.9.0
@@ -352,7 +352,7 @@ jobs:
         if: ${{ matrix.sonarcloud }}
 
       - name: Install Build Wrapper
-        uses: SonarSource/sonarqube-scan-action/install-build-wrapper@22918119ff8e1ca75a623e15c8296b6ea4fbe28f # v8.2.1
+        uses: SonarSource/sonarqube-scan-action/install-build-wrapper@ba9859eae8dd6bd29e412f25ddbbef3d032000f4 # v8.2.2
         if: ${{ matrix.sonarcloud }}
 
       - name: Build Kvrocks
@@ -495,7 +495,7 @@ jobs:
       - uses: actions/checkout@v7
       - name: Get core numbers
         run: echo "NPROC=$(nproc)" >> $GITHUB_ENV
-      - uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           build-args: MORE_BUILD_ARGS=-j${{ env.NPROC }}

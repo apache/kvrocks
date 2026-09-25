@@ -243,6 +243,8 @@ class Storage {
   Status GetWALIter(rocksdb::SequenceNumber seq, std::unique_ptr<rocksdb::TransactionLogIterator> *iter);
   Status ReplicaApplyWriteBatch(rocksdb::WriteBatch *batch, const rocksdb::WriteOptions &options);
   Status ApplyWriteBatch(const rocksdb::WriteOptions &options, std::string &&raw_batch);
+  Status WalGet(uint64_t seq, bool detail, std::vector<std::string> *output);
+
   rocksdb::SequenceNumber LatestSeqNumber();
   Status SyncWAL();
 

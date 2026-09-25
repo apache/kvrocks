@@ -36,6 +36,7 @@
 #include <random>
 #include <string_view>
 
+#include "batch_decoder.h"
 #include "compact_filter.h"
 #include "db_util.h"
 #include "event_listener.h"
@@ -606,6 +607,27 @@ Status Storage::GetWALIter(rocksdb::SequenceNumber seq, std::unique_ptr<rocksdb:
 
   if (!(*iter)->Valid()) return {Status::DBGetWALErr, "iterator is not valid"};
 
+  return Status::OK();
+}
+
+Status Storage::WalGet(uint64_t seq, bool detail, std::vector<std::string> *output) {
+  if (seq == 0) return {Status::DBGetWALErr, "sequence must be positive"};
+  std::unique_ptr<rocksdb::TransactionLogIterator> iter;
+  auto s = GetWALIter(seq, &iter);
+  if (!s.IsOK()) return s;
+  auto batch = iter->GetBatch();
+  auto count = batch.writeBatchPtr->Count();
+  // GetUpdatesSince can return a later batch when the requested WAL is no longer available.
+  if (seq < batch.sequence || seq - batch.sequence >= count) {
+    return {Status::DBGetWALErr, "sequence is not present in the available WAL"};
+  }
+  WriteBatchDecoder decoder(detail, IsSlotIdEncoded());
+  auto status = batch.writeBatchPtr->Iterate(&decoder);
+  if (!status.ok()) return {Status::DBGetWALErr, status.ToString()};
+  output->emplace_back("start_seq=" + std::to_string(batch.sequence));
+  output->emplace_back("end_seq=" + std::to_string(batch.sequence + count - 1));
+  const auto &entries = decoder.Get();
+  output->insert(output->end(), entries.begin(), entries.end());
   return Status::OK();
 }
 

@@ -55,10 +55,13 @@ class BatchSender {
   double GetRate(uint64_t since) const;
 
  private:
+  Status appendLogData(const rocksdb::Slice &blob);
+  Status ensureLogData();
   static Status sendApplyBatchCmd(int fd, const rocksdb::WriteBatch &write_batch);
 
   rocksdb::WriteBatch write_batch_;
   std::string prefix_logdata_;
+  bool prefix_logdata_pending_ = false;
   uint64_t sent_bytes_ = 0;
   uint32_t sent_batches_num_ = 0;
   uint32_t entries_num_ = 0;

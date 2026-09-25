@@ -22,17 +22,12 @@
 
 #include "io_util.h"
 #include "server/redis_reply.h"
+#include "server/server.h"
+#include "storage/redis_db.h"
 #include "time_util.h"
 
 Status BatchSender::Put(rocksdb::ColumnFamilyHandle *cf, const rocksdb::Slice &key, const rocksdb::Slice &value) {
-  // If the data is too large to fit in one batch, it needs to be split into multiple batches.
-  // To cover this case, we append the log data when first add metadata.
-  if (pending_entries_ == 0 && !prefix_logdata_.empty()) {
-    auto s = PutLogData(prefix_logdata_);
-    if (!s.IsOK()) {
-      return s;
-    }
-  }
+  GET_OR_RET(ensureLogData());
   auto s = write_batch_.Put(cf, key, value);
   if (!s.ok()) {
     return {Status::NotOK, fmt::format("failed to put key value to migration batch, {}", s.ToString())};
@@ -44,6 +39,7 @@ Status BatchSender::Put(rocksdb::ColumnFamilyHandle *cf, const rocksdb::Slice &k
 }
 
 Status BatchSender::Delete(rocksdb::ColumnFamilyHandle *cf, const rocksdb::Slice &key) {
+  GET_OR_RET(ensureLogData());
   auto s = write_batch_.Delete(cf, key);
   if (!s.ok()) {
     return {Status::NotOK, fmt::format("failed to delete key from migration batch, {}", s.ToString())};
@@ -54,6 +50,7 @@ Status BatchSender::Delete(rocksdb::ColumnFamilyHandle *cf, const rocksdb::Slice
 }
 Status BatchSender::DeleteRange(rocksdb::ColumnFamilyHandle *cf, const rocksdb::Slice &begin,
                                 const rocksdb::Slice &end) {
+  GET_OR_RET(ensureLogData());
   auto s = write_batch_.DeleteRange(cf, begin, end);
   if (!s.ok()) {
     return {Status::NotOK, fmt::format("failed to delete range from migration batch, {}", s.ToString())};
@@ -64,6 +61,21 @@ Status BatchSender::DeleteRange(rocksdb::ColumnFamilyHandle *cf, const rocksdb::
 }
 
 Status BatchSender::PutLogData(const rocksdb::Slice &blob) {
+  GET_OR_RET(appendLogData(blob));
+  if (!blob.empty() && !ServerLogData::IsServerLogData(blob.data())) {
+    // Hash records are decoded per subkey. Other log data may represent a whole command
+    // (e.g. LTRIM), which must not be replayed again in each split batch.
+    redis::WriteBatchLogData log_data;
+    prefix_logdata_.clear();
+    if (log_data.Decode(blob).IsOK() && log_data.GetRedisType() == kRedisHash) {
+      prefix_logdata_ = blob.ToString();
+    }
+    prefix_logdata_pending_ = false;
+  }
+  return Status::OK();
+}
+
+Status BatchSender::appendLogData(const rocksdb::Slice &blob) {
   auto s = write_batch_.PutLogData(blob);
   if (!s.ok()) {
     return {Status::NotOK, fmt::format("failed to put log data to migration batch, {}", s.ToString())};
@@ -73,7 +85,19 @@ Status BatchSender::PutLogData(const rocksdb::Slice &blob) {
   return Status::OK();
 }
 
-void BatchSender::SetPrefixLogData(const std::string &prefix_logdata) { prefix_logdata_ = prefix_logdata; }
+void BatchSender::SetPrefixLogData(const std::string &prefix_logdata) {
+  prefix_logdata_ = prefix_logdata;
+  prefix_logdata_pending_ = true;
+}
+
+Status BatchSender::ensureLogData() {
+  // Each batch must describe its own subkeys, including after a split or a change of key/encoding.
+  if (prefix_logdata_pending_ && !prefix_logdata_.empty()) {
+    GET_OR_RET(appendLogData(prefix_logdata_));
+    prefix_logdata_pending_ = false;
+  }
+  return Status::OK();
+}
 
 Status BatchSender::Send() {
   if (pending_entries_ == 0) {
@@ -100,6 +124,7 @@ Status BatchSender::Send() {
   sent_batches_num_++;
   pending_entries_ = 0;
   write_batch_.Clear();
+  prefix_logdata_pending_ = true;
   return Status::OK();
 }
 

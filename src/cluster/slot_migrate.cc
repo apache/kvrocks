@@ -595,6 +595,11 @@ Status SlotMigrator::sendSnapshot() {
     if (redis_type == RedisType::kRedisList) {
       redis::WriteBatchLogData batch_log_data(redis_type, {std::to_string(RedisCommand::kRedisCmdRPush)});
       log_data = batch_log_data.Encode();
+    } else if (redis_type == RedisType::kRedisHash) {
+      HashMetadata metadata(false);
+      auto s = metadata.Decode(iter.Value());
+      if (!s.ok()) return {Status::NotOK, s.ToString()};
+      log_data = redis::WriteBatchLogData(metadata.mode).Encode();
     } else {
       redis::WriteBatchLogData batch_log_data(redis_type);
       log_data = batch_log_data.Encode();
@@ -702,9 +707,15 @@ bool SlotMigrator::catchUpIncrementalWAL() {
 Status SlotMigrator::migrateIncrementalDataByRawKV(uint64_t end_seq, BatchSender *batch_sender) {
   engine::WALIterator wal_iter(storage_, slot_range_);
   uint64_t start_seq = wal_begin_seq_ + 1;
+  uint64_t next_batch_seq = 0;
   for (wal_iter.Seek(start_seq); wal_iter.Valid(); wal_iter.Next()) {
     if (wal_iter.NextSequenceNumber() > end_seq + 1) {
       break;
+    }
+    if (next_batch_seq != wal_iter.NextSequenceNumber()) {
+      next_batch_seq = wal_iter.NextSequenceNumber();
+      // Carry context across migration batch splits, but not across unrelated source batches.
+      batch_sender->SetPrefixLogData(redis::WriteBatchLogData(kRedisNone).Encode());
     }
     auto item = wal_iter.Item();
     switch (item.type) {

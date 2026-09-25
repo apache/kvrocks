@@ -61,6 +61,35 @@ func TestSlotMigrateHashFieldExpiration(t *testing.T) {
 	require.NoError(t, sourceClient.Do(ctx, "clusterx", "SETNODES", nodes, "1").Err())
 	require.NoError(t, destinationClient.Do(ctx, "clusterx", "SETNODES", nodes, "1").Err())
 
+	replayServer := util.StartServer(t, util.KvrocksServerConfigs{"hash-encoding-mode": "field-expiration"})
+	defer replayServer.Close()
+	replayClient := replayServer.NewClient()
+	defer func() { require.NoError(t, replayClient.Close()) }()
+	var replaySequence int64
+	replayUpdates := func(t *testing.T) {
+		t.Helper()
+		for {
+			result, err := destinationClient.Do(ctx, "POLLUPDATES", replaySequence, "MAX", 1000, "FORMAT", "RESP").Result()
+			require.NoError(t, err)
+			batch := result.(map[any]any)
+			updates := batch["updates"].([]any)
+			require.Zero(t, len(updates)%2)
+			for i := 0; i < len(updates); i += 2 {
+				require.Equal(t, "default", updates[i])
+				for _, command := range updates[i+1].([]any) {
+					require.NoError(t, replayClient.Do(ctx, command.([]any)...).Err())
+				}
+			}
+			next := batch["next_sequence"].(int64)
+			if next == batch["latest_sequence"].(int64) {
+				replaySequence = next
+				break
+			}
+			require.Greater(t, next, replaySequence)
+			replaySequence = next
+		}
+	}
+
 	for slot, phase := range []string{"snapshot", "wal"} {
 		t.Run(phase, func(t *testing.T) {
 			key := fmt.Sprintf("hfe_{%s}", util.SlotTable[slot])
@@ -201,6 +230,30 @@ func TestSlotMigrateHashFieldExpiration(t *testing.T) {
 				newValue, err := destinationClient.HGetAll(ctx, key+"_new").Result()
 				require.NoError(t, err)
 				require.Equal(t, map[string]string{"field": "created-during-migration"}, newValue)
+			}
+
+			// Raw KV migration can succeed even when the imported WAL cannot be decoded to RESP.
+			replayUpdates(t)
+			for _, replayKey := range []string{key, legacyKey} {
+				want, err := destinationClient.HGetAll(ctx, replayKey).Result()
+				require.NoError(t, err)
+				got, err := replayClient.HGetAll(ctx, replayKey).Result()
+				require.NoError(t, err)
+				require.NotEmpty(t, want)
+				require.Equal(t, want, got)
+			}
+			wantExpires, err := destinationClient.Do(ctx, "HPEXPIRETIME", key, "FIELDS", 3, "persistent", "live", "persist").Result()
+			require.NoError(t, err)
+			gotExpires, err := replayClient.Do(ctx, "HPEXPIRETIME", key, "FIELDS", 3, "persistent", "live", "persist").Result()
+			require.NoError(t, err)
+			require.Equal(t, wantExpires, gotExpires)
+			if phase == "wal" {
+				got, err := replayClient.HGetAll(ctx, key+"_new").Result()
+				require.NoError(t, err)
+				require.Equal(t, map[string]string{"field": "created-during-migration"}, got)
+				checkExpiry, err := replayClient.Do(ctx, "HPEXPIRETIME", key+"_new", "FIELDS", 1, "field").Result()
+				require.NoError(t, err)
+				require.Equal(t, []any{expireAt}, checkExpiry)
 			}
 		})
 	}

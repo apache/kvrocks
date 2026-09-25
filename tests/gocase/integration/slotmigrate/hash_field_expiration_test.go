@@ -23,6 +23,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -202,6 +203,75 @@ func TestSlotMigrateHashFieldExpiration(t *testing.T) {
 				require.NoError(t, err)
 				require.Equal(t, map[string]string{"field": "created-during-migration"}, newValue)
 			}
+		})
+	}
+}
+
+func TestSlotMigrateSnapshotHashEncodingInWAL(t *testing.T) {
+	for _, mode := range []string{"legacy", "field-expiration"} {
+		ctx := context.Background()
+		source := util.StartServer(t, util.KvrocksServerConfigs{
+			"cluster-enabled":       "yes",
+			"hash-encoding-mode":    mode,
+			"migrate-batch-size-kb": "16",
+		})
+		defer source.Close()
+		src := source.NewClient()
+		defer func() { require.NoError(t, src.Close()) }()
+		destination := util.StartServer(t, util.KvrocksServerConfigs{
+			"cluster-enabled":    "yes",
+			"hash-encoding-mode": "legacy",
+		})
+		defer destination.Close()
+		dst := destination.NewClient()
+		defer func() { require.NoError(t, dst.Close()) }()
+
+		sourceID, destinationID := strings.Repeat("a", 40), strings.Repeat("b", 40)
+		require.NoError(t, src.Do(ctx, "CLUSTERX", "SETNODEID", sourceID).Err())
+		require.NoError(t, dst.Do(ctx, "CLUSTERX", "SETNODEID", destinationID).Err())
+		nodes := fmt.Sprintf("%s %s %d master - 0-10000\n%s %s %d master - 10001-16383",
+			sourceID, source.Host(), source.Port(), destinationID, destination.Host(), destination.Port())
+		require.NoError(t, src.Do(ctx, "CLUSTERX", "SETNODES", nodes, "1").Err())
+		require.NoError(t, dst.Do(ctx, "CLUSTERX", "SETNODES", nodes, "1").Err())
+
+		t.Run(mode, func(t *testing.T) {
+			// A single small hash keeps this test independent of migration batch splitting and merging.
+			key := fmt.Sprintf("hash{%s}", util.SlotTable[0])
+			binaryValue := strings.Repeat("\x00", 8) + "value\x00\xff"
+			values := map[string]string{"live": "v", "persistent": binaryValue}
+			require.NoError(t, src.HSet(ctx, key, values).Err())
+			wantCommands := []any{[]any{"HSET", key, "live", "v"}}
+			var expireAt int64 = -1
+			if mode == "field-expiration" {
+				expireAt = time.Now().Add(10 * time.Minute).UnixMilli()
+				result, err := src.Do(ctx, "HPEXPIREAT", key, expireAt, "FIELDS", 1, "live").Int64Slice()
+				require.NoError(t, err)
+				require.Equal(t, []int64{1}, result)
+				wantCommands = append(wantCommands, []any{"HPEXPIREAT", key, strconv.FormatInt(expireAt, 10), "FIELDS", "1", "live"})
+				require.NoError(t, src.ConfigSet(ctx, "hash-encoding-mode", "legacy").Err())
+			} else {
+				require.NoError(t, src.ConfigSet(ctx, "hash-encoding-mode", "field-expiration").Err())
+			}
+			wantCommands = append(wantCommands, []any{"HSET", key, "persistent", binaryValue})
+
+			require.NoError(t, src.Do(ctx, "CLUSTERX", "MIGRATE", 0, destinationID).Err())
+			waitForMigrateState(t, src, 0, SlotMigrationStateSuccess)
+			waitForImportState(t, dst, 0, SlotImportStateSuccess)
+			got, err := dst.HGetAll(ctx, key).Result()
+			require.NoError(t, err)
+			require.Equal(t, values, got)
+			if mode == "field-expiration" {
+				expires, err := dst.Do(ctx, "HPEXPIRETIME", key, "FIELDS", 2, "live", "persistent").Int64Slice()
+				require.NoError(t, err)
+				require.Equal(t, []int64{expireAt, -1}, expires)
+			}
+
+			// Raw KV correctness alone does not ensure that downstream WAL consumers decode the fields correctly.
+			result, err := dst.Do(ctx, "POLLUPDATES", 0, "MAX", 1000, "FORMAT", "RESP").Result()
+			require.NoError(t, err)
+			batch := result.(map[any]any)
+			require.Equal(t, batch["latest_sequence"], batch["next_sequence"])
+			require.Equal(t, []any{"default", wantCommands}, batch["updates"])
 		})
 	}
 }

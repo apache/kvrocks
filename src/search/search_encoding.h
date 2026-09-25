@@ -38,7 +38,7 @@ inline constexpr auto kErrorIncorrectLength = "length is too short or too long t
 class IndexMetadata {
  public:
   uint8_t flag = 0;  // all reserved
-  IndexOnDataType on_data_type;
+  IndexOnDataType on_data_type = IndexOnDataType::HASH;
 
   std::string_view OnDataTypeName() const { return RedisTypeNames[(size_t)on_data_type]; }
 

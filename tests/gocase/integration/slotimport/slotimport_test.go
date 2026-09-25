@@ -129,7 +129,8 @@ func TestImportedServer(t *testing.T) {
 		require.NotContains(t, clusterNodes, fmt.Sprintf("[%d-<-%s]", slotNum, srvAID))
 
 		time.Sleep(50 * time.Millisecond)
-		require.Equal(t, "slot1", rdbB.Get(ctx, slotKey).Val())
+		// After import success, ordinary clients must not be served until topology is updated.
+		util.ErrorRegexp(t, rdbB.Get(ctx, slotKey).Err(), fmt.Sprintf("MOVED %d.*%d.*", slotNum, srvA.Port()))
 	})
 
 	t.Run("IMPORT - slot state 'error'", func(t *testing.T) {

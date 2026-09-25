@@ -56,7 +56,7 @@ Status Parser::ParseFullDB() {
     if (metadata.Type() == kRedisString) {
       s = parseSimpleKV(iter->key(), iter->value(), metadata.expire);
     } else {
-      s = parseComplexKV(iter->key(), iter->value());
+      s = parseComplexKV(iter->key(), metadata, iter->value());
     }
     if (!s.IsOK()) return s;
   }
@@ -80,10 +80,7 @@ Status Parser::parseSimpleKV(const Slice &ns_key, const Slice &value, uint64_t e
   return s;
 }
 
-Status Parser::parseComplexKV(const Slice &ns_key, const Slice &metadata_bytes) {
-  Metadata metadata(kRedisNone, false);
-  auto ds = metadata.Decode(metadata_bytes);
-  if (!ds.ok()) return {Status::NotOK, ds.ToString()};
+Status Parser::parseComplexKV(const Slice &ns_key, const Metadata &metadata, const Slice &metadata_bytes) {
   RedisType type = metadata.Type();
   if (type < kRedisHash || type > kRedisSortedint) {
     return {Status::NotOK, "unknown metadata type: " + std::to_string(type)};
@@ -91,7 +88,7 @@ Status Parser::parseComplexKV(const Slice &ns_key, const Slice &metadata_bytes) 
 
   HashMetadata hash_metadata(false);
   if (type == kRedisHash) {
-    ds = hash_metadata.Decode(metadata_bytes);
+    auto ds = hash_metadata.Decode(metadata_bytes);
     if (!ds.ok()) return {Status::NotOK, ds.ToString()};
   }
 
@@ -118,7 +115,7 @@ Status Parser::parseComplexKV(const Slice &ns_key, const Slice &metadata_bytes) 
       case kRedisHash: {
         Slice field_value(value);
         uint64_t expire = 0;
-        ds = hash_metadata.DecodeSubkeyValue(&field_value, &expire);
+        auto ds = hash_metadata.DecodeSubkeyValue(&field_value, &expire);
         if (!ds.ok()) return {Status::NotOK, ds.ToString()};
         // Full sync starts with an empty target; expired fields need not be recreated.
         if (expire > 0 && expire <= util::GetTimeStampMS()) continue;

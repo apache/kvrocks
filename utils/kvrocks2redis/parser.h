@@ -48,6 +48,6 @@ class Parser {
   bool slot_id_encoded_ = false;
 
   Status parseSimpleKV(const Slice &ns_key, const Slice &value, uint64_t expire);
-  Status parseComplexKV(const Slice &ns_key, const Slice &metadata_bytes);
+  Status parseComplexKV(const Slice &ns_key, const Metadata &metadata, const Slice &metadata_bytes);
   Status parseBitmapSegment(const Slice &ns, const Slice &user_key, int index, const Slice &bitmap);
 };

@@ -20,9 +20,9 @@
 #include <algorithm>
 #include <tuple>
 
+#include "kvrocks2redis/parser.h"
 #include "server/redis_reply.h"
 #include "test_base.h"
-#include "utils/kvrocks2redis/parser.h"
 
 class RecordingWriter : public Writer {
  public:

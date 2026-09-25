@@ -319,6 +319,7 @@ target_link_libraries(kvrocks2redis PRIVATE kvrocks_objs ${EXTERNAL_LIBS})
 # kvrocks unit tests
 file(GLOB_RECURSE TESTS_SRCS tests/cppunit/*.cc)
 add_executable(unittest ${TESTS_SRCS})
-target_include_directories(unittest PRIVATE tests/cppunit)
+target_sources(unittest PRIVATE utils/kvrocks2redis/parser.cc utils/kvrocks2redis/writer.cc)
+target_include_directories(unittest PRIVATE tests/cppunit ${PROJECT_SOURCE_DIR})
 
 target_link_libraries(unittest PRIVATE kvrocks_objs gtest_main gmock ${EXTERNAL_LIBS})

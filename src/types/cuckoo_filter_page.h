@@ -63,6 +63,7 @@ class CuckooPageCache {
   rocksdb::Status RestoreBucketSlot(const SlotMutation &mutation);
   rocksdb::Status WriteBackDirtyPages(rocksdb::WriteBatchBase *batch);
 
+  void DiscardCleanPages();
   void DiscardCachedPages();
 
  private:

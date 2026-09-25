@@ -210,6 +210,7 @@ rocksdb::Status CuckooChain::tryCuckooInsert(const CuckooChainMetadata *metadata
       *inserted = true;
       return rocksdb::Status::OK();
     }
+    pages.DiscardCleanPages();
   }
 
   return rocksdb::Status::OK();

@@ -166,6 +166,16 @@ rocksdb::Status CuckooPageCache::WriteBackDirtyPages(rocksdb::WriteBatchBase *ba
   return rocksdb::Status::OK();
 }
 
+void CuckooPageCache::DiscardCleanPages() {
+  for (auto it = pages_.begin(); it != pages_.end();) {
+    if (it->second.is_dirty) {
+      ++it;
+    } else {
+      it = pages_.erase(it);
+    }
+  }
+}
+
 void CuckooPageCache::DiscardCachedPages() { pages_.clear(); }
 
 rocksdb::Status CuckooPageCache::resolveBucketLocation(uint16_t filter_index, uint32_t num_buckets,

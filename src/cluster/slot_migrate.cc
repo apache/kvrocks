@@ -40,7 +40,8 @@ SlotMigrator::SlotMigrator(Server *srv)
       srv_(srv),
       seq_gap_limit_(srv->GetConfig()->sequence_gap),
       migrate_batch_bytes_per_sec_(srv->GetConfig()->migrate_batch_rate_limit_mb * MiB),
-      migrate_batch_size_bytes_(srv->GetConfig()->migrate_batch_size_kb * KiB) {
+      migrate_batch_size_bytes_(srv->GetConfig()->migrate_batch_size_kb * KiB),
+      migrate_response_timeout_ms_(srv->GetConfig()->migrate_response_timeout_ms) {
   // Let metadata_cf_handle_ be nullptr, and get them in real time to avoid accessing invalid pointer,
   // because metadata_cf_handle_ and db_ will be destroyed if DB is reopened.
   // [Situation]:
@@ -393,11 +394,7 @@ Status SlotMigrator::checkMultipleResponses(int sock_fd, int total) {
     return {Status::NotOK, fmt::format("invalid arguments: sock_fd={}, count={}", sock_fd, total)};
   }
 
-  // Set socket receive timeout first
-  struct timeval tv;
-  tv.tv_sec = 1;
-  tv.tv_usec = 0;
-  setsockopt(sock_fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+  GET_OR_RET(util::SockSetReceiveTimeout(sock_fd, migrate_response_timeout_ms_));
 
   // Start checking response
   size_t bulk_or_array_len = 0;
@@ -558,6 +555,7 @@ void SlotMigrator::resumeSyncCtx(const Status &migrate_result) {
 }
 
 Status SlotMigrator::sendMigrationBatch(BatchSender *batch) {
+  GET_OR_RET(util::SockSetReceiveTimeout(*dst_fd_, migrate_response_timeout_ms_));
   // user may dynamically change some configs, apply it when send data
   batch->SetMaxBytes(migrate_batch_size_bytes_);
   batch->SetBytesPerSecond(migrate_batch_bytes_per_sec_);

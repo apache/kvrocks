@@ -72,6 +72,20 @@ Status SockSetTcpNoDelay(int fd, int val) {
   return Status::OK();
 }
 
+Status SockSetReceiveTimeout(int fd, int timeout_ms) {
+  if (timeout_ms <= 0) {
+    return {Status::NotOK, "socket receive timeout must be positive"};
+  }
+
+  timeval tv;
+  tv.tv_sec = timeout_ms / 1000;
+  tv.tv_usec = (timeout_ms % 1000) * 1000;
+  if (setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0) {
+    return Status::FromErrno("setsockopt SO_RCVTIMEO");
+  }
+  return Status::OK();
+}
+
 Status SockSetTcpKeepalive(int fd, int interval) {
   int val = 1;
   if (setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &val, sizeof(val)) == -1) {

@@ -613,9 +613,29 @@ rocksdb::Status SubKeyScanner::Scan(engine::Context &ctx, RedisType type, const 
   return iter->status();
 }
 
+WriteBatchLogData::WriteBatchLogData(HashSubkeyEncodingMode mode) : type_(kRedisHash) {
+  // Keep legacy logs unchanged. A subkey-only update must describe its own encoding.
+  if (mode != HashSubkeyEncodingMode::kLegacy) {
+    args_ = {std::to_string(kRedisCmdHSet), std::to_string(static_cast<uint8_t>(mode))};
+  }
+}
+
 RedisType WriteBatchLogData::GetRedisType() const { return type_; }
 
 std::vector<std::string> *WriteBatchLogData::GetArguments() { return &args_; }
+
+StatusOr<HashSubkeyEncodingMode> WriteBatchLogData::GetHashSubkeyEncodingMode() const {
+  if (type_ != kRedisHash) return {Status::NotOK, "not a hash log"};
+  if (args_.empty()) return HashSubkeyEncodingMode::kLegacy;
+  if (args_.size() != 2 || args_[0] != std::to_string(kRedisCmdHSet)) {
+    return {Status::NotOK, "invalid hash encoding log"};
+  }
+  auto mode = ParseInt<uint8_t>(args_[1], 10);
+  if (!mode || *mode > static_cast<uint8_t>(HashSubkeyEncodingMode::kFieldExpiration)) {
+    return {Status::NotOK, "invalid hash subkey encoding mode in log"};
+  }
+  return static_cast<HashSubkeyEncodingMode>(*mode);
+}
 
 std::string WriteBatchLogData::Encode() const {
   std::string ret = std::to_string(type_);
@@ -695,15 +715,21 @@ rocksdb::Status Database::Copy(engine::Context &ctx, const std::string &key, con
 
   if (key == new_key) return rocksdb::Status::OK();
 
+  engine::DBIterator iter(ctx, ctx.GetReadOptions());
+  iter.Seek(key);
+
   auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(type);
+  if (type == kRedisHash) {
+    HashMetadata metadata(false);
+    s = metadata.Decode(iter.Value());
+    if (!s.ok()) return s;
+    log_data = WriteBatchLogData(metadata.mode);
+  }
   s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) {
     return s;
   }
-
-  engine::DBIterator iter(ctx, ctx.GetReadOptions());
-  iter.Seek(key);
 
   if (delete_old) {
     s = batch->Delete(metadata_cf_handle_, key);

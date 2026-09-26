@@ -133,9 +133,23 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
     ns = ikey.GetNamespace().ToString();
 
     switch (log_data_.GetRedisType()) {
-      case kRedisHash:
-        command_args = {"HSET", user_key, sub_key, value.ToString()};
-        break;
+      case kRedisHash: {
+        auto mode = log_data_.GetHashSubkeyEncodingMode();
+        if (!mode) return rocksdb::Status::InvalidArgument(mode.Msg());
+        HashMetadata metadata(false, *mode);
+        Slice field_value = value;
+        uint64_t expire = 0;
+        auto s = metadata.DecodeSubkeyValue(&field_value, &expire);
+        if (!s.ok()) return s;
+
+        resp_commands_[ns].emplace_back(redis::ArrayOfBulkStrings({"HSET", user_key, sub_key, field_value.ToString()}));
+        // Replay expired writes too: the destination may still contain an older field value.
+        if (expire > 0) {
+          resp_commands_[ns].emplace_back(
+              redis::ArrayOfBulkStrings({"HPEXPIREAT", user_key, std::to_string(expire), "FIELDS", "1", sub_key}));
+        }
+        return rocksdb::Status::OK();
+      }
       case kRedisList: {
         auto args = log_data_.GetArguments();
         if (args->empty()) {

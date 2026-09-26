@@ -47,6 +47,22 @@ class RedisStreamTest : public TestBase {  // NOLINT
   void SetUp() override { auto s = stream_->Del(*ctx_, name_); }
   void TearDown() override { auto s = stream_->Del(*ctx_, name_); }
 
+  rocksdb::Status PutRawEntry(const redis::StreamEntryID &id, const std::vector<std::string> &values) {
+    std::string ns_key = stream_->AppendNamespacePrefix(name_);
+    StreamMetadata metadata(false);
+    auto s = stream_->GetMetadata(*ctx_, ns_key, &metadata);
+    if (!s.ok()) return s;
+
+    std::string sub_key;
+    PutFixed64(&sub_key, id.ms);
+    PutFixed64(&sub_key, id.seq);
+    std::string entry_key = InternalKey(ns_key, sub_key, metadata.version, storage_->IsSlotIdEncoded()).Encode();
+    auto batch = storage_->GetWriteBatchBase();
+    s = batch->Put(storage_->GetCFHandle(ColumnFamilyID::Stream), entry_key, redis::EncodeStreamEntryValue(values));
+    if (!s.ok()) return s;
+    return storage_->Write(*ctx_, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+  }
+
   std::string name_;
   redis::Stream *stream_;
 };
@@ -647,6 +663,55 @@ TEST_F(RedisStreamTest, RangeFromMinimumToMaximum) {
   CheckStreamEntryValues(entries[2].values, values3);
   EXPECT_EQ(entries[3].key, id4.ToString());
   CheckStreamEntryValues(entries[3].values, values4);
+}
+
+TEST_F(RedisStreamTest, RangeIgnoresEntriesOutsideMetadataBounds) {
+  redis::StreamAddOptions add_options;
+  redis::StreamEntryID id;
+  for (const char *entry_id : {"1-0", "2-0", "3-0"}) {
+    add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy(entry_id);
+    auto s = stream_->Add(*ctx_, name_, add_options, {"key", entry_id}, &id);
+    ASSERT_TRUE(s.ok());
+  }
+
+  redis::StreamTrimOptions trim_options;
+  trim_options.strategy = redis::StreamTrimStrategy::MinID;
+  trim_options.min_id = redis::StreamEntryID{2, 0};
+  uint64_t trimmed = 0;
+  auto s = stream_->Trim(*ctx_, name_, trim_options, &trimmed);
+  ASSERT_TRUE(s.ok());
+  ASSERT_EQ(trimmed, 1);
+
+  ASSERT_TRUE(PutRawEntry({1, 0}, {"stale", "before"}).ok());
+  ASSERT_TRUE(PutRawEntry({4, 0}, {"stale", "after"}).ok());
+
+  redis::StreamRangeOptions range_options;
+  range_options.start = redis::StreamEntryID::Minimum();
+  range_options.end = redis::StreamEntryID::Maximum();
+  std::vector<redis::StreamEntry> entries;
+  s = stream_->Range(*ctx_, name_, range_options, &entries);
+  ASSERT_TRUE(s.ok());
+  ASSERT_EQ(entries.size(), 2);
+  EXPECT_EQ(entries[0].key, "2-0");
+  EXPECT_EQ(entries[1].key, "3-0");
+
+  range_options.reverse = true;
+  range_options.start = redis::StreamEntryID::Maximum();
+  range_options.end = redis::StreamEntryID::Minimum();
+  entries.clear();
+  s = stream_->Range(*ctx_, name_, range_options, &entries);
+  ASSERT_TRUE(s.ok());
+  ASSERT_EQ(entries.size(), 2);
+  EXPECT_EQ(entries[0].key, "3-0");
+  EXPECT_EQ(entries[1].key, "2-0");
+
+  range_options.reverse = false;
+  range_options.start = {1, 0};
+  range_options.end = {1, 0};
+  entries.clear();
+  s = stream_->Range(*ctx_, name_, range_options, &entries);
+  ASSERT_TRUE(s.ok());
+  EXPECT_TRUE(entries.empty());
 }
 
 TEST_F(RedisStreamTest, RangeFromMinimumToMinimum) {

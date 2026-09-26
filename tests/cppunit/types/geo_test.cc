@@ -122,7 +122,8 @@ TEST_F(RedisGeoTest, Radius) {
   geo_->Add(*ctx_, key_, &geo_points, &ret);
   EXPECT_EQ(static_cast<int>(fields_.size()), ret);
   std::vector<GeoPoint> gps;
-  geo_->Radius(*ctx_, key_, longitudes_[0], latitudes_[0], 100000000, 100, kSortASC, std::string(), false, 1, &gps);
+  geo_->Radius(*ctx_, key_, longitudes_[0], latitudes_[0], 100000000, true, 100, kSortASC, std::string(), false, 1,
+               &gps);
   EXPECT_EQ(gps.size(), fields_.size());
   for (size_t i = 0; i < gps.size(); i++) {
     EXPECT_EQ(gps[i].member, fields_[i].ToString());
@@ -140,7 +141,7 @@ TEST_F(RedisGeoTest, RadiusByMember) {
   geo_->Add(*ctx_, key_, &geo_points, &ret);
   EXPECT_EQ(fields_.size(), ret);
   std::vector<GeoPoint> gps;
-  geo_->RadiusByMember(*ctx_, key_, fields_[0], 100000000, 100, kSortASC, std::string(), false, 1, &gps);
+  geo_->RadiusByMember(*ctx_, key_, fields_[0], 100000000, true, 100, kSortASC, std::string(), false, 1, &gps);
   EXPECT_EQ(gps.size(), fields_.size());
   for (size_t i = 0; i < gps.size(); i++) {
     EXPECT_EQ(gps[i].member, fields_[i].ToString());

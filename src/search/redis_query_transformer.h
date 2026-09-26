@@ -157,6 +157,8 @@ struct Transformer : ir::TreeTransformer {
         return std::make_unique<VectorRangeExpr>(std::make_unique<FieldRef>(field),
                                                  GET_OR_RET(number_or_param(query->children[1])),
                                                  GET_OR_RET(Transform2Vector(query->children[2])));
+      } else {
+        return {Status::NotOK, fmt::format("encountered invalid field query node type: {}", query->type)};
       }
     } else if (Is<NotExpr>(node)) {
       CHECK(node->children.size() == 1);

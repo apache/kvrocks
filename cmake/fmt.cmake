@@ -25,3 +25,8 @@ FetchContent_DeclareGitHubWithMirror(fmt
 )
 
 FetchContent_MakeAvailableWithArgs(fmt)
+
+# Treat fmt headers as system headers to avoid warnings from third-party code
+# that still uses fmt APIs deprecated since fmt 12 (e.g. spdlog).
+get_target_property(_fmt_include_dirs fmt INTERFACE_INCLUDE_DIRECTORIES)
+set_target_properties(fmt PROPERTIES INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${_fmt_include_dirs}")

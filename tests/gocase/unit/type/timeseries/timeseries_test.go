@@ -201,6 +201,48 @@ func testTimeSeries(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.ErrorContains(t, rdb.Do(ctx, "ts.add", key, "1000", "13.4").Err(), "update is not supported when DUPLICATE_POLICY is set to BLOCK mode")
 	})
 
+	t.Run("TS.ADD Ignore Option", func(t *testing.T) {
+		ignoreKey := "test_add_ignore_key"
+		require.NoError(t, rdb.Del(ctx, ignoreKey).Err())
+		require.NoError(t, rdb.Do(ctx, "ts.create", ignoreKey, "duplicate_policy", "last", "ignore", "5", "2").Err())
+
+		// The first sample should be inserted normally.
+		require.Equal(t, int64(1000), rdb.Do(ctx, "ts.add", ignoreKey, "1000", "10").Val())
+		// The sample falls inside the IGNORE window, so the existing timestamp stays unchanged.
+		require.Equal(t, int64(1000), rdb.Do(ctx, "ts.add", ignoreKey, "1003", "11").Val())
+
+		res := rdb.Do(ctx, "ts.range", ignoreKey, "-", "+").Val().([]interface{})
+		require.Equal(t, 1, len(res))
+		assert.Equal(t, []interface{}{int64(1000), float64(10)}, res[0])
+
+		// A sample outside the IGNORE window should be appended.
+		require.Equal(t, int64(1008), rdb.Do(ctx, "ts.add", ignoreKey, "1008", "20").Val())
+		res = rdb.Do(ctx, "ts.range", ignoreKey, "-", "+").Val().([]interface{})
+		require.Equal(t, 2, len(res))
+		assert.Equal(t, []interface{}{int64(1008), float64(20)}, res[1])
+
+		// IGNORE arguments on an existing series are ignored, so the sample is evaluated using the stored per-key settings.
+		require.Equal(t, int64(1012), rdb.Do(ctx, "ts.add", ignoreKey, "1012", "25", "ignore", "1000", "1000").Val())
+		res = rdb.Do(ctx, "ts.range", ignoreKey, "-", "+").Val().([]interface{})
+		require.Equal(t, 3, len(res))
+		assert.Equal(t, []interface{}{int64(1012), float64(25)}, res[2])
+
+		// An invalid timestamp must be rejected and the series must remain unchanged.
+		require.ErrorContains(t, rdb.Do(ctx, "ts.add", ignoreKey, "abc", "5").Err(), "invalid timestamp")
+		res = rdb.Do(ctx, "ts.range", ignoreKey, "-", "+").Val().([]interface{})
+		require.Equal(t, 3, len(res))
+
+		// An invalid value must be rejected and the series must remain unchanged.
+		require.ErrorContains(t, rdb.Do(ctx, "ts.add", ignoreKey, "1010", "notanumber").Err(), "invalid value")
+		res = rdb.Do(ctx, "ts.range", ignoreKey, "-", "+").Val().([]interface{})
+		require.Equal(t, 3, len(res))
+
+		// Missing TS.ADD arguments must be rejected and the series must remain unchanged.
+		require.ErrorContains(t, rdb.Do(ctx, "ts.add", ignoreKey, "1010").Err(), "wrong number of arguments")
+		res = rdb.Do(ctx, "ts.range", ignoreKey, "-", "+").Val().([]interface{})
+		require.Equal(t, 3, len(res))
+	})
+
 	t.Run("TS.ADD With Retention", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, key).Err())
 		require.NoError(t, rdb.Do(ctx, "ts.create", key, "retention", "1000").Err())
@@ -229,6 +271,45 @@ func testTimeSeries(t *testing.T, configs util.KvrocksServerConfigs) {
 		res := rdb.Do(ctx, "ts.madd", key, "1000", "13.4", key, "1000", "14.5").Val().([]interface{})
 		assert.Contains(t, res[0], "update is not supported when DUPLICATE_POLICY is set to BLOCK mode")
 		assert.Contains(t, res[1], "update is not supported when DUPLICATE_POLICY is set to BLOCK mode")
+	})
+
+	t.Run("TS.MADD Ignore Option", func(t *testing.T) {
+		ignoreKey := "test_madd_ignore_key"
+		require.NoError(t, rdb.Del(ctx, ignoreKey).Err())
+		require.NoError(t, rdb.Do(ctx, "ts.create", ignoreKey, "duplicate_policy", "last", "ignore", "5", "2").Err())
+
+		// The first sample should be inserted normally.
+		require.Equal(t, int64(1000), rdb.Do(ctx, "ts.add", ignoreKey, "1000", "10").Val())
+		// TS.MADD should keep the first ignored timestamp and only append the sample outside the window.
+		res := rdb.Do(ctx, "ts.madd", ignoreKey, "1003", "11", ignoreKey, "1004", "13", ignoreKey, "1007", "14").Val().([]interface{})
+		assert.Equal(t, []interface{}{int64(1000), int64(1004), int64(1004)}, res)
+
+		samples := rdb.Do(ctx, "ts.range", ignoreKey, "-", "+").Val().([]interface{})
+		require.Equal(t, 2, len(samples))
+		assert.Equal(t, []interface{}{int64(1000), float64(10)}, samples[0])
+		assert.Equal(t, []interface{}{int64(1004), float64(13)}, samples[1])
+
+		// One bad timestamp in TS.MADD should reject the batch and leave the series unchanged.
+		require.ErrorContains(t, rdb.Do(ctx, "ts.madd", ignoreKey, "1005", "11", ignoreKey, "badts", "12").Err(), "invalid timestamp")
+		samples = rdb.Do(ctx, "ts.range", ignoreKey, "-", "+").Val().([]interface{})
+		require.Equal(t, 2, len(samples))
+
+		// One bad value in TS.MADD should reject the batch and leave the series unchanged.
+		require.ErrorContains(t, rdb.Do(ctx, "ts.madd", ignoreKey, "1006", "badvalue", ignoreKey, "1007", "14").Err(), "invalid value")
+		samples = rdb.Do(ctx, "ts.range", ignoreKey, "-", "+").Val().([]interface{})
+		require.Equal(t, 2, len(samples))
+
+		// TS.MADD treats the extra key as a normal triplet, so the existing series keeps using its stored IGNORE policy.
+		res = rdb.Do(ctx, "ts.madd", ignoreKey, "1008", "15", "ignore", "5", "2").Val().([]interface{})
+		assert.Equal(t, int64(1004), res[0])
+		assert.Contains(t, res[1], "the key is not a TSDB key")
+		samples = rdb.Do(ctx, "ts.range", ignoreKey, "-", "+").Val().([]interface{})
+		require.Equal(t, 2, len(samples))
+
+		// Missing TS.MADD arguments must be rejected and the series must remain unchanged.
+		require.ErrorContains(t, rdb.Do(ctx, "ts.madd", ignoreKey, "1008").Err(), "wrong number of arguments")
+		samples = rdb.Do(ctx, "ts.range", ignoreKey, "-", "+").Val().([]interface{})
+		require.Equal(t, 2, len(samples))
 	})
 
 	t.Run("TS.MADD Nonexistent Key", func(t *testing.T) {

@@ -29,6 +29,7 @@
 #include "logging.h"
 #include "server/redis_reply.h"
 #include "storage/redis_metadata.h"
+#include "time_util.h"
 #include "types/redis_string.h"
 
 Status Parser::ParseFullDB() {
@@ -55,7 +56,7 @@ Status Parser::ParseFullDB() {
     if (metadata.Type() == kRedisString) {
       s = parseSimpleKV(iter->key(), iter->value(), metadata.expire);
     } else {
-      s = parseComplexKV(iter->key(), metadata);
+      s = parseComplexKV(iter->key(), metadata, iter->value());
     }
     if (!s.IsOK()) return s;
   }
@@ -79,10 +80,16 @@ Status Parser::parseSimpleKV(const Slice &ns_key, const Slice &value, uint64_t e
   return s;
 }
 
-Status Parser::parseComplexKV(const Slice &ns_key, const Metadata &metadata) {
+Status Parser::parseComplexKV(const Slice &ns_key, const Metadata &metadata, const Slice &metadata_bytes) {
   RedisType type = metadata.Type();
   if (type < kRedisHash || type > kRedisSortedint) {
     return {Status::NotOK, "unknown metadata type: " + std::to_string(type)};
+  }
+
+  HashMetadata hash_metadata(false);
+  if (type == kRedisHash) {
+    auto ds = hash_metadata.Decode(metadata_bytes);
+    if (!ds.ok()) return {Status::NotOK, ds.ToString()};
   }
 
   auto [ns, user_key] = ExtractNamespaceKey<std::string>(ns_key, slot_id_encoded_);
@@ -93,7 +100,6 @@ Status Parser::parseComplexKV(const Slice &ns_key, const Metadata &metadata) {
   rocksdb::Slice upper_bound(next_version_prefix_key);
   read_options.iterate_upper_bound = &upper_bound;
 
-  std::string output;
   auto no_txn_ctx = engine::Context::NoTransactionContext(storage_);
   auto iter = util::UniqueIterator(no_txn_ctx, read_options);
   for (iter->Seek(prefix_key); iter->Valid(); iter->Next()) {
@@ -104,19 +110,31 @@ Status Parser::parseComplexKV(const Slice &ns_key, const Metadata &metadata) {
     InternalKey ikey(iter->key(), slot_id_encoded_);
     std::string sub_key = ikey.GetSubKey().ToString();
     std::string value = iter->value().ToString();
+    std::vector<std::string> commands;
     switch (type) {
-      case kRedisHash:
-        output = redis::ArrayOfBulkStrings({"HSET", user_key, sub_key, value});
+      case kRedisHash: {
+        Slice field_value(value);
+        uint64_t expire = 0;
+        auto ds = hash_metadata.DecodeSubkeyValue(&field_value, &expire);
+        if (!ds.ok()) return {Status::NotOK, ds.ToString()};
+        // Full sync starts with an empty target; expired fields need not be recreated.
+        if (expire > 0 && expire <= util::GetTimeStampMS()) continue;
+        commands.emplace_back(redis::ArrayOfBulkStrings({"HSET", user_key, sub_key, field_value.ToString()}));
+        if (expire > 0) {
+          commands.emplace_back(
+              redis::ArrayOfBulkStrings({"HPEXPIREAT", user_key, std::to_string(expire), "FIELDS", "1", sub_key}));
+        }
         break;
+      }
       case kRedisSet:
-        output = redis::ArrayOfBulkStrings({"SADD", user_key, sub_key});
+        commands.emplace_back(redis::ArrayOfBulkStrings({"SADD", user_key, sub_key}));
         break;
       case kRedisList:
-        output = redis::ArrayOfBulkStrings({"RPUSH", user_key, value});
+        commands.emplace_back(redis::ArrayOfBulkStrings({"RPUSH", user_key, value}));
         break;
       case kRedisZSet: {
         double score = DecodeDouble(value.data());
-        output = redis::ArrayOfBulkStrings({"ZADD", user_key, util::Float2String(score), sub_key});
+        commands.emplace_back(redis::ArrayOfBulkStrings({"ZADD", user_key, util::Float2String(score), sub_key}));
         break;
       }
       case kRedisBitmap: {
@@ -127,21 +145,21 @@ Status Parser::parseComplexKV(const Slice &ns_key, const Metadata &metadata) {
       }
       case kRedisSortedint: {
         std::string val = std::to_string(DecodeFixed64(ikey.GetSubKey().data()));
-        output = redis::ArrayOfBulkStrings({"ZADD", user_key, val, val});
+        commands.emplace_back(redis::ArrayOfBulkStrings({"ZADD", user_key, val, val}));
         break;
       }
       default:
         break;  // should never get here
     }
 
-    if (type != kRedisBitmap) {
-      auto s = writer_->Write(ns, {output});
-      if (!s.IsOK()) return s.Prefixed(fmt::format("failed to write the '{}' command to AOF", output));
+    if (!commands.empty()) {
+      auto s = writer_->Write(ns, commands);
+      if (!s.IsOK()) return s.Prefixed("failed to write commands to AOF");
     }
   }
 
   if (metadata.expire > 0) {
-    output = redis::ArrayOfBulkStrings({"EXPIREAT", user_key, std::to_string(metadata.expire / 1000)});
+    auto output = redis::ArrayOfBulkStrings({"EXPIREAT", user_key, std::to_string(metadata.expire / 1000)});
     Status s = writer_->Write(ns, {output});
     if (!s.IsOK()) return s.Prefixed("failed to write the EXPIREAT command to AOF");
   }

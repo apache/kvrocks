@@ -595,6 +595,11 @@ Status SlotMigrator::sendSnapshot() {
     if (redis_type == RedisType::kRedisList) {
       redis::WriteBatchLogData batch_log_data(redis_type, {std::to_string(RedisCommand::kRedisCmdRPush)});
       log_data = batch_log_data.Encode();
+    } else if (redis_type == RedisType::kRedisHash) {
+      HashMetadata metadata(false);
+      auto s = metadata.Decode(iter.Value());
+      if (!s.ok()) return {Status::NotOK, s.ToString()};
+      log_data = redis::WriteBatchLogData(metadata.mode).Encode();
     } else {
       redis::WriteBatchLogData batch_log_data(redis_type);
       log_data = batch_log_data.Encode();

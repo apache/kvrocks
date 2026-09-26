@@ -231,10 +231,10 @@ inline Status TDigestCDF(const std::vector<Centroid>& centroids, double centroid
     auto input_idx = (first_valid_input_it == sorted_unique_inputs.cend())
                          ? sorted_unique_inputs.size()
                          : static_cast<size_t>(std::distance(sorted_unique_inputs.cbegin(), first_valid_input_it));
-    auto last_valid_input_idx = (last_valid_input_it == sorted_unique_inputs.crend())
-                                    ? 0
-                                    : static_cast<size_t>(
-                                          std::distance(sorted_unique_inputs.cbegin(), last_valid_input_it.base()));
+    auto last_valid_input_idx =
+        (last_valid_input_it == sorted_unique_inputs.crend())
+            ? 0
+            : static_cast<size_t>(std::distance(sorted_unique_inputs.cbegin(), last_valid_input_it.base()));
 
     // fill in 0 for inputs less than the min boundary
     for (size_t i = 0; i < input_idx; ++i) {

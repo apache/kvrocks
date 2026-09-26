@@ -21,28 +21,24 @@
 #pragma once
 
 #include <rocksdb/status.h>
-#include <rocksdb/write_batch.h>
 
 #include <cstdint>
 
-#include "cuckoo_filter_page.h"
-
 namespace redis {
+
+class CuckooPageCache;
 
 class CuckooSubFilter {
  public:
-  CuckooSubFilter(engine::Storage *storage, engine::Context &ctx, const Slice &ns_key, bool slot_id_encoded,
-                  uint64_t version, uint8_t bucket_size, uint32_t page_size, uint16_t filter_index,
-                  uint32_t num_buckets);
+  CuckooSubFilter(CuckooPageCache &pages, uint16_t filter_index, uint32_t num_buckets);
 
   uint16_t Index() const { return filter_index_; }
   uint32_t NumBuckets() const { return num_buckets_; }
 
   rocksdb::Status TryInsert(uint64_t hash, uint8_t fingerprint, bool *inserted);
-  // Performs speculative kick-out mutations in the page cache. On success, dirty pages remain staged for
-  // WriteToBatch(); on inserted=false or non-OK status, cached pages are discarded before returning.
+  // Performs speculative kick-out mutations in the page cache. Failed attempts restore only the slots changed by
+  // this call, preserving mutations staged by the owning chain operation.
   rocksdb::Status TryKickOutInsert(uint64_t hash, uint8_t fingerprint, uint16_t max_iterations, bool *inserted);
-  rocksdb::Status WriteToBatch(rocksdb::WriteBatchBase *batch);
 
  private:
   uint32_t getPrimaryBucketIndex(uint64_t hash) const;
@@ -51,7 +47,7 @@ class CuckooSubFilter {
   uint8_t bucket_size_ = 0;
   uint16_t filter_index_ = 0;
   uint32_t num_buckets_ = 0;
-  CuckooPageCache pages_;
+  CuckooPageCache &pages_;
 };
 
 }  // namespace redis

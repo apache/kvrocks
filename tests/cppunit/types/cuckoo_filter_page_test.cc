@@ -343,6 +343,47 @@ TEST_F(RedisCuckooPageCacheTest, DiscardCachedPagesDropsDirtyPages) {
   EXPECT_TRUE(s.IsNotFound()) << s.ToString();
 }
 
+TEST_F(RedisCuckooPageCacheTest, DiscardCleanPagesPreservesDirtyPages) {
+  auto metadata = makeMetadata(4);
+  auto dirty_page_key = makePageKey(metadata, 0, 0);
+  auto clean_page_key = makePageKey(metadata, 1, 0);
+  writePage(dirty_page_key, std::string(8, static_cast<char>(1)));
+  writePage(clean_page_key, std::string(8, static_cast<char>(2)));
+  redis::CuckooPageCache pages(storage_.get(), *ctx_, ns_key_, storage_->IsSlotIdEncoded(), metadata.version,
+                               metadata.bucket_size, metadata.page_size);
+
+  auto s = pages.SetBucketSlot(0, 2, 0, 0, 11);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  uint8_t fingerprint = 0;
+  s = pages.GetBucketSlot(1, 2, 0, 0, &fingerprint);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  ASSERT_EQ(fingerprint, 2);
+
+  pages.DiscardCleanPages();
+  writePage(dirty_page_key, std::string(8, static_cast<char>(3)));
+  writePage(clean_page_key, std::string(8, static_cast<char>(4)));
+
+  s = pages.GetBucketSlot(0, 2, 0, 0, &fingerprint);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  EXPECT_EQ(fingerprint, 11);
+  s = pages.GetBucketSlot(1, 2, 0, 0, &fingerprint);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  EXPECT_EQ(fingerprint, 4);
+
+  auto batch = storage_->GetWriteBatchBase();
+  s = pages.WriteBackDirtyPages(batch.Get());
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  commitBatch(batch.Get());
+
+  std::string page;
+  s = readPage(dirty_page_key, &page);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  EXPECT_EQ(static_cast<uint8_t>(page[0]), 11);
+  s = readPage(clean_page_key, &page);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  EXPECT_EQ(static_cast<uint8_t>(page[0]), 4);
+}
+
 TEST_F(RedisCuckooPageCacheTest, PageKeyUsesMetadataVersion) {
   auto old_metadata = makeMetadata(4, 100);
   auto new_metadata = makeMetadata(4, 101);

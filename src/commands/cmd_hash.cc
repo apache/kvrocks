@@ -883,6 +883,37 @@ class CommandHRandField : public Commander {
   bool no_parameters_ = true;
 };
 
+class CommandHGetDel : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    CommandParser parser(args, 2);
+    if (!parser.EatEqICase("FIELDS")) {
+      return {Status::RedisParseErr, "Mandatory argument FIELDS is missing or not at the right position"};
+    }
+    auto count = parser.TakeInt<int64_t>(NumericRange<int64_t>{1, std::numeric_limits<int64_t>::max()}, 10);
+    // std::from_chars accepts leading zeros, while Redis uses string2ll which
+    // requires the canonical decimal form (rejects "01", "+1", ...).
+    if (!count || args[3] != std::to_string(*count)) {
+      return {Status::RedisParseErr, "Number of fields must be a positive integer"};
+    }
+    if (static_cast<uint64_t>(*count) != parser.Remains()) {
+      return {Status::RedisParseErr, "The `numfields` parameter must match the number of arguments"};
+    }
+    return Commander::Parse(args);
+  }
+
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    std::vector<Slice> fields(args_.begin() + 4, args_.end());
+    std::vector<std::string> values;
+    std::vector<rocksdb::Status> statuses;
+    redis::Hash hash_db(srv->storage, conn->GetNamespace());
+    auto s = hash_db.GetDel(ctx, args_[1], fields, &values, &statuses);
+    if (!s.ok()) return HashCommandStatus(s);
+    *output = conn->MultiBulkString(values, statuses);
+    return Status::OK();
+  }
+};
+
 class CommandHSetEx : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
@@ -1074,6 +1105,7 @@ REDIS_REGISTER_COMMANDS(
     MakeCmdAttr<CommandHSetExpire>("hsetexpire", -5, "write", 1, 1, 1),
     MakeCmdAttr<CommandHSetNX>("hsetnx", -4, "write", 1, 1, 1),
     MakeCmdAttr<CommandHDel>("hdel", -3, "write no-dbsize-check", 1, 1, 1),
+    MakeCmdAttr<CommandHGetDel>("hgetdel", -5, "write no-dbsize-check", 1, 1, 1),
     MakeCmdAttr<CommandHStrlen>("hstrlen", 3, "read-only", 1, 1, 1),
     MakeCmdAttr<CommandHExists>("hexists", 3, "read-only", 1, 1, 1),
     MakeCmdAttr<CommandHLen>("hlen", -2, "read-only", 1, 1, 1, GenerateHLenFlags),

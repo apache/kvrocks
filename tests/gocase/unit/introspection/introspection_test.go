@@ -349,3 +349,93 @@ func TestMultiServerIntrospection(t *testing.T) {
 		}, 5*time.Second, 100*time.Millisecond)
 	})
 }
+
+func TestObject(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{})
+	defer srv.Close()
+
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	t.Run("OBJECT HELP returns help text", func(t *testing.T) {
+		result, err := rdb.Do(ctx, "OBJECT", "HELP").StringSlice()
+		require.NoError(t, err)
+		require.NotEmpty(t, result)
+		require.Contains(t, result[0], "HELP")
+		require.Contains(t, result[2], "DUMP")
+		require.Contains(t, result[4], "ENCODING")
+	})
+
+	t.Run("OBJECT HELP is case-insensitive", func(t *testing.T) {
+		result, err := rdb.Do(ctx, "object", "help").StringSlice()
+		require.NoError(t, err)
+		require.NotEmpty(t, result)
+	})
+
+	t.Run("OBJECT ENCODING for non-existent key returns nil", func(t *testing.T) {
+		err := rdb.Do(ctx, "OBJECT", "ENCODING", "non_existent_key").Err()
+		require.Equal(t, redis.Nil, err)
+	})
+
+	t.Run("OBJECT ENCODING for string integers", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "int_key1", "12345", 0).Err())
+		require.Equal(t, "int", rdb.Do(ctx, "OBJECT", "ENCODING", "int_key1").Val())
+
+		require.NoError(t, rdb.Set(ctx, "int_key2", "-42", 0).Err())
+		require.Equal(t, "int", rdb.Do(ctx, "OBJECT", "ENCODING", "int_key2").Val())
+
+		require.NoError(t, rdb.Set(ctx, "int_key3", "0", 0).Err())
+		require.Equal(t, "int", rdb.Do(ctx, "OBJECT", "ENCODING", "int_key3").Val())
+	})
+
+	t.Run("OBJECT ENCODING for raw strings", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "str_key", "hello world", 0).Err())
+		require.Equal(t, "raw", rdb.Do(ctx, "OBJECT", "ENCODING", "str_key").Val())
+
+		// floating point string is raw
+		require.NoError(t, rdb.Set(ctx, "float_key", "3.14", 0).Err())
+		require.Equal(t, "raw", rdb.Do(ctx, "OBJECT", "ENCODING", "float_key").Val())
+	})
+
+	t.Run("OBJECT ENCODING for list", func(t *testing.T) {
+		require.NoError(t, rdb.RPush(ctx, "list_key", "item1", "item2").Err())
+		require.Equal(t, "quicklist", rdb.Do(ctx, "OBJECT", "ENCODING", "list_key").Val())
+	})
+
+	t.Run("OBJECT ENCODING for set", func(t *testing.T) {
+		require.NoError(t, rdb.SAdd(ctx, "set_key", "m1", "m2").Err())
+		require.Equal(t, "hashtable", rdb.Do(ctx, "OBJECT", "ENCODING", "set_key").Val())
+	})
+
+	t.Run("OBJECT ENCODING for hash", func(t *testing.T) {
+		require.NoError(t, rdb.HSet(ctx, "hash_key", "f1", "v1").Err())
+		require.Equal(t, "hashtable", rdb.Do(ctx, "OBJECT", "ENCODING", "hash_key").Val())
+	})
+
+	t.Run("OBJECT ENCODING for zset", func(t *testing.T) {
+		require.NoError(t, rdb.ZAdd(ctx, "zset_key", redis.Z{Score: 1, Member: "m1"}).Err())
+		require.Equal(t, "skiplist", rdb.Do(ctx, "OBJECT", "ENCODING", "zset_key").Val())
+	})
+
+	t.Run("OBJECT ENCODING for json", func(t *testing.T) {
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "json_key", "$", `{"a": 1}`).Err())
+		require.Equal(t, "json", rdb.Do(ctx, "OBJECT", "ENCODING", "json_key").Val())
+	})
+
+	t.Run("OBJECT DUMP works", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "dump_key", "hello", 0).Err())
+		result, err := rdb.Do(ctx, "OBJECT", "DUMP", "dump_key").StringSlice()
+		require.NoError(t, err)
+		require.NotEmpty(t, result)
+	})
+
+	t.Run("OBJECT errors on wrong arguments or unknown subcommands", func(t *testing.T) {
+		require.Error(t, rdb.Do(ctx, "OBJECT").Err())
+		require.Error(t, rdb.Do(ctx, "OBJECT", "UNKNOWN").Err())
+		require.Error(t, rdb.Do(ctx, "OBJECT", "HELP", "extra").Err())
+		require.Error(t, rdb.Do(ctx, "OBJECT", "ENCODING").Err())
+		require.Error(t, rdb.Do(ctx, "OBJECT", "DUMP").Err())
+	})
+}
+

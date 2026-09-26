@@ -126,6 +126,7 @@ def pipeline_execute(client, name, cmds):
             else:
                 file.write(f"{cmd[0][1]}-{cmd[0][2]}" + '\n')
             p.execute_command(*cmd[0])
+        file.flush()
         res = p.execute()
         for i in range(0, len(cmds)):
             if not check(cmds[i], res[i]):
@@ -158,9 +159,12 @@ if __name__ == '__main__':
     if args.flushdb:
         client.flushdb()
     succ = True
-    if not run_test(client, PopulateCases):
-        succ = False
-    if not run_test(client, AppendCases):
-        succ = False
+    try:
+        if not run_test(client, PopulateCases):
+            succ = False
+        if not run_test(client, AppendCases):
+            succ = False
+    finally:
+        file.close()
     if not succ:
         raise AssertionError("Test failed. See details above.")

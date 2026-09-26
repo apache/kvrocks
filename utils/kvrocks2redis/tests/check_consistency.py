@@ -78,13 +78,24 @@ class RedisComparator:
         else:
             raise ValueError(f"Unsupported data type '{data_type}' for key '{keys[0]}'")
 
+    def _wait_and_compare(self, keys: list, data_type: str, max_attempts: int = 30, interval: float = 0.1):
+        src_data = None
+        dst_data = None
+        for _ in range(max_attempts):
+            src_data, dst_data = self._compare_data(keys, data_type)
+            if src_data == dst_data:
+                return src_data, dst_data
+            time.sleep(interval)
+        return src_data, dst_data
+
     def compare_redis_data(self, key_file=''):
         if key_file:
             with open(key_file, 'rb') as f:
                 for line in f:
                     keys = codecs.decode(line.strip()).split('-')
-                    data_type = self.src_cli.type(keys[0])
-                    src_data, dst_data = self._compare_data(keys, data_type)
+                    key = keys[0]
+                    data_type = self.src_cli.type(key)
+                    src_data, dst_data = self._wait_and_compare(keys, data_type)
                     if src_data != dst_data:
                         raise AssertionError(f"Data mismatch for key '{key}': source data: '{src_data}' destination data: '{dst_data}'")
 
@@ -109,17 +120,11 @@ class RedisComparator:
             self.src_cli.zadd(zset_key, zset_value)
             time.sleep(0.02)
             keys = [key, incr_key, hash_key, set_key, zset_key]
-            for key in keys:
-                attempts = 0
-                while attempts <= 3:
-                    data_type = self.src_cli.type(key)
-                    src_data, dst_data = self._compare_data([key], data_type)
-                    if src_data == dst_data:
-                        break
-                    attempts += 1
-                    time.sleep(0.1)
-                else:
-                    raise AssertionError(f"Data mismatch for key '{key}': source data: '{src_data}' destination data: '{dst_data}'")
+            for k in keys:
+                data_type = self.src_cli.type(k)
+                src_data, dst_data = self._wait_and_compare([k], data_type)
+                if src_data != dst_data:
+                    raise AssertionError(f"Data mismatch for key '{k}': source data: '{src_data}' destination data: '{dst_data}'")
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Redis Comparator')

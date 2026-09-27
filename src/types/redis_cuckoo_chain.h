@@ -53,14 +53,14 @@ class CuckooChain : public Database {
 
   static rocksdb::Status validateMetadata(const CuckooChainMetadata &metadata);
 
-  rocksdb::Status tryInsertFingerprint(CuckooChainMetadata *metadata, CuckooPageCache &pages, uint64_t hash,
-                                       uint8_t fingerprint, bool *inserted);
-  rocksdb::Status tryCuckooInsert(const CuckooChainMetadata *metadata, CuckooPageCache &pages, uint64_t hash,
-                                  uint8_t fingerprint, bool *inserted);
-  rocksdb::Status tryCuckooKickOut(const CuckooChainMetadata *metadata, CuckooPageCache &pages, uint64_t hash,
-                                   uint8_t fingerprint, bool *inserted);
-  rocksdb::Status expandAndInsertCuckooChain(CuckooChainMetadata *metadata, CuckooPageCache &pages, uint64_t hash,
-                                             uint8_t fingerprint, bool *inserted);
+  static rocksdb::Status tryInsertFingerprint(CuckooChainMetadata *metadata, CuckooPageCache &pages, uint64_t hash,
+                                              uint8_t fingerprint, bool *inserted);
+  static rocksdb::Status tryCuckooInsert(const CuckooChainMetadata *metadata, CuckooPageCache &pages, uint64_t hash,
+                                         uint8_t fingerprint, bool *inserted);
+  static rocksdb::Status tryCuckooKickOut(const CuckooChainMetadata *metadata, CuckooPageCache &pages, uint64_t hash,
+                                          uint8_t fingerprint, bool *inserted);
+  static rocksdb::Status expandAndInsertCuckooChain(CuckooChainMetadata *metadata, CuckooPageCache &pages,
+                                                    uint64_t hash, uint8_t fingerprint, bool *inserted);
   rocksdb::Status commitPagesAndMetadata(engine::Context &ctx, const Slice &user_key, const std::string &ns_key,
                                          const CuckooChainMetadata *metadata, CuckooPageCache &pages);
 };

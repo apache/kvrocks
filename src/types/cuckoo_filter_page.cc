@@ -125,35 +125,35 @@ rocksdb::Status CuckooPageCache::SetBucketSlotWithUndo(uint16_t filter_index, ui
   auto s = ensureBucketLoaded(filter_index, num_buckets, bucket_index, &bucket);
   if (!s.ok()) return s;
 
-  mutation->filter_index_ = filter_index;
-  mutation->num_buckets_ = num_buckets;
-  mutation->bucket_index_ = bucket_index;
-  mutation->slot_idx_ = slot_idx;
-  mutation->old_fingerprint_ = getBucketRefSlot(bucket, slot_idx);
-  mutation->page_was_dirty_ = bucket.page->is_dirty;
+  mutation->filter_index = filter_index;
+  mutation->num_buckets = num_buckets;
+  mutation->bucket_index = bucket_index;
+  mutation->slot_idx = slot_idx;
+  mutation->old_fingerprint = getBucketRefSlot(bucket, slot_idx);
+  mutation->page_was_dirty = bucket.page->is_dirty;
   setBucketRefSlot(bucket, slot_idx, fingerprint);
   return rocksdb::Status::OK();
 }
 
 rocksdb::Status CuckooPageCache::RestoreBucketSlot(const SlotMutation &mutation) {
-  if (mutation.slot_idx_ >= bucket_size_) {
+  if (mutation.slot_idx >= bucket_size_) {
     return rocksdb::Status::Corruption("invalid cuckoo filter slot mutation");
   }
 
   BucketLocation location;
-  auto s = resolveBucketLocation(mutation.filter_index_, mutation.num_buckets_, mutation.bucket_index_, &location);
+  auto s = resolveBucketLocation(mutation.filter_index, mutation.num_buckets, mutation.bucket_index, &location);
   if (!s.ok()) return s;
 
   auto it = pages_.find(location.page_key);
   if (it == pages_.end()) return rocksdb::Status::Corruption("cuckoo filter slot mutation page is not cached");
 
-  auto offset = location.offset + mutation.slot_idx_;
+  auto offset = location.offset + mutation.slot_idx;
   if (offset >= it->second.data.size()) {
     return rocksdb::Status::Corruption("invalid cuckoo filter slot mutation");
   }
 
-  it->second.data[offset] = static_cast<char>(mutation.old_fingerprint_);
-  it->second.is_dirty = mutation.page_was_dirty_;
+  it->second.data[offset] = static_cast<char>(mutation.old_fingerprint);
+  it->second.is_dirty = mutation.page_was_dirty;
   return rocksdb::Status::OK();
 }
 

@@ -35,14 +35,14 @@ namespace redis {
 class CuckooPageCache {
  public:
   struct SlotMutation {
-    uint8_t OldFingerprint() const { return old_fingerprint_; }
+    uint8_t OldFingerprint() const { return old_fingerprint; }
 
-    uint16_t filter_index_ = 0;
-    uint32_t num_buckets_ = 0;
-    uint32_t bucket_index_ = 0;
-    uint32_t slot_idx_ = 0;
-    uint8_t old_fingerprint_ = 0;
-    bool page_was_dirty_ = false;
+    uint16_t filter_index = 0;
+    uint32_t num_buckets = 0;
+    uint32_t bucket_index = 0;
+    uint32_t slot_idx = 0;
+    uint8_t old_fingerprint = 0;
+    bool page_was_dirty = false;
   };
 
   CuckooPageCache(engine::Storage *storage, engine::Context &ctx, const Slice &ns_key, bool slot_id_encoded,

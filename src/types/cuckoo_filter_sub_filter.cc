@@ -61,7 +61,7 @@ rocksdb::Status CuckooSubFilter::TryKickOutInsert(uint64_t hash, uint8_t fingerp
     return rocksdb::Status::OK();
   };
 
-  auto rollbackAndReturn = [&](const rocksdb::Status &status) {
+  auto rollback_and_return = [&](const rocksdb::Status &status) {
     auto rollback_status = rollback();
     return rollback_status.ok() ? status : rollback_status;
   };
@@ -70,7 +70,7 @@ rocksdb::Status CuckooSubFilter::TryKickOutInsert(uint64_t hash, uint8_t fingerp
     CuckooPageCache::SlotMutation mutation;
     auto s = pages_.SetBucketSlotWithUndo(filter_index_, num_buckets_, current_bucket_idx, victim_slot, current_fp,
                                           &mutation);
-    if (!s.ok()) return rollbackAndReturn(s);
+    if (!s.ok()) return rollback_and_return(s);
     current_fp = mutation.OldFingerprint();
     mutations.push_back(mutation);
 
@@ -83,7 +83,7 @@ rocksdb::Status CuckooSubFilter::TryKickOutInsert(uint64_t hash, uint8_t fingerp
 
     bool inserted_in_alt_bucket = false;
     s = pages_.TryInsertInBucket(filter_index_, num_buckets_, alt_bucket_idx, current_fp, &inserted_in_alt_bucket);
-    if (!s.ok()) return rollbackAndReturn(s);
+    if (!s.ok()) return rollback_and_return(s);
     if (inserted_in_alt_bucket) {
       *inserted = true;
       return rocksdb::Status::OK();

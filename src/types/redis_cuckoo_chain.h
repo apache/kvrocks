@@ -47,6 +47,9 @@ class CuckooChain : public Database {
   // Duplicate items are allowed, so added is true whenever insertion succeeds.
   rocksdb::Status Add(engine::Context &ctx, const Slice &user_key, const Slice &item, bool *added);
 
+  // Returns the count of an item in the cuckoo filter, or 0 if not found.
+  rocksdb::Status Count(engine::Context &ctx, const Slice &user_key, const Slice &item, uint64_t *count);
+
  private:
   // Loads metadata for a cuckoo filter key.
   rocksdb::Status getCuckooChainMetadata(engine::Context &ctx, const Slice &ns_key, CuckooChainMetadata *metadata);

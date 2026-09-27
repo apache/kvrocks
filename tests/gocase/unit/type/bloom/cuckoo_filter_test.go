@@ -187,4 +187,56 @@ func TestCuckooFilter(t *testing.T) {
 		require.NoError(t, result.Err())
 		require.Equal(t, int64(1), result.Val())
 	})
+
+	t.Run("Count no exists key returns zero", func(t *testing.T) {
+		key := "no_exist_key_count"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.Equal(t, int64(0), rdb.Do(ctx, "cf.count", key, "item").Val())
+	})
+
+	t.Run("Count empty filter", func(t *testing.T) {
+		key := "test_cf_count_empty"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "100").Err())
+		require.Equal(t, int64(0), rdb.Do(ctx, "cf.count", key, "item").Val())
+	})
+
+	t.Run("Count after add", func(t *testing.T) {
+		key := "test_cf_count_after_add"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "100").Err())
+		require.NoError(t, rdb.Do(ctx, "cf.add", key, "my_item").Err())
+		require.Equal(t, int64(1), rdb.Do(ctx, "cf.count", key, "my_item").Val())
+	})
+
+	t.Run("Count duplicate items", func(t *testing.T) {
+		key := "test_cf_count_dup"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "100").Err())
+		for i := 0; i < 5; i++ {
+			require.NoError(t, rdb.Do(ctx, "cf.add", key, "same_item").Err())
+		}
+		require.Equal(t, int64(5), rdb.Do(ctx, "cf.count", key, "same_item").Val())
+	})
+
+	t.Run("Count non-existent item", func(t *testing.T) {
+		key := "test_cf_count_not_exist_item"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "100").Err())
+		require.NoError(t, rdb.Do(ctx, "cf.add", key, "item1").Err())
+		require.Equal(t, int64(0), rdb.Do(ctx, "cf.count", key, "item2").Val())
+	})
+
+	t.Run("Count wrong type key", func(t *testing.T) {
+		key := "test_cf_count_wrong_type"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Set(ctx, key, "value", 0).Err())
+		require.ErrorContains(t, rdb.Do(ctx, "cf.count", key, "item").Err(), "WRONGTYPE")
+	})
+
+	t.Run("Count wrong number of arguments", func(t *testing.T) {
+		require.Error(t, rdb.Do(ctx, "cf.count").Err())
+		require.Error(t, rdb.Do(ctx, "cf.count", "key_only").Err())
+		require.Error(t, rdb.Do(ctx, "cf.count", "key", "item1", "item2").Err())
+	})
 }

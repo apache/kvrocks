@@ -97,6 +97,28 @@ rocksdb::Status CuckooSubFilter::WriteToBatch(rocksdb::WriteBatchBase *batch) {
   return pages_.WriteBackDirtyPages(batch);
 }
 
+rocksdb::Status CuckooSubFilter::Count(uint64_t hash, uint8_t fingerprint, uint32_t *count) {
+  uint32_t bucket1_idx = getPrimaryBucketIndex(hash);
+  uint32_t bucket2_idx = getSecondaryBucketIndex(hash, fingerprint);
+
+  auto s = pages_.PrefetchBuckets(filter_index_, num_buckets_, bucket1_idx, bucket2_idx);
+  if (!s.ok()) return s;
+
+  uint32_t c1 = 0, c2 = 0;
+  s = pages_.CountInBucket(filter_index_, num_buckets_, bucket1_idx, fingerprint, &c1);
+  if (!s.ok()) return s;
+
+  *count += c1;
+
+  if (bucket1_idx != bucket2_idx) {
+    s = pages_.CountInBucket(filter_index_, num_buckets_, bucket2_idx, fingerprint, &c2);
+    if (!s.ok()) return s;
+    *count += c2;
+  }
+
+  return rocksdb::Status::OK();
+}
+
 uint32_t CuckooSubFilter::getPrimaryBucketIndex(uint64_t hash) const { return hash % num_buckets_; }
 
 uint32_t CuckooSubFilter::getSecondaryBucketIndex(uint64_t hash, uint8_t fingerprint) const {

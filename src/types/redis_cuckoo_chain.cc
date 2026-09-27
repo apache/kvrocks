@@ -179,6 +179,49 @@ rocksdb::Status CuckooChain::Add(engine::Context &ctx, const Slice &user_key, co
   return rocksdb::Status::Aborted("filter is full");
 }
 
+rocksdb::Status CuckooChain::Count(engine::Context &ctx, const Slice &user_key, const Slice &item, uint64_t *count) {
+  std::string ns_key = AppendNamespacePrefix(user_key);
+
+  CuckooChainMetadata metadata(false);
+  auto s = getCuckooChainMetadata(ctx, ns_key, &metadata);
+
+  if (s.IsNotFound()) {
+    return s;
+  }
+  if (!s.ok()) {
+    return s;
+  }
+
+  s = validateMetadata(metadata);
+  if (!s.ok()) {
+    return s;
+  }
+
+  uint64_t hash = CuckooFilterHelper::Hash(item.data(), item.size());
+  uint8_t fingerprint = CuckooFilterHelper::GenerateFingerprint(hash);
+
+  *count = 0;
+
+  for (uint16_t filter_idx = 0; filter_idx < metadata.n_filters; filter_idx++) {
+    uint32_t num_buckets = 0;
+    s = CuckooFilterHelper::GetFilterNumBuckets(metadata.base_capacity, metadata.expansion, metadata.bucket_size,
+                                                filter_idx, &num_buckets);
+    if (!s.ok()) {
+      return s;
+    }
+
+    CuckooSubFilter sub_filter(storage_, ctx, ns_key, storage_->IsSlotIdEncoded(), metadata.version,
+                               metadata.bucket_size, metadata.page_size, filter_idx, num_buckets);
+    uint32_t sub_count = 0;
+    s = sub_filter.Count(hash, fingerprint, &sub_count);
+    if (!s.ok()) {
+      return s;
+    }
+    *count += static_cast<uint64_t>(sub_count);
+  }
+  return rocksdb::Status::OK();
+}
+
 rocksdb::Status CuckooChain::tryCuckooInsert(engine::Context &ctx, const Slice &user_key, const std::string &ns_key,
                                              CuckooChainMetadata *metadata, uint64_t hash, uint8_t fingerprint,
                                              bool *inserted) {

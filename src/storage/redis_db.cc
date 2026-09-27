@@ -21,6 +21,8 @@
 #include "redis_db.h"
 
 #include <ctime>
+#include <string_view>
+#include <unordered_set>
 #include <utility>
 
 #include "cluster/redis_slot.h"
@@ -186,6 +188,13 @@ rocksdb::Status Database::MDel(engine::Context &ctx, const std::vector<Slice> &k
   storage_->MultiGet(ctx, ctx.DefaultMultiGetOptions(), metadata_cf_handle_, slice_keys.size(), slice_keys.data(),
                      pin_values.data(), statuses.data());
 
+  const bool collect_del_events = ctx.IsKeyspaceEventEnabled(kNotifyGeneric);
+  std::vector<size_t> deleted_key_indexes;
+  if (collect_del_events) deleted_key_indexes.reserve(keys.size());
+
+  std::unordered_set<std::string_view> deleted_ns_keys;
+  const bool deduplicate_keys = keys.size() > 1;
+  if (deduplicate_keys) deleted_ns_keys.reserve(keys.size());
   for (size_t i = 0; i < slice_keys.size(); i++) {
     if (!statuses[i].ok() && !statuses[i].IsNotFound()) return statuses[i];
     if (statuses[i].IsNotFound()) continue;
@@ -196,15 +205,23 @@ rocksdb::Status Database::MDel(engine::Context &ctx, const std::vector<Slice> &k
     auto s = metadata.Decode(rocksdb::Slice(pin_values[i].data(), pin_values[i].size()));
     if (!s.ok()) continue;
     if (metadata.Expired()) continue;
+    if (deduplicate_keys && !deleted_ns_keys.emplace(ns_keys[i]).second) continue;
 
     s = batch->Delete(metadata_cf_handle_, ns_keys[i]);
     if (!s.ok()) return s;
     *deleted_cnt += 1;
+    if (collect_del_events) deleted_key_indexes.emplace_back(i);
   }
 
   if (*deleted_cnt == 0) return rocksdb::Status::OK();
 
-  return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+  s = storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+  if (!s.ok()) return s;
+
+  for (const auto index : deleted_key_indexes) {
+    ctx.AddKeyspaceEventIfEnabled(kNotifyGeneric, "del", namespace_, keys[index].ToStringView());
+  }
+  return rocksdb::Status::OK();
 }
 
 rocksdb::Status Database::Exists(engine::Context &ctx, const std::vector<Slice> &keys, uint32_t *ret) {
@@ -596,9 +613,29 @@ rocksdb::Status SubKeyScanner::Scan(engine::Context &ctx, RedisType type, const 
   return iter->status();
 }
 
+WriteBatchLogData::WriteBatchLogData(HashSubkeyEncodingMode mode) : type_(kRedisHash) {
+  // Keep legacy logs unchanged. A subkey-only update must describe its own encoding.
+  if (mode != HashSubkeyEncodingMode::kLegacy) {
+    args_ = {std::to_string(kRedisCmdHSet), std::to_string(static_cast<uint8_t>(mode))};
+  }
+}
+
 RedisType WriteBatchLogData::GetRedisType() const { return type_; }
 
 std::vector<std::string> *WriteBatchLogData::GetArguments() { return &args_; }
+
+StatusOr<HashSubkeyEncodingMode> WriteBatchLogData::GetHashSubkeyEncodingMode() const {
+  if (type_ != kRedisHash) return {Status::NotOK, "not a hash log"};
+  if (args_.empty()) return HashSubkeyEncodingMode::kLegacy;
+  if (args_.size() != 2 || args_[0] != std::to_string(kRedisCmdHSet)) {
+    return {Status::NotOK, "invalid hash encoding log"};
+  }
+  auto mode = ParseInt<uint8_t>(args_[1], 10);
+  if (!mode || *mode > static_cast<uint8_t>(HashSubkeyEncodingMode::kFieldExpiration)) {
+    return {Status::NotOK, "invalid hash subkey encoding mode in log"};
+  }
+  return static_cast<HashSubkeyEncodingMode>(*mode);
+}
 
 std::string WriteBatchLogData::Encode() const {
   std::string ret = std::to_string(type_);
@@ -678,15 +715,21 @@ rocksdb::Status Database::Copy(engine::Context &ctx, const std::string &key, con
 
   if (key == new_key) return rocksdb::Status::OK();
 
+  engine::DBIterator iter(ctx, ctx.GetReadOptions());
+  iter.Seek(key);
+
   auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(type);
+  if (type == kRedisHash) {
+    HashMetadata metadata(false);
+    s = metadata.Decode(iter.Value());
+    if (!s.ok()) return s;
+    log_data = WriteBatchLogData(metadata.mode);
+  }
   s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) {
     return s;
   }
-
-  engine::DBIterator iter(ctx, ctx.GetReadOptions());
-  iter.Seek(key);
 
   if (delete_old) {
     s = batch->Delete(metadata_cf_handle_, key);

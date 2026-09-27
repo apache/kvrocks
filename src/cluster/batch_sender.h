@@ -39,6 +39,7 @@ class BatchSender {
 
   Status Put(rocksdb::ColumnFamilyHandle *cf, const rocksdb::Slice &key, const rocksdb::Slice &value);
   Status Delete(rocksdb::ColumnFamilyHandle *cf, const rocksdb::Slice &key);
+  Status DeleteRange(rocksdb::ColumnFamilyHandle *cf, const rocksdb::Slice &begin, const rocksdb::Slice &end);
   Status PutLogData(const rocksdb::Slice &blob);
   void SetPrefixLogData(const std::string &prefix_logdata);
   Status Send();

@@ -650,6 +650,85 @@ var streamTests = func(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.EqualValues(t, "5-0", items[2].ID)
 	})
 
+	t.Run("XTRIM removing every entry keeps the consumer group and its PEL", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "mystream").Err())
+		for i := 1; i <= 3; i++ {
+			require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "mystream", ID: fmt.Sprintf("%d-0", i), Values: []string{"f", "v"}}).Err())
+		}
+		require.NoError(t, rdb.XGroupCreate(ctx, "mystream", "g1", "0").Err())
+		require.NoError(t, rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    "g1",
+			Consumer: "c1",
+			Streams:  []string{"mystream", ">"},
+			Count:    3,
+		}).Err())
+
+		require.NoError(t, rdb.XTrimMinID(ctx, "mystream", "4-0").Err())
+		require.EqualValues(t, 0, rdb.XLen(ctx, "mystream").Val())
+
+		groups := rdb.XInfoGroups(ctx, "mystream").Val()
+		require.Len(t, groups, 1)
+		require.EqualValues(t, "g1", groups[0].Name)
+		require.EqualValues(t, 3, groups[0].Pending)
+		require.EqualValues(t, "3-0", groups[0].LastDeliveredID)
+
+		// groups[0].Pending above is only the count cached in group metadata; read the PEL
+		// subkeys back with XPENDING's extended form to prove the entries themselves survived
+		// the range tombstone (which stops at the first group/consumer/PEL subkey).
+		pending, err := rdb.XPendingExt(ctx, &redis.XPendingExtArgs{
+			Stream: "mystream",
+			Group:  "g1",
+			Start:  "-",
+			End:    "+",
+			Count:  10,
+		}).Result()
+		require.NoError(t, err)
+		require.Len(t, pending, 3)
+		require.EqualValues(t, "1-0", pending[0].ID)
+		require.EqualValues(t, "2-0", pending[1].ID)
+		require.EqualValues(t, "3-0", pending[2].ID)
+	})
+
+	t.Run("XADD after trimming a stream to empty keeps the new entries visible", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "mystream").Err())
+		for i := 1; i <= 3; i++ {
+			require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "mystream", ID: fmt.Sprintf("%d-0", i), Values: []string{"f", "v"}}).Err())
+		}
+		require.NoError(t, rdb.XTrimMaxLen(ctx, "mystream", 0).Err())
+		require.EqualValues(t, 0, rdb.XLen(ctx, "mystream").Val())
+
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "mystream", ID: "4-0", Values: []string{"f", "v"}}).Err())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "mystream", ID: "5-0", Values: []string{"f", "v"}}).Err())
+		items := rdb.XRange(ctx, "mystream", "-", "+").Val()
+		require.Len(t, items, 2)
+		require.EqualValues(t, "4-0", items[0].ID)
+		require.EqualValues(t, "5-0", items[1].ID)
+	})
+
+	t.Run("repeated XTRIM MINID interleaved with XADD keeps exact survivors and bookkeeping", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "mystream").Err())
+		for i := 1; i <= 4; i++ {
+			require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "mystream", ID: fmt.Sprintf("%d-0", i), Values: []string{"f", "v"}}).Err())
+		}
+		require.NoError(t, rdb.XTrimMinID(ctx, "mystream", "3-0").Err())
+		require.EqualValues(t, 2, rdb.XLen(ctx, "mystream").Val())
+
+		for i := 5; i <= 6; i++ {
+			require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "mystream", ID: fmt.Sprintf("%d-0", i), Values: []string{"f", "v"}}).Err())
+		}
+		require.NoError(t, rdb.XTrimMinID(ctx, "mystream", "5-0").Err())
+
+		items := rdb.XRange(ctx, "mystream", "-", "+").Val()
+		require.Len(t, items, 2)
+		require.EqualValues(t, "5-0", items[0].ID)
+		require.EqualValues(t, "6-0", items[1].ID)
+
+		r := rdb.XInfoStreamFull(ctx, "mystream", 0).Val()
+		require.Equal(t, "5-0", r.RecordedFirstEntryID)
+		require.Equal(t, "4-0", r.MaxDeletedEntryID)
+		require.EqualValues(t, 6, r.EntriesAdded)
+	})
+
 	t.Run("XADD with LIMIT consecutive calls", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "mystream").Err())
 		for i := 0; i < 100; i++ {
@@ -2153,6 +2232,42 @@ func TestStreamOffset(t *testing.T) {
 		}
 		// assert_equal [XPENDING x grp - + 10 Alice] {}
 		// add xpending to this test case when it is supported
+	})
+
+	t.Run("XAUTOCLAIM decrements pending_number when sweeping deleted entries", func(t *testing.T) {
+		streamName := "x"
+		groupName := "grp"
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+		for _, id := range []string{"1-0", "2-0", "3-0"} {
+			require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+				Stream: streamName,
+				ID:     id,
+				Values: map[string]interface{}{"f": "v"},
+			}).Err())
+		}
+		require.NoError(t, rdb.XGroupCreate(ctx, streamName, groupName, "0").Err())
+
+		// Alice reads all three, so the group and the consumer each hold 3 pending.
+		require.NoError(t, rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    groupName,
+			Consumer: "Alice",
+			Count:    10,
+			Streams:  []string{streamName, ">"},
+		}).Err())
+		require.Equal(t, int64(3), rdb.XInfoGroups(ctx, streamName).Val()[0].Pending)
+		consumers := rdb.XInfoConsumers(ctx, streamName, groupName).Val()
+		require.Len(t, consumers, 1)
+		require.Equal(t, int64(3), consumers[0].Pending)
+
+		// Delete the entries so their PEL records dangle, then let XAUTOCLAIM sweep them.
+		// Before the fix the sweep dropped the records without decrementing pending_number.
+		require.NoError(t, rdb.XDel(ctx, streamName, "1-0", "2-0", "3-0").Err())
+		require.NoError(t, rdb.Do(ctx, "XAUTOCLAIM", streamName, groupName, "Bob", 0, "0-0").Err())
+
+		require.Equal(t, int64(0), rdb.XInfoGroups(ctx, streamName).Val()[0].Pending)
+		for _, c := range rdb.XInfoConsumers(ctx, streamName, groupName).Val() {
+			require.Equalf(t, int64(0), c.Pending, "consumer %s should have 0 pending", c.Name)
+		}
 	})
 
 	t.Run("XAUTOCLAIM with out of range count", func(t *testing.T) {

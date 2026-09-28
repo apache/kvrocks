@@ -35,6 +35,11 @@ const uint16_t kCFDefaultMaxIterations = 20;
 const uint16_t kCFDefaultExpansion = 1;
 const uint16_t kCFMaxExpansion = 32768;
 
+// Command tags recorded in WriteBatchLogData for cuckoo filter mutations.
+constexpr const char *kCFLogDataReserve = "reserve";
+constexpr const char *kCFLogDataAdd = "add";
+constexpr const char *kCFLogDataDel = "del";
+
 class CuckooChain : public Database {
  public:
   CuckooChain(engine::Storage *storage, const std::string &ns) : Database(storage, ns) {}
@@ -71,9 +76,7 @@ class CuckooChain : public Database {
   static rocksdb::Status expandAndInsertCuckooChain(CuckooChainMetadata *metadata, CuckooPageCache &pages,
                                                     uint64_t hash, uint8_t fingerprint, bool *inserted);
   rocksdb::Status commitPagesAndMetadata(engine::Context &ctx, const Slice &user_key, const std::string &ns_key,
-                                         const CuckooChainMetadata *metadata, CuckooPageCache &pages);
-  rocksdb::Status commitDelete(engine::Context &ctx, const Slice &user_key, const std::string &ns_key,
-                               CuckooChainMetadata *metadata, CuckooSubFilter *sub_filter);
+                                         const CuckooChainMetadata *metadata, CuckooPageCache &pages, const std::string &command);
 };
 
 }  // namespace redis

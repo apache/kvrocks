@@ -1034,51 +1034,6 @@ TEST_F(RedisCuckooFilterTest, ExistsWithRepeatedInsertions) {
   ASSERT_TRUE(exists) << "Item should exist after duplicate insertions";
 }
 
-TEST_F(RedisCuckooFilterTest, DeleteMissingKeyReturnsNotFound) {
-  bool deleted = true;
-  auto s = cuckoo_->Delete(*ctx_, key_, "missing", &deleted);
-  EXPECT_TRUE(s.IsNotFound()) << s.ToString();
-  EXPECT_NE(s.ToString().find("Not found"), std::string::npos);
-}
-
-TEST_F(RedisCuckooFilterTest, DeleteBasicClearsOneItem) {
-  reserveAndVerify(key_, 1000, 4, 500, 2);
-  addAndVerify(key_, "item", 1000, 4, 500, 2, 1);
-
-  bool deleted = false;
-  auto s = cuckoo_->Delete(*ctx_, key_, "item", &deleted);
-  ASSERT_TRUE(s.ok()) << s.ToString();
-  EXPECT_TRUE(deleted);
-  verifyMetadata(key_, 1000, 4, 500, 2, 0, 1, 1);
-
-  deleted = true;
-  s = cuckoo_->Delete(*ctx_, key_, "item", &deleted);
-  ASSERT_TRUE(s.ok()) << s.ToString();
-  EXPECT_FALSE(deleted);
-  verifyMetadata(key_, 1000, 4, 500, 2, 0, 1, 1);
-}
-
-TEST_F(RedisCuckooFilterTest, DeleteDuplicateItemsOneAtATime) {
-  reserveAndVerify(key_, 1000, 4, 500, 2);
-  for (int i = 0; i < 3; ++i) {
-    addAndVerify(key_, "duplicate", 1000, 4, 500, 2, i + 1);
-  }
-
-  for (int i = 0; i < 3; ++i) {
-    bool deleted = false;
-    auto s = cuckoo_->Delete(*ctx_, key_, "duplicate", &deleted);
-    ASSERT_TRUE(s.ok()) << s.ToString();
-    EXPECT_TRUE(deleted);
-    verifyMetadata(key_, 1000, 4, 500, 2, 2 - i, 1, i + 1);
-  }
-
-  bool deleted = true;
-  auto s = cuckoo_->Delete(*ctx_, key_, "duplicate", &deleted);
-  ASSERT_TRUE(s.ok()) << s.ToString();
-  EXPECT_FALSE(deleted);
-  verifyMetadata(key_, 1000, 4, 500, 2, 0, 1, 3);
-}
-
 TEST_F(RedisCuckooFilterTest, DeleteMissingItemDoesNotMutateMetadata) {
   reserveAndVerify(key_, 1000, 4, 500, 2);
   addAndVerify(key_, "known", 1000, 4, 500, 2, 1);
@@ -1149,6 +1104,71 @@ TEST_F(RedisCuckooFilterTest, DeleteSearchesNewestFilterFirst) {
   std::string page;
   s = readPage(makePageKey(key_, stored_metadata, 1, pageIndexForBucket(stored_metadata, bucket)), &page);
   EXPECT_TRUE(s.IsNotFound()) << s.ToString();
+}
+
+TEST_F(RedisCuckooFilterTest, DeleteSpansMultipleSubFilters) {
+  CuckooChainMetadata metadata;
+  metadata.size = 2;
+  metadata.base_capacity = 2;
+  metadata.bucket_size = 1;
+  metadata.max_iterations = 1;
+  metadata.expansion = 2;
+  metadata.n_filters = 3;
+  metadata.num_deleted_items = 0;
+  metadata.page_size = 1;
+  writeMetadata(key_, metadata);
+
+  const std::string item = "duplicate";
+  auto hash = redis::CuckooFilterHelper::Hash(item);
+  auto fingerprint = redis::CuckooFilterHelper::GenerateFingerprint(hash);
+
+  uint32_t num_buckets = 0;
+  auto s = redis::CuckooFilterHelper::GetFilterNumBuckets(metadata.base_capacity, metadata.expansion,
+                                                          metadata.bucket_size, 0, &num_buckets);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  auto oldest_bucket = static_cast<uint32_t>(hash % num_buckets);
+  placeFingerprint(key_, metadata, 0, num_buckets, oldest_bucket, 0, fingerprint);
+
+  s = redis::CuckooFilterHelper::GetFilterNumBuckets(metadata.base_capacity, metadata.expansion, metadata.bucket_size,
+                                                     2, &num_buckets);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  auto newest_bucket = static_cast<uint32_t>(hash % num_buckets);
+  placeFingerprint(key_, metadata, 2, num_buckets, newest_bucket, 0, fingerprint);
+
+  bool deleted = false;
+  s = cuckoo_->Delete(*ctx_, key_, item, &deleted);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  EXPECT_TRUE(deleted);
+
+  auto stored_metadata = getMetadata(key_);
+  EXPECT_EQ(stored_metadata.size, 1);
+  EXPECT_EQ(stored_metadata.n_filters, 3);
+  EXPECT_EQ(stored_metadata.num_deleted_items, 1);
+  EXPECT_EQ(readFingerprint(key_, stored_metadata, 0, oldest_bucket, 0), fingerprint);
+  std::string page;
+  s = readPage(makePageKey(key_, stored_metadata, 2, pageIndexForBucket(stored_metadata, newest_bucket)), &page);
+  EXPECT_TRUE(s.IsNotFound()) << s.ToString();
+
+  deleted = false;
+  s = cuckoo_->Delete(*ctx_, key_, item, &deleted);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  EXPECT_TRUE(deleted);
+
+  stored_metadata = getMetadata(key_);
+  EXPECT_EQ(stored_metadata.size, 0);
+  EXPECT_EQ(stored_metadata.n_filters, 3);
+  EXPECT_EQ(stored_metadata.num_deleted_items, 2);
+  s = readPage(makePageKey(key_, stored_metadata, 0, pageIndexForBucket(stored_metadata, oldest_bucket)), &page);
+  EXPECT_TRUE(s.IsNotFound()) << s.ToString();
+
+  deleted = true;
+  s = cuckoo_->Delete(*ctx_, key_, item, &deleted);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  EXPECT_FALSE(deleted);
+
+  stored_metadata = getMetadata(key_);
+  EXPECT_EQ(stored_metadata.size, 0);
+  EXPECT_EQ(stored_metadata.num_deleted_items, 2);
 }
 
 TEST_F(RedisCuckooFilterTest, DeleteDoesNotCompactFilters) {

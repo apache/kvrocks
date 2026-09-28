@@ -109,7 +109,7 @@ rocksdb::Status CuckooChain::Reserve(engine::Context &ctx, const Slice &user_key
 
   // Create a write batch for atomic operation
   auto batch = storage_->GetWriteBatchBase();
-  WriteBatchLogData log_data(kRedisCuckooFilter, std::vector<std::string>{"reserve", user_key.ToString()});
+  WriteBatchLogData log_data(kRedisCuckooFilter, std::vector<std::string>{kCFLogDataReserve, user_key.ToString()});
   s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) return s;
 
@@ -212,7 +212,7 @@ rocksdb::Status CuckooChain::Delete(engine::Context &ctx, const Slice &user_key,
     metadata.size--;
     metadata.num_deleted_items++;
     *deleted = true;
-    return commitDelete(ctx, user_key, ns_key, &metadata, &sub_filter);
+    return commitSubFilterAndMetadata(ctx, user_key, ns_key, &metadata, &sub_filter, kCFLogDataDel);
   }
 
   return rocksdb::Status::OK();
@@ -238,7 +238,8 @@ rocksdb::Status CuckooChain::tryCuckooInsert(engine::Context &ctx, const Slice &
     if (!s.ok()) return s;
 
     if (current_inserted) {
-      s = commitSubFilterAndMetadata(ctx, user_key, ns_key, metadata, &sub_filter);
+      metadata->size++;
+      s = commitSubFilterAndMetadata(ctx, user_key, ns_key, metadata, &sub_filter, kCFLogDataAdd);
       if (!s.ok()) return s;
       *inserted = true;
       return rocksdb::Status::OK();
@@ -266,7 +267,8 @@ rocksdb::Status CuckooChain::tryCuckooKickOut(engine::Context &ctx, const Slice 
   s = last_filter.TryKickOutInsert(hash, fingerprint, metadata->max_iterations, &kickout_inserted);
   if (!s.ok()) return s;
   if (kickout_inserted) {
-    s = commitSubFilterAndMetadata(ctx, user_key, ns_key, metadata, &last_filter);
+    metadata->size++;
+    s = commitSubFilterAndMetadata(ctx, user_key, ns_key, metadata, &last_filter, kCFLogDataAdd);
     if (!s.ok()) return s;
     *inserted = true;
     return rocksdb::Status::OK();
@@ -303,7 +305,8 @@ rocksdb::Status CuckooChain::expandAndInsertCuckooChain(engine::Context &ctx, co
   if (!new_filter_inserted) return rocksdb::Status::Corruption("failed to insert into new cuckoo filter");
 
   metadata->n_filters++;
-  s = commitSubFilterAndMetadata(ctx, user_key, ns_key, metadata, &new_filter);
+  metadata->size++;
+  s = commitSubFilterAndMetadata(ctx, user_key, ns_key, metadata, &new_filter, kCFLogDataAdd);
   if (!s.ok()) return s;
 
   *inserted = true;
@@ -312,16 +315,15 @@ rocksdb::Status CuckooChain::expandAndInsertCuckooChain(engine::Context &ctx, co
 
 rocksdb::Status CuckooChain::commitSubFilterAndMetadata(engine::Context &ctx, const Slice &user_key,
                                                         const std::string &ns_key, CuckooChainMetadata *metadata,
-                                                        CuckooSubFilter *sub_filter) {
+                                                        CuckooSubFilter *sub_filter, const std::string &command) {
   auto batch = storage_->GetWriteBatchBase();
-  WriteBatchLogData log_data(kRedisCuckooFilter, std::vector<std::string>{"add", user_key.ToString()});
+  WriteBatchLogData log_data(kRedisCuckooFilter, std::vector<std::string>{command, user_key.ToString()});
   auto s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) return s;
 
   s = sub_filter->WriteToBatch(batch.Get());
   if (!s.ok()) return s;
 
-  metadata->size++;
   std::string metadata_bytes;
   metadata->Encode(&metadata_bytes);
   s = batch->Put(metadata_cf_handle_, ns_key, metadata_bytes);
@@ -387,24 +389,6 @@ rocksdb::Status CuckooChain::MExists(engine::Context &ctx, const Slice &user_key
   }
 
   return rocksdb::Status::OK();
-}
-
-rocksdb::Status CuckooChain::commitDelete(engine::Context &ctx, const Slice &user_key, const std::string &ns_key,
-                                          CuckooChainMetadata *metadata, CuckooSubFilter *sub_filter) {
-  auto batch = storage_->GetWriteBatchBase();
-  WriteBatchLogData log_data(kRedisCuckooFilter, std::vector<std::string>{"del", user_key.ToString()});
-  auto s = batch->PutLogData(log_data.Encode());
-  if (!s.ok()) return s;
-
-  s = sub_filter->WriteToBatch(batch.Get());
-  if (!s.ok()) return s;
-
-  std::string metadata_bytes;
-  metadata->Encode(&metadata_bytes);
-  s = batch->Put(metadata_cf_handle_, ns_key, metadata_bytes);
-  if (!s.ok()) return s;
-
-  return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 
 }  // namespace redis

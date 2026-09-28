@@ -185,6 +185,20 @@ func TestCuckooFilter(t *testing.T) {
 		require.Equal(t, int64(0), rdb.Do(ctx, "cf.del", key, "same_item").Val())
 	})
 
+	t.Run("Del duplicates across multiple sub-filters", func(t *testing.T) {
+		key := "test_cuckoo_filter_del_multi_filter"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		// Small capacity with expansion enabled so duplicates span several sub-filters
+		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "2", "BUCKETSIZE", "1", "MAXITERATIONS", "1", "EXPANSION", "2").Err())
+		for i := 0; i < 20; i++ {
+			require.Equal(t, int64(1), rdb.Do(ctx, "cf.add", key, "same_item").Val())
+		}
+		for i := 0; i < 20; i++ {
+			require.Equal(t, int64(1), rdb.Do(ctx, "cf.del", key, "same_item").Val())
+		}
+		require.Equal(t, int64(0), rdb.Do(ctx, "cf.del", key, "same_item").Val())
+	})
+
 	t.Run("Add many items", func(t *testing.T) {
 		key := "test_cuckoo_filter_add_many"
 		require.NoError(t, rdb.Del(ctx, key).Err())

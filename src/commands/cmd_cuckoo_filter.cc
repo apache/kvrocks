@@ -213,7 +213,6 @@ class CommandCFDel : public Commander {
   }
 };
 
-// Register the CF.RESERVE, CF.ADD, CF.DEL, CF.EXISTS, and CF.MEXISTS commands
 REDIS_REGISTER_COMMANDS(CuckooFilter, MakeCmdAttr<CommandCFReserve>("cf.reserve", -3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandCFAdd>("cf.add", 3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandCFDel>("cf.del", 3, "write", 1, 1, 1),

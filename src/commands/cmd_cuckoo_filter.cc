@@ -158,6 +158,13 @@ class CommandCFInfo : public Commander {
         return {Status::RedisParseErr, "Invalid info argument"};
       }
     }
+class CommandCFExists : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    // CF.EXISTS key item
+    if (args.size() != 3) {
+      return {Status::RedisParseErr, errWrongNumOfArguments};
+    }
     return Commander::Parse(args);
   }
 
@@ -169,6 +176,37 @@ class CommandCFInfo : public Commander {
     if (s.IsNotFound()) {
       return {Status::RedisExecErr, "filter is not found"};
     }
+    bool exists = false;
+    auto s = cuckoo_db.Exists(ctx, args_[1], args_[2], &exists);
+
+    if (!s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+
+    *output = conn->Bool(exists);
+    return Status::OK();
+  }
+};
+
+class CommandCFMExists : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    // CF.MEXISTS key item [item ...]
+    if (args.size() < 3) {
+      return {Status::RedisParseErr, errWrongNumOfArguments};
+    }
+    items_.reserve(args.size() - 2);
+    for (size_t i = 2; i < args.size(); ++i) {
+      items_.emplace_back(args[i]);
+    }
+    return Commander::Parse(args);
+  }
+
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    redis::CuckooChain cuckoo_db(srv->storage, conn->GetNamespace());
+    std::vector<bool> exists(items_.size(), false);
+    auto s = cuckoo_db.MExists(ctx, args_[1], items_, &exists);
+
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -218,6 +256,9 @@ class CommandCFInfo : public Commander {
       case CuckooInfoType::kMaxIterations:
         *output = redis::Integer(info.max_iterations);
         break;
+    *output = redis::MultiLen(items_.size());
+    for (bool exist : exists) {
+      *output += conn->Bool(exist);
     }
     return Status::OK();
   }
@@ -234,5 +275,13 @@ class CommandCFInfo : public Commander {
 REDIS_REGISTER_COMMANDS(CuckooFilter, MakeCmdAttr<CommandCFReserve>("cf.reserve", -3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandCFAdd>("cf.add", 3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandCFInfo>("cf.info", -2, "read-only", 1, 1, 1))
+  std::vector<std::string> items_;
+};
+
+// Register the CF.RESERVE, CF.ADD, CF.EXISTS, and CF.MEXISTS commands
+REDIS_REGISTER_COMMANDS(CuckooFilter, MakeCmdAttr<CommandCFReserve>("cf.reserve", -3, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandCFAdd>("cf.add", 3, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandCFExists>("cf.exists", 3, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandCFMExists>("cf.mexists", -3, "read-only", 1, 1, 1))
 
 }  // namespace redis

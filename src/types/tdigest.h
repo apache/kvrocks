@@ -22,10 +22,11 @@
 
 #include <fmt/format.h>
 
+#include <algorithm>
+#include <cmath>
+#include <iterator>
 #include <limits>
 #include <map>
-#include <numeric>
-#include <variant>
 #include <vector>
 
 #include "common/status.h"
@@ -171,6 +172,192 @@ inline bool DoubleEqual(double a, double b, double rel_eps = 1e-12, double abs_e
 struct DoubleComparator {
   bool operator()(const double& a, const double& b) const { return DoubleCompare(a, b) == -1; }
 };
+
+// Match RedisBloom t-digest-c CDF behavior: if min/max is outside the first/last centroid mean, the exact
+// boundary sample is treated as a singleton with weight 1. Its center rank is 0.5 at min and
+// total_weight - 0.5 at max; interpolation toward an inner centroid starts after the singleton, at rank 1 or
+// total_weight - 1.
+// refer to implementation:
+// https://github.com/RedisBloom/t-digest-c/blob/50edef336eb27ed5b19e7f9be05494683ca58515/src/tdigest.c#L223
+inline Status TDigestCDF(const std::vector<Centroid>& centroids, double centroids_min, double centroids_max,
+                         double total_weight, const std::vector<double>& inputs, std::vector<double>* result) {
+  if (centroids.empty() || total_weight <= 0) {
+    return Status{Status::InvalidArgument, "invalid or empty tdigest"};
+  }
+
+  std::map<double, std::vector<size_t>> sorted_unique_input_idx_map;
+  for (size_t i = 0; i < inputs.size(); ++i) {
+    sorted_unique_input_idx_map[inputs[i]].push_back(i);
+  }
+
+  std::vector<double> sorted_unique_inputs;
+  sorted_unique_inputs.reserve(sorted_unique_input_idx_map.size());
+  std::transform(sorted_unique_input_idx_map.cbegin(), sorted_unique_input_idx_map.cend(),
+                 std::back_inserter(sorted_unique_inputs), [](const auto& pair) { return pair.first; });
+
+  constexpr double kSingletonBoundaryWeight = 1.0;
+  constexpr double kHalfSingletonBoundaryWeight = kSingletonBoundaryWeight / 2;
+
+  std::vector<double> sorted_result_weights;
+  sorted_result_weights.reserve(sorted_unique_inputs.size());
+  if (centroids.size() == 1) {
+    // only one centroid, min should equal max, and all inputs should be either less than, equal to,
+    // or greater than the centroid mean
+    const double width = centroids_max - centroids_min;
+    for (const auto input : sorted_unique_inputs) {
+      if (input < centroids_min) {
+        sorted_result_weights.push_back(0.0);
+        continue;
+      }
+
+      if (input > centroids_max) {
+        sorted_result_weights.push_back(total_weight);
+        continue;
+      }
+
+      if (input - centroids_min <= width) {
+        // min and max are too close to do any viable interpolation, treat the centroid as a singleton
+        sorted_result_weights.push_back(total_weight / 2);
+      } else {
+        // interpolate if somehow we have weight > 0 and max != min, which should not happen in a valid tdigest
+        sorted_result_weights.push_back((input - centroids_min) / width * total_weight);
+      }
+    }
+  } else {
+    auto first_valid_input_it = std::find_if(sorted_unique_inputs.cbegin(), sorted_unique_inputs.cend(),
+                                             [centroids_min](double input) { return input >= centroids_min; });
+    auto last_valid_input_it = std::find_if(sorted_unique_inputs.crbegin(), sorted_unique_inputs.crend(),
+                                            [centroids_max](double input) { return input <= centroids_max; });
+    auto input_idx = (first_valid_input_it == sorted_unique_inputs.cend())
+                         ? sorted_unique_inputs.size()
+                         : std::distance(sorted_unique_inputs.cbegin(), first_valid_input_it);
+    auto last_valid_input_idx = (last_valid_input_it == sorted_unique_inputs.crend())
+                                    ? 0
+                                    : std::distance(sorted_unique_inputs.cbegin(), last_valid_input_it.base());
+
+    // fill in 0 for inputs less than the min boundary
+    for (auto i = 0; i < input_idx; ++i) {
+      sorted_result_weights.push_back(0.);
+    }
+
+    size_t centroid_idx = 0;
+
+    // greater than the min boundary, but less than the first centroid mean
+    while (centroid_idx == 0 && input_idx < last_valid_input_idx &&
+           sorted_unique_inputs[input_idx] < centroids[centroid_idx].mean) {
+      auto cdf_input = sorted_unique_inputs[input_idx];
+      auto current_centroid = centroids[centroid_idx];
+      const auto width = current_centroid.mean - centroids_min;
+      double interpolated_weight = std::numeric_limits<double>::quiet_NaN();
+      if (width > 0) {
+        if (cdf_input == centroids_min) {
+          interpolated_weight = kHalfSingletonBoundaryWeight;
+        } else {
+          // there must be a singleton at the min boundary, so the interpolation starts after it, at rank 1
+          interpolated_weight =
+              Lerp(kHalfSingletonBoundaryWeight, current_centroid.weight / 2, (cdf_input - centroids_min) / width);
+        }
+      } else {
+        // this should be redundant of the check cdf_input < centroids_min, but for clarity
+        interpolated_weight = 0.;
+      }
+      sorted_result_weights.push_back(interpolated_weight);
+      ++input_idx;
+    }
+
+    double weight_so_far = 0.;
+    while (centroid_idx < centroids.size() - 1 && input_idx < last_valid_input_idx) {
+      auto cdf_input = sorted_unique_inputs[input_idx];
+      auto current_centroid = centroids[centroid_idx];
+      auto next_centroid = centroids[centroid_idx + 1];
+
+      if (cdf_input == current_centroid.mean) {
+        double dw = 0.;
+        auto same_mean_idx = centroid_idx;
+        while (same_mean_idx < centroids.size() && centroids[same_mean_idx].mean == current_centroid.mean) {
+          dw += centroids[same_mean_idx].weight;
+          ++same_mean_idx;
+        }
+        sorted_result_weights.push_back(weight_so_far + dw / 2);
+        ++input_idx;
+        continue;
+      }
+
+      if (current_centroid.mean < cdf_input && cdf_input < next_centroid.mean) {
+        if (next_centroid.mean - current_centroid.mean > 0) {
+          double left_exclude_weight = 0;
+          double right_exclude_weight = 0;
+          if (current_centroid.weight == kSingletonBoundaryWeight) {
+            if (next_centroid.weight == kSingletonBoundaryWeight) {
+              // both adjacent centroids are singletons, include the left exact sample and exclude the right one.
+              sorted_result_weights.push_back(weight_so_far + kSingletonBoundaryWeight);
+              // weight_so_far += current_centroid.weight;
+              ++input_idx;
+              continue;
+            } else {
+              left_exclude_weight = kHalfSingletonBoundaryWeight;
+            }
+          } else if (next_centroid.weight == kSingletonBoundaryWeight) {
+            right_exclude_weight = kHalfSingletonBoundaryWeight;
+          }
+
+          double dw = (current_centroid.weight + next_centroid.weight) / 2;
+          double dw_no_singleton = dw - left_exclude_weight - right_exclude_weight;
+          double base_weight = weight_so_far + current_centroid.weight / 2 + left_exclude_weight;
+          auto interpolated_weight =
+              Lerp(base_weight, base_weight + dw_no_singleton,
+                   (cdf_input - current_centroid.mean) / (next_centroid.mean - current_centroid.mean));
+          sorted_result_weights.push_back(interpolated_weight);
+          ++input_idx;
+        }
+        continue;
+      }
+
+      ++centroid_idx;
+      weight_so_far += current_centroid.weight;
+    }
+
+    while (centroid_idx == centroids.size() - 1 && input_idx < last_valid_input_idx &&
+           sorted_unique_inputs[input_idx] < centroids[centroid_idx].mean) {
+      auto cdf_input = sorted_unique_inputs[input_idx];
+      auto current_centroid = centroids[centroid_idx];
+      const auto width = current_centroid.mean - centroids_min;
+      double interpolated_weight = std::numeric_limits<double>::quiet_NaN();
+      if (width > 0) {
+        if (cdf_input == centroids_min) {
+          interpolated_weight = kHalfSingletonBoundaryWeight;
+        } else {
+          // there must be a singleton at the min boundary, so the interpolation starts after it, at rank
+          // kHalfSingletonBoundaryWeight
+          interpolated_weight =
+              Lerp(kHalfSingletonBoundaryWeight, current_centroid.weight / 2, (cdf_input - centroids_min) / width);
+        }
+      } else {
+        // this should be redundant of the check cdf_input < centroids_min, but for clarity
+        interpolated_weight = 0;
+      }
+      sorted_result_weights.push_back(interpolated_weight);
+      ++input_idx;
+    }
+
+    // fill in 1 for inputs greater than the max boundary
+    while (input_idx < sorted_unique_inputs.size()) {
+      // handle remaining inputs
+      sorted_result_weights.push_back(total_weight);
+      ++input_idx;
+    }
+  }
+
+  result->clear();
+  result->resize(inputs.size(), std::numeric_limits<double>::quiet_NaN());
+  for (size_t i = 0; i < sorted_unique_inputs.size(); ++i) {
+    for (auto idx : sorted_unique_input_idx_map[sorted_unique_inputs[i]]) {
+      (*result)[idx] = std::clamp(sorted_result_weights[i] / total_weight, 0.0, 1.0);
+    }
+  }
+
+  return Status::OK();
+}
 
 template <bool Reverse, typename TD>
 inline Status TDigestByRank(TD&& td, const std::vector<int>& inputs, std::vector<double>* result) {

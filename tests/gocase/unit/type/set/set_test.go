@@ -664,8 +664,21 @@ var setTests = func(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.ErrorContains(t, rdb.Do(ctx, "spop", "myset", 1, 1).Err(), "wrong number of arguments")
 	})
 
-	t.Run("SRANDMEMBER with <count> against non existing key", func(t *testing.T) {
-		require.EqualValues(t, "", rdb.SRandMember(ctx, "nonexisting_key").Val())
+	t.Run("SRANDMEMBER result type depends on count", func(t *testing.T) {
+		CreateSet(t, rdb, ctx, "myset", []interface{}{"member"})
+
+		member := rdb.SRandMember(ctx, "myset")
+		require.NoError(t, member.Err())
+		require.Equal(t, "member", member.Val())
+
+		members := rdb.SRandMemberN(ctx, "myset", 1)
+		require.NoError(t, members.Err())
+		require.Equal(t, []string{"member"}, members.Val())
+
+		require.ErrorIs(t, rdb.SRandMember(ctx, "nonexisting_key").Err(), redis.Nil)
+		missingMembers := rdb.SRandMemberN(ctx, "nonexisting_key", 1)
+		require.NoError(t, missingMembers.Err())
+		require.Empty(t, missingMembers.Val())
 	})
 
 	t.Run("SRANDMEMBER the num of arguments is not 2 or 3", func(t *testing.T) {

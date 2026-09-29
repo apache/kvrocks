@@ -35,9 +35,11 @@
 #include <memory>
 #include <shared_mutex>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
+#include "common/keyspace_events.h"
 #include "common/port.h"
 #include "config/config.h"
 #include "lock_manager.h"
@@ -470,13 +472,22 @@ struct Context {
       storage = ctx.storage;
       snapshot_ = ctx.snapshot_;
       batch = std::move(ctx.batch);
+      keyspace_event_channel_flags_ = ctx.keyspace_event_channel_flags_;
+      keyspace_event_type_flags_ = ctx.keyspace_event_type_flags_;
+      keyspace_events_ = std::move(ctx.keyspace_events_);
 
       ctx.storage = nullptr;
       ctx.snapshot_ = nullptr;
     }
     return *this;
   }
-  Context(Context &&ctx) noexcept : storage(ctx.storage), batch(std::move(ctx.batch)), snapshot_(ctx.snapshot_) {
+  Context(Context &&ctx) noexcept
+      : storage(ctx.storage),
+        batch(std::move(ctx.batch)),
+        snapshot_(ctx.snapshot_),
+        keyspace_event_channel_flags_(ctx.keyspace_event_channel_flags_),
+        keyspace_event_type_flags_(ctx.keyspace_event_type_flags_),
+        keyspace_events_(std::move(ctx.keyspace_events_)) {
     ctx.storage = nullptr;
     ctx.snapshot_ = nullptr;
   }
@@ -492,6 +503,29 @@ struct Context {
     return snapshot_;
   }
 
+  void EnableKeyspaceEventCollection(KeyspaceEventChannel channel_flags, KeyspaceEventType type_flags) {
+    keyspace_event_channel_flags_ = channel_flags;
+    keyspace_event_type_flags_ = type_flags;
+  }
+
+  bool IsKeyspaceEventEnabled(KeyspaceEventType type_flag) const {
+    return keyspace_event_channel_flags_ != kNotifyNoChannel && (keyspace_event_type_flags_ & type_flag) != 0;
+  }
+
+  void AddKeyspaceEventIfEnabled(KeyspaceEventType type_flag, std::string_view event, std::string_view ns,
+                                 std::string_view key) {
+    if (!IsKeyspaceEventEnabled(type_flag)) return;
+    keyspace_events_.emplace_back(type_flag, event, keyspace_event_channel_flags_, ns, key);
+  }
+
+  bool HasKeyspaceEvents() const { return !keyspace_events_.empty(); }
+
+  std::vector<KeyspaceEvent> TakeKeyspaceEvents() {
+    std::vector<KeyspaceEvent> events;
+    events.swap(keyspace_events_);
+    return events;
+  }
+
  private:
   /// It is only used by NonTransactionContext
   explicit Context(engine::Storage *storage, bool txn_mode) : storage(storage), txn_context_enabled(txn_mode) {}
@@ -501,6 +535,9 @@ struct Context {
   /// Normally it will be fixed to the latest Snapshot when the Context is constructed.
   /// If is_txn_mode is false, the snapshot is nullptr.
   const rocksdb::Snapshot *snapshot_ = nullptr;
+  KeyspaceEventChannel keyspace_event_channel_flags_ = kNotifyNoChannel;
+  KeyspaceEventType keyspace_event_type_flags_ = kNotifyNoType;
+  std::vector<KeyspaceEvent> keyspace_events_;
 };
 
 }  // namespace engine

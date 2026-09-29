@@ -366,11 +366,11 @@ func TestPollUpdatesDetail(t *testing.T) {
 	require.Positive(t, latest)
 
 	// Use POLLUPDATES with FORMAT DETAIL to inspect the batch
-	result, err := rdb.Do(ctx, "pollupdates", latest-1, "MAX", "1", "STRICT", "FORMAT", "DETAIL").Result()
+	result, err := rdb.Do(ctx, "pollupdates", latest-1, "MAX", "1", "FORMAT", "DETAIL").Result()
 	require.NoError(t, err)
 	resultStr := fmt.Sprintf("%v", result)
 	require.Contains(t, resultStr, "user_key=wal-key-1")
-	require.Contains(t, resultStr, "raw_value=value-2")
+	require.Contains(t, resultStr, "user_value=value-2")
 	require.Contains(t, resultStr, "start_seq")
 	require.Contains(t, resultStr, "end_seq")
 	require.Contains(t, resultStr, "records")

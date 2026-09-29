@@ -279,7 +279,7 @@ TEST_F(WriteBatchDecoderTest, DecodesBatchFromWAL) {
   ASSERT_TRUE(storage_->GetWALIter(start, &iter).IsOK());
   auto wal_batch = iter->GetBatch();
   auto count = wal_batch.writeBatchPtr->Count();
-  ASSERT_EQ(count, 3);  // LogData + 2 Puts
+  ASSERT_EQ(count, 2);  // 2 Puts (PutLogData does not increment Count)
 
   engine::WriteBatchDecoder decoder(true, storage_->IsSlotIdEncoded());
   ASSERT_TRUE(wal_batch.writeBatchPtr->Iterate(&decoder).ok());

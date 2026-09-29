@@ -221,7 +221,7 @@ bool HashMetadataEqual(const HashMetadata &lhs, const HashMetadata &rhs) {
 
 class HashBatchWriter {
  public:
-  explicit HashBatchWriter(rocksdb::WriteBatchBase *batch) : batch_(batch) {}
+  HashBatchWriter(rocksdb::WriteBatchBase *batch, HashSubkeyEncodingMode mode) : batch_(batch), mode_(mode) {}
 
   rocksdb::Status Put(const Slice &key, const Slice &value) {
     auto s = ensureLogData();
@@ -260,13 +260,14 @@ class HashBatchWriter {
  private:
   rocksdb::Status ensureLogData() {
     if (has_log_data_) return rocksdb::Status::OK();
-    WriteBatchLogData log_data(kRedisHash);
+    WriteBatchLogData log_data(mode_);
     auto s = batch_->PutLogData(log_data.Encode());
     if (s.ok()) has_log_data_ = true;
     return s;
   }
 
   rocksdb::WriteBatchBase *batch_;
+  HashSubkeyEncodingMode mode_;
   bool has_log_data_ = false;
   bool storage_mutated_ = false;
 };
@@ -381,7 +382,7 @@ rocksdb::Status Hash::Size(engine::Context &ctx, const Slice &user_key, uint64_t
   }
   if (metadata.upper != 0 && now > metadata.upper && metadata.persist == 0) {
     auto batch = storage_->GetWriteBatchBase();
-    WriteBatchLogData log_data(kRedisHash);
+    WriteBatchLogData log_data(metadata.mode);
     s = batch->PutLogData(log_data.Encode());
     if (!s.ok()) return s;
     s = batch->Delete(metadata_cf_handle_, ns_key);
@@ -409,7 +410,7 @@ rocksdb::Status Hash::scanAndRepair(engine::Context &ctx, const Slice &ns_key, H
   repaired_metadata.upper = 0;
 
   auto batch = storage_->GetWriteBatchBase();
-  WriteBatchLogData log_data(kRedisHash);
+  WriteBatchLogData log_data(metadata->mode);
   auto s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) return s;
 
@@ -522,7 +523,7 @@ rocksdb::Status Hash::IncrBy(engine::Context &ctx, const Slice &user_key, const 
 
   *new_value = old_value + increment;
   auto batch = storage_->GetWriteBatchBase();
-  WriteBatchLogData log_data(kRedisHash);
+  WriteBatchLogData log_data(metadata.mode);
   s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) return s;
   std::string encoded_value = metadata.EncodeSubkeyValue(std::to_string(*new_value), keep_expire);
@@ -582,7 +583,7 @@ rocksdb::Status Hash::IncrByFloat(engine::Context &ctx, const Slice &user_key, c
 
   *new_value = n;
   auto batch = storage_->GetWriteBatchBase();
-  WriteBatchLogData log_data(kRedisHash);
+  WriteBatchLogData log_data(metadata.mode);
   s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) return s;
   std::string encoded_value = metadata.EncodeSubkeyValue(util::Float2String(*new_value), keep_expire);
@@ -715,7 +716,7 @@ rocksdb::Status Hash::SetFieldsWithExpire(engine::Context &ctx, const Slice &use
   }
 
   auto batch = storage_->GetWriteBatchBase();
-  HashBatchWriter writer(batch.Get());
+  HashBatchWriter writer(batch.Get(), metadata.mode);
   for (const auto &sub_key : expired_cleanup_keys) {
     s = writer.Delete(sub_key);
     if (!s.ok()) return s;
@@ -860,7 +861,7 @@ rocksdb::Status Hash::GetFieldsWithExpire(engine::Context &ctx, const Slice &use
   if (!s.ok()) return s;
 
   auto batch = storage_->GetWriteBatchBase();
-  HashBatchWriter writer(batch.Get());
+  HashBatchWriter writer(batch.Get(), metadata.mode);
   auto make_sub_key = [&](const std::string &field) {
     return InternalKey(ns_key, field, metadata.version, storage_->IsSlotIdEncoded()).Encode();
   };
@@ -957,13 +958,13 @@ rocksdb::Status Hash::Delete(engine::Context &ctx, const Slice &user_key, const 
   std::string ns_key = AppendNamespacePrefix(user_key);
 
   HashMetadata metadata(false);
-  auto batch = storage_->GetWriteBatchBase();
-  WriteBatchLogData log_data(kRedisHash);
-  auto s = batch->PutLogData(log_data.Encode());
-  if (!s.ok()) return s;
-
-  s = getMetadata(ctx, ns_key, &metadata);
+  auto s = getMetadata(ctx, ns_key, &metadata);
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
+
+  auto batch = storage_->GetWriteBatchBase();
+  WriteBatchLogData log_data(metadata.mode);
+  s = batch->PutLogData(log_data.Encode());
+  if (!s.ok()) return s;
 
   uint64_t physical_removed = 0;
   uint64_t persistent_removed = 0;
@@ -1032,7 +1033,7 @@ rocksdb::Status Hash::MSet(engine::Context &ctx, const Slice &user_key, const st
   int added = 0;
   bool metadata_changed = ttl_updated;
   auto batch = storage_->GetWriteBatchBase();
-  WriteBatchLogData log_data(kRedisHash);
+  WriteBatchLogData log_data(metadata.mode);
   s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) return s;
   std::unordered_set<std::string_view> field_set;
@@ -1371,7 +1372,7 @@ rocksdb::Status Hash::ExpireFields(engine::Context &ctx, const Slice &user_key, 
   }
 
   auto batch = storage_->GetWriteBatchBase();
-  WriteBatchLogData log_data(kRedisHash);
+  WriteBatchLogData log_data(metadata.mode);
   s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) return s;
 
@@ -1465,7 +1466,7 @@ rocksdb::Status Hash::PersistFields(engine::Context &ctx, const Slice &user_key,
   }
 
   auto batch = storage_->GetWriteBatchBase();
-  WriteBatchLogData log_data(kRedisHash);
+  WriteBatchLogData log_data(metadata.mode);
   s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) return s;
 

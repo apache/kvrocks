@@ -189,9 +189,13 @@ class WriteBatchLogData {
   WriteBatchLogData() = default;
   explicit WriteBatchLogData(RedisType type) : type_(type) {}
   explicit WriteBatchLogData(RedisType type, std::vector<std::string> &&args) : type_(type), args_(std::move(args)) {}
+  // Non-legacy hashes record HSET and the encoding mode. Unmarked logs retain legacy semantics;
+  // HFE WAL written before this marker cannot be replayed without a new full synchronization.
+  explicit WriteBatchLogData(HashSubkeyEncodingMode mode);
 
   RedisType GetRedisType() const;
   std::vector<std::string> *GetArguments();
+  StatusOr<HashSubkeyEncodingMode> GetHashSubkeyEncodingMode() const;
   std::string Encode() const;
   Status Decode(const rocksdb::Slice &blob);
 

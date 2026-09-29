@@ -264,30 +264,33 @@ TEST(Storage, TryPurgeCheckpoint) {
   ASSERT_FALSE(ec);
 }
 
-class WalGetTest : public TestBase {};
+class WriteBatchDecoderTest : public TestBase {};
 
-TEST_F(WalGetTest, ReturnsContainingBatch) {
+TEST_F(WriteBatchDecoderTest, DecodesBatchFromWAL) {
   rocksdb::WriteBatch batch;
   batch.PutLogData("test-log");
   ASSERT_TRUE(batch.Put("first", "value1").ok());
   ASSERT_TRUE(batch.Put("second", "value2").ok());
   auto start = storage_->LatestSeqNumber() + 1;
   ASSERT_TRUE(storage_->Write(*ctx_, rocksdb::WriteOptions(), &batch).ok());
-  std::vector<std::string> first, middle;
-  ASSERT_TRUE(storage_->WalGet(start, true, &first).IsOK());
-  ASSERT_TRUE(storage_->WalGet(start + 1, true, &middle).IsOK());
-  EXPECT_EQ(first, middle);
-  ASSERT_GE(first.size(), 5);
-  EXPECT_EQ(first[0], "start_seq=" + std::to_string(start));
-  EXPECT_EQ(first[1], "end_seq=" + std::to_string(start + 1));
-  EXPECT_NE(first[2].find("test-log"), std::string::npos);
-  EXPECT_NE(first[3].find("raw_value=value1"), std::string::npos);
-  EXPECT_NE(first[4].find("raw_value=value2"), std::string::npos);
-  EXPECT_FALSE(storage_->WalGet(0, true, &middle).IsOK());
-  EXPECT_FALSE(storage_->WalGet(start + 2, true, &middle).IsOK());
+
+  // Retrieve the batch from WAL and decode it
+  std::unique_ptr<rocksdb::TransactionLogIterator> iter;
+  ASSERT_TRUE(storage_->GetWALIter(start, &iter).IsOK());
+  auto wal_batch = iter->GetBatch();
+  auto count = wal_batch.writeBatchPtr->Count();
+  ASSERT_EQ(count, 3);  // LogData + 2 Puts
+
+  engine::WriteBatchDecoder decoder(true, storage_->IsSlotIdEncoded());
+  ASSERT_TRUE(wal_batch.writeBatchPtr->Iterate(&decoder).ok());
+  const auto &entries = decoder.Get();
+  ASSERT_GE(entries.size(), 3);
+  EXPECT_NE(entries[0].find("test-log"), std::string::npos);
+  EXPECT_NE(entries[1].find("raw_value=value1"), std::string::npos);
+  EXPECT_NE(entries[2].find("raw_value=value2"), std::string::npos);
 }
 
-TEST_F(WalGetTest, DetailsRespectKeyEncoding) {
+TEST_F(WriteBatchDecoderTest, DetailsRespectKeyEncoding) {
   for (bool slots : {false, true}) {
     rocksdb::WriteBatch batch;
     auto key = ComposeNamespaceKey("ns", "key", slots);
@@ -318,7 +321,7 @@ TEST_F(WalGetTest, DetailsRespectKeyEncoding) {
   }
 }
 
-TEST_F(WalGetTest, MalformedDataRemainsInspectable) {
+TEST_F(WriteBatchDecoderTest, MalformedDataRemainsInspectable) {
   rocksdb::WriteBatch batch;
   batch.PutLogData("");
   ASSERT_TRUE(batch.Put(storage_->GetCFHandle(ColumnFamilyID::Metadata), "", "").ok());
@@ -330,7 +333,7 @@ TEST_F(WalGetTest, MalformedDataRemainsInspectable) {
   EXPECT_NE(decoder.Get()[2].find("key_decode_error=1"), std::string::npos);
 }
 
-TEST_F(WalGetTest, BinaryKeyFieldsAreVisible) {
+TEST_F(WriteBatchDecoderTest, BinaryKeyFieldsAreVisible) {
   for (bool slots : {false, true}) {
     const std::string ns("n\0", 2), user_key("k\0,\\", 4), subkey("\0\xff", 2);
     auto ns_key = ComposeNamespaceKey(ns, user_key, slots);
@@ -368,7 +371,7 @@ TEST_F(WalGetTest, BinaryKeyFieldsAreVisible) {
   }
 }
 
-TEST_F(WalGetTest, ZsetScoreKeyFields) {
+TEST_F(WriteBatchDecoderTest, ZsetScoreKeyFields) {
   std::string subkey;
   PutDouble(&subkey, -1.25);
   subkey.append("m\0", 2);
@@ -380,7 +383,7 @@ TEST_F(WalGetTest, ZsetScoreKeyFields) {
   EXPECT_NE(decoder.Get()[0].find(",member=m\\x00,member_hex=6D00"), std::string::npos);
 }
 
-TEST_F(WalGetTest, PropagateRecords) {
+TEST_F(WriteBatchDecoderTest, PropagateRecords) {
   auto cf = static_cast<uint32_t>(ColumnFamilyID::Propagate);
   const std::vector<std::pair<std::string, std::string>> records = {{"replication_id_", "repl-id"},
                                                                     {"lua_f_abc", "return 1"},
@@ -427,7 +430,7 @@ TEST_F(WalGetTest, PropagateRecords) {
   EXPECT_EQ(summary.Get()[0].find("propagate_type="), std::string::npos);
 }
 
-TEST_F(WalGetTest, PropagateCommandBinaryAndMalformedValues) {
+TEST_F(WriteBatchDecoderTest, PropagateCommandBinaryAndMalformedValues) {
   auto cf = static_cast<uint32_t>(ColumnFamilyID::Propagate);
   engine::WriteBatchDecoder decoder(true, false);
   const std::string binary("a\0\r\n", 4);

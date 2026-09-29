@@ -18,6 +18,7 @@
  *
  */
 
+#include <storage/batch_decoder.h>
 #include <storage/batch_extractor.h>
 
 #include <ctime>
@@ -1508,8 +1509,10 @@ class CommandPollUpdates : public Commander {
           format_ = Format::Raw;
         } else if (util::EqualICase(format, "RESP")) {
           format_ = Format::RESP;
+        } else if (util::EqualICase(format, "DETAIL")) {
+          format_ = Format::Detail;
         } else {
-          return {Status::RedisParseErr, "invalid FORMAT option, should be RAW or RESP"};
+          return {Status::RedisParseErr, "invalid FORMAT option, should be RAW, RESP or DETAIL"};
         }
       } else {
         return {Status::RedisParseErr, errInvalidSyntax};
@@ -1555,6 +1558,29 @@ class CommandPollUpdates : public Commander {
     return updates;
   }
 
+  static StatusOr<std::string> ToDetailFormat(const engine::Storage *storage,
+                                              const std::vector<rocksdb::BatchResult> &batches) {
+    std::string updates = redis::MultiLen(batches.size());
+    for (const auto &batch : batches) {
+      auto count = batch.writeBatchPtr->Count();
+      engine::WriteBatchDecoder decoder(/*detail=*/true, storage->IsSlotIdEncoded());
+      auto status = batch.writeBatchPtr->Iterate(&decoder);
+      if (!status.ok()) {
+        return {Status::RedisExecErr, status.ToString()};
+      }
+      const auto &entries = decoder.Get();
+      // Each batch is a flat key-value array: start_seq, end_seq, records (6 elements = 3 pairs)
+      updates += redis::MultiLen(6);
+      updates += redis::BulkString("start_seq");
+      updates += redis::Integer(batch.sequence);
+      updates += redis::BulkString("end_seq");
+      updates += redis::Integer(batch.sequence + count - 1);
+      updates += redis::BulkString("records");
+      updates += redis::ArrayOfBulkStrings(entries);
+    }
+    return updates;
+  }
+
   Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
     uint64_t next_sequence = sequence_;
     // sequence + 1 is for excluding the current sequence to avoid getting duplicate updates
@@ -1566,6 +1592,8 @@ class CommandPollUpdates : public Commander {
     std::string updates;
     if (format_ == Format::RESP) {
       updates = GET_OR_RET(ToRespFormat(srv->storage, batches));
+    } else if (format_ == Format::Detail) {
+      updates = GET_OR_RET(ToDetailFormat(srv->storage, batches));
     } else {
       updates = GET_OR_RET(ToRawFormat(batches));
     }
@@ -1581,6 +1609,7 @@ class CommandPollUpdates : public Commander {
   enum class Format {
     Raw,
     RESP,
+    Detail,
   };
 
   uint64_t sequence_ = -1;
@@ -1780,36 +1809,8 @@ class CommandLatency : public Commander {
   }
 };
 
-class CommandWalGet : public Commander {
- public:
-  Status Parse(const std::vector<std::string> &args) override {
-    if (args.size() > 3 || (args.size() == 3 && !util::EqualICase(args[2], "detail"))) {
-      return {Status::RedisParseErr, "syntax error"};
-    }
-    auto seq = ParseInt<uint64_t>(args[1], 10);
-    if (!seq || *seq == 0) return {Status::RedisParseErr, errValueNotInteger};
-    seq_ = *seq;
-    detail_ = args.size() == 3;
-    return Status::OK();
-  }
-
-  Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, [[maybe_unused]] Connection *conn,
-                 std::string *output) override {
-    std::vector<std::string> entries;
-    auto s = srv->storage->WalGet(seq_, detail_, &entries);
-    if (!s.IsOK()) return s;
-    *output = redis::ArrayOfBulkStrings(entries);
-    return Status::OK();
-  }
-
- private:
-  uint64_t seq_ = 0;
-  bool detail_ = false;
-};
-
 REDIS_REGISTER_COMMANDS(
-    Server, MakeCmdAttr<CommandWalGet>("walget", -2, "read-only no-multi no-script admin", NO_KEY),
-    MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loading auth", NO_KEY),
+    Server, MakeCmdAttr<CommandAuth>("auth", 2, "read-only ok-loading auth", NO_KEY),
     MakeCmdAttr<CommandPing>("ping", -1, "read-only", NO_KEY),
     MakeCmdAttr<CommandSelect>("select", 2, "read-only", NO_KEY),
     MakeCmdAttr<CommandInfo>("info", -1, "read-only ok-loading", NO_KEY),

@@ -99,6 +99,7 @@ enum RedisCommand {
   kRedisCmdBitOp,
   kRedisCmdBitfield,
   kRedisCmdLMove,
+  kRedisCmdHSet,
 };
 
 constexpr const char *kErrMsgWrongType = "WRONGTYPE Operation against a key holding the wrong kind of value";
@@ -346,7 +347,8 @@ class CuckooChainMetadata : public Metadata {
   /// When a filter is full, a new one is created with capacity = base_capacity * expansion^n
   uint16_t expansion;
 
-  /// The capacity of the first filter.
+  /// The capacity of the first filter. Auto-created filters use kCFDefaultCapacity; CF.RESERVE stores the requested
+  /// capacity.
   uint64_t base_capacity;
 
   /// Number of fingerprints per bucket

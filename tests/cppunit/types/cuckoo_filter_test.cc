@@ -108,15 +108,15 @@ class RedisCuckooFilterTest : public TestBase {
         .Encode();
   }
 
-  uint32_t bucketsPerPage(const CuckooChainMetadata &metadata) {
+  static uint32_t bucketsPerPage(const CuckooChainMetadata &metadata) {
     return std::max<uint32_t>(1, metadata.page_size / metadata.bucket_size);
   }
 
-  uint32_t pageIndexForBucket(const CuckooChainMetadata &metadata, uint32_t bucket_index) {
+  static uint32_t pageIndexForBucket(const CuckooChainMetadata &metadata, uint32_t bucket_index) {
     return bucket_index / bucketsPerPage(metadata);
   }
 
-  uint32_t bucketOffsetInPage(const CuckooChainMetadata &metadata, uint32_t bucket_index) {
+  static uint32_t bucketOffsetInPage(const CuckooChainMetadata &metadata, uint32_t bucket_index) {
     return (bucket_index % bucketsPerPage(metadata)) * metadata.bucket_size;
   }
 

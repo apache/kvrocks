@@ -965,7 +965,9 @@ rocksdb::Status TimeSeries::upsertCommonInBatch(engine::Context &ctx, const Slic
     auto &new_data = new_data_list[i];
     auto new_chunk = CreateTSChunkFromData(new_data);
     auto new_key = internalKeyFromChunkID(ns_key, metadata, new_chunk->GetFirstTimestamp());
-    if (i == 0 && new_key != latest_chunk_key) {
+    // latest_chunk_key is empty when the source time series has no persisted chunk yet (first
+    // write); skip the delete in that case to avoid emitting a tombstone for the empty key.
+    if (i == 0 && !latest_chunk_key.empty() && new_key != latest_chunk_key) {
       s = batch->Delete(latest_chunk_key);
       if (!s.ok()) return s;
     }

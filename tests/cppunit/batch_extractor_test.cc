@@ -98,4 +98,36 @@ TEST_P(HashBatchExtractorTest, InvalidHashEncoding) {
   EXPECT_TRUE(extractor.GetRESPCommands()->empty());
 }
 
+TEST_P(HashBatchExtractorTest, MergedBatchMultipleListCommands) {
+  bool slot_encoded = GetParam();
+  auto ns_key_a = ComposeNamespaceKey("ns", "list-a", slot_encoded);
+  auto key_a1 = InternalKey(ns_key_a, "0", 1, slot_encoded).Encode();
+  auto key_a2 = InternalKey(ns_key_a, "4", 1, slot_encoded).Encode();
+
+  auto ns_key_b = ComposeNamespaceKey("ns", "list-b", slot_encoded);
+  auto key_b1 = InternalKey(ns_key_b, "0", 1, slot_encoded).Encode();
+  auto key_b2 = InternalKey(ns_key_b, "4", 1, slot_encoded).Encode();
+
+  rocksdb::WriteBatch batch;
+  redis::WriteBatchLogData log_data_a(kRedisList, {std::to_string(kRedisCmdLTrim), "1", "3"});
+  ASSERT_TRUE(batch.PutLogData(log_data_a.Encode()).ok());
+  ASSERT_TRUE(batch.Delete(key_a1).ok());
+  ASSERT_TRUE(batch.Delete(key_a2).ok());
+
+  redis::WriteBatchLogData log_data_b(kRedisList, {std::to_string(kRedisCmdLTrim), "1", "3"});
+  ASSERT_TRUE(batch.PutLogData(log_data_b.Encode()).ok());
+  ASSERT_TRUE(batch.Delete(key_b1).ok());
+  ASSERT_TRUE(batch.Delete(key_b2).ok());
+
+  std::vector<std::string> expected;
+  expected.emplace_back(redis::ArrayOfBulkStrings({"LTRIM", "list-a", "1", "3"}));
+  expected.emplace_back(redis::ArrayOfBulkStrings({"LTRIM", "list-b", "1", "3"}));
+
+  WriteBatchExtractor extractor(slot_encoded, -1, true);
+  ASSERT_TRUE(batch.Iterate(&extractor).ok());
+  ASSERT_EQ(extractor.GetRESPCommands()->size(), 1);
+  EXPECT_EQ(extractor.GetRESPCommands()->at("ns"), expected);
+}
+
 INSTANTIATE_TEST_SUITE_P(SlotEncoding, HashBatchExtractorTest, ::testing::Bool());
+

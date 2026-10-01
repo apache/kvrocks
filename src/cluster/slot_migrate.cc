@@ -750,7 +750,7 @@ Status SlotMigrator::migrateIncrementalDataByRawKV(uint64_t end_seq, BatchSender
       default:
         break;
     }
-    if (batch_sender->IsFull()) {
+    if (wal_iter.IsBatchEnd() && batch_sender->IsFull()) {
       GET_OR_RET(sendMigrationBatch(batch_sender));
     }
   }

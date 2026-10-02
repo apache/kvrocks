@@ -117,12 +117,14 @@ class WALBatchExtractor : public rocksdb::WriteBatch::Handler {
   void LogData(const rocksdb::Slice &blob) override;
 
   void Clear();
+  bool HasMutation() const { return has_mutation_; }
 
   class Iter {
     friend class WALBatchExtractor;
 
    public:
     bool Valid();
+    bool IsLast() const;
     void Next();
     WALItem Value();
 
@@ -137,6 +139,7 @@ class WALBatchExtractor : public rocksdb::WriteBatch::Handler {
  private:
   std::vector<WALItem> items_;
   SlotRange slot_range_;
+  bool has_mutation_ = false;
 };
 
 class WALIterator {
@@ -151,6 +154,8 @@ class WALIterator {
   void Seek(rocksdb::SequenceNumber seq);
   void Next();
   WALItem Item();
+  bool IsLastItemInBatch() const;
+  bool HasMutationInBatch() const;
 
   rocksdb::SequenceNumber NextSequenceNumber() const;
   void Reset();

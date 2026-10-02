@@ -368,15 +368,21 @@ TEST_F(SlotIteratorTest, LiveKeys) {
 
   engine::WALIterator wal_iter(storage_.get(), slot_id);
   count = 0;
+  int skipped_batches = 0;
   for (wal_iter.Seek(start_seq + 1); wal_iter.Valid(); wal_iter.Next()) {
     auto item = wal_iter.Item();
+    if (wal_iter.IsLastItemInBatch() && !wal_iter.HasMutationInBatch()) {
+      skipped_batches++;
+    }
     if (item.type == engine::WALItem::Type::kTypePut) {
+      ASSERT_TRUE(wal_iter.HasMutationInBatch());
       auto [_, user_key] = ExtractNamespaceKey(item.key, storage_->IsSlotIdEncoded());
       ASSERT_EQ(slot_id, GetSlotIdFromKey(user_key.ToString())) << user_key.ToString();
       count++;
     }
   }
   ASSERT_EQ(count, same_slot_keys.size());
+  ASSERT_EQ(2, skipped_batches);
 }
 
 class WALIteratorTest : public TestBase {
@@ -848,12 +854,18 @@ TEST_F(WALIteratorTest, NextSequence) {
 
   ASSERT_EQ(iter.NextSequenceNumber(), 0);
 
+  size_t batch_end_count = 0;
   for (iter.Seek(start_seq + 1); iter.Valid(); iter.Next()) {
+    ASSERT_TRUE(iter.HasMutationInBatch());
+    if (iter.IsLastItemInBatch()) {
+      batch_end_count++;
+    }
     next_sequences_set.emplace(iter.NextSequenceNumber());
   }
 
   std::vector<rocksdb::SequenceNumber> next_sequences(next_sequences_set.begin(), next_sequences_set.end());
 
   ASSERT_EQ(expected_next_sequences.size(), next_sequences.size());
+  ASSERT_EQ(expected_next_sequences.size(), batch_end_count);
   ASSERT_TRUE(std::equal(expected_next_sequences.begin(), expected_next_sequences.end(), next_sequences.begin()));
 }

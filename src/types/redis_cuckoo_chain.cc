@@ -109,7 +109,7 @@ rocksdb::Status CuckooChain::Reserve(engine::Context &ctx, const Slice &user_key
 
   // Create a write batch for atomic operation
   auto batch = storage_->GetWriteBatchBase();
-  WriteBatchLogData log_data(kRedisCuckooFilter, std::vector<std::string>{"reserve", user_key.ToString()});
+  WriteBatchLogData log_data(kRedisCuckooFilter, std::vector<std::string>{kCFLogDataReserve, user_key.ToString()});
   s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) return s;
 
@@ -179,6 +179,45 @@ rocksdb::Status CuckooChain::Add(engine::Context &ctx, const Slice &user_key, co
   return rocksdb::Status::Aborted("filter is full");
 }
 
+rocksdb::Status CuckooChain::Delete(engine::Context &ctx, const Slice &user_key, const Slice &item, bool *deleted) {
+  *deleted = false;
+  std::string ns_key = AppendNamespacePrefix(user_key);
+
+  CuckooChainMetadata metadata(false);
+  auto s = getCuckooChainMetadata(ctx, ns_key, &metadata);
+  if (s.IsNotFound()) return rocksdb::Status::NotFound("Not found");
+  if (!s.ok()) return s;
+
+  s = validateMetadata(metadata);
+  if (!s.ok()) return s;
+
+  uint64_t hash = CuckooFilterHelper::Hash(item.data(), item.size());
+  uint8_t fingerprint = CuckooFilterHelper::GenerateFingerprint(hash);
+
+  for (int filter_idx = static_cast<int>(metadata.n_filters) - 1; filter_idx >= 0; --filter_idx) {
+    uint32_t num_buckets = 0;
+    s = CuckooFilterHelper::GetFilterNumBuckets(metadata.base_capacity, metadata.expansion, metadata.bucket_size,
+                                                static_cast<uint16_t>(filter_idx), &num_buckets);
+    if (!s.ok()) return s;
+
+    CuckooSubFilter sub_filter(storage_, ctx, ns_key, storage_->IsSlotIdEncoded(), metadata.version,
+                               metadata.bucket_size, metadata.page_size, static_cast<uint16_t>(filter_idx),
+                               num_buckets);
+    bool found = false;
+    s = sub_filter.Delete(hash, fingerprint, &found);
+    if (!s.ok()) return s;
+    if (!found) continue;
+
+    if (metadata.size == 0) return rocksdb::Status::Corruption("invalid metadata: size is 0");
+    metadata.size--;
+    metadata.num_deleted_items++;
+    *deleted = true;
+    return commitSubFilterAndMetadata(ctx, user_key, ns_key, &metadata, &sub_filter, kCFLogDataDel);
+  }
+
+  return rocksdb::Status::OK();
+}
+
 rocksdb::Status CuckooChain::tryCuckooInsert(engine::Context &ctx, const Slice &user_key, const std::string &ns_key,
                                              CuckooChainMetadata *metadata, uint64_t hash, uint8_t fingerprint,
                                              bool *inserted) {
@@ -199,7 +238,8 @@ rocksdb::Status CuckooChain::tryCuckooInsert(engine::Context &ctx, const Slice &
     if (!s.ok()) return s;
 
     if (current_inserted) {
-      s = commitSubFilterAndMetadata(ctx, user_key, ns_key, metadata, &sub_filter);
+      metadata->size++;
+      s = commitSubFilterAndMetadata(ctx, user_key, ns_key, metadata, &sub_filter, kCFLogDataAdd);
       if (!s.ok()) return s;
       *inserted = true;
       return rocksdb::Status::OK();
@@ -227,7 +267,8 @@ rocksdb::Status CuckooChain::tryCuckooKickOut(engine::Context &ctx, const Slice 
   s = last_filter.TryKickOutInsert(hash, fingerprint, metadata->max_iterations, &kickout_inserted);
   if (!s.ok()) return s;
   if (kickout_inserted) {
-    s = commitSubFilterAndMetadata(ctx, user_key, ns_key, metadata, &last_filter);
+    metadata->size++;
+    s = commitSubFilterAndMetadata(ctx, user_key, ns_key, metadata, &last_filter, kCFLogDataAdd);
     if (!s.ok()) return s;
     *inserted = true;
     return rocksdb::Status::OK();
@@ -264,7 +305,8 @@ rocksdb::Status CuckooChain::expandAndInsertCuckooChain(engine::Context &ctx, co
   if (!new_filter_inserted) return rocksdb::Status::Corruption("failed to insert into new cuckoo filter");
 
   metadata->n_filters++;
-  s = commitSubFilterAndMetadata(ctx, user_key, ns_key, metadata, &new_filter);
+  metadata->size++;
+  s = commitSubFilterAndMetadata(ctx, user_key, ns_key, metadata, &new_filter, kCFLogDataAdd);
   if (!s.ok()) return s;
 
   *inserted = true;
@@ -273,16 +315,15 @@ rocksdb::Status CuckooChain::expandAndInsertCuckooChain(engine::Context &ctx, co
 
 rocksdb::Status CuckooChain::commitSubFilterAndMetadata(engine::Context &ctx, const Slice &user_key,
                                                         const std::string &ns_key, CuckooChainMetadata *metadata,
-                                                        CuckooSubFilter *sub_filter) {
+                                                        CuckooSubFilter *sub_filter, const std::string &command) {
   auto batch = storage_->GetWriteBatchBase();
-  WriteBatchLogData log_data(kRedisCuckooFilter, std::vector<std::string>{"add", user_key.ToString()});
+  WriteBatchLogData log_data(kRedisCuckooFilter, std::vector<std::string>{command, user_key.ToString()});
   auto s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) return s;
 
   s = sub_filter->WriteToBatch(batch.Get());
   if (!s.ok()) return s;
 
-  metadata->size++;
   std::string metadata_bytes;
   metadata->Encode(&metadata_bytes);
   s = batch->Put(metadata_cf_handle_, ns_key, metadata_bytes);

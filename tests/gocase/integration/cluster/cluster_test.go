@@ -497,6 +497,12 @@ func TestClusterMultiple(t *testing.T) {
 		// request node3 that serves slot 8192, that's ok
 		require.Equal(t, "8192", rdb[3].Get(ctx, util.SlotTable[8192]).Val())
 
+		key := fmt.Sprintf("hgetdel_{%s}", util.SlotTable[8192])
+		require.NoError(t, rdb[2].HSet(ctx, key, "a", "value").Err())
+		util.WaitForOffsetSync(t, rdb[2], rdb[3], 5*time.Second)
+		require.ErrorContains(t, rdb[3].Do(ctx, "HGETDEL", key, "FIELDS", 1, "a").Err(), "MOVED")
+		require.Equal(t, "value", rdb[3].HGet(ctx, key, "a").Val())
+
 		require.NoError(t, rdb[3].Do(ctx, "READWRITE").Err())
 
 		// when enable READWRITE, request node3 that serves slot 8192, that's not ok

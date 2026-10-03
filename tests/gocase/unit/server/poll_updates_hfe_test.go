@@ -49,6 +49,11 @@ func TestPollUpdatesHashFieldExpiration(t *testing.T) {
 				require.NoError(t, err)
 				updates := parsePollUpdatesResult(t, result.(map[any]any), true)
 				require.Equal(t, updates.LatestSeq, updates.NextSeq)
+				if len(expected) == 0 {
+					require.Equal(t, sequence, updates.NextSeq)
+					require.Empty(t, updates.Updates)
+					return
+				}
 				require.Equal(t, []any{RESPFormat{Namespace: "default", Commands: expected}}, updates.Updates)
 				sequence = updates.NextSeq
 				for _, command := range updates.Updates[0].(RESPFormat).Commands {
@@ -123,6 +128,75 @@ func TestPollUpdatesHashFieldExpiration(t *testing.T) {
 				require.NoError(t, src.HDel(ctx, "counter", "f").Err())
 				replay(t, []string{"HDEL", "counter", "f"})
 				require.ErrorIs(t, dst.HGet(ctx, "counter", "f").Err(), redis.Nil)
+			})
+
+			t.Run("hgetdel effects and replay", func(t *testing.T) {
+				for _, mode := range []string{"legacy", "field-expiration"} {
+					t.Run(mode, func(t *testing.T) {
+						key := "hgetdel-" + mode
+						binary := "\x00\x00\x00\x00\x00\x00\x00\x01value\xff"
+						fieldAt := time.Now().Add(10 * time.Minute).UnixMilli()
+						keyAt := time.Now().Add(20 * time.Minute).Truncate(time.Second).UnixMilli()
+						require.NoError(t, src.ConfigSet(ctx, "hash-encoding-mode", mode).Err())
+						require.NoError(t, dst.ConfigSet(ctx, "hash-encoding-mode", mode).Err())
+						require.NoError(t, src.HSet(ctx, key, "removed", binary, "live", "ttl", "keeper", "persistent").Err())
+						replay(t, set(key, "keeper", "persistent"), set(key, "live", "ttl"), set(key, "removed", binary))
+						if mode == "field-expiration" {
+							require.NoError(t, src.Do(ctx, "HPEXPIREAT", key, fieldAt, "FIELDS", 2, "removed", "live").Err())
+							replay(t, set(key, "removed", binary), expire(key, "removed", fieldAt), set(key, "live", "ttl"), expire(key, "live", fieldAt))
+						}
+						require.NoError(t, src.Do(ctx, "PEXPIREAT", key, keyAt).Err())
+						replay(t, []string{"PEXPIREAT", key, strconv.FormatInt(keyAt, 10)})
+						otherMode := "legacy"
+						if mode == "legacy" {
+							otherMode = "field-expiration"
+						}
+						require.NoError(t, src.ConfigSet(ctx, "hash-encoding-mode", otherMode).Err())
+						require.NoError(t, dst.ConfigSet(ctx, "hash-encoding-mode", otherMode).Err())
+
+						got, err := src.Do(ctx, "HGETDEL", key, "FIELDS", 3, "removed", "missing", "removed").Result()
+						require.NoError(t, err)
+						require.Equal(t, []interface{}{binary, nil, nil}, got)
+						replay(t, []string{"HDEL", key, "removed"})
+						for _, client := range []*redis.Client{src, dst} {
+							values, err := client.HGetAll(ctx, key).Result()
+							require.NoError(t, err)
+							require.Equal(t, map[string]string{"live": "ttl", "keeper": "persistent"}, values)
+							at, err := client.Do(ctx, "PEXPIRETIME", key).Int64()
+							require.NoError(t, err)
+							require.Equal(t, keyAt, at)
+							metadata := util.GetKMetadata(t, client, ctx, key)
+							require.Equal(t, mode, metadata.Mode)
+							require.Equal(t, int64(2), metadata.Size)
+							if mode == "field-expiration" {
+								require.Equal(t, int64(1), metadata.Persist)
+								expires, err := client.Do(ctx, "HPEXPIRETIME", key, "FIELDS", 3, "removed", "live", "keeper").Result()
+								require.NoError(t, err)
+								require.Equal(t, []interface{}{int64(-2), fieldAt, int64(-1)}, expires)
+							}
+						}
+						got, err = src.Do(ctx, "HGETDEL", key, "FIELDS", 2, "missing", "removed").Result()
+						require.NoError(t, err)
+						require.Equal(t, []interface{}{nil, nil}, got)
+						replay(t)
+
+						got, err = src.Do(ctx, "HGETDEL", key, "FIELDS", 4, "live", "live", "missing", "keeper").Result()
+						require.NoError(t, err)
+						require.Equal(t, []interface{}{"ttl", nil, nil, "persistent"}, got)
+						replay(t, []string{"HDEL", key, "live"}, []string{"HDEL", key, "keeper"}, []string{"DEL", key})
+						for _, client := range []*redis.Client{src, dst} {
+							exists, err := client.Exists(ctx, key).Result()
+							require.NoError(t, err)
+							require.Zero(t, exists)
+						}
+						got, err = src.Do(ctx, "HGETDEL", key, "FIELDS", 2, "live", "missing").Result()
+						require.NoError(t, err)
+						require.Equal(t, []interface{}{nil, nil}, got)
+						replay(t)
+					})
+				}
+				require.NoError(t, src.ConfigSet(ctx, "hash-encoding-mode", "field-expiration").Err())
+				require.NoError(t, dst.ConfigSet(ctx, "hash-encoding-mode", "field-expiration").Err())
 			})
 
 			t.Run("key TTL and hash log arguments coexist", func(t *testing.T) {

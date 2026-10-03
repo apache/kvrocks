@@ -36,6 +36,7 @@
 #include <random>
 #include <string_view>
 
+#include "batch_decoder.h"
 #include "compact_filter.h"
 #include "db_util.h"
 #include "event_listener.h"

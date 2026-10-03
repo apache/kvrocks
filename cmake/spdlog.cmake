@@ -27,3 +27,8 @@ FetchContent_DeclareGitHubWithMirror(spdlog
 FetchContent_MakeAvailableWithArgs(spdlog
   SPDLOG_FMT_EXTERNAL=ON
 )
+
+# Treat spdlog headers as system headers to avoid warnings for the deprecated
+# fmt::fstring conversion operator used by spdlog since fmt 12.
+get_target_property(_spdlog_include_dirs spdlog INTERFACE_INCLUDE_DIRECTORIES)
+set_target_properties(spdlog PROPERTIES INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${_spdlog_include_dirs}")

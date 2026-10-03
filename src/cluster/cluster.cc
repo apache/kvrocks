@@ -160,6 +160,11 @@ Status Cluster::SetClusterNodes(const std::string &nodes_str, int64_t version, b
     if (version_ == version) return Status::OK();
   }
 
+  engine::Context ctx(srv_->storage);
+  if (srv_->storage->IsScanning()) {  // stop key scan
+    srv_->storage->SetDBScanning(false);
+  }
+
   ClusterNodes nodes;
   std::unordered_map<int, std::string> slots_nodes;
   Status s = parseClusterNodes(nodes_str, &nodes, &slots_nodes);

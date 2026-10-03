@@ -1732,6 +1732,7 @@ Status Server::AsyncScanDBSize(const std::string &ns) {
 
     KeyNumStats stats;
     engine::Context ctx(storage);
+    storage->SetDBScanning(true);
     auto s = db.GetKeyNumStats(ctx, "", &stats);
     if (!s.ok()) {
       ERROR("failed to retrieve key num stats: {}", s.ToString());
@@ -1742,6 +1743,8 @@ Status Server::AsyncScanDBSize(const std::string &ns) {
     db_scan_infos_[ns].key_num_stats = stats;
     db_scan_infos_[ns].last_scan_time_secs = util::GetTimeStamp();
     db_scan_infos_[ns].is_scanning = false;
+
+    storage->SetDBScanning(false);
   });
 }
 

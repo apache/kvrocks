@@ -32,8 +32,8 @@ endif()
 include(cmake/utils.cmake)
 
 FetchContent_DeclareGitHubWithMirror(jemalloc
-  jemalloc/jemalloc 5.3.1
-  MD5=d421650ffe4b9e0ec463a9c26135f657
+  jemalloc/jemalloc 5.4.0
+  MD5=eb806125bd59f7a405f3b3662babf411
 )
 
 FetchContent_GetProperties(jemalloc)

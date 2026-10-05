@@ -55,26 +55,8 @@
 #include <event2/bufferevent_ssl.h>
 #include <openssl/err.h>
 #include <openssl/ssl.h>
-#endif
 
-#ifdef ENABLE_OPENSSL
-namespace {
-
-Status SetTLSServerName(SSL *ssl, const std::string &host) {
-  in_addr ipv4{};
-  in6_addr ipv6{};
-  if (inet_pton(AF_INET, host.c_str(), &ipv4) == 1 || inet_pton(AF_INET6, host.c_str(), &ipv6) == 1) {
-    return Status::OK();
-  }
-
-  if (SSL_set_tlsext_host_name(ssl, host.c_str()) != 1) {
-    return {Status::NotOK, fmt::format("Failed to set TLS server name: {}", fmt::streamed(SSLErrors{}))};
-  }
-
-  return Status::OK();
-}
-
-}  // namespace
+#include "server/tls_util.h"
 #endif
 
 FeedSlaveThread::FeedSlaveThread(Server *srv, redis::Connection *conn, rocksdb::SequenceNumber next_repl_seq)

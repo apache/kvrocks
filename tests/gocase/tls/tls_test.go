@@ -24,7 +24,6 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net"
-	"os"
 	"testing"
 	"time"
 
@@ -211,7 +210,7 @@ func TestTLSReplicaSNI(t *testing.T) {
 		serverNames <- hello.ServerName
 		return nil, nil
 	}
-	listener, err := tls.Listen("tcp4", "0.0.0.0:0", serverTLSConfig)
+	listener, err := tls.Listen("tcp", ":0", serverTLSConfig)
 	require.NoError(t, err)
 	defer listener.Close()
 	go func() {
@@ -230,8 +229,7 @@ func TestTLSReplicaSNI(t *testing.T) {
 
 	replicaClient := replica.NewClientWithOption(&redis.Options{TLSConfig: tlsConfig, Addr: replica.TLSAddr()})
 	defer func() { require.NoError(t, replicaClient.Close()) }()
-	replicationHost, err := os.Hostname()
-	require.NoError(t, err)
+	const replicationHost = "localhost"
 	require.NoError(t, replicaClient.Do(context.Background(), "slaveof", replicationHost, listener.Addr().(*net.TCPAddr).Port).Err())
 
 	select {

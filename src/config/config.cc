@@ -550,6 +550,11 @@ void Config::initFieldCallback() {
         return {Status::NotOK, "should be between 0 and 65535"};
       }
       master_port = *parse_result;
+    } else if (args[0] == "no" && args[1] == "one") {
+      master_host.clear();
+      master_port = 0;
+    } else {
+      return {Status::NotOK, "invalid replicaof value, must be 'host port' or 'no one'"};
     }
     return Status::OK();
   };

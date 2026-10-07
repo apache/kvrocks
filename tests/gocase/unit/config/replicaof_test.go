@@ -54,14 +54,40 @@ func TestReplicaofConfig(t *testing.T) {
 		require.EqualValues(t, "no one", val["replicaof"])
 	})
 
+	t.Run("NO ONE (uppercase) also clears master config", func(t *testing.T) {
+		require.NoError(t, rdb.ConfigSet(ctx, "replicaof", "127.0.0.1 1234").Err())
+		require.NoError(t, rdb.ConfigSet(ctx, "replicaof", "NO ONE").Err())
+		val := rdb.ConfigGet(ctx, "replicaof").Val()
+		require.EqualValues(t, "NO ONE", val["replicaof"])
+	})
+
+	t.Run("mixed case No One also clears master config", func(t *testing.T) {
+		require.NoError(t, rdb.ConfigSet(ctx, "replicaof", "127.0.0.1 1234").Err())
+		require.NoError(t, rdb.ConfigSet(ctx, "replicaof", "No One").Err())
+		val := rdb.ConfigGet(ctx, "replicaof").Val()
+		require.EqualValues(t, "No One", val["replicaof"])
+	})
+
 	t.Run("invalid: keyword no with numeric port", func(t *testing.T) {
 		err := rdb.ConfigSet(ctx, "replicaof", "no 1234").Err()
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "invalid")
 	})
 
+	t.Run("invalid: uppercase NO with numeric port", func(t *testing.T) {
+		err := rdb.ConfigSet(ctx, "replicaof", "NO 1234").Err()
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "invalid")
+	})
+
 	t.Run("invalid: non-no host with keyword one", func(t *testing.T) {
 		err := rdb.ConfigSet(ctx, "replicaof", "foo one").Err()
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "invalid")
+	})
+
+	t.Run("invalid: non-no host with uppercase ONE", func(t *testing.T) {
+		err := rdb.ConfigSet(ctx, "replicaof", "foo ONE").Err()
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "invalid")
 	})

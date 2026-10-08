@@ -287,7 +287,7 @@ TEST(Storage, ReplDataManagerFileExistsCRC) {
       content[i] = static_cast<char>(i & 0xFF);
     }
     std::ofstream ofs(path, std::ios::binary);
-    ofs.write(content.data(), content.size());
+    ofs.write(content.data(), static_cast<std::streamsize>(content.size()));
     ofs.close();
 
     uint32_t crc = 0;

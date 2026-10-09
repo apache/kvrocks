@@ -45,6 +45,37 @@ rocksdb::Status CuckooSubFilter::TryInsert(uint64_t hash, uint8_t fingerprint, b
   return pages_.TryInsertInBucket(filter_index_, num_buckets_, bucket2_idx, fingerprint, inserted);
 }
 
+rocksdb::Status CuckooSubFilter::Contains(uint64_t hash, uint8_t fingerprint, bool *exists) {
+  *exists = false;
+  uint32_t bucket1_idx = getPrimaryBucketIndex(hash);
+  uint32_t bucket2_idx = getSecondaryBucketIndex(hash, fingerprint);
+  auto s = pages_.PrefetchBuckets(filter_index_, num_buckets_, bucket1_idx, bucket2_idx);
+  if (!s.ok()) return s;
+
+  uint8_t slot = 0;
+  for (size_t i = 0; i < bucket_size_; ++i) {
+    s = pages_.GetBucketSlot(filter_index_, num_buckets_, bucket1_idx, static_cast<uint32_t>(i), &slot);
+    if (!s.ok()) return s;
+    if (slot == fingerprint) {
+      *exists = true;
+      return rocksdb::Status::OK();
+    }
+  }
+
+  if (bucket1_idx == bucket2_idx) return rocksdb::Status::OK();
+
+  for (size_t i = 0; i < bucket_size_; ++i) {
+    s = pages_.GetBucketSlot(filter_index_, num_buckets_, bucket2_idx, static_cast<uint32_t>(i), &slot);
+    if (!s.ok()) return s;
+    if (slot == fingerprint) {
+      *exists = true;
+      return rocksdb::Status::OK();
+    }
+  }
+
+  return rocksdb::Status::OK();
+}
+
 rocksdb::Status CuckooSubFilter::TryKickOutInsert(uint64_t hash, uint8_t fingerprint, uint16_t max_iterations,
                                                   bool *inserted) {
   *inserted = false;

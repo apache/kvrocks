@@ -165,6 +165,13 @@ struct Config {
   std::string dir;
   std::string db_dir;
   std::string backup_dir;  // GUARD_BY(backup_mu_)
+  /* Cloud Backup Configurations */
+  std::string cloud_storage_type; 
+  std::string cloud_storage_bucket;
+  std::string cloud_storage_access_key;
+  std::string cloud_storage_secret_key;
+  std::string cloud_storage_endpoint;
+  /* End of Cloud Backup Configurations */
   std::string pidfile;
   std::string backup_sync_dir;
   std::string checkpoint_dir;

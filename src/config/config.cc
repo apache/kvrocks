@@ -543,7 +543,7 @@ void Config::initFieldCallback() {
     }
     std::vector<std::string> args = util::Split(v, " \t");
     if (args.size() != 2) return {Status::NotOK, "wrong number of arguments"};
-    if (!util::EqualICase(args[0], "no") && !util::EqualICase(args[1], "one")) {
+    if (!util::EqualICase(args[0], "no") || !util::EqualICase(args[1], "one")) {
       master_host = args[0];
       auto parse_result = ParseInt<int>(args[1], NumericRange<int>{1, PORT_LIMIT - 1}, 10);
       if (!parse_result) {

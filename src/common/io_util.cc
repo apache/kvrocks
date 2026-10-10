@@ -335,7 +335,7 @@ StatusOr<std::tuple<std::string, uint32_t>> GetPeerAddr(int fd) {
   if (sa.ss_family == AF_INET6) {
     char buf[INET6_ADDRSTRLEN];
     auto sa6 = reinterpret_cast<sockaddr_in6 *>(&sa);
-    inet_ntop(AF_INET6, reinterpret_cast<void *>(&sa6->sin6_addr), buf, INET_ADDRSTRLEN);
+    inet_ntop(AF_INET6, reinterpret_cast<void *>(&sa6->sin6_addr), buf, INET6_ADDRSTRLEN);
     return {buf, ntohs(sa6->sin6_port)};
   } else if (sa.ss_family == AF_INET) {
     auto sa4 = reinterpret_cast<sockaddr_in *>(&sa);

@@ -1945,7 +1945,7 @@ TEST_F(RedisHashFieldExpirationEncodingTest, SetFieldsWithExpireRecreatesExpired
 
 // Regression test for https://github.com/apache/kvrocks/issues/3635
 // When all fields expire via HFE, a subsequent HSET should NOT inherit the stale key-level TTL.
-TEST_F(RedisHashFieldExpirationEncodingTest, NewFieldDoesNotInheritStaleKeyTTLOfterAllFieldsExpire) {
+TEST_F(RedisHashFieldExpirationEncodingTest, NewFieldDoesNotInheritStaleKeyTTLAfterAllFieldsExpire) {
   const std::string key = "hfe-stale-key-ttl";
   const uint64_t now = util::GetTimeStampMS();
 
@@ -1992,7 +1992,7 @@ TEST_F(RedisHashFieldExpirationEncodingTest, NewFieldDoesNotInheritStaleKeyTTLOf
 }
 
 // Same scenario but via IncrBy
-TEST_F(RedisHashFieldExpirationEncodingTest, IncrByDoesNotInheritStaleKeyTTLOfterAllFieldsExpire) {
+TEST_F(RedisHashFieldExpirationEncodingTest, IncrByDoesNotInheritStaleKeyTTLAfterAllFieldsExpire) {
   const std::string key = "hfe-stale-key-ttl-incr";
   const uint64_t now = util::GetTimeStampMS();
 
@@ -2020,7 +2020,7 @@ TEST_F(RedisHashFieldExpirationEncodingTest, IncrByDoesNotInheritStaleKeyTTLOfte
 }
 
 // Same scenario but via SetFieldsWithExpire
-TEST_F(RedisHashFieldExpirationEncodingTest, SetFieldsWithExpireDoesNotInheritStaleKeyTTLOfterAllFieldsExpire) {
+TEST_F(RedisHashFieldExpirationEncodingTest, SetFieldsWithExpireDoesNotInheritStaleKeyTTLAfterAllFieldsExpire) {
   const std::string key = "hfe-stale-key-ttl-hsetex";
   const uint64_t now = util::GetTimeStampMS();
 

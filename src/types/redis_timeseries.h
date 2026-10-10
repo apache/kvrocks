@@ -53,6 +53,7 @@ enum class TSAggregatorType : uint8_t {
   STD_S = 10,
   VAR_P = 11,
   VAR_S = 12,
+  TWA = 13,
 };
 
 inline bool IsIncrementalAggregatorType(TSAggregatorType type) {
@@ -86,6 +87,11 @@ struct TSAggregator {
 
   // Calculates the aggregated value of the given samples according to the aggregator type
   double AggregateSamplesValue(nonstd::span<const TSSample> samples) const;
+};
+
+struct TWABounds {
+  TSSample prev_sample;
+  TSSample next_sample;
 };
 
 struct TSDownStreamMeta {

@@ -131,7 +131,11 @@ rocksdb::Status String::Append(engine::Context &ctx, const std::string &user_key
   }
   raw_value.append(value);
   *new_size = raw_value.size() - Metadata::GetOffsetAfterExpire(raw_value[0]);
-  return updateRawValue(ctx, ns_key, raw_value);
+  s = updateRawValue(ctx, ns_key, raw_value);
+  if (!s.ok()) return s;
+
+  ctx.AddKeyspaceEventIfEnabled(kNotifyString, "append", namespace_, user_key);
+  return rocksdb::Status::OK();
 }
 
 std::vector<rocksdb::Status> String::MGet(engine::Context &ctx, const std::vector<Slice> &keys,
@@ -410,7 +414,13 @@ rocksdb::Status String::SetRange(engine::Context &ctx, const std::string &user_k
     }
   }
   *new_size = raw_value.size() - header_offset;
-  return updateRawValue(ctx, ns_key, raw_value);
+  s = updateRawValue(ctx, ns_key, raw_value);
+  if (!s.ok()) return s;
+
+  if (!value.empty()) {
+    ctx.AddKeyspaceEventIfEnabled(kNotifyString, "setrange", namespace_, user_key);
+  }
+  return rocksdb::Status::OK();
 }
 
 rocksdb::Status String::IncrBy(engine::Context &ctx, const std::string &user_key, int64_t increment,
@@ -451,7 +461,11 @@ rocksdb::Status String::IncrBy(engine::Context &ctx, const std::string &user_key
 
   raw_value = raw_value.substr(0, offset);
   raw_value.append(std::to_string(n));
-  return updateRawValue(ctx, ns_key, raw_value);
+  s = updateRawValue(ctx, ns_key, raw_value);
+  if (!s.ok()) return s;
+
+  ctx.AddKeyspaceEventIfEnabled(kNotifyString, "incrby", namespace_, user_key);
+  return rocksdb::Status::OK();
 }
 
 rocksdb::Status String::IncrByFloat(engine::Context &ctx, const std::string &user_key, double increment,
@@ -485,7 +499,11 @@ rocksdb::Status String::IncrByFloat(engine::Context &ctx, const std::string &use
 
   raw_value = raw_value.substr(0, offset);
   raw_value.append(util::Float2String(n));
-  return updateRawValue(ctx, ns_key, raw_value);
+  s = updateRawValue(ctx, ns_key, raw_value);
+  if (!s.ok()) return s;
+
+  ctx.AddKeyspaceEventIfEnabled(kNotifyString, "incrbyfloat", namespace_, user_key);
+  return rocksdb::Status::OK();
 }
 
 rocksdb::Status String::MSet(engine::Context &ctx, const std::vector<StringPair> &pairs, StringMSetArgs args,
@@ -535,6 +553,9 @@ rocksdb::Status String::MSet(engine::Context &ctx, const std::vector<StringPair>
   s = storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
   if (!s.ok()) return s;
 
+  for (const auto &pair : pairs) {
+    ctx.AddKeyspaceEventIfEnabled(kNotifyString, "set", namespace_, pair.key.ToStringView());
+  }
   if (flag) *flag = true;
   return rocksdb::Status::OK();
 }
@@ -586,6 +607,7 @@ rocksdb::Status String::CAS(engine::Context &ctx, const std::string &user_key, c
       return write_status;
     }
     *flag = 1;
+    ctx.AddKeyspaceEventIfEnabled(kNotifyString, "set", namespace_, user_key);
   }
 
   return rocksdb::Status::OK();

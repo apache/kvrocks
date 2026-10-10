@@ -72,6 +72,7 @@ class SlotMigrator : public redis::Database {
   }
   void SetMigrateBatchRateLimit(size_t bytes_per_sec) { migrate_batch_bytes_per_sec_ = bytes_per_sec; }
   void SetMigrateBatchSize(size_t size) { migrate_batch_size_bytes_ = size; }
+  void SetMigrateResponseTimeout(int timeout_ms) { migrate_response_timeout_ms_ = timeout_ms; }
   void SetStopMigrationFlag(bool value) { stop_migration_ = value; }
   bool IsMigrationInProgress() const { return migration_state_ == MigrationState::kStarted; }
   SlotMigrationStage GetCurrentSlotMigrationStage() const { return current_stage_; }
@@ -119,6 +120,7 @@ class SlotMigrator : public redis::Database {
   uint64_t seq_gap_limit_ = kDefaultSequenceGapLimit;
   std::atomic<size_t> migrate_batch_bytes_per_sec_ = 1 * GiB;
   std::atomic<size_t> migrate_batch_size_bytes_;
+  std::atomic<int> migrate_response_timeout_ms_;
 
   SlotMigrationStage current_stage_ = SlotMigrationStage::kNone;
   ParserState parser_state_ = ParserState::ArrayLen;

@@ -243,6 +243,7 @@ Config::Config() {
       {"migrate-sequence-gap", false, new IntField(&sequence_gap, 10000, 1, INT_MAX)},
       {"migrate-batch-size-kb", false, new IntField(&migrate_batch_size_kb, 16, 1, INT_MAX)},
       {"migrate-batch-rate-limit-mb", false, new IntField(&migrate_batch_rate_limit_mb, 16, 1, INT_MAX)},
+      {"migrate-response-timeout-ms", false, new IntField(&migrate_response_timeout_ms, 5000, 1000, 300000)},
       {"unixsocket", true, new StringField(&unixsocket, "")},
       {"unixsocketperm", true, new OctalField(&unixsocketperm, 0777, 1, INT_MAX)},
       {"log-retention-days", true, new IntField(&log_retention_days, -1, -1, INT_MAX)},
@@ -700,6 +701,12 @@ void Config::initFieldCallback() {
            [this](Server *srv, [[maybe_unused]] const std::string &k, [[maybe_unused]] const std::string &v) -> Status {
              if (!srv) return Status::OK();
              srv->slot_migrator->SetMigrateBatchSize(migrate_batch_size_kb * KiB);
+             return Status::OK();
+           }},
+          {"migrate-response-timeout-ms",
+           [this](Server *srv, [[maybe_unused]] const std::string &k, [[maybe_unused]] const std::string &v) -> Status {
+             if (!srv) return Status::OK();
+             srv->slot_migrator->SetMigrateResponseTimeout(migrate_response_timeout_ms);
              return Status::OK();
            }},
           {"log-level",

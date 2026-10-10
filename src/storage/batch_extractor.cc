@@ -38,6 +38,8 @@ void WriteBatchExtractor::LogData(const rocksdb::Slice &blob) {
     // Redis type log data
     if (auto s = log_data_.Decode(blob); !s.IsOK()) {
       WARN("Failed to decode Redis type log: {}", s.Msg());
+    } else {
+      first_seen_ = true;
     }
   }
 }

@@ -225,6 +225,15 @@ TEST_F(RedisJsonTest, Merge) {
   ASSERT_TRUE(json_->Get(*ctx_, key_, {}, &json_val_).ok());
   ASSERT_EQ(json_val_.Dump().GetValue(), "{\"f2\":{\"a\":3,\"b\":4},\"f3\":[2,4,6]}");
   ASSERT_EQ(result, true);
+
+  // Invalid JSON as merge value should return an error, not silently succeed
+  ASSERT_TRUE(json_->Set(*ctx_, key_, "$", R"({"a":1})").ok());
+  auto invalid_json_status = json_->Merge(*ctx_, key_, "$.a", "not_valid_json", result);
+  ASSERT_FALSE(invalid_json_status.ok()) << "Merge with invalid JSON should return an error";
+
+  // Invalid jsonpath should also return an error
+  auto invalid_path_status = json_->Merge(*ctx_, key_, "[invalid", "1", result);
+  ASSERT_FALSE(invalid_path_status.ok()) << "Merge with invalid jsonpath should return an error";
 }
 
 TEST_F(RedisJsonTest, Clear) {

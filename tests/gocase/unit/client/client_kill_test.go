@@ -39,8 +39,8 @@ func TestClientKillParseEdgeCases(t *testing.T) {
 	t.Run("CLIENT KILL with keyword but missing value returns error", func(t *testing.T) {
 		keywords := []string{"addr", "id", "skipme", "type"}
 		for _, kw := range keywords {
-			err := rdb.Do(ctx, "CLIENT", "KILL", kw).Err()
-			require.Error(t, err, "CLIENT KILL %s should fail", kw)
+			err := rdb.Do(ctx, "CLIENT", "KILL", "addr", "127.0.0.1:1234", kw).Err()
+			require.ErrorContains(t, err, "syntax", "CLIENT KILL %s should fail with a syntax error", kw)
 		}
 	})
 

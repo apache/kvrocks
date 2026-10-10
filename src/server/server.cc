@@ -1335,7 +1335,11 @@ std::string Server::GetRoleInfo() {
     } else {
       roles.emplace_back("connecting");
     }
-    roles.emplace_back(std::to_string(storage->LatestSeqNumber()));
+    std::string latest_seq_str = "0";
+    if (!is_loading_) {
+      latest_seq_str = std::to_string(storage->LatestSeqNumber());
+    }
+    roles.emplace_back(latest_seq_str);
     return redis::ArrayOfBulkStrings(roles);
   } else {
     std::vector<std::string> list;

@@ -463,6 +463,57 @@ rocksdb::Status Hash::scanAndRepair(engine::Context &ctx, const Slice &ns_key, H
   return rocksdb::Status::OK();
 }
 
+rocksdb::Status Hash::ensureValidMetadata(engine::Context &ctx, const std::string &ns_key,
+                                          HashMetadata *metadata, bool *was_reset) {
+  *was_reset = false;
+  if (!metadata->IsFieldExpirationEncoding()) return rocksdb::Status::OK();
+  if (metadata->persist > 0) return rocksdb::Status::OK();
+  // Defensive: ParseMetadata already returns NotFound for size==0 Hash,
+  // so this branch is unreachable in normal flow. Kept as a safety guard.
+  if (metadata->size == 0) return rocksdb::Status::OK();
+
+  uint64_t now = util::GetTimeStampMS();
+
+  // Fast path: if lower bound hasn't been reached, all TTL fields are still alive
+  if (metadata->lower != 0 && now < metadata->lower) {
+    return rocksdb::Status::OK();
+  }
+
+  // Fast path: if upper bound has passed, all TTL fields have expired
+  if (metadata->upper != 0 && now > metadata->upper) {
+    *metadata = createMetadataForWrite();
+    *was_reset = true;
+    return rocksdb::Status::OK();
+  }
+
+  // Slow path: scan for the first live field
+  std::string prefix_key = InternalKey(ns_key, "", metadata->version, storage_->IsSlotIdEncoded()).Encode();
+  std::string next_version_prefix_key =
+      InternalKey(ns_key, "", metadata->version + 1, storage_->IsSlotIdEncoded()).Encode();
+
+  rocksdb::ReadOptions read_options = ctx.DefaultScanOptions();
+  rocksdb::Slice lower_bound(prefix_key);
+  rocksdb::Slice upper_bound(next_version_prefix_key);
+  read_options.iterate_lower_bound = &lower_bound;
+  read_options.iterate_upper_bound = &upper_bound;
+
+  auto iter = util::UniqueIterator(ctx, read_options);
+  for (iter->Seek(prefix_key); iter->Valid() && iter->key().starts_with(prefix_key); iter->Next()) {
+    HashFieldState state;
+    auto s = DecodeFieldState(*metadata, Slice(iter->value()), now, &state);
+    if (!s.ok()) return s;
+    if (state.kind == HashFieldStateKind::kLiveTTL) {
+      return rocksdb::Status::OK();  
+    }
+  }
+  auto s = iter->status();
+  if (!s.ok()) return s;
+
+  *metadata = createMetadataForWrite();
+  *was_reset = true;
+  return rocksdb::Status::OK();
+}
+
 rocksdb::Status Hash::Get(engine::Context &ctx, const Slice &user_key, const Slice &field, std::string *value) {
   std::string ns_key = AppendNamespacePrefix(user_key);
   HashMetadata metadata(false);
@@ -494,6 +545,11 @@ rocksdb::Status Hash::IncrBy(engine::Context &ctx, const Slice &user_key, const 
   HashMetadata metadata = createMetadataForWrite();
   rocksdb::Status s = getMetadata(ctx, ns_key, &metadata);
   if (!s.ok() && !s.IsNotFound()) return s;
+  if (s.ok()) {
+    bool was_reset = false;
+    s = ensureValidMetadata(ctx, ns_key, &metadata, &was_reset);
+    if (!s.ok()) return s;
+  }
 
   std::string sub_key = InternalKey(ns_key, field, metadata.version, storage_->IsSlotIdEncoded()).Encode();
   if (s.ok()) {
@@ -557,6 +613,11 @@ rocksdb::Status Hash::IncrByFloat(engine::Context &ctx, const Slice &user_key, c
   HashMetadata metadata = createMetadataForWrite();
   rocksdb::Status s = getMetadata(ctx, ns_key, &metadata);
   if (!s.ok() && !s.IsNotFound()) return s;
+  if (s.ok()) {
+    bool was_reset = false;
+    s = ensureValidMetadata(ctx, ns_key, &metadata, &was_reset);
+    if (!s.ok()) return s;
+  }
 
   std::string sub_key = InternalKey(ns_key, field, metadata.version, storage_->IsSlotIdEncoded()).Encode();
   if (s.ok()) {
@@ -664,6 +725,17 @@ rocksdb::Status Hash::SetFieldsWithExpire(engine::Context &ctx, const Slice &use
   HashMetadata metadata(false);
   auto s = getMetadata(ctx, ns_key, &metadata);
   bool metadata_existed = s.ok();
+  if (s.ok()) {
+    if (metadata.IsLegacySubkeyEncoding()) {
+      return rocksdb::Status::InvalidArgument(kHashFieldExpirationLegacyEncodingError);
+    }
+    bool was_reset = false;
+    s = ensureValidMetadata(ctx, ns_key, &metadata, &was_reset);
+    if (!s.ok()) return s;
+    if (was_reset) {
+      metadata_existed = false;
+    }
+  }
   if (s.IsNotFound()) {
     if (options.condition == HashFieldSetCondition::kFXX) return rocksdb::Status::OK();
     metadata = createMetadataForWrite();
@@ -672,8 +744,6 @@ rocksdb::Status Hash::SetFieldsWithExpire(engine::Context &ctx, const Slice &use
     }
   } else if (!s.ok()) {
     return s;
-  } else if (metadata.IsLegacySubkeyEncoding()) {
-    return rocksdb::Status::InvalidArgument(kHashFieldExpirationLegacyEncodingError);
   }
 
   s = ValidateHashFieldExpirationMetadata(metadata);
@@ -1024,6 +1094,11 @@ rocksdb::Status Hash::MSet(engine::Context &ctx, const Slice &user_key, const st
   HashMetadata metadata = createMetadataForWrite();
   rocksdb::Status s = getMetadata(ctx, ns_key, &metadata);
   if (!s.ok() && !s.IsNotFound()) return s;
+  if (s.ok()) {
+    bool was_reset = false;
+    s = ensureValidMetadata(ctx, ns_key, &metadata, &was_reset);
+    if (!s.ok()) return s;
+  }
   bool had_existing_fields = s.ok() && metadata.size > 0;
   bool ttl_updated = false;
   if (expire > 0 && metadata.expire != expire) {

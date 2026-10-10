@@ -1849,7 +1849,10 @@ TEST_F(RedisHashFieldExpirationEncodingTest, SetAndGetFieldsWithExpirePreserveEx
   expect_identity();
 }
 
-TEST_F(RedisHashFieldExpirationEncodingTest, SetFieldsWithExpireRetainsConservativeKeyTTLCornerState) {
+// After the fix for https://github.com/apache/kvrocks/issues/3635, when all fields have expired
+// (even if upper bound suggests otherwise), ensureValidMetadata resets metadata with a new version
+// and clears the stale key-level TTL.
+TEST_F(RedisHashFieldExpirationEncodingTest, SetFieldsWithExpireResetsMetadataWhenAllFieldsExpiredDespiteConservativeUpper) {
   const std::string key = "hsetex-key-ttl-conservative-upper";
   const uint64_t now = util::GetTimeStampMS();
   const uint64_t short_expire = now - 1'000;
@@ -1875,13 +1878,13 @@ TEST_F(RedisHashFieldExpirationEncodingTest, SetFieldsWithExpireRetainsConservat
   ASSERT_TRUE(s.ok()) << s.ToString();
   EXPECT_TRUE(applied);
   metadata = hashMetadata(key);
-  EXPECT_EQ(metadata.size, 2);
+  // ensureValidMetadata detected all fields expired and reset metadata
+  EXPECT_NE(metadata.version, original_metadata.version);
+  EXPECT_EQ(metadata.expire, 0);  // stale key-level TTL cleared
+  EXPECT_EQ(metadata.size, 1);
   EXPECT_EQ(metadata.persist, 1);
-  EXPECT_EQ(metadata.lower, short_expire);
-  EXPECT_EQ(metadata.upper, long_expire);
-  EXPECT_EQ(metadata.expire, original_metadata.expire);
-  EXPECT_EQ(metadata.version, original_metadata.version);
-  EXPECT_EQ(metadata.flags, original_metadata.flags);
+  EXPECT_EQ(metadata.lower, 0);
+  EXPECT_EQ(metadata.upper, 0);
   EXPECT_EQ(decodedHashValue(key, "new"), (std::pair<std::string, uint64_t>{"value", 0}));
 }
 
@@ -1938,6 +1941,113 @@ TEST_F(RedisHashFieldExpirationEncodingTest, SetFieldsWithExpireRecreatesExpired
     ASSERT_TRUE(s.ok()) << s.ToString();
     EXPECT_EQ(raw_after, raw_before);
   }
+}
+
+// Regression test for https://github.com/apache/kvrocks/issues/3635
+// When all fields expire via HFE, a subsequent HSET should NOT inherit the stale key-level TTL.
+TEST_F(RedisHashFieldExpirationEncodingTest, NewFieldDoesNotInheritStaleKeyTTLOfterAllFieldsExpire) {
+  const std::string key = "hfe-stale-key-ttl";
+  const uint64_t now = util::GetTimeStampMS();
+
+  // Step 1: Create hash with a persistent field
+  uint64_t ret = 0;
+  auto s = hash_->MSet(*ctx_, key, {{"old", "v"}}, false, &ret);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  ASSERT_EQ(ret, 1);
+
+  // Step 2: Set field-level TTL on "old" (120s)
+  std::vector<int64_t> results;
+  s = hash_->ExpireFields(*ctx_, key, {"old"}, now + 120'000, HashFieldExpireCondition::kNone, &results);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+
+  // Step 3: Set key-level TTL (60s)
+  HashMetadata metadata = hashMetadata(key);
+  metadata.expire = now + 60'000;
+  s = putHashMetadata(key, metadata);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+
+  // Step 4: Shorten field-level TTL to the past (force immediate expiry)
+  s = hash_->ExpireFields(*ctx_, key, {"old"}, now - 1, HashFieldExpireCondition::kNone, &results);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+
+  // Step 5: Verify "old" field is expired (HGET returns NotFound)
+  std::string value;
+  s = hash_->Get(*ctx_, key, "old", &value);
+  EXPECT_TRUE(s.IsNotFound());
+
+  // Step 6: Write a new field via HSET
+  s = hash_->Set(*ctx_, key, "new", "v", &ret);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+
+  // Step 7: The new field should NOT inherit the old key-level TTL
+  metadata = hashMetadata(key);
+  EXPECT_EQ(metadata.expire, 0) << "New field should not inherit stale key-level TTL";
+  EXPECT_EQ(metadata.size, 1);
+  EXPECT_EQ(metadata.persist, 1);
+
+  // Verify the new field is readable
+  s = hash_->Get(*ctx_, key, "new", &value);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  EXPECT_EQ(value, "v");
+}
+
+// Same scenario but via IncrBy
+TEST_F(RedisHashFieldExpirationEncodingTest, IncrByDoesNotInheritStaleKeyTTLOfterAllFieldsExpire) {
+  const std::string key = "hfe-stale-key-ttl-incr";
+  const uint64_t now = util::GetTimeStampMS();
+
+  uint64_t ret = 0;
+  auto s = hash_->MSet(*ctx_, key, {{"old", "10"}}, false, &ret);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+
+  std::vector<int64_t> results;
+  s = hash_->ExpireFields(*ctx_, key, {"old"}, now - 1, HashFieldExpireCondition::kNone, &results);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+
+  HashMetadata metadata = hashMetadata(key);
+  metadata.expire = now + 60'000;
+  s = putHashMetadata(key, metadata);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+
+  // "old" is now expired
+  int64_t new_value = 0;
+  s = hash_->IncrBy(*ctx_, key, "old", 5, &new_value);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  EXPECT_EQ(new_value, 5);  // Treated as new field: 0 + 5
+
+  metadata = hashMetadata(key);
+  EXPECT_EQ(metadata.expire, 0) << "IncrBy should not inherit stale key-level TTL";
+}
+
+// Same scenario but via SetFieldsWithExpire
+TEST_F(RedisHashFieldExpirationEncodingTest, SetFieldsWithExpireDoesNotInheritStaleKeyTTLOfterAllFieldsExpire) {
+  const std::string key = "hfe-stale-key-ttl-hsetex";
+  const uint64_t now = util::GetTimeStampMS();
+
+  uint64_t ret = 0;
+  auto s = hash_->MSet(*ctx_, key, {{"old", "v"}}, false, &ret);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+
+  std::vector<int64_t> results;
+  s = hash_->ExpireFields(*ctx_, key, {"old"}, now - 1, HashFieldExpireCondition::kNone, &results);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+
+  HashMetadata metadata = hashMetadata(key);
+  metadata.expire = now + 60'000;
+  s = putHashMetadata(key, metadata);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+
+  // "old" is now expired, write new field via SetFieldsWithExpire
+  bool applied = false;
+  auto options = setExOptions(HashSetExOptions::TTLAction::kDiscard);
+  s = hash_->SetFieldsWithExpire(*ctx_, key, {{"new", "v"}}, options, &applied, now);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  EXPECT_TRUE(applied);
+
+  metadata = hashMetadata(key);
+  EXPECT_EQ(metadata.expire, 0) << "SetFieldsWithExpire should not inherit stale key-level TTL";
+  EXPECT_EQ(metadata.size, 1);
+  EXPECT_EQ(metadata.persist, 1);
 }
 
 TEST_F(RedisHashTest, SetAndGetFieldsWithExpireRejectExistingLegacyHashWithoutMutation) {

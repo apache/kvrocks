@@ -1658,6 +1658,32 @@ func TestStreamOffset(t *testing.T) {
 		require.Equal(t, int64(3), r)
 	})
 
+	t.Run("XACK acknowledges duplicate IDs once", func(t *testing.T) {
+		streamName := "xack-duplicates"
+		groupName := "group"
+		consumerName := "consumer"
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     "1-0",
+			Values: []string{"field", "value"},
+		}).Err())
+		require.NoError(t, rdb.XGroupCreate(ctx, streamName, groupName, "0").Err())
+		require.NoError(t, rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    groupName,
+			Consumer: consumerName,
+			Streams:  []string{streamName, ">"},
+			Count:    1,
+		}).Err())
+
+		acked, err := rdb.XAck(ctx, streamName, groupName, "1-0", "1-0").Result()
+		require.NoError(t, err)
+		require.Equal(t, int64(1), acked)
+		require.Equal(t, int64(0), rdb.XInfoGroups(ctx, streamName).Val()[0].Pending)
+		require.Equal(t, int64(0), rdb.XInfoConsumers(ctx, streamName, groupName).Val()[0].Pending)
+		require.Equal(t, int64(0), rdb.XPending(ctx, streamName, groupName).Val().Count)
+	})
+
 	t.Run("Simple XCLAIM command tests", func(t *testing.T) {
 		streamName := "mystream"
 		groupName := "mygroup"
@@ -1838,6 +1864,72 @@ func TestStreamOffset(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, claimedIDs, 1, "Expected to claim exactly one message ID")
 		require.Equal(t, "1-0", claimedIDs[0], "Expected claimed message ID to match")
+	})
+
+	t.Run("XCLAIM to the current consumer keeps pending counts unchanged", func(t *testing.T) {
+		streamName := "xclaim-current-consumer"
+		groupName := "group"
+		consumerName := "consumer"
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     "1-0",
+			Values: []string{"field", "value"},
+		}).Err())
+		require.NoError(t, rdb.XGroupCreate(ctx, streamName, groupName, "0").Err())
+		require.NoError(t, rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    groupName,
+			Consumer: consumerName,
+			Streams:  []string{streamName, ">"},
+			Count:    1,
+		}).Err())
+
+		require.NoError(t, rdb.XClaimJustID(ctx, &redis.XClaimArgs{
+			Stream:   streamName,
+			Group:    groupName,
+			Consumer: consumerName,
+			MinIdle:  0,
+			Messages: []string{"1-0"},
+		}).Err())
+		require.Equal(t, int64(1), rdb.XInfoGroups(ctx, streamName).Val()[0].Pending)
+		require.Equal(t, int64(1), rdb.XInfoConsumers(ctx, streamName, groupName).Val()[0].Pending)
+	})
+
+	t.Run("XAUTOCLAIM refreshes idle time for the current consumer", func(t *testing.T) {
+		streamName := "xautoclaim-current-consumer"
+		groupName := "group"
+		consumerName := "consumer"
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     "1-0",
+			Values: []string{"field", "value"},
+		}).Err())
+		require.NoError(t, rdb.XGroupCreate(ctx, streamName, groupName, "0").Err())
+		require.NoError(t, rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    groupName,
+			Consumer: consumerName,
+			Streams:  []string{streamName, ">"},
+			Count:    1,
+		}).Err())
+		require.NoError(t, rdb.Do(ctx, "XCLAIM", streamName, groupName, consumerName, 0, "1-0",
+			"IDLE", 100000, "JUSTID").Err())
+
+		first := rdb.XAutoClaimJustID(ctx, &redis.XAutoClaimArgs{
+			Stream: streamName, Group: groupName, Consumer: consumerName,
+			MinIdle: 50 * time.Second, Start: "0-0", Count: 1,
+		})
+		require.NoError(t, first.Err())
+		firstIDs, _ := first.Val()
+		require.Equal(t, []string{"1-0"}, firstIDs)
+
+		second := rdb.XAutoClaimJustID(ctx, &redis.XAutoClaimArgs{
+			Stream: streamName, Group: groupName, Consumer: consumerName,
+			MinIdle: 50 * time.Second, Start: "0-0", Count: 1,
+		})
+		require.NoError(t, second.Err())
+		secondIDs, _ := second.Val()
+		require.Empty(t, secondIDs)
 	})
 
 	t.Run("XAUTOCLAIM can claim PEL items from another consume", func(t *testing.T) {

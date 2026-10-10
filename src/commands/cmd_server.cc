@@ -610,7 +610,7 @@ class CommandClient : public Commander {
       new_format_ = true;
 
       while (i < args.size()) {
-        bool more_args = i < args.size();
+        bool more_args = i + 1 < args.size();
         if (util::EqualICase(args[i], "addr") && more_args) {
           addr_ = args[i + 1];
         } else if (util::EqualICase(args[i], "id") && more_args) {

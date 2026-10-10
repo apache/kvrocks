@@ -32,7 +32,8 @@ class SubKeyIterator {
   explicit SubKeyIterator(engine::Context &ctx, rocksdb::ReadOptions read_options, RedisType type, std::string prefix);
   ~SubKeyIterator() = default;
   bool Valid() const;
-  void Seek();
+  // Returns true when positioning required a RocksDB seek.
+  bool Seek();
   void Next();
   // return the raw key in rocksdb
   Slice Key() const;
@@ -40,15 +41,21 @@ class SubKeyIterator {
   Slice UserKey() const;
   rocksdb::ColumnFamilyHandle *ColumnFamilyHandle() const;
   Slice Value() const;
-  void Reset();
 
  private:
+  friend class DBIterator;
+
+  bool IsCompatible(RedisType type) const;
+  void SetPrefix(std::string prefix);
+  void UpdateValidity();
+
   Storage *storage_;
   rocksdb::ReadOptions read_options_;
   RedisType type_;
   std::string prefix_;
   std::unique_ptr<rocksdb::Iterator> iter_;
   rocksdb::ColumnFamilyHandle *cf_handle_ = nullptr;
+  bool valid_ = false;
 };
 
 class DBIterator {
@@ -66,7 +73,8 @@ class DBIterator {
   Slice Value() const;
   RedisType Type() const;
   void Reset();
-  std::unique_ptr<SubKeyIterator> GetSubKeyIterator() const;
+  // The returned iterator is owned by this DBIterator and reused across keys.
+  SubKeyIterator *GetSubKeyIterator();
 
  private:
   void nextUntilValid();

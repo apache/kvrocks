@@ -172,6 +172,65 @@ TEST_F(DBIteratorTest, BasicHash) {
   }
 }
 
+TEST_F(DBIteratorTest, ReusesSubKeyIterator) {
+  redis::Hash hash(storage_.get(), "reuse_ns");
+  uint64_t ret = 0;
+  for (const auto *key : {"hash-a", "hash-b", "hash-c"}) {
+    ASSERT_TRUE(hash.MSet(*ctx_, key, {{"field", key}}, false, &ret).ok());
+  }
+
+  engine::DBIterator iter(*ctx_, rocksdb::ReadOptions());
+  auto prefix = ComposeNamespaceKey("reuse_ns", "", storage_->IsSlotIdEncoded());
+  engine::SubKeyIterator *first_subkey_iter = nullptr;
+  int metadata_count = 0;
+  int seek_count = 0;
+  for (iter.Seek(prefix); iter.Valid() && iter.Key().starts_with(prefix); iter.Next()) {
+    auto *subkey_iter = iter.GetSubKeyIterator();
+    ASSERT_NE(nullptr, subkey_iter);
+    if (first_subkey_iter == nullptr) {
+      first_subkey_iter = subkey_iter;
+    } else {
+      EXPECT_EQ(first_subkey_iter, subkey_iter);
+    }
+
+    seek_count += subkey_iter->Seek() ? 1 : 0;
+    ASSERT_TRUE(subkey_iter->Valid());
+    EXPECT_EQ("field", subkey_iter->UserKey().ToString());
+    subkey_iter->Next();
+    EXPECT_FALSE(subkey_iter->Valid());
+    metadata_count++;
+  }
+
+  EXPECT_EQ(3, metadata_count);
+  EXPECT_EQ(1, seek_count);
+}
+
+TEST_F(DBIteratorTest, ReusedSubKeyIteratorFallsBackToSeek) {
+  redis::Hash hash(storage_.get(), "variable_key_ns");
+  uint64_t ret = 0;
+  for (const auto *key : {"aa", "b", "cc"}) {
+    ASSERT_TRUE(hash.MSet(*ctx_, key, {{"field", key}}, false, &ret).ok());
+  }
+
+  engine::DBIterator iter(*ctx_, rocksdb::ReadOptions());
+  auto prefix = ComposeNamespaceKey("variable_key_ns", "", storage_->IsSlotIdEncoded());
+  int metadata_count = 0;
+  int seek_count = 0;
+  for (iter.Seek(prefix); iter.Valid() && iter.Key().starts_with(prefix); iter.Next()) {
+    auto *subkey_iter = iter.GetSubKeyIterator();
+    ASSERT_NE(nullptr, subkey_iter);
+    seek_count += subkey_iter->Seek() ? 1 : 0;
+    ASSERT_TRUE(subkey_iter->Valid());
+    EXPECT_EQ("field", subkey_iter->UserKey().ToString());
+    subkey_iter->Next();
+    EXPECT_FALSE(subkey_iter->Valid());
+    metadata_count++;
+  }
+
+  EXPECT_EQ(3, metadata_count);
+  EXPECT_EQ(3, seek_count);
+}
+
 TEST_F(DBIteratorTest, BasicSet) {
   engine::DBIterator iter(*ctx_, rocksdb::ReadOptions());
   auto prefix = ComposeNamespaceKey("test_ns2", "", storage_->IsSlotIdEncoded());

@@ -81,6 +81,7 @@ RedisType DBIterator::Type() const { return Valid() ? metadata_.Type() : kRedisN
 
 void DBIterator::Reset() {
   if (metadata_iter_) metadata_iter_.reset();
+  subkey_iter_.reset();
 }
 
 void DBIterator::Seek(const std::string &target) {
@@ -101,7 +102,7 @@ void DBIterator::Seek(const std::string &target) {
   nextUntilValid();
 }
 
-std::unique_ptr<SubKeyIterator> DBIterator::GetSubKeyIterator() const {
+SubKeyIterator *DBIterator::GetSubKeyIterator() {
   if (!Valid()) {
     return nullptr;
   }
@@ -112,7 +113,12 @@ std::unique_ptr<SubKeyIterator> DBIterator::GetSubKeyIterator() const {
   }
 
   auto prefix = InternalKey(Key(), "", metadata_.version, ctx_->storage->IsSlotIdEncoded()).Encode();
-  return std::make_unique<SubKeyIterator>(*ctx_, read_options_, type, std::move(prefix));
+  if (!subkey_iter_ || !subkey_iter_->IsCompatible(type)) {
+    subkey_iter_ = std::make_unique<SubKeyIterator>(*ctx_, read_options_, type, std::move(prefix));
+  } else {
+    subkey_iter_->SetPrefix(std::move(prefix));
+  }
+  return subkey_iter_.get();
 }
 
 SubKeyIterator::SubKeyIterator(engine::Context &ctx, rocksdb::ReadOptions read_options, RedisType type,
@@ -130,15 +136,19 @@ void SubKeyIterator::Next() {
   if (!Valid()) return;
 
   iter_->Next();
-
-  if (!Valid()) return;
-
-  if (!iter_->key().starts_with(prefix_)) {
-    Reset();
-  }
+  UpdateValidity();
 }
 
-bool SubKeyIterator::Valid() const { return iter_ && iter_->Valid(); }
+bool SubKeyIterator::Valid() const { return valid_; }
+
+bool SubKeyIterator::IsCompatible(RedisType type) const { return (type_ == kRedisStream) == (type == kRedisStream); }
+
+void SubKeyIterator::SetPrefix(std::string prefix) {
+  prefix_ = std::move(prefix);
+  UpdateValidity();
+}
+
+void SubKeyIterator::UpdateValidity() { valid_ = iter_ && iter_->Valid() && iter_->key().starts_with(prefix_); }
 
 Slice SubKeyIterator::Key() const { return Valid() ? iter_->key() : Slice(); }
 
@@ -153,19 +163,12 @@ rocksdb::ColumnFamilyHandle *SubKeyIterator::ColumnFamilyHandle() const { return
 
 Slice SubKeyIterator::Value() const { return Valid() ? iter_->value() : Slice(); }
 
-void SubKeyIterator::Seek() {
-  if (!iter_) return;
+bool SubKeyIterator::Seek() {
+  if (!iter_ || Valid()) return false;
 
   iter_->Seek(prefix_);
-  if (!iter_->Valid()) return;
-  // For the subkey iterator, it MUST contain the prefix key itself
-  if (!iter_->key().starts_with(prefix_)) {
-    Reset();
-  }
-}
-
-void SubKeyIterator::Reset() {
-  if (iter_) iter_.reset();
+  UpdateValidity();
+  return true;
 }
 
 rocksdb::Status WALBatchExtractor::PutCF(uint32_t column_family_id, const Slice &key, const Slice &value) {

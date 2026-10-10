@@ -220,3 +220,32 @@ func TestDump_SortedInt(t *testing.T) {
 	expectedMembers := []string{"5", "12", "23", "89", "100"}
 	require.ElementsMatch(t, expectedMembers, members)
 }
+
+func TestDump_JSON(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{})
+	defer srv.Close()
+
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	key := "test_json_key"
+
+	jsonData := `{"name":"Alice","age":30,"city":"NYC"}`
+	require.NoError(t, rdb.Do(ctx, "JSON.SET", key, "$", jsonData).Err())
+
+	require.EqualValues(t, "ReJSON-RL", rdb.Type(ctx, key).Val())
+
+	serialized, err := rdb.Dump(ctx, key).Result()
+	require.NoError(t, err)
+
+	restoredKey := fmt.Sprintf("restore_%s", key)
+	require.NoError(t, rdb.RestoreReplace(ctx, restoredKey, 0, serialized).Err())
+
+	require.EqualValues(t, "string", rdb.Type(ctx, restoredKey).Val())
+
+	content := rdb.Get(ctx, restoredKey).Val()
+	require.Contains(t, content, "Alice")
+	require.Contains(t, content, "30")
+	require.Contains(t, content, "NYC")
+}

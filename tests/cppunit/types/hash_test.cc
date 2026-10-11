@@ -2019,6 +2019,34 @@ TEST_F(RedisHashFieldExpirationEncodingTest, IncrByDoesNotInheritStaleKeyTTLAfte
   EXPECT_EQ(metadata.expire, 0) << "IncrBy should not inherit stale key-level TTL";
 }
 
+// Same scenario but via IncrByFloat
+TEST_F(RedisHashFieldExpirationEncodingTest, IncrByFloatDoesNotInheritStaleKeyTTLAfterAllFieldsExpire) {
+  const std::string key = "hfe-stale-key-ttl-incr-float";
+  const uint64_t now = util::GetTimeStampMS();
+
+  uint64_t ret = 0;
+  auto s = hash_->MSet(*ctx_, key, {{"old", "10.5"}}, false, &ret);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+
+  std::vector<int64_t> results;
+  s = hash_->ExpireFields(*ctx_, key, {"old"}, now - 1, HashFieldExpireCondition::kNone, &results);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+
+  HashMetadata metadata = hashMetadata(key);
+  metadata.expire = now + 60'000;
+  s = putHashMetadata(key, metadata);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+
+  // "old" is now expired
+  double new_value = 0;
+  s = hash_->IncrByFloat(*ctx_, key, "old", 2.5, &new_value);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  EXPECT_DOUBLE_EQ(new_value, 2.5);  // Treated as new field: 0 + 2.5
+
+  metadata = hashMetadata(key);
+  EXPECT_EQ(metadata.expire, 0) << "IncrByFloat should not inherit stale key-level TTL";
+}
+
 // Same scenario but via SetFieldsWithExpire
 TEST_F(RedisHashFieldExpirationEncodingTest, SetFieldsWithExpireDoesNotInheritStaleKeyTTLAfterAllFieldsExpire) {
   const std::string key = "hfe-stale-key-ttl-hsetex";

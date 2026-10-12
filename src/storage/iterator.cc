@@ -113,10 +113,10 @@ SubKeyIterator *DBIterator::GetSubKeyIterator() {
   }
 
   auto prefix = InternalKey(Key(), "", metadata_.version, ctx_->storage->IsSlotIdEncoded()).Encode();
-  if (!subkey_iter_ || !subkey_iter_->IsCompatible(type)) {
+  if (!subkey_iter_ || !subkey_iter_->isCompatible(type)) {
     subkey_iter_ = std::make_unique<SubKeyIterator>(*ctx_, read_options_, type, std::move(prefix));
   } else {
-    subkey_iter_->SetPrefix(std::move(prefix));
+    subkey_iter_->setPrefix(std::move(prefix));
   }
   return subkey_iter_.get();
 }
@@ -136,19 +136,19 @@ void SubKeyIterator::Next() {
   if (!Valid()) return;
 
   iter_->Next();
-  UpdateValidity();
+  updateValidity();
 }
 
 bool SubKeyIterator::Valid() const { return valid_; }
 
-bool SubKeyIterator::IsCompatible(RedisType type) const { return (type_ == kRedisStream) == (type == kRedisStream); }
+bool SubKeyIterator::isCompatible(RedisType type) const { return (type_ == kRedisStream) == (type == kRedisStream); }
 
-void SubKeyIterator::SetPrefix(std::string prefix) {
+void SubKeyIterator::setPrefix(std::string prefix) {
   prefix_ = std::move(prefix);
-  UpdateValidity();
+  updateValidity();
 }
 
-void SubKeyIterator::UpdateValidity() { valid_ = iter_ && iter_->Valid() && iter_->key().starts_with(prefix_); }
+void SubKeyIterator::updateValidity() { valid_ = iter_ && iter_->Valid() && iter_->key().starts_with(prefix_); }
 
 Slice SubKeyIterator::Key() const { return Valid() ? iter_->key() : Slice(); }
 
@@ -167,7 +167,7 @@ bool SubKeyIterator::Seek() {
   if (!iter_ || Valid()) return false;
 
   iter_->Seek(prefix_);
-  UpdateValidity();
+  updateValidity();
   return true;
 }
 

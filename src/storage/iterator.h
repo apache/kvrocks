@@ -45,9 +45,9 @@ class SubKeyIterator {
  private:
   friend class DBIterator;
 
-  bool IsCompatible(RedisType type) const;
-  void SetPrefix(std::string prefix);
-  void UpdateValidity();
+  bool isCompatible(RedisType type) const;
+  void setPrefix(std::string prefix);
+  void updateValidity();
 
   Storage *storage_;
   rocksdb::ReadOptions read_options_;

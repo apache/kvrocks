@@ -1474,7 +1474,7 @@ bool Storage::ReplDataManager::FileExists(Storage *storage, const std::string &d
 
     if (slice.size() == 0) return false;
 
-    tmp_crc = rocksdb::crc32c::Extend(0, slice.data(), slice.size());
+    tmp_crc = rocksdb::crc32c::Extend(tmp_crc, slice.data(), slice.size());
     size -= slice.size();
   }
 

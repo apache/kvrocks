@@ -231,6 +231,11 @@ void SlotMigrator::runMigrationProcess() {
 }
 
 Status SlotMigrator::startMigration() {
+  compaction_guard_ = storage_->ProtectSlotRange(slot_range_);
+  // A compaction that already filtered records can install its output after the
+  // protection is enabled. Drain those jobs before choosing the snapshot.
+  GET_OR_RET(compaction_guard_->WaitForCompactions([this] { return stop_migration_ || isTerminated(); }));
+
   // Get snapshot and sequence
   slot_snapshot_ = storage_->GetDB()->GetSnapshot();
   if (!slot_snapshot_) {
@@ -316,6 +321,7 @@ void SlotMigrator::clean() {
     storage_->GetDB()->ReleaseSnapshot(slot_snapshot_);
     slot_snapshot_ = nullptr;
   }
+  compaction_guard_.reset();
 
   current_stage_ = SlotMigrationStage::kNone;
   wal_begin_seq_ = 0;
@@ -579,7 +585,9 @@ Status SlotMigrator::sendSnapshot() {
   read_options.iterate_lower_bound = &prefix_slice;
   read_options.iterate_upper_bound = &upper_bound_slice;
   auto no_txn_ctx = engine::Context::NoTransactionContext(storage_);
-  engine::DBIterator iter(no_txn_ctx, read_options);
+  // A later WAL batch may only renew the TTL. Keep the snapshot's metadata and
+  // subkeys even if its old expiration time has passed while migrating.
+  engine::DBIterator iter(no_txn_ctx, read_options, -1, true /* include_expired */);
 
   BatchSender batch_sender(*dst_fd_, migrate_batch_size_bytes_, migrate_batch_bytes_per_sec_);
 

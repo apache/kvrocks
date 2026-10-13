@@ -44,6 +44,25 @@ TEST(InternalKey, EncodeAndDecode) {
   EXPECT_EQ(ikey, ikey1);
 }
 
+TEST(InternalKey, EqualityAcrossNamespaces) {
+  Slice key = "test-key";
+  Slice sub_key = "test-sub-key";
+  uint64_t version = 42;
+
+  std::string ns_key_a = ComposeNamespaceKey("ns_a", key, false);
+  std::string ns_key_b = ComposeNamespaceKey("ns_b", key, false);
+
+  InternalKey a(ns_key_a, sub_key, version, false);
+  InternalKey b(ns_key_b, sub_key, version, false);
+
+  // Same key/sub_key/version but different namespace must not be equal
+  EXPECT_NE(a, b);
+
+  // Same namespace should still be equal
+  InternalKey a2(ns_key_a, sub_key, version, false);
+  EXPECT_EQ(a, a2);
+}
+
 TEST(Metadata, EncodeAndDecode) {
   std::string string_bytes;
   Metadata string_md(kRedisString);

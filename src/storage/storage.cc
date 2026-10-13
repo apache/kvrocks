@@ -31,6 +31,7 @@
 #include <rocksdb/utilities/table_properties_collectors.h>
 
 #include <algorithm>
+#include <chrono>
 #include <iostream>
 #include <memory>
 #include <random>
@@ -102,14 +103,85 @@ void Storage::CloseDB() {
   auto guard = WriteLockGuard();
   if (!db_) return;
 
+  {
+    std::lock_guard<std::mutex> lock(compaction_mu_);
+    compaction_tracking_stopped_ = true;
+    ++compaction_generation_;
+    for (auto &slot : protected_slots_) slot.store(0);
+  }
+  compaction_cv_.notify_all();
   db_closing_ = true;
   db_->SyncWAL();
   // Make sure all background work is stopped to avoid the data race
   // between background threads and the column family handle destruction.
   rocksdb::CancelAllBackgroundWork(db_.get(), true);
+  {
+    std::lock_guard<std::mutex> lock(compaction_mu_);
+    // RocksDB can omit completion callbacks while shutting down.
+    active_compactions_.clear();
+  }
   for (auto handle : cf_handles_) db_->DestroyColumnFamilyHandle(handle);
   db_->Close();
   db_ = nullptr;
+}
+
+std::unique_ptr<SlotRangeCompactionGuard> Storage::ProtectSlotRange(const SlotRange &slot_range) {
+  assert(slot_range.IsValid());
+  std::lock_guard<std::mutex> lock(compaction_mu_);
+  for (int slot = slot_range.start; slot <= slot_range.end; ++slot) {
+    protected_slots_[slot].fetch_add(1);
+  }
+  return std::unique_ptr<SlotRangeCompactionGuard>(
+      new SlotRangeCompactionGuard(this, slot_range, compaction_epoch_, compaction_generation_));
+}
+
+bool Storage::IsSlotCompactionProtected(uint16_t slot) const {
+  return slot < protected_slots_.size() && protected_slots_[slot].load() != 0;
+}
+
+void Storage::unprotectSlotRange(const SlotRange &slot_range, uint64_t generation) {
+  std::lock_guard<std::mutex> lock(compaction_mu_);
+  // An import connection can outlive a full synchronization that replaces the DB.
+  if (generation != compaction_generation_) return;
+  for (int slot = slot_range.start; slot <= slot_range.end; ++slot) {
+    protected_slots_[slot].fetch_sub(1);
+  }
+}
+
+void Storage::OnCompactionBegin(uint64_t thread_id, int job_id) {
+  std::lock_guard<std::mutex> lock(compaction_mu_);
+  active_compactions_[{thread_id, job_id}] = ++compaction_epoch_;
+}
+
+void Storage::OnCompactionCompleted(uint64_t thread_id, int job_id) {
+  {
+    std::lock_guard<std::mutex> lock(compaction_mu_);
+    active_compactions_.erase({thread_id, job_id});
+  }
+  compaction_cv_.notify_all();
+}
+
+Status Storage::waitForCompactions(uint64_t epoch, uint64_t generation, const std::function<bool()> &cancelled) {
+  std::unique_lock<std::mutex> lock(compaction_mu_);
+  while (true) {
+    if (compaction_tracking_stopped_ || generation != compaction_generation_) {
+      return {Status::NotOK, "storage closed while waiting for compactions"};
+    }
+    if (cancelled && cancelled()) {
+      return {Status::NotOK, "slot migration cancelled while waiting for compactions"};
+    }
+    if (std::none_of(active_compactions_.begin(), active_compactions_.end(),
+                     [epoch](const auto &entry) { return entry.second <= epoch; })) {
+      return Status::OK();
+    }
+    compaction_cv_.wait_for(lock, std::chrono::milliseconds(10));
+  }
+}
+
+SlotRangeCompactionGuard::~SlotRangeCompactionGuard() { storage_->unprotectSlotRange(slot_range_, generation_); }
+
+Status SlotRangeCompactionGuard::WaitForCompactions(const std::function<bool()> &cancelled) {
+  return storage_->waitForCompactions(epoch_, generation_, cancelled);
 }
 
 void Storage::SetWriteOptions(const Config::RocksDB::WriteOptions &config) {
@@ -289,6 +361,10 @@ Status Storage::CreateColumnFamilies(const rocksdb::Options &options) {
 Status Storage::Open(DBOpenMode mode) {
   auto guard = WriteLockGuard();
   db_closing_ = false;
+  {
+    std::lock_guard lock(compaction_mu_);
+    compaction_tracking_stopped_ = false;
+  }
 
   bool cache_index_and_filter_blocks = config_->rocks_db.cache_index_and_filter_blocks;
   size_t block_cache_size = config_->rocks_db.block_cache_size * MiB;

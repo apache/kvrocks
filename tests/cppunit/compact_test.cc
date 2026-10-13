@@ -20,9 +20,11 @@
 
 #include <gtest/gtest.h>
 
+#include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <future>
 #include <memory>
 
 #include "encoding.h"
@@ -128,7 +130,215 @@ class CompactHashFieldExpirationTest : public ::testing::Test {
   std::unique_ptr<redis::Hash> hash_;
 };
 
+class SlotCompactionTest : public ::testing::TestWithParam<bool> {
+ protected:
+  void SetUp() override {
+    config_.db_dir = "compactdb_slot_protection";
+    config_.slot_id_encoded = true;
+    config_.rocks_db.disable_auto_compactions = true;
+    config_.rocks_db.enable_blob_files = GetParam();
+    config_.rocks_db.min_blob_size = 0;
+    storage_ = std::make_unique<engine::Storage>(&config_);
+    ASSERT_TRUE(storage_->Open().IsOK());
+  }
+
+  void TearDown() override {
+    storage_.reset();
+    std::error_code ec;
+    std::filesystem::remove_all(config_.db_dir, ec);
+  }
+
+  static std::string metadataKey(const std::string &key) { return ComposeNamespaceKey("ns", key, true); }
+
+  void putMetadata(const std::string &key, const Metadata &metadata) {
+    std::string value;
+    metadata.Encode(&value);
+    ASSERT_TRUE(
+        storage_->GetDB()
+            ->Put(rocksdb::WriteOptions(), storage_->GetCFHandle(ColumnFamilyID::Metadata), metadataKey(key), value)
+            .ok());
+  }
+
+  void put(ColumnFamilyID cf, const std::string &key, const std::string &value) {
+    ASSERT_TRUE(storage_->GetDB()->Put(rocksdb::WriteOptions(), storage_->GetCFHandle(cf), key, value).ok());
+  }
+
+  rocksdb::Status get(ColumnFamilyID cf, const std::string &key, const rocksdb::Snapshot *snapshot = nullptr) {
+    rocksdb::ReadOptions options;
+    options.snapshot = snapshot;
+    std::string value;
+    return storage_->GetDB()->Get(options, storage_->GetCFHandle(cf), key, &value);
+  }
+
+  void compact() {
+    // Compact metadata first to also exercise orphan subkey cleanup.
+    ASSERT_TRUE(storage_->Compact(storage_->GetCFHandle(ColumnFamilyID::Metadata), nullptr, nullptr).ok());
+    ASSERT_TRUE(storage_->Compact(nullptr, nullptr, nullptr).ok());
+  }
+
+  Config config_;
+  std::unique_ptr<engine::Storage> storage_;
+};
+
 }  // namespace
+
+TEST_P(SlotCompactionTest, ProtectedSlotsKeepExpiredRecords) {
+  const std::string protected_key = "{protected}:list";
+  const std::string other_key = "{other}:list";
+  const auto slot = ExtractSlotId(metadataKey(protected_key));
+  ASSERT_NE(slot, ExtractSlotId(metadataKey(other_key)));
+  auto guard = storage_->ProtectSlotRange(SlotRange::GetPoint(slot));
+  ListMetadata metadata;
+  metadata.expire = 1;
+  metadata.size = 1;
+  const std::array subkey_cfs = {ColumnFamilyID::PrimarySubkey, ColumnFamilyID::SecondarySubkey,
+                                 ColumnFamilyID::Stream};
+  for (const auto &key : {protected_key, other_key}) {
+    putMetadata(key, metadata);
+    auto subkey = InternalKey(metadataKey(key), "element", metadata.version, true).Encode();
+    for (auto cf : subkey_cfs) put(cf, subkey, "value");
+    put(ColumnFamilyID::Index, redis::TSRevLabelKey("ns", "label", "value", key).Encode(), "");
+  }
+
+  compact();
+  for (const auto &key : {protected_key, other_key}) {
+    const bool kept = key == protected_key;
+    EXPECT_EQ(get(ColumnFamilyID::Metadata, metadataKey(key)).ok(), kept);
+    auto subkey = InternalKey(metadataKey(key), "element", metadata.version, true).Encode();
+    for (auto cf : subkey_cfs) EXPECT_EQ(get(cf, subkey).ok(), kept);
+    EXPECT_EQ(get(ColumnFamilyID::Index, redis::TSRevLabelKey("ns", "label", "value", key).Encode()).ok(), kept);
+  }
+
+  guard.reset();
+  compact();
+  EXPECT_TRUE(get(ColumnFamilyID::Metadata, metadataKey(protected_key)).IsNotFound());
+  auto subkey = InternalKey(metadataKey(protected_key), "element", metadata.version, true).Encode();
+  for (auto cf : subkey_cfs) EXPECT_TRUE(get(cf, subkey).IsNotFound());
+  EXPECT_TRUE(
+      get(ColumnFamilyID::Index, redis::TSRevLabelKey("ns", "label", "value", protected_key).Encode()).IsNotFound());
+}
+
+TEST_P(SlotCompactionTest, SourceSnapshotKeepsReplacedSubkeys) {
+  const std::string key = "list";
+  auto guard = storage_->ProtectSlotRange(SlotRange::GetPoint(ExtractSlotId(metadataKey(key))));
+  ASSERT_TRUE(guard->WaitForCompactions().IsOK());
+  ListMetadata metadata;
+  metadata.size = 1;
+  putMetadata(key, metadata);
+  auto subkey = InternalKey(metadataKey(key), "element", metadata.version, true).Encode();
+  put(ColumnFamilyID::PrimarySubkey, subkey, "snapshot value");
+  auto snapshot = std::shared_ptr<const rocksdb::Snapshot>(
+      storage_->GetDB()->GetSnapshot(), [this](const auto *snapshot) { storage_->GetDB()->ReleaseSnapshot(snapshot); });
+
+  // Replacing a key makes its previous subkeys obsolete for current reads, but
+  // migration still needs them when it opens a subkey iterator at the snapshot.
+  ++metadata.version;
+  putMetadata(key, metadata);
+  compact();
+  rocksdb::ReadOptions options;
+  options.snapshot = snapshot.get();
+  auto iter = std::unique_ptr<rocksdb::Iterator>(
+      storage_->GetDB()->NewIterator(options, storage_->GetCFHandle(ColumnFamilyID::PrimarySubkey)));
+  iter->Seek(subkey);
+  ASSERT_TRUE(iter->Valid());
+  EXPECT_EQ(iter->key().ToString(), subkey);
+  EXPECT_EQ(iter->value().ToString(), "snapshot value");
+  iter.reset();
+  snapshot.reset();
+  guard.reset();
+  compact();
+  EXPECT_TRUE(get(ColumnFamilyID::PrimarySubkey, subkey).IsNotFound());
+}
+
+TEST_P(SlotCompactionTest, ImportKeepsBaselineUntilMetadataTTLIsExtended) {
+  const std::string key = "list";
+  auto guard = storage_->ProtectSlotRange(SlotRange::GetPoint(ExtractSlotId(metadataKey(key))));
+  ListMetadata metadata;
+  metadata.expire = 1;
+  metadata.size = 1;
+  // The snapshot arrives with its old TTL, before the WAL extends it. No user
+  // command can recreate the missing elements if compaction removes them here.
+  putMetadata(key, metadata);
+  auto subkey = InternalKey(metadataKey(key), "element", metadata.version, true).Encode();
+  put(ColumnFamilyID::PrimarySubkey, subkey, "snapshot value");
+  compact();
+  metadata.expire = 0;
+  putMetadata(key, metadata);
+  guard.reset();
+  compact();
+  EXPECT_TRUE(get(ColumnFamilyID::Metadata, metadataKey(key)).ok());
+  EXPECT_TRUE(get(ColumnFamilyID::PrimarySubkey, subkey).ok());
+}
+
+TEST_P(SlotCompactionTest, GuardsAreReferenceCounted) {
+  auto first_slot = storage_->ProtectSlotRange(SlotRange::GetPoint(0));
+  auto last_slot = storage_->ProtectSlotRange(SlotRange::GetPoint(kClusterSlots - 1));
+  EXPECT_TRUE(storage_->IsSlotCompactionProtected(0));
+  EXPECT_TRUE(storage_->IsSlotCompactionProtected(kClusterSlots - 1));
+  auto first = storage_->ProtectSlotRange({10, 12});
+  auto second = storage_->ProtectSlotRange({12, 14});
+  EXPECT_FALSE(storage_->IsSlotCompactionProtected(9));
+  EXPECT_TRUE(storage_->IsSlotCompactionProtected(10));
+  EXPECT_TRUE(storage_->IsSlotCompactionProtected(14));
+  EXPECT_FALSE(storage_->IsSlotCompactionProtected(kClusterSlots));
+  first.reset();
+  EXPECT_FALSE(storage_->IsSlotCompactionProtected(10));
+  EXPECT_TRUE(storage_->IsSlotCompactionProtected(12));
+  second.reset();
+  EXPECT_FALSE(storage_->IsSlotCompactionProtected(12));
+}
+
+TEST_P(SlotCompactionTest, WaitsOnlyForPreexistingCompactions) {
+  storage_->OnCompactionBegin(1, 1);
+  auto guard = storage_->ProtectSlotRange({10, 12});
+  // Job IDs are only unique within a thread.
+  storage_->OnCompactionBegin(2, 1);
+  std::atomic<bool> cancel = false;
+  std::promise<void> waiting;
+  auto entered = waiting.get_future();
+  auto result = std::async(std::launch::async, [&] {
+    bool notified = false;
+    return guard->WaitForCompactions([&] {
+      if (!notified) {
+        waiting.set_value();
+        notified = true;
+      }
+      return cancel.load();
+    });
+  });
+  EXPECT_EQ(entered.wait_for(std::chrono::seconds(5)), std::future_status::ready);
+  EXPECT_EQ(result.wait_for(std::chrono::milliseconds(20)), std::future_status::timeout);
+  storage_->OnCompactionCompleted(1, 1);
+  auto status = result.wait_for(std::chrono::seconds(5));
+  cancel = true;
+  EXPECT_EQ(status, std::future_status::ready);
+  EXPECT_TRUE(result.get().IsOK());
+  storage_->OnCompactionCompleted(2, 1);
+}
+
+TEST_P(SlotCompactionTest, WaitingCanBeCancelledAndDoesNotSurviveReopen) {
+  storage_->OnCompactionBegin(1, 1);
+  auto guard = storage_->ProtectSlotRange({10, 12});
+  std::atomic<bool> cancel = false;
+  auto result =
+      std::async(std::launch::async, [&] { return guard->WaitForCompactions([&] { return cancel.load(); }); });
+  EXPECT_EQ(result.wait_for(std::chrono::milliseconds(20)), std::future_status::timeout);
+  cancel = true;
+  EXPECT_EQ(result.wait_for(std::chrono::seconds(5)), std::future_status::ready);
+  EXPECT_FALSE(result.get().IsOK());
+  storage_->CloseDB();
+  EXPECT_FALSE(guard->WaitForCompactions().IsOK());
+  ASSERT_TRUE(storage_->Open().IsOK());
+  // A waiter that did not observe CloseDB must not succeed on a different DB.
+  EXPECT_FALSE(guard->WaitForCompactions().IsOK());
+  EXPECT_FALSE(storage_->IsSlotCompactionProtected(10));
+  auto reopened_guard = storage_->ProtectSlotRange({10, 12});
+  guard.reset();
+  EXPECT_TRUE(storage_->IsSlotCompactionProtected(10));
+  EXPECT_TRUE(reopened_guard->WaitForCompactions().IsOK());
+}
+
+INSTANTIATE_TEST_SUITE_P(InlineAndBlobValues, SlotCompactionTest, ::testing::Bool());
 
 TEST(Compact, Filter) {
   Config config;

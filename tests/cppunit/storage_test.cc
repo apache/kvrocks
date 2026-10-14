@@ -30,6 +30,8 @@
 #include <string>
 #include <vector>
 
+#include "test_base.h"
+
 TEST(Storage, CreateBackup) {
   std::error_code ec;
 
@@ -40,6 +42,7 @@ TEST(Storage, CreateBackup) {
   std::filesystem::remove_all(config.db_dir, ec);
   ASSERT_TRUE(!ec);
 
+  auto cleanup = MakeDBDirCleanup(config.db_dir);
   auto storage = std::make_unique<engine::Storage>(&config);
   auto s = storage->Open();
   ASSERT_TRUE(s.IsOK());
@@ -59,9 +62,6 @@ TEST(Storage, CreateBackup) {
   // check if backup success without caring about the sequence number
   s = storage->CreateBackup();
   ASSERT_TRUE(s.IsOK());
-
-  std::filesystem::remove_all(config.db_dir, ec);
-  ASSERT_TRUE(!ec);
 }
 
 TEST(Storage, ReadOnlyTransactions) {
@@ -186,6 +186,7 @@ TEST(Storage, GetFullReplDataInfoRejectsEmptyCheckpoint) {
   std::filesystem::create_directory(test_dir, ec);
   ASSERT_FALSE(ec);
 
+  auto cleanup = MakeDBDirCleanup(test_dir);
   auto storage = std::make_unique<engine::Storage>(&config);
   auto s = storage->Open();
   ASSERT_TRUE(s.IsOK()) << s.Msg();
@@ -208,9 +209,6 @@ TEST(Storage, GetFullReplDataInfoRejectsEmptyCheckpoint) {
   s = engine::Storage::ReplDataManager::GetFullReplDataInfo(storage.get(), &files);
   EXPECT_FALSE(s.IsOK());
   EXPECT_TRUE(files.empty());
-
-  std::filesystem::remove_all(test_dir, ec);
-  ASSERT_FALSE(ec);
 }
 
 TEST(Storage, TryPurgeCheckpoint) {
@@ -227,6 +225,7 @@ TEST(Storage, TryPurgeCheckpoint) {
   std::filesystem::create_directory(test_dir, ec);
   ASSERT_FALSE(ec);
 
+  auto cleanup = MakeDBDirCleanup(test_dir);
   auto storage = std::make_unique<engine::Storage>(&config);
   auto s = storage->Open();
   ASSERT_TRUE(s.IsOK()) << s.Msg();
@@ -257,9 +256,6 @@ TEST(Storage, TryPurgeCheckpoint) {
   s = engine::Storage::ReplDataManager::GetFullReplDataInfo(storage.get(), &files);
   ASSERT_TRUE(s.IsOK()) << s.Msg();
   EXPECT_TRUE(storage->ExistCheckpoint());
-
-  std::filesystem::remove_all(test_dir, ec);
-  ASSERT_FALSE(ec);
 }
 
 TEST(Storage, ReplDataManagerFileExistsCRC) {
@@ -276,6 +272,7 @@ TEST(Storage, ReplDataManagerFileExistsCRC) {
   std::filesystem::create_directories(test_dir + "/sync", ec);
   ASSERT_FALSE(ec);
 
+  auto cleanup = MakeDBDirCleanup(test_dir);
   auto storage = std::make_unique<engine::Storage>(&config);
   auto s = storage->Open();
   ASSERT_TRUE(s.IsOK()) << s.Msg();
@@ -335,7 +332,4 @@ TEST(Storage, ReplDataManagerFileExistsCRC) {
     std::string file_name = "large_file";
     EXPECT_TRUE(engine::Storage::ReplDataManager::FileExists(storage.get(), test_dir + "/sync", file_name, 0));
   }
-
-  std::filesystem::remove_all(test_dir, ec);
-  ASSERT_FALSE(ec);
 }

@@ -409,6 +409,43 @@ func TestFunctionScriptFlags(t *testing.T) {
 		util.ErrorRegexp(t, r.Err(), "ERR .* Write commands are not allowed from read-only scripts")
 	})
 
+	t.Run("register_function with named arguments", func(t *testing.T) {
+		r := rdb.Do(ctx, "FUNCTION", "LOAD",
+			`#!lua name=namedargslib
+		redis.register_function{function_name='named_func', callback=function(keys, args) return redis.call("set", keys[1], args[1]) end}
+		redis.register_function{
+			function_name='named_no_writes_func',
+			callback=function(keys, args) return redis.call("set", keys[1], args[1]) end,
+			flags={ 'no-writes' },
+			description='a function that is not allowed to write',
+		}`)
+		require.NoError(t, r.Err())
+
+		require.NoError(t, rdb.Do(ctx, "FCALL", "named_func", 1, "named_k1", "v1").Err())
+		require.Equal(t, "v1", rdb.Get(ctx, "named_k1").Val())
+		r = rdb.Do(ctx, "FCALL", "named_no_writes_func", 1, "named_k2", "v2")
+		util.ErrorRegexp(t, r.Err(), "ERR .* Write commands are not allowed from read-only scripts")
+
+		for _, c := range []struct {
+			args string
+			err  string
+		}{
+			{`'named_func'`, "calling redis.register_function with a single argument is only applicable to Lua table"},
+			{`{callback=function() end}`, "redis.register_function must get a function name argument"},
+			{`{function_name='f'}`, "redis.register_function must get a callback argument"},
+			{`{function_name=1, callback=function() end}`, "function_name argument given to redis.register_function must be a string"},
+			{`{function_name='f', callback='not a function'}`, "callback argument given to redis.register_function must be a function"},
+			{`{function_name='f', callback=function() end, flags='no-writes'}`, "flags argument to redis.register_function must be a table"},
+			{`{function_name='f', callback=function() end, flags={ 'invalid-flag' }}`, "Unknown flag given: invalid-flag"},
+			{`{function_name='f', callback=function() end, description=1}`, "description argument given to redis.register_function must be a string"},
+			{`{function_name='f', callback=function() end, unknown=1}`, "unknown argument given to redis.register_function"},
+			{`{'f', function() end}`, "named argument key given to redis.register_function is not a string"},
+		} {
+			r = rdb.Do(ctx, "FUNCTION", "LOAD", "#!lua name=namedargserr\nredis.register_function("+c.args+")")
+			require.ErrorContains(t, r.Err(), c.err, c.args)
+		}
+	})
+
 	srv0 := util.StartServer(t, map[string]string{"cluster-enabled": "yes"})
 	rdb0 := srv0.NewClient()
 	defer func() { require.NoError(t, rdb0.Close()) }()

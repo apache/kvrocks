@@ -96,6 +96,15 @@ class Cluster {
   Status LoadClusterNodes(const std::string &file_path);
   Status Reset();
 
+  // Master lease management (Phase 1 - local cache based)
+  // When enabled, master validates its lease before accepting writes.
+  // Lease is refreshed when controller pushes topology updates.
+  void RefreshMasterLease();
+  bool IsMasterLeaseExpired() const;
+  bool IsMasterLeaseEnabled() const { return master_lease_duration_sec_ > 0; }
+  int64_t GetMasterLeaseDurationSec() const { return master_lease_duration_sec_; }
+  void SetMasterLeaseDuration(int64_t seconds) { master_lease_duration_sec_ = seconds; }
+
   static bool SubCommandIsExecExclusive(const std::string &subcommand);
 
  private:
@@ -118,4 +127,10 @@ class Cluster {
 
   std::map<int, std::string> migrated_slots_;
   std::set<int> imported_slots_;
+
+  // Master lease state for split-brain prevention
+  // master_lease_expire_at_ms_: epoch milliseconds when lease expires (0 = never/initial)
+  // master_lease_duration_sec_: config-driven duration, 0 = disabled
+  int64_t master_lease_expire_at_ms_ = 0;
+  int64_t master_lease_duration_sec_ = 0;
 };

@@ -20,6 +20,7 @@
 
 #pragma once
 
+#include <limits>
 #include <optional>
 
 #include "commands/command_parser.h"
@@ -30,16 +31,32 @@
 template <typename T>
 constexpr auto TTL_RANGE = NumericRange<T>{1, std::numeric_limits<T>::max()};
 
+// Convert a user supplied TTL to an absolute expire time in milliseconds.
+// `ttl_in_seconds` selects the EX/PX style scaling, `add_now` whether the current
+// time is added (relative) or the value is already absolute (EXAT/PXAT). The
+// input is capped so neither the scaling nor the addition of the current time can
+// overflow int64, which would wrap the expire time into the past and silently
+// delete the key.
+inline StatusOr<uint64_t> ToExpireAtMs(int64_t ttl, bool ttl_in_seconds, bool add_now) {
+  constexpr int64_t max_ms = std::numeric_limits<int64_t>::max();
+  int64_t now_ms = add_now ? util::GetTimeStampMS() : 0;
+  int64_t limit = ttl_in_seconds ? (max_ms - now_ms) / 1000 : max_ms - now_ms;
+  if (ttl > limit) {
+    return {Status::RedisParseErr, "invalid expire time"};
+  }
+  return static_cast<uint64_t>(ttl_in_seconds ? ttl * 1000 : ttl) + static_cast<uint64_t>(now_ms);
+}
+
 template <typename T>
 StatusOr<std::optional<uint64_t>> ParseExpireFlags(CommandParser<T> &parser, std::string_view &curr_flag) {
   if (parser.EatEqICaseFlag("EX", curr_flag)) {
-    return GET_OR_RET(parser.template TakeInt<int64_t>(TTL_RANGE<int64_t>)) * 1000 + util::GetTimeStampMS();
+    return GET_OR_RET(ToExpireAtMs(GET_OR_RET(parser.template TakeInt<int64_t>(TTL_RANGE<int64_t>)), true, true));
   } else if (parser.EatEqICaseFlag("EXAT", curr_flag)) {
-    return GET_OR_RET(parser.template TakeInt<int64_t>(TTL_RANGE<int64_t>)) * 1000;
+    return GET_OR_RET(ToExpireAtMs(GET_OR_RET(parser.template TakeInt<int64_t>(TTL_RANGE<int64_t>)), true, false));
   } else if (parser.EatEqICaseFlag("PX", curr_flag)) {
-    return GET_OR_RET(parser.template TakeInt<int64_t>(TTL_RANGE<int64_t>)) + util::GetTimeStampMS();
+    return GET_OR_RET(ToExpireAtMs(GET_OR_RET(parser.template TakeInt<int64_t>(TTL_RANGE<int64_t>)), false, true));
   } else if (parser.EatEqICaseFlag("PXAT", curr_flag)) {
-    return GET_OR_RET(parser.template TakeInt<int64_t>(TTL_RANGE<int64_t>));
+    return GET_OR_RET(ToExpireAtMs(GET_OR_RET(parser.template TakeInt<int64_t>(TTL_RANGE<int64_t>)), false, false));
   } else {
     return std::nullopt;
   }

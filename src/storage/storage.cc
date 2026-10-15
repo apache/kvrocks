@@ -174,7 +174,12 @@ Status Storage::waitForCompactions(uint64_t epoch, uint64_t generation, const st
                      [epoch](const auto &entry) { return entry.second <= epoch; })) {
       return Status::OK();
     }
+#if defined(__GNUC__) && !defined(__clang__) && __GNUC__ < 12 && defined(__SANITIZE_THREAD__)
+    // GCC 11 TSan does not intercept steady-clock waits (GCC PR sanitizer/101978).
+    compaction_cv_.wait_until(lock, std::chrono::system_clock::now() + std::chrono::milliseconds(10));
+#else
     compaction_cv_.wait_for(lock, std::chrono::milliseconds(10));
+#endif
   }
 }
 

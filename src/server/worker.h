@@ -25,6 +25,10 @@
 #include <event2/listener.h>
 #include <event2/util.h>
 
+#ifdef KVROCKS_USE_LIBUV
+#include <uv.h>
+#endif
+
 #include <atomic>
 #include <cstdint>
 #include <cstring>
@@ -87,12 +91,24 @@ class Worker : EventCallbackBase<Worker>, EvconnlistenerBase<Worker> {
   Status listenTCP(const std::string &host, uint32_t port, int backlog);
   void newTCPConnection(evconnlistener *listener, evutil_socket_t fd, sockaddr *address, int socklen);
   void newUnixSocketConnection(evconnlistener *listener, evutil_socket_t fd, sockaddr *address, int socklen);
-  redis::Connection *removeConnection(int fd);
+#ifdef KVROCKS_USE_LIBUV
+  // libuv acceptCB dispatches through here. tag = 1 (TCP) or 2 (UNIX).
+  void HandleNewConnection(int fd, int tag);
+#endif
+ redis::Connection *removeConnection(int fd);
 
+#ifdef KVROCKS_USE_LIBUV
+  // Phase 1: libuv drives timers + listeners, libevent stays for bufferevent
+  // (replaced in Phase 2). Both loops run side-by-side in Worker::Run().
+  uv_loop_t *loop_;
   event_base *base_;
+  std::vector<uv_tcp_t *> listen_events_;
+#else
+  event_base *base_;
+  std::vector<evconnlistener *> listen_events_;
+#endif
   UniqueEvent timer_;
   std::thread::id tid_;
-  std::vector<evconnlistener *> listen_events_;
   std::mutex conns_mu_;
   std::map<int, redis::Connection *> conns_;
   std::map<int, redis::Connection *> monitor_conns_;

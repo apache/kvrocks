@@ -33,6 +33,7 @@
 #include "storage/compact_filter.h"
 #include "storage/redis_metadata.h"
 #include "storage/storage.h"
+#include "test_base.h"
 #include "time_util.h"
 #include "types/redis_hash.h"
 #include "types/redis_timeseries.h"
@@ -345,6 +346,7 @@ TEST(Compact, Filter) {
   config.db_dir = "compactdb";
   config.slot_id_encoded = false;
 
+  auto cleanup = MakeDBDirCleanup(config.db_dir);
   auto storage = std::make_unique<engine::Storage>(&config);
   Status s = storage->Open();
   assert(s.IsOK());
@@ -439,11 +441,6 @@ TEST(Compact, Filter) {
   }
 
   db->ReleaseSnapshot(read_options.snapshot);
-  std::error_code ec;
-  std::filesystem::remove_all(config.db_dir, ec);
-  if (ec) {
-    std::cout << "Encounter filesystem error: " << ec << std::endl;
-  }
 }
 
 TEST_F(CompactHashFieldExpirationTest, DropsExpiredTTLSubkeyWithoutChangingMetadata) {
@@ -573,6 +570,7 @@ TEST(Compact, KeepsLegacyHashSubkeyWithTTLLikePrefix) {
   config.rocks_db.write_buffer_size = 1;
   config.rocks_db.block_size = 100;
 
+  auto cleanup = MakeDBDirCleanup(config.db_dir);
   auto storage = std::make_unique<engine::Storage>(&config);
   Status s = storage->Open();
   ASSERT_TRUE(s.IsOK()) << s.Msg();
@@ -610,13 +608,6 @@ TEST(Compact, KeepsLegacyHashSubkeyWithTTLLikePrefix) {
   rs = storage->Get(ctx, ctx.GetReadOptions(), sub_key, &raw_value);
   EXPECT_TRUE(rs.ok()) << rs.ToString();
   EXPECT_EQ(raw_value, value);
-
-  storage.reset();
-  std::error_code ec;
-  std::filesystem::remove_all(config.db_dir, ec);
-  if (ec) {
-    std::cout << "Encounter filesystem error: " << ec << std::endl;
-  }
 }
 
 TEST_F(CompactHashFieldExpirationTest, KeepsMalformedFieldExpirationSubkeyValue) {
@@ -656,6 +647,7 @@ TEST(Compact, SearchFilter) {
   config.db_dir = "compactdb";
   config.slot_id_encoded = false;
 
+  auto cleanup = MakeDBDirCleanup(config.db_dir);
   auto storage = std::make_unique<engine::Storage>(&config);
   auto s = storage->Open();
   assert(s.IsOK());
@@ -713,12 +705,6 @@ TEST(Compact, SearchFilter) {
   sg = storage->Get(ctx, rocksdb::ReadOptions(), storage->GetCFHandle(ColumnFamilyID::Search), num_search_key,
                     &search_value);
   ASSERT_TRUE(sg.IsNotFound());
-
-  std::error_code ec;
-  std::filesystem::remove_all(config.db_dir, ec);
-  if (ec) {
-    std::cout << "Encounter filesystem error: " << ec << std::endl;
-  }
 }
 
 TEST(Compact, IndexFilter) {
@@ -726,6 +712,7 @@ TEST(Compact, IndexFilter) {
   config.db_dir = "compactdb";
   config.slot_id_encoded = false;
 
+  auto cleanup = MakeDBDirCleanup(config.db_dir);
   auto storage = std::make_unique<engine::Storage>(&config);
   auto s = storage->Open();
   assert(s.IsOK());
@@ -763,12 +750,6 @@ TEST(Compact, IndexFilter) {
   ASSERT_TRUE(timeseries->MGet(ctx, mget_option, false, &mget_result).ok());
   ASSERT_EQ(mget_result.size(), 1);
   ASSERT_EQ(mget_result[0].name, ts_keep_key);
-
-  std::error_code ec;
-  std::filesystem::remove_all(config.db_dir, ec);
-  if (ec) {
-    std::cout << "Encounter filesystem error: " << ec << std::endl;
-  }
 }
 
 TEST(Compact, TSRetention) {
@@ -776,6 +757,7 @@ TEST(Compact, TSRetention) {
   config.db_dir = "compactdb_tsretention";
   config.slot_id_encoded = false;
 
+  auto cleanup = MakeDBDirCleanup(config.db_dir);
   auto storage = std::make_unique<engine::Storage>(&config);
   auto s = storage->Open();
   assert(s.IsOK());
@@ -836,12 +818,6 @@ TEST(Compact, TSRetention) {
   ASSERT_EQ(range_result.size(), 2);
   ASSERT_EQ(range_result[0].ts, 10);
   ASSERT_EQ(range_result[1].ts, 110);
-
-  std::error_code ec;
-  std::filesystem::remove_all(config.db_dir, ec);
-  if (ec) {
-    std::cout << "Encounter filesystem error: " << ec << std::endl;
-  }
 }
 
 TEST(Compact, TSDownstreamSubKey) {
@@ -849,6 +825,7 @@ TEST(Compact, TSDownstreamSubKey) {
   config.db_dir = "compactdb_tsdownstream";
   config.slot_id_encoded = false;
 
+  auto cleanup = MakeDBDirCleanup(config.db_dir);
   auto storage = std::make_unique<engine::Storage>(&config);
   auto s = storage->Open();
   assert(s.IsOK());
@@ -900,10 +877,4 @@ TEST(Compact, TSDownstreamSubKey) {
   ds_keys = get_all_ds_key();
   ASSERT_EQ(ds_keys.size(), 1);
   ASSERT_EQ(ds_keys[0], dst_key2);
-
-  std::error_code ec;
-  std::filesystem::remove_all(config.db_dir, ec);
-  if (ec) {
-    std::cout << "Encounter filesystem error: " << ec << std::endl;
-  }
 }

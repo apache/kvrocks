@@ -222,6 +222,9 @@ Status Cluster::SetClusterNodes(const std::string &nodes_str, int64_t version, b
   migrated_slots_.clear();
   imported_slots_.clear();
 
+  // Refresh master lease on topology update (controller probe)
+  RefreshMasterLease();
+
   return Status::OK();
 }
 
@@ -925,6 +928,16 @@ Status Cluster::CanExecByMySelf(const redis::CommandAttributes *attributes, cons
       return {Status::RedisTryAgain, "Can't write to slot being migrated which is in write forbidden phase"};
     }
 
+    // Split-brain prevention: if this master's lease has expired, reject writes.
+    // This handles the case where a network partition isolates the old master
+    // while the controller has already promoted a replica to be the new master.
+    if ((flags & redis::kCmdWrite) && myself_->role == kClusterMaster && IsMasterLeaseEnabled() &&
+        IsMasterLeaseExpired()) {
+      WARN("Master lease expired (expire_at_ms={}), rejecting write to prevent split-brain",
+           master_lease_expire_at_ms_);
+      return {Status::RedisClusterDown, "Master lease expired, cannot accept writes"};
+    }
+
     return Status::OK();  // I'm serving this slot
   }
 
@@ -1067,4 +1080,25 @@ Status Cluster::Failover(bool takeover) {
 
   INFO("CLUSTER FAILOVER TAKEOVER completed successfully. New version: {}", version_);
   return Status::OK();
+}
+
+
+void Cluster::RefreshMasterLease() {
+  if (master_lease_duration_sec_ <= 0) return;
+
+  auto now_ms = util::GetTimeStampMS();
+  master_lease_expire_at_ms_ = now_ms + master_lease_duration_sec_ * 1000;
+
+  if (myself_ && myself_->role == kClusterMaster) {
+    INFO("Master lease refreshed, expires at {} (duration={}s)", master_lease_expire_at_ms_,
+         master_lease_duration_sec_);
+  }
+}
+
+bool Cluster::IsMasterLeaseExpired() const {
+  if (master_lease_duration_sec_ <= 0) return false;  // Disabled, never expires
+  if (master_lease_expire_at_ms_ == 0) return false;  // Never been set up
+
+  auto now_ms = util::GetTimeStampMS();
+  return now_ms > master_lease_expire_at_ms_;
 }

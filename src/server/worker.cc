@@ -28,6 +28,10 @@
 #include <stdexcept>
 #include <string>
 
+#ifdef KVROCKS_USE_LIBUV
+#include <uv.h>
+#endif
+
 #include "event2/bufferevent.h"
 #include "fmt/ostream.h"
 #include "io_util.h"
@@ -54,12 +58,24 @@
 #include "server.h"
 #include "storage/scripting.h"
 
-Worker::Worker(Server *srv, Config *config) : srv(srv), base_(event_base_new()) {
+Worker::Worker(Server *srv, Config *config)
+#ifdef KVROCKS_USE_LIBUV
+    : srv(srv), loop_(uv_loop_new()), base_(event_base_new()) {
+  if (!loop_) throw std::runtime_error{"uv loop failed to be created"};
+  if (!base_) throw std::runtime_error{"event base failed to be created"};
+
+  timer_.reset(NewEvent(loop_, -1, EV_PERSIST));
+  if (uv_timer_start(timer_.get(), nullptr, 10'000, 10'000) != 0) {
+    throw std::runtime_error{"uv_timer_start failed"};
+  }
+#else
+    : srv(srv), base_(event_base_new()) {
   if (!base_) throw std::runtime_error{"event base failed to be created"};
 
   timer_.reset(NewEvent(base_, -1, EV_PERSIST));
   timeval tm = {10, 0};
   evtimer_add(timer_.get(), &tm);
+#endif
 
   if (config->socket_fd != -1) {
     if (const Status s = listenFD(config->socket_fd, config->port, config->backlog); !s.IsOK()) {
@@ -96,12 +112,34 @@ Worker::~Worker() {
     iter->Close();
   }
 
+#ifdef KVROCKS_USE_LIBUV
+  // Close all libuv listeners; uv_close schedules a close callback but the
+  // underlying fd is freed during the loop drain below.
+  for (auto *tcp : listen_events_) {
+    if (tcp != nullptr && !uv_is_closing(reinterpret_cast<uv_handle_t *>(tcp))) {
+      uv_close(reinterpret_cast<uv_handle_t *>(tcp), +[](uv_handle_t *h) { delete h; });
+    }
+  }
+  listen_events_.clear();
+
+  timer_.reset();  // UvHandleDeleter invokes uv_close on the timer handle
+
+  // Drain pending close callbacks / active handles so the loop can shut
+  // down cleanly before we delete it.
+  uv_run(loop_, UV_RUN_ONCE);
+  uv_walk(loop_, +[](uv_handle_t *h, void *) {
+    if (!uv_is_closing(h)) uv_close(h, nullptr);
+  }, nullptr);
+  uv_run(loop_, UV_RUN_DEFAULT);  // run until all handles are closed
+  uv_loop_delete(loop_);
+#else
   for (const auto &lev : listen_events_) {
     evconnlistener_free(lev);
   }
   listen_events_.clear();
 
   timer_.reset();
+#endif
   if (rate_limit_group_) {
     bufferevent_rate_limit_group_free(rate_limit_group_);
   }
@@ -236,11 +274,22 @@ Status Worker::listenFD(int fd, uint32_t expected_port, int backlog) {
   }
   const int dup_fd = dup(fd);
   if (dup_fd == -1) {
-    return {Status::NotOK, evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR())};
+    return {Status::NotOK, strerror(errno)};
   }
-  evconnlistener *lev =
+#ifdef KVROCKS_USE_LIBUV
+  evutil_make_socket_nonblocking(dup_fd);
+  auto *tcp = NewEvconnlistener<&Worker::newTCPConnection>(loop_, 0, backlog, dup_fd);
+  if (!tcp) {
+    close(dup_fd);
+    return {Status::NotOK, strerror(errno)};
+  }
+  tcp->data = reinterpret_cast<void *>(static_cast<intptr_t>(1));  // tag = 1 (TCP)
+  listen_events_.emplace_back(tcp);
+#else
+  auto lev =
       NewEvconnlistener<&Worker::newTCPConnection>(base_, LEV_OPT_THREADSAFE | LEV_OPT_CLOSE_ON_FREE, backlog, dup_fd);
   listen_events_.emplace_back(lev);
+#endif
   INFO("[worker] Listening on dup'ed fd: {}", dup_fd);
   return Status::OK();
 }
@@ -265,26 +314,36 @@ Status Worker::listenTCP(const std::string &host, uint32_t port, int backlog) {
 
     int sock_opt = 1;
     if (ipv6_used && setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, &sock_opt, sizeof(sock_opt)) == -1) {
-      return {Status::NotOK, evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR())};
+      return {Status::NotOK, strerror(errno)};
     }
 
     if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &sock_opt, sizeof(sock_opt)) < 0) {
-      return {Status::NotOK, evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR())};
+      return {Status::NotOK, strerror(errno)};
     }
 
     // to support multi-thread binding on macOS
     if (setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, &sock_opt, sizeof(sock_opt)) < 0) {
-      return {Status::NotOK, evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR())};
+      return {Status::NotOK, strerror(errno)};
     }
 
     if (bind(fd, p->ai_addr, p->ai_addrlen)) {
-      return {Status::NotOK, evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR())};
+      return {Status::NotOK, strerror(errno)};
     }
 
     evutil_make_socket_nonblocking(fd);
+#ifdef KVROCKS_USE_LIBUV
+    auto *tcp = NewEvconnlistener<&Worker::newTCPConnection>(loop_, 0, backlog, fd);
+    if (!tcp) {
+      close(fd);
+      continue;
+    }
+    tcp->data = reinterpret_cast<void *>(static_cast<intptr_t>(1));  // tag = TCP
+    listen_events_.emplace_back(tcp);
+#else
     auto lev =
         NewEvconnlistener<&Worker::newTCPConnection>(base_, LEV_OPT_THREADSAFE | LEV_OPT_CLOSE_ON_FREE, backlog, fd);
     listen_events_.emplace_back(lev);
+#endif
   }
 
   return Status::OK();
@@ -301,16 +360,26 @@ Status Worker::ListenUnixSocket(const std::string &path, int perm, int backlog) 
   strncpy(sa.sun_path, path.c_str(), sizeof(sa.sun_path) - 1);
   int fd = socket(AF_LOCAL, SOCK_STREAM, 0);
   if (fd == -1) {
-    return {Status::NotOK, evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR())};
+    return {Status::NotOK, strerror(errno)};
   }
 
   if (bind(fd, (sockaddr *)&sa, sizeof(sa)) < 0) {
-    return {Status::NotOK, evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR())};
+    return {Status::NotOK, strerror(errno)};
   }
 
   evutil_make_socket_nonblocking(fd);
+#ifdef KVROCKS_USE_LIBUV
+  auto *tcp = NewEvconnlistener<&Worker::newUnixSocketConnection>(loop_, 0, backlog, fd);
+  if (!tcp) {
+    close(fd);
+    return {Status::NotOK, strerror(errno)};
+  }
+  tcp->data = reinterpret_cast<void *>(static_cast<intptr_t>(2));  // tag = 2 (UNIX)
+  listen_events_.emplace_back(tcp);
+#else
   auto lev = NewEvconnlistener<&Worker::newUnixSocketConnection>(base_, LEV_OPT_CLOSE_ON_FREE, backlog, fd);
   listen_events_.emplace_back(lev);
+#endif
   if (perm != 0) {
     chmod(sa.sun_path, (mode_t)perm);
   }
@@ -318,15 +387,65 @@ Status Worker::ListenUnixSocket(const std::string &path, int perm, int backlog) 
   return Status::OK();
 }
 
+#ifdef KVROCKS_USE_LIBUV
+// libuv acceptCB dispatches here. 1 = TCP, 2 = UNIX.
+// The fd has already been accepted by the listening socket; we just need
+// to route to the right handler (which is still libevent bufferevent-based).
+void Worker::HandleNewConnection(int fd, int tag) {
+  if (tag == 2) {
+    newUnixSocketConnection(nullptr, fd, nullptr, 0);
+  } else {
+    newTCPConnection(nullptr, fd, nullptr, 0);
+  }
+}
+#endif
+
 void Worker::Run(std::thread::id tid) {
   tid_ = tid;
+#ifdef KVROCKS_USE_LIBUV
+  // Phase 1: drive both loops side-by-side. libuv handles timers and
+  // accept; libevent still drives bufferevent I/O (replaced in Phase 2).
+  // When Stop() fires uv_stop + event_base_loopbreak, both non-blocking
+  // passes will eventually observe termination and exit cleanly.
+  while (!is_terminated_) {
+    uv_run(loop_, UV_RUN_NOWAIT);
+    if (event_base_loop(base_, EVLOOP_ONCE | EVLOOP_NONBLOCK) == -1) {
+      break;
+    }
+    // Avoid spinning: if neither side has pending work, sleep briefly.
+    if (!uv_loop_alive(loop_)) {
+      struct timespec ts = {0, 1 * 1000 * 1000};  // 1 ms
+      nanosleep(&ts, nullptr);
+    }
+  }
+#else
   if (event_base_dispatch(base_) != 0) {
     ERROR("[worker] Failed to run server, err: {}", strerror(errno));
   }
+#endif
   is_terminated_ = true;
 }
 
 void Worker::Stop(uint32_t wait_seconds) {
+#ifdef KVROCKS_USE_LIBUV
+  // Close libuv listeners + timer so no new I/O arrives.
+  for (auto *tcp : listen_events_) {
+    if (tcp != nullptr && !uv_is_closing(reinterpret_cast<uv_handle_t *>(tcp))) {
+      uv_close(reinterpret_cast<uv_handle_t *>(tcp), +[](uv_handle_t *h) { delete h; });
+    }
+  }
+  listen_events_.clear();
+  timer_.reset();
+
+  // Let in-flight requests drain, then force-exit both loops.
+  if (wait_seconds > 0) {
+    struct timespec ts = {static_cast<time_t>(wait_seconds), 0};
+    nanosleep(&ts, nullptr);
+  }
+  uv_stop(loop_);
+  event_base_loopbreak(base_);
+  is_terminated_ = true;
+#else
   for (const auto &lev : listen_events_) {
     // It's unnecessary to close the listener fd since we have set the LEV_OPT_CLOSE_ON_FREE flag
     evconnlistener_free(lev);
@@ -340,6 +459,7 @@ void Worker::Stop(uint32_t wait_seconds) {
   } else {
     event_base_loopbreak(base_);
   }
+#endif
 }
 
 Status Worker::AddConnection(redis::Connection *c) {

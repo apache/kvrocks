@@ -29,7 +29,7 @@
 #include "time_util.h"
 
 template <typename T>
-constexpr auto TTL_RANGE = NumericRange<T>{1, std::numeric_limits<T>::max()};
+constexpr auto TTL_RANGE = NumericRange<T>{static_cast<T>(1), std::numeric_limits<T>::max()};
 
 // Convert a user supplied TTL to an absolute expire time in milliseconds.
 // `ttl_in_seconds` selects the EX/PX style scaling, `add_now` whether the current

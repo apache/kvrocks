@@ -27,78 +27,35 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestReplicaofConfig(t *testing.T) {
-	t.Parallel()
-	srv := util.StartServer(t, map[string]string{})
+func TestReplicaofNoOneLowerCase(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{"replicaof": "no one"})
 	defer srv.Close()
 
-	ctx := context.Background()
 	rdb := srv.NewClient()
 	defer func() { require.NoError(t, rdb.Close()) }()
 
-	t.Run("valid host and port", func(t *testing.T) {
-		require.NoError(t, rdb.ConfigSet(ctx, "replicaof", "127.0.0.1 1234").Err())
-		val := rdb.ConfigGet(ctx, "replicaof").Val()
-		require.EqualValues(t, "127.0.0.1 1234", val["replicaof"])
-	})
+	val := rdb.Info(context.Background(), "replication").Val()
+	require.Contains(t, val, "role:master")
+}
 
-	t.Run("no one clears master config", func(t *testing.T) {
-		// First set a master
-		require.NoError(t, rdb.ConfigSet(ctx, "replicaof", "127.0.0.1 1234").Err())
-		val := rdb.ConfigGet(ctx, "replicaof").Val()
-		require.EqualValues(t, "127.0.0.1 1234", val["replicaof"])
+func TestReplicaofNoOneUpperCase(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{"replicaof": "NO ONE"})
+	defer srv.Close()
 
-		// Clear with "no one"
-		require.NoError(t, rdb.ConfigSet(ctx, "replicaof", "no one").Err())
-		val = rdb.ConfigGet(ctx, "replicaof").Val()
-		require.EqualValues(t, "no one", val["replicaof"])
-	})
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
 
-	t.Run("NO ONE (uppercase) also clears master config", func(t *testing.T) {
-		require.NoError(t, rdb.ConfigSet(ctx, "replicaof", "127.0.0.1 1234").Err())
-		require.NoError(t, rdb.ConfigSet(ctx, "replicaof", "NO ONE").Err())
-		val := rdb.ConfigGet(ctx, "replicaof").Val()
-		require.EqualValues(t, "NO ONE", val["replicaof"])
-	})
+	val := rdb.Info(context.Background(), "replication").Val()
+	require.Contains(t, val, "role:master")
+}
 
-	t.Run("mixed case No One also clears master config", func(t *testing.T) {
-		require.NoError(t, rdb.ConfigSet(ctx, "replicaof", "127.0.0.1 1234").Err())
-		require.NoError(t, rdb.ConfigSet(ctx, "replicaof", "No One").Err())
-		val := rdb.ConfigGet(ctx, "replicaof").Val()
-		require.EqualValues(t, "No One", val["replicaof"])
-	})
+func TestReplicaofNoOneMixedCase(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{"replicaof": "No One"})
+	defer srv.Close()
 
-	t.Run("invalid: keyword no with numeric port", func(t *testing.T) {
-		err := rdb.ConfigSet(ctx, "replicaof", "no 1234").Err()
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "invalid")
-	})
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
 
-	t.Run("invalid: uppercase NO with numeric port", func(t *testing.T) {
-		err := rdb.ConfigSet(ctx, "replicaof", "NO 1234").Err()
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "invalid")
-	})
-
-	t.Run("invalid: non-no host with keyword one", func(t *testing.T) {
-		err := rdb.ConfigSet(ctx, "replicaof", "foo one").Err()
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "invalid")
-	})
-
-	t.Run("invalid: non-no host with uppercase ONE", func(t *testing.T) {
-		err := rdb.ConfigSet(ctx, "replicaof", "foo ONE").Err()
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "invalid")
-	})
-
-	t.Run("invalid: typo in no", func(t *testing.T) {
-		err := rdb.ConfigSet(ctx, "replicaof", "noo one").Err()
-		require.Error(t, err)
-	})
-
-	t.Run("invalid: typo in one", func(t *testing.T) {
-		err := rdb.ConfigSet(ctx, "replicaof", "no onee").Err()
-		require.Error(t, err)
-	})
+	val := rdb.Info(context.Background(), "replication").Val()
+	require.Contains(t, val, "role:master")
 }

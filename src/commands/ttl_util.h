@@ -31,14 +31,20 @@
 template <typename T>
 constexpr auto TTL_RANGE = NumericRange<T>{static_cast<T>(1), std::numeric_limits<T>::max()};
 
-// Convert a user supplied TTL to an absolute expire time in milliseconds.
+// Convert a user supplied TTL or absolute timestamp to an expire time in milliseconds.
 // `ttl_in_seconds` selects the EX/PX style scaling, `add_now` whether the current
 // time is added (relative) or the value is already absolute (EXAT/PXAT). The
 // input is capped so neither the scaling nor the addition of the current time can
 // overflow int64, which would wrap the expire time into the past and silently
-// delete the key.
+// delete the key. Non-positive values map to a small past timestamp (1 ms, which
+// rounds to 1 s in the 32-bit expire encoding) so callers that must keep the
+// Redis semantics of EXPIRE/PEXPIRE/EXPIREAT delete the key; 0 cannot be stored
+// directly because it means "no expiration".
 inline StatusOr<uint64_t> ToExpireAtMs(int64_t ttl, bool ttl_in_seconds, bool add_now) {
   constexpr int64_t max_ms = std::numeric_limits<int64_t>::max();
+  if (ttl <= 0) {
+    return 1;
+  }
   int64_t now_ms = add_now ? util::GetTimeStampMS() : 0;
   int64_t limit = ttl_in_seconds ? (max_ms - now_ms) / 1000 : max_ms - now_ms;
   if (ttl > limit) {

@@ -201,7 +201,7 @@ class CommandExists : public Commander {
 class CommandExpire : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    auto ttl = GET_OR_RET(ParseInt<int64_t>(args[2], TTL_RANGE<int64_t>));
+    auto ttl = GET_OR_RET(ParseInt<int64_t>(args[2]));
     expire_at_ = GET_OR_RET(ToExpireAtMs(ttl, true, true));
     return Status::OK();
   }
@@ -225,7 +225,7 @@ class CommandExpire : public Commander {
 class CommandPExpire : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    auto ttl = GET_OR_RET(ParseInt<int64_t>(args[2], TTL_RANGE<int64_t>));
+    auto ttl = GET_OR_RET(ParseInt<int64_t>(args[2]));
     expire_at_ = GET_OR_RET(ToExpireAtMs(ttl, false, true));
     return Status::OK();
   }
@@ -249,7 +249,7 @@ class CommandPExpire : public Commander {
 class CommandExpireAt : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    auto parse_result = ParseInt<int64_t>(args[2], TTL_RANGE<int64_t>);
+    auto parse_result = ParseInt<int64_t>(args[2]);
     if (!parse_result) {
       return {Status::RedisParseErr, errValueNotInteger};
     }

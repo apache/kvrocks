@@ -287,4 +287,34 @@ func TestExpire(t *testing.T) {
 		require.Equal(t, "old", rdb.Get(ctx, "overflow").Val())
 	})
 
+	t.Run("Non-positive expiry deletes the key like Redis", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "nonpositive", "value", 0).Err())
+
+		// EXPIRE with zero or negative seconds deletes the key.
+		require.NoError(t, rdb.Do(ctx, "expire", "nonpositive", "0").Err())
+		require.EqualValues(t, 0, rdb.Exists(ctx, "nonpositive").Val())
+
+		require.NoError(t, rdb.Set(ctx, "nonpositive", "value", 0).Err())
+		require.NoError(t, rdb.Do(ctx, "expire", "nonpositive", "-1").Err())
+		require.EqualValues(t, 0, rdb.Exists(ctx, "nonpositive").Val())
+
+		// PEXPIRE behaves the same.
+		require.NoError(t, rdb.Set(ctx, "nonpositive", "value", 0).Err())
+		require.NoError(t, rdb.Do(ctx, "pexpire", "nonpositive", "0").Err())
+		require.EqualValues(t, 0, rdb.Exists(ctx, "nonpositive").Val())
+
+		require.NoError(t, rdb.Set(ctx, "nonpositive", "value", 0).Err())
+		require.NoError(t, rdb.Do(ctx, "pexpire", "nonpositive", "-1").Err())
+		require.EqualValues(t, 0, rdb.Exists(ctx, "nonpositive").Val())
+
+		// EXPIREAT with a past (zero or negative) timestamp deletes the key.
+		require.NoError(t, rdb.Set(ctx, "nonpositive", "value", 0).Err())
+		require.NoError(t, rdb.Do(ctx, "expireat", "nonpositive", "0").Err())
+		require.EqualValues(t, 0, rdb.Exists(ctx, "nonpositive").Val())
+
+		require.NoError(t, rdb.Set(ctx, "nonpositive", "value", 0).Err())
+		require.NoError(t, rdb.Do(ctx, "expireat", "nonpositive", "-1").Err())
+		require.EqualValues(t, 0, rdb.Exists(ctx, "nonpositive").Val())
+	})
+
 }

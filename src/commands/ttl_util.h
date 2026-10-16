@@ -45,8 +45,8 @@ inline StatusOr<uint64_t> ToExpireAtMs(int64_t ttl, bool ttl_in_seconds, bool ad
   if (ttl <= 0) {
     return 1;
   }
-  int64_t now_ms = add_now ? util::GetTimeStampMS() : 0;
-  int64_t limit = ttl_in_seconds ? (max_ms - now_ms) / 1000 : max_ms - now_ms;
+  const auto now_ms = static_cast<int64_t>(add_now ? util::GetTimeStampMS() : 0);
+  const auto limit = ttl_in_seconds ? (max_ms - now_ms) / 1000 : max_ms - now_ms;
   if (ttl > limit) {
     return {Status::RedisParseErr, "invalid expire time"};
   }

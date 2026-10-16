@@ -22,11 +22,13 @@ package stream
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/rand"
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -2767,4 +2769,80 @@ func parseStreamEntryID(id string) (ts int64, seqNum int64) {
 	seqNum, _ = strconv.ParseInt(values[1], 10, 64)
 
 	return
+}
+
+// TestPotentialDataRaceInBlockingStreamRead checks that the wake-up callback of a
+// blocked XREAD/XREADGROUP doesn't race with a concurrent transaction: the XADD
+// inside MULTI/EXEC wakes the reader while the EXEC still holds the storage in
+// transaction mode, the same shape as TestPotentialDataRaceInBlockingCommand.
+//
+// For more information, please refer to: https://github.com/apache/kvrocks/issues/2900
+func TestPotentialDataRaceInBlockingStreamRead(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{})
+	defer srv.Close()
+
+	ctx, cancelFn := context.WithCancel(context.Background())
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	streamKey := "mystream"
+	require.NoError(t, rdb.Del(ctx, streamKey).Err())
+	require.NoError(t, rdb.XGroupCreateMkStream(ctx, streamKey, "mygroup", "$").Err())
+
+	var wg sync.WaitGroup
+	for i := 0; i < 4; i++ {
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			for {
+				err := rdb.XRead(ctx, &redis.XReadArgs{
+					Streams: []string{streamKey, "$"},
+					Count:   10,
+					Block:   3500 * time.Millisecond,
+				}).Err()
+				if errors.Is(err, redis.Nil) {
+					continue
+				} else if errors.Is(err, context.Canceled) {
+					return
+				} else {
+					require.NoError(t, err)
+				}
+			}
+		}()
+		go func(consumer string) {
+			defer wg.Done()
+			for {
+				err := rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+					Group:    "mygroup",
+					Consumer: consumer,
+					Streams:  []string{streamKey, ">"},
+					Count:    10,
+					Block:    3500 * time.Millisecond,
+				}).Err()
+				if errors.Is(err, redis.Nil) {
+					continue
+				} else if errors.Is(err, context.Canceled) {
+					return
+				} else {
+					require.NoError(t, err)
+				}
+			}
+		}(fmt.Sprintf("consumer-%d", i))
+	}
+
+	for i := 0; i < 64; i++ {
+		pipe := rdb.TxPipeline()
+		pipe.XAdd(ctx, &redis.XAddArgs{Stream: streamKey, Values: []string{"field", "value"}})
+		for j := 0; j < 64; j++ {
+			pipe.ZAdd(ctx, "myzset", redis.Z{Score: float64(j), Member: fmt.Sprintf("member-%d-%d", i, j)})
+		}
+		_, err := pipe.Exec(ctx)
+		require.NoError(t, err)
+		time.Sleep(time.Millisecond * 100)
+	}
+	// The server must still accept writes after the transactions.
+	require.NoError(t, rdb.Set(ctx, "after", "ok", 0).Err())
+
+	cancelFn()
+	wg.Wait()
 }

@@ -1035,12 +1035,12 @@ Status Cluster::Failover(bool takeover) {
     // to coordinate with master reliably in current architecture.
     // TODO: Implement FORCE mode where we send CLUSTER FAILOVER to master first
     // and only fall back to TAKEOVER if master is unreachable.
-    INFO("FORCE failover requested for master {}:{}, falling back to TAKEOVER mode",
-         master_node->host, master_node->port);
+    INFO("FORCE failover requested for master {}:{}, falling back to TAKEOVER mode", master_node->host,
+         master_node->port);
   }
 
-  INFO("Starting CLUSTER FAILOVER TAKEOVER: promoting {} (me) to master, demoting master {} to slave",
-       myid_, myself_->master_id);
+  INFO("Starting CLUSTER FAILOVER TAKEOVER: promoting {} (me) to master, demoting master {} to slave", myid_,
+       myself_->master_id);
 
   // 1. Update myself: slave -> master
   myself_->role = kClusterMaster;
@@ -1081,7 +1081,6 @@ Status Cluster::Failover(bool takeover) {
   INFO("CLUSTER FAILOVER TAKEOVER completed successfully. New version: {}", version_);
   return Status::OK();
 }
-
 
 void Cluster::RefreshMasterLease() {
   if (master_lease_duration_sec_ <= 0) return;

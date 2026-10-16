@@ -279,6 +279,12 @@ func TestExpire(t *testing.T) {
 
 		util.ErrorRegexp(t, rdb.Do(ctx, "expire", "overflow", "9223372036854775807").Err(), ".*invalid expire time*.")
 		require.Equal(t, "old", rdb.Get(ctx, "overflow").Val())
+
+		util.ErrorRegexp(t, rdb.Do(ctx, "set", "overflow", "new", "px", "9223372036854775807").Err(), ".*invalid expire time*.")
+		require.Equal(t, "old", rdb.Get(ctx, "overflow").Val())
+
+		util.ErrorRegexp(t, rdb.Do(ctx, "expireat", "overflow", "9223372036854775807").Err(), ".*invalid expire time*.")
+		require.Equal(t, "old", rdb.Get(ctx, "overflow").Val())
 	})
 
 }

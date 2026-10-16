@@ -2771,6 +2771,59 @@ func parseStreamEntryID(id string) (ts int64, seqNum int64) {
 	return
 }
 
+func TestBlockingXReadWokenByTransaction(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{})
+	defer srv.Close()
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	const readers = 4
+	clients := make([]*redis.Client, readers)
+	for i := range clients {
+		clients[i] = srv.NewClientWithOption(&redis.Options{MaxRetries: -1})
+		defer func() { require.NoError(t, clients[i].Close()) }()
+	}
+
+	for round := 0; round < 4; round++ {
+		results := make(chan *redis.XStreamSliceCmd, readers)
+		for _, client := range clients {
+			go func() {
+				results <- client.XRead(ctx, &redis.XReadArgs{
+					Streams: []string{"mystream", "$"},
+					Count:   1,
+					Block:   10 * time.Second,
+				})
+			}()
+		}
+		require.Eventually(t, func() bool {
+			return util.FindInfoEntry(rdb, "blocked_clients") == strconv.Itoa(readers)
+		}, 5*time.Second, 10*time.Millisecond)
+
+		pipe := rdb.TxPipeline()
+		value := strconv.Itoa(round)
+		added := pipe.XAdd(ctx, &redis.XAddArgs{Stream: "mystream", Values: []string{"field", value}})
+		for i := 0; i < 64; i++ {
+			pipe.ZAdd(ctx, "myzset", redis.Z{Score: float64(i), Member: fmt.Sprintf("member-%d-%d", round, i)})
+		}
+		_, err := pipe.Exec(ctx)
+		require.NoError(t, err)
+		id, err := added.Result()
+		require.NoError(t, err)
+
+		require.Eventually(t, func() bool { return len(results) == readers }, 5*time.Second, 10*time.Millisecond)
+		for i := 0; i < readers; i++ {
+			streams, err := (<-results).Result()
+			require.NoError(t, err)
+			require.Equal(t, []redis.XStream{{
+				Stream:   "mystream",
+				Messages: []redis.XMessage{{ID: id, Values: map[string]interface{}{"field": value}}},
+			}}, streams)
+		}
+	}
+	require.NoError(t, rdb.Set(ctx, "after", "ok", 0).Err())
+}
+
 // TestPotentialDataRaceInBlockingStreamRead checks that the wake-up callback of a
 // blocked XREAD/XREADGROUP doesn't race with a concurrent transaction: the XADD
 // inside MULTI/EXEC wakes the reader while the EXEC still holds the storage in

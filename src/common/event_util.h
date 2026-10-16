@@ -97,8 +97,8 @@ struct UvTcpListenerDeleter {
   void operator()(uv_tcp_t *h) const {
     if (h == nullptr) return;
     if (!uv_is_closing(reinterpret_cast<uv_handle_t *>(h))) {
-      uv_close(reinterpret_cast<uv_handle_t *>(h),
-               +[](uv_handle_t *handle) { delete static_cast<uv_tcp_t *>(handle); });
+      uv_close(
+          reinterpret_cast<uv_handle_t *>(h), +[](uv_handle_t *handle) { delete static_cast<uv_tcp_t *>(handle); });
       // Unlike UvHandleDeleter, here we hand ownership back in the close
       // callback so the heap allocation is released when the loop drains
       // close handles. That avoids leaking on shutdown.

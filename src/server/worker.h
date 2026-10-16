@@ -95,7 +95,7 @@ class Worker : EventCallbackBase<Worker>, EvconnlistenerBase<Worker> {
   // libuv acceptCB dispatches through here. tag = 1 (TCP) or 2 (UNIX).
   void HandleNewConnection(int fd, int tag);
 #endif
- redis::Connection *removeConnection(int fd);
+  redis::Connection *removeConnection(int fd);
 
 #ifdef KVROCKS_USE_LIBUV
   // Phase 1: libuv drives timers + listeners, libevent stays for bufferevent

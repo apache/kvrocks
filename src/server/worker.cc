@@ -127,9 +127,12 @@ Worker::~Worker() {
   // Drain pending close callbacks / active handles so the loop can shut
   // down cleanly before we delete it.
   uv_run(loop_, UV_RUN_ONCE);
-  uv_walk(loop_, +[](uv_handle_t *h, void *) {
-    if (!uv_is_closing(h)) uv_close(h, nullptr);
-  }, nullptr);
+  uv_walk(
+      loop_,
+      +[](uv_handle_t *h, void *) {
+        if (!uv_is_closing(h)) uv_close(h, nullptr);
+      },
+      nullptr);
   uv_run(loop_, UV_RUN_DEFAULT);  // run until all handles are closed
   uv_loop_delete(loop_);
 #else

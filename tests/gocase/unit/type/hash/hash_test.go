@@ -30,6 +30,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -66,6 +67,292 @@ func runWithHashConfigs(t *testing.T, configOptions []util.ConfigOptions,
 	for _, configs := range configsMatrix {
 		fn(t, configs)
 	}
+}
+
+func TestHGetDel(t *testing.T) {
+	runWithHashConfigs(t, []util.ConfigOptions{
+		{Name: "txn-context-enabled", Options: []string{"yes", "no"}},
+		{Name: "resp3-enabled", Options: []string{"yes", "no"}},
+	}, func(t *testing.T, configs util.KvrocksServerConfigs) {
+		name := fmt.Sprint(configs)
+		srv := util.StartServer(t, configs)
+		defer srv.Close()
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+			rdb := srv.NewClient()
+			defer func() { require.NoError(t, rdb.Close()) }()
+			getMetadata := func(t *testing.T, key string) util.KMetadataResponse {
+				t.Helper()
+				result, err := rdb.Do(ctx, "kmetadata", key).Result()
+				require.NoError(t, err)
+				if fields, ok := result.([]interface{}); ok {
+					metadata := make(map[interface{}]interface{}, len(fields)/2)
+					for i := 0; i < len(fields); i += 2 {
+						metadata[fields[i]] = fields[i+1]
+					}
+					result = metadata
+				}
+				metadata, err := util.ExtractKMetadataResponse(result)
+				require.NoError(t, err)
+				return *metadata
+			}
+
+			t.Run("ordered values duplicates and key lifecycle", func(t *testing.T) {
+				key := "hgetdel-values"
+				binary := "\x00value\xff"
+				require.NoError(t, rdb.HSet(ctx, key, "a", binary, "", "", "keeper", "k").Err())
+				require.NoError(t, rdb.PExpire(ctx, key, time.Minute).Err())
+				before := getMetadata(t, key)
+				got, err := rdb.Do(ctx, "hgetdel", key, "fIeLdS", 5, "missing", "a", "a", "", "").Result()
+				require.NoError(t, err)
+				requireOptionalStringArray(t, got, nil, binary, nil, "", nil)
+				require.Equal(t, map[string]string{"keeper": "k"}, rdb.HGetAll(ctx, key).Val())
+				requireMetadataHeaderUnchanged(t, before, getMetadata(t, key))
+				got, err = rdb.Do(ctx, "hgetdel", key, "FIELDS", 1, "keeper").Result()
+				require.NoError(t, err)
+				requireOptionalStringArray(t, got, "k")
+				require.Zero(t, rdb.Exists(ctx, key).Val())
+				got, err = rdb.Do(ctx, "hgetdel", key, "FIELDS", 2, "a", "missing").Result()
+				require.NoError(t, err)
+				requireOptionalStringArray(t, got, nil, nil)
+				require.NoError(t, rdb.Set(ctx, key, "new-type", 0).Err())
+				require.EqualError(t, rdb.Do(ctx, "hgetdel", key, "FIELDS", 1, "a").Err(),
+					"WRONGTYPE Operation against a key holding the wrong kind of value")
+			})
+
+			t.Run("parser errors do not mutate", func(t *testing.T) {
+				key := "hgetdel-parser"
+				require.NoError(t, rdb.HSet(ctx, key, "a", "v").Err())
+				before := getMetadata(t, key)
+				for _, test := range []struct {
+					args []interface{}
+					want string
+				}{
+					{nil, "wrong number of arguments"},
+					{[]interface{}{"FIELDS", 1}, "wrong number of arguments"},
+					{[]interface{}{"OTHER", 1, "a"}, "Mandatory argument FIELDS is missing or not at the right position"},
+					{[]interface{}{"FIELDS", 0, "a"}, "Number of fields must be a positive integer"},
+					{[]interface{}{"FIELDS", -1, "a"}, "Number of fields must be a positive integer"},
+					{[]interface{}{"FIELDS", "x", "a"}, "Number of fields must be a positive integer"},
+					{[]interface{}{"FIELDS", "01", "a"}, "Number of fields must be a positive integer"},
+					{[]interface{}{"FIELDS", "+1", "a"}, "Number of fields must be a positive integer"},
+					{[]interface{}{"FIELDS", "", "a"}, "Number of fields must be a positive integer"},
+					{[]interface{}{"FIELDS", "1.0", "a"}, "Number of fields must be a positive integer"},
+					{[]interface{}{"FIELDS", "9223372036854775808", "a"}, "Number of fields must be a positive integer"},
+					{[]interface{}{"FIELDS", "2147483648", "a"}, "The `numfields` parameter must match the number of arguments"},
+					{[]interface{}{"FIELDS", 2, "a"}, "The `numfields` parameter must match the number of arguments"},
+					{[]interface{}{"FIELDS", 1, "a", "b"}, "The `numfields` parameter must match the number of arguments"},
+				} {
+					args := append([]interface{}{"hgetdel", key}, test.args...)
+					require.EqualError(t, rdb.Do(ctx, args...).Err(), "ERR "+test.want, args)
+					require.Equal(t, "v", rdb.HGet(ctx, key, "a").Val())
+					require.Equal(t, before, getMetadata(t, key))
+				}
+				require.NoError(t, rdb.HSet(ctx, key, "FIELDS", "f", "EX", "e").Err())
+				got, err := rdb.Do(ctx, "hgetdel", key, "FIELDS", 2, "FIELDS", "EX").Result()
+				require.NoError(t, err)
+				requireOptionalStringArray(t, got, "f", "e")
+			})
+
+			t.Run("command metadata and read only scripts", func(t *testing.T) {
+				info, err := rdb.Do(ctx, "command", "info", "hgetdel").Slice()
+				require.NoError(t, err)
+				entry := info[0].([]interface{})
+				require.EqualValues(t, -5, entry[1])
+				require.Contains(t, entry[2], "write")
+				require.Contains(t, entry[2], "no-dbsize-check")
+				require.Equal(t, []interface{}{int64(1), int64(1), int64(1)}, entry[3:])
+				keys, err := rdb.Do(ctx, "command", "getkeys", "hgetdel", "key", "FIELDS", 2, "{a}", "{b}").StringSlice()
+				require.NoError(t, err)
+				require.Equal(t, []string{"key"}, keys)
+				require.ErrorContains(t, rdb.EvalRO(ctx,
+					`return redis.call('hgetdel', KEYS[1], 'FIELDS', 1, 'a')`, []string{"script"}).Err(),
+					"Write commands are not allowed from read-only scripts")
+				require.NoError(t, rdb.HSet(ctx, "script", "a", "v").Err())
+				got, err := rdb.Eval(ctx, `return redis.call('hgetdel', KEYS[1], 'FIELDS', 1, 'a')`, []string{"script"}).Result()
+				require.NoError(t, err)
+				requireOptionalStringArray(t, got, "v")
+			})
+
+			t.Run("transactions and watch", func(t *testing.T) {
+				key := "hgetdel-txn"
+				pipe := rdb.TxPipeline()
+				pipe.HSet(ctx, key, "a", "v")
+				first := pipe.Do(ctx, "hgetdel", key, "FIELDS", 2, "a", "a")
+				second := pipe.Do(ctx, "hgetdel", key, "FIELDS", 1, "a")
+				_, err := pipe.Exec(ctx)
+				require.NoError(t, err)
+				requireOptionalStringArray(t, first.Val(), "v", nil)
+				requireOptionalStringArray(t, second.Val(), nil)
+				require.NoError(t, rdb.HSet(ctx, key, "a", "v").Err())
+				err = rdb.Watch(ctx, func(tx *redis.Tx) error {
+					if err := rdb.Do(ctx, "hgetdel", key, "FIELDS", 1, "a").Err(); err != nil {
+						return err
+					}
+					_, err := tx.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
+						pipe.Set(ctx, key, "unexpected", 0)
+						return nil
+					})
+					return err
+				}, key)
+				require.ErrorIs(t, err, redis.TxFailedErr)
+				c := srv.NewTCPClient()
+				defer func() { require.NoError(t, c.Close()) }()
+				require.NoError(t, c.WriteArgs("MULTI"))
+				c.MustRead(t, "+OK")
+				require.NoError(t, c.WriteArgs("SET", key, "unexpected"))
+				c.MustRead(t, "+QUEUED")
+				require.NoError(t, c.WriteArgs("HGETDEL", key, "FIELDS", "0", "a"))
+				c.MustRead(t, "-ERR Number of fields must be a positive integer")
+				require.NoError(t, c.WriteArgs("EXEC"))
+				c.MustRead(t, "-EXECABORT Transaction discarded")
+				require.Zero(t, rdb.Exists(ctx, key).Val())
+			})
+
+			t.Run("failed deletion rolls back only its transaction writes", func(t *testing.T) {
+				key := "hgetdel-batch-limit"
+				longField := strings.Repeat("field", 512)
+				require.NoError(t, rdb.HSet(ctx, key, "short", "first", longField, "second").Err())
+				before := getMetadata(t, key)
+				require.NoError(t, rdb.ConfigSet(ctx, "rocksdb.write_options.write_batch_max_bytes", "512").Err())
+				defer func() {
+					require.NoError(t, rdb.ConfigSet(ctx, "rocksdb.write_options.write_batch_max_bytes", "0").Err())
+				}()
+				pipe := rdb.TxPipeline()
+				first := pipe.Set(ctx, "before-hgetdel", "committed", 0)
+				failed := pipe.Do(ctx, "hgetdel", key, "FIELDS", 2, "short", longField)
+				last := pipe.Set(ctx, "after-hgetdel", "committed", 0)
+				_, err := pipe.Exec(ctx)
+				require.Error(t, err)
+				require.NoError(t, first.Err())
+				require.Error(t, failed.Err())
+				require.NoError(t, last.Err())
+				require.Equal(t, "committed", rdb.Get(ctx, "before-hgetdel").Val())
+				require.Equal(t, "committed", rdb.Get(ctx, "after-hgetdel").Val())
+				require.Equal(t, map[string]string{"short": "first", longField: "second"}, rdb.HGetAll(ctx, key).Val())
+				require.Equal(t, before, getMetadata(t, key))
+			})
+
+			t.Run("deletion remains available at database size limit", func(t *testing.T) {
+				key := "hgetdel-dbsize-limit"
+				require.NoError(t, rdb.HSet(ctx, key, "a", "v").Err())
+				require.NoError(t, rdb.Do(ctx, "DEBUG", "DBSIZE-LIMIT", 1).Err())
+				defer func() { require.NoError(t, rdb.ConfigSet(ctx, "max-db-size", "0").Err()) }()
+				require.ErrorContains(t, rdb.HSet(ctx, key, "b", "blocked").Err(), "reached max-db-size")
+				got, err := rdb.Do(ctx, "hgetdel", key, "FIELDS", 1, "a").Result()
+				require.NoError(t, err)
+				requireOptionalStringArray(t, got, "v")
+				require.Zero(t, rdb.Exists(ctx, key).Val())
+			})
+
+			t.Run("concurrent consumers", func(t *testing.T) {
+				key := "hgetdel-concurrent"
+				require.NoError(t, rdb.HSet(ctx, key, "a", "v").Err())
+				results := make(chan *redis.Cmd, 16)
+				start := make(chan struct{})
+				for i := 0; i < cap(results); i++ {
+					go func() {
+						<-start
+						results <- rdb.Do(ctx, "hgetdel", key, "FIELDS", 1, "a")
+					}()
+				}
+				close(start)
+				winners := 0
+				for i := 0; i < cap(results); i++ {
+					got, err := (<-results).Slice()
+					require.NoError(t, err)
+					require.Len(t, got, 1)
+					if got[0] != nil {
+						require.Equal(t, "v", got[0])
+						winners++
+					}
+				}
+				require.Equal(t, 1, winners)
+			})
+
+			t.Run("field expiration and restart", func(t *testing.T) {
+				key := "hgetdel-restart"
+				require.NoError(t, rdb.HSet(ctx, key, "deleted", "d", "keeper", "k", "expired", "x").Err())
+				if configs["hash-encoding-mode"] == "field-expiration" {
+					require.NoError(t, rdb.Do(ctx, "hpexpire", key, 50, "FIELDS", 1, "expired").Err())
+					require.NoError(t, rdb.Do(ctx, "hpexpire", key, 600000, "FIELDS", 1, "keeper").Err())
+					require.Eventually(t, func() bool {
+						return errors.Is(rdb.HGet(ctx, key, "expired").Err(), redis.Nil)
+					}, time.Second*5, time.Millisecond*10)
+				}
+				require.NoError(t, rdb.PExpire(ctx, key, time.Minute).Err())
+				before := getMetadata(t, key)
+				got, err := rdb.Do(ctx, "hgetdel", key, "FIELDS", 3, "deleted", "expired", "expired").Result()
+				require.NoError(t, err)
+				if configs["hash-encoding-mode"] == "field-expiration" {
+					requireOptionalStringArray(t, got, "d", nil, nil)
+				} else {
+					requireOptionalStringArray(t, got, "d", "x", nil)
+				}
+				after := getMetadata(t, key)
+				requireMetadataHeaderUnchanged(t, before, after)
+				require.NoError(t, rdb.HSet(ctx, "hgetdel-empty", "a", "v").Err())
+				require.NoError(t, rdb.Do(ctx, "hgetdel", "hgetdel-empty", "FIELDS", 1, "a").Err())
+				srv.Restart()
+				require.Equal(t, map[string]string{"keeper": "k"}, rdb.HGetAll(ctx, key).Val())
+				require.Equal(t, after, getMetadata(t, key))
+				require.Zero(t, rdb.Exists(ctx, "hgetdel-empty").Val())
+				if configs["hash-encoding-mode"] == "field-expiration" {
+					require.Greater(t, rdb.Do(ctx, "hpttl", key, "FIELDS", 1, "keeper").Val().([]interface{})[0].(int64), int64(0))
+				}
+			})
+		})
+	})
+}
+
+func TestHGetDelObservability(t *testing.T) {
+	srv := util.StartServer(t, util.KvrocksServerConfigs{
+		"slowlog-log-slower-than":              "0",
+		"profiling-sample-commands":            "hgetdel",
+		"profiling-sample-ratio":               "100",
+		"profiling-sample-record-threshold-ms": "0",
+	})
+	defer srv.Close()
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+	require.NoError(t, rdb.HSet(ctx, "hgetdel-observe", "a", "v").Err())
+	monitor := srv.NewTCPClient()
+	defer func() { require.NoError(t, monitor.Close()) }()
+	require.NoError(t, monitor.WriteArgs("MONITOR"))
+	monitor.MustRead(t, "+OK")
+	require.NoError(t, rdb.Do(ctx, "hgetdel", "hgetdel-observe", "FIELDS", 1, "a").Err())
+	monitor.MustMatch(t, `.*hgetdel.*hgetdel-observe.*FIELDS.*1.*a.*`)
+	logs, err := rdb.SlowLogGet(ctx, 1).Result()
+	require.NoError(t, err)
+	require.Len(t, logs, 1)
+	require.Equal(t, []string{"hgetdel", "hgetdel-observe", "FIELDS", "1", "a"}, logs[0].Args)
+	require.EqualValues(t, 1, rdb.Do(ctx, "perflog", "len").Val())
+	info, err := rdb.Info(ctx, "commandstats").Result()
+	require.NoError(t, err)
+	require.Contains(t, info, "cmdstat_hgetdel:calls=1,")
+}
+
+func TestHGetDelNamespaceAndRename(t *testing.T) {
+	srv := util.StartServer(t, util.KvrocksServerConfigs{
+		"requirepass":            "admin-token",
+		"rename-command HGETDEL": "takefields",
+	})
+	defer srv.Close()
+	ctx := context.Background()
+	admin := srv.NewClientWithOption(&redis.Options{Password: "admin-token"})
+	defer func() { require.NoError(t, admin.Close()) }()
+	require.NoError(t, admin.Do(ctx, "NAMESPACE", "ADD", "tenant", "tenant-token").Err())
+	tenant := srv.NewClientWithOption(&redis.Options{Password: "tenant-token"})
+	defer func() { require.NoError(t, tenant.Close()) }()
+	require.NoError(t, admin.HSet(ctx, "shared-key", "a", "admin-value").Err())
+	require.NoError(t, tenant.HSet(ctx, "shared-key", "a", "tenant-value").Err())
+	require.ErrorContains(t, tenant.Do(ctx, "hgetdel", "shared-key", "FIELDS", 1, "a").Err(), "unknown command")
+	got, err := tenant.Do(ctx, "takefields", "shared-key", "FIELDS", 1, "a").Result()
+	require.NoError(t, err)
+	requireOptionalStringArray(t, got, "tenant-value")
+	require.Equal(t, "admin-value", admin.HGet(ctx, "shared-key", "a").Val())
+	require.Zero(t, tenant.Exists(ctx, "shared-key").Val())
 }
 
 func TestHash(t *testing.T) {

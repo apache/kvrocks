@@ -36,6 +36,7 @@
 #include "db_util.h"
 #include "parse_util.h"
 #include "sample_helper.h"
+#include "scope_exit.h"
 #include "time_util.h"
 
 namespace redis {
@@ -944,6 +945,68 @@ rocksdb::Status Hash::GetFieldsWithExpire(engine::Context &ctx, const Slice &use
     s = storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
     if (!s.ok()) return s;
   }
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status Hash::GetDel(engine::Context &ctx, const Slice &user_key, const std::vector<Slice> &fields,
+                             std::vector<std::string> *values, std::vector<rocksdb::Status> *statuses,
+                             std::optional<uint64_t> now_ms) {
+  values->assign(fields.size(), {});
+  statuses->assign(fields.size(), rocksdb::Status::NotFound());
+
+  std::string ns_key = AppendNamespacePrefix(user_key);
+  HashMetadata metadata(false);
+  auto s = getMetadata(ctx, ns_key, &metadata);
+  if (s.IsNotFound()) return rocksdb::Status::OK();
+  if (!s.ok()) return s;
+  s = ValidateHashFieldExpirationMetadata(metadata);
+  if (!s.ok()) return s;
+  HashMetadata original_metadata = metadata;
+  uint64_t now = now_ms.value_or(util::GetTimeStampMS());
+
+  std::unordered_map<std::string, HashFieldState> state_cache;
+  s = LoadFieldStates(storage_, ctx, metadata, ns_key, fields, now, true, &state_cache);
+  if (!s.ok()) return s;
+
+  auto batch = storage_->GetWriteBatchBase();
+  batch->SetSavePoint();
+  // EXEC shares this batch across commands, including commands that fail.
+  auto rollback = MakeScopeExit([&] { batch->RollbackToSavePoint().PermitUncheckedError(); });
+  HashBatchWriter writer(batch.Get(), metadata.mode);
+  for (size_t i = 0; i < fields.size(); ++i) {
+    HashFieldState &state = state_cache.at(fields[i].ToString());
+    if (state.kind == HashFieldStateKind::kMissing) continue;
+
+    if (state.kind != HashFieldStateKind::kExpiredTTLPhysical) {
+      (*values)[i] = state.value;
+      (*statuses)[i] = rocksdb::Status::OK();
+    }
+    if (state.kind == HashFieldStateKind::kPersistent) {
+      if (metadata.IsFieldExpirationEncoding()) {
+        s = ValidatePersistentFieldTransition(metadata);
+        if (!s.ok()) return s;
+      }
+      ApplyPersistentToDeleted(&metadata);
+    } else {
+      s = ValidateTTLFieldTransition(metadata);
+      if (!s.ok()) return s;
+      ApplyTTLToDeleted(&metadata);
+    }
+
+    std::string sub_key = InternalKey(ns_key, fields[i], metadata.version, storage_->IsSlotIdEncoded()).Encode();
+    s = writer.Delete(sub_key);
+    if (!s.ok()) return s;
+    state = HashFieldState{};
+  }
+
+  s = FinalizeHashMetadata(original_metadata, true, &metadata, metadata_cf_handle_, ns_key, &writer);
+  if (!s.ok()) return s;
+  if (writer.HasStorageMutation()) {
+    s = storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+    if (!s.ok()) return s;
+  }
+  batch->PopSavePoint().PermitUncheckedError();
+  rollback.Disable();
   return rocksdb::Status::OK();
 }
 

@@ -212,4 +212,16 @@ func TestServiceImportingSlot(t *testing.T) {
 		require.NoError(t, cli.Type(ctx, slotKey).Err())
 		util.ErrorRegexp(t, cli.Type(ctx, slotKey).Err(), fmt.Sprintf("MOVED %d.*%d.*", slotNum, mockSrv0Port))
 	})
+
+	t.Run("IMPORT - HGETDEL uses only the hash key and consumes asking", func(t *testing.T) {
+		key := fmt.Sprintf("hgetdel_{%s}", slotKey)
+		require.NoError(t, rdb1.HSet(ctx, key, "{a}", "first", "{b}", "second").Err())
+		require.ErrorContains(t, cli.Do(ctx, "HGETDEL", key, "FIELDS", 2, "{a}", "{b}").Err(), "MOVED")
+		require.NoError(t, cli.Do(ctx, "ASKING").Err())
+		got, err := cli.Do(ctx, "HGETDEL", key, "FIELDS", 2, "{a}", "{b}").Result()
+		require.NoError(t, err)
+		require.Equal(t, []interface{}{"first", "second"}, got)
+		require.ErrorContains(t, cli.Do(ctx, "HGETDEL", key, "FIELDS", 1, "{a}").Err(), "MOVED")
+		require.Zero(t, rdb1.Exists(ctx, key).Val())
+	})
 }

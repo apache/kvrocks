@@ -37,6 +37,17 @@ const uint16_t kCFDefaultMaxIterations = 20;
 const uint16_t kCFDefaultExpansion = 1;
 const uint16_t kCFMaxExpansion = 32768;
 
+struct CuckooFilterInfo {
+  uint64_t size;
+  uint64_t n_buckets;
+  uint16_t n_filters;
+  uint64_t n_items_inserted;
+  uint64_t n_items_deleted;
+  uint8_t bucket_size;
+  uint16_t expansion;
+  uint16_t max_iterations;
+};
+
 class CuckooChain : public Database {
  public:
   CuckooChain(engine::Storage *storage, const std::string &ns) : Database(storage, ns) {}
@@ -55,6 +66,9 @@ class CuckooChain : public Database {
   // Returns whether each item might exist in the cuckoo filter.
   rocksdb::Status MExists(engine::Context &ctx, const Slice &user_key, const std::vector<std::string> &items,
                           std::vector<bool> *exists);
+
+  // Retrieves information about the cuckoo filter associated with the given key.
+  rocksdb::Status Info(engine::Context &ctx, const Slice &user_key, CuckooFilterInfo *info);
 
  private:
   // Loads metadata for a cuckoo filter key.

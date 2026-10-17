@@ -21,6 +21,7 @@
 #include "redis_cuckoo_chain.h"
 
 #include "cuckoo_filter.h"
+#include "cuckoo_filter_page.h"
 #include "cuckoo_filter_sub_filter.h"
 #include "logging.h"
 
@@ -197,7 +198,10 @@ rocksdb::Status CuckooChain::Delete(engine::Context &ctx, const Slice &user_key,
     bool found = false;
     s = sub_filter.Delete(hash, fingerprint, &found);
     if (!s.ok()) return s;
-    if (!found) continue;
+    if (!found) {
+      pages.DiscardCleanPages();
+      continue;
+    }
 
     if (metadata.size == 0) return rocksdb::Status::Corruption("invalid metadata: size is 0");
     metadata.size--;

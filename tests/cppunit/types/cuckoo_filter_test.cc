@@ -705,6 +705,44 @@ TEST_F(RedisCuckooFilterTest, KickOutSuccessWritesDirtyPages) {
   EXPECT_EQ(static_cast<uint8_t>(page[evicted_bucket]), first.fingerprint);
 }
 
+TEST_F(RedisCuckooFilterTest, DeletePreservesEarlierCachedMutationAcrossSubFilters) {
+  constexpr uint8_t bucket_size = 1;
+  constexpr uint32_t page_size = 2;
+  constexpr uint32_t num_buckets = 2;
+
+  CuckooChainMetadata metadata(false);
+  metadata.version = 1;
+  writePage(makePageKey(key_, metadata, 0, 0), std::string({1, 0}));
+
+  redis::CuckooPageCache page_cache(storage_.get(), *ctx_, db_->AppendNamespacePrefix(key_),
+                                    storage_->IsSlotIdEncoded(), metadata.version, bucket_size, page_size);
+  redis::CuckooSubFilter earlier_sub_filter(page_cache, 1, num_buckets);
+  bool inserted = false;
+  auto s = earlier_sub_filter.TryInsert(0, 9, &inserted);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  ASSERT_TRUE(inserted);
+
+  redis::CuckooSubFilter sub_filter(page_cache, 0, num_buckets);
+  bool deleted = false;
+  s = sub_filter.Delete(0, 1, &deleted);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  ASSERT_TRUE(deleted);
+
+  auto batch = storage_->GetWriteBatchBase();
+  s = page_cache.WriteBackDirtyPages(batch.Get());
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  EXPECT_EQ(batch->GetWriteBatch()->Count(), 2);
+  s = storage_->Write(*ctx_, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+  ASSERT_TRUE(s.ok()) << s.ToString();
+
+  std::string page;
+  s = readPage(makePageKey(key_, metadata, 0, 0), &page);
+  EXPECT_TRUE(s.IsNotFound()) << s.ToString();
+  s = readPage(makePageKey(key_, metadata, 1, 0), &page);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  EXPECT_EQ(page, std::string({9, 0}));
+}
+
 TEST_F(RedisCuckooFilterTest, FailedMultiStepKickOutPreservesEarlierCachedMutation) {
   constexpr uint8_t bucket_size = 1;
   constexpr uint32_t page_size = 2;

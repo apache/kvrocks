@@ -20,6 +20,8 @@
 
 #pragma once
 
+#include <vector>
+
 #include "cuckoo_filter.h"
 #include "storage/redis_db.h"
 #include "storage/redis_metadata.h"
@@ -76,7 +78,8 @@ class CuckooChain : public Database {
   static rocksdb::Status expandAndInsertCuckooChain(CuckooChainMetadata *metadata, CuckooPageCache &pages,
                                                     uint64_t hash, uint8_t fingerprint, bool *inserted);
   rocksdb::Status commitPagesAndMetadata(engine::Context &ctx, const Slice &user_key, const std::string &ns_key,
-                                         const CuckooChainMetadata *metadata, CuckooPageCache &pages, const std::string &command);
+                                         const CuckooChainMetadata *metadata, CuckooPageCache &pages,
+                                         const std::string &command);
 };
 
 }  // namespace redis

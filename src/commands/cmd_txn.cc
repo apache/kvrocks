@@ -90,6 +90,11 @@ class CommandExec : public Commander {
       s = storage->CommitTxn();
     }
 
+    // Publish queued notifications after a successful commit.
+    if (s.IsOK()) {
+      conn->FlushKeyspaceEvents();
+    }
+
     conn->ResetMultiExec();
     reset_multiexec.Disable();
 

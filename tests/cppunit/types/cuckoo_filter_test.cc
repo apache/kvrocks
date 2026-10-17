@@ -23,6 +23,7 @@
 #include <algorithm>
 #include <limits>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "common/encoding.h"
@@ -289,7 +290,7 @@ TEST_F(RedisCuckooFilterTest, CalculateRequiredBucketsCalculation) {
 
 TEST_F(RedisCuckooFilterTest, FingerprintGeneration) {
   // Test fingerprint generation ensures non-zero values in range [1, 255]
-  // Following RedisBloom: fp = hash % 255 + 1
+  // Standard implementation: fp = hash % 255 + 1
   for (uint64_t hash = 0; hash < 1000; ++hash) {
     uint8_t fp = redis::CuckooFilterHelper::GenerateFingerprint(hash);
     ASSERT_GE(fp, 1) << "Fingerprint should be at least 1";
@@ -306,7 +307,7 @@ TEST_F(RedisCuckooFilterTest, FingerprintGeneration) {
 TEST_F(RedisCuckooFilterTest, AlternateBucketCalculation) {
   std::vector<uint32_t> num_buckets_cases = {1, 2, 128, 256, 512, 1024, 2048};
 
-  // Test GetAltHash symmetry at hash level (following RedisBloom design)
+  // Test GetAltHash symmetry property
   // h2 = GetAltHash(fp, h1)
   // h1 = GetAltHash(fp, h2)  <- this is the symmetry property
   for (auto num_buckets : num_buckets_cases) {
@@ -742,4 +743,253 @@ TEST_F(RedisCuckooFilterTest, ExpansionWritesNewFilterIndexPage) {
   s = readPage(makePageKey(key_, metadata, metadata.n_filters - 1, 0), &page);
   ASSERT_TRUE(s.ok()) << s.ToString();
   EXPECT_EQ(page.size(), expected_page_size);
+}
+
+TEST_F(RedisCuckooFilterTest, ExistsBasic) {
+  reserveAndVerify(key_, 1000, 4, 500, 2);
+  addAndVerify(key_, "test_item", 1000, 4, 500, 2, 1);
+
+  bool exists = false;
+  auto s = cuckoo_->Exists(*ctx_, key_, "test_item", &exists);
+  ASSERT_TRUE(s.ok()) << "Failed to check existence: " << s.ToString();
+  ASSERT_TRUE(exists) << "Item should exist";
+}
+
+TEST_F(RedisCuckooFilterTest, ExistsNonExistentItem) {
+  reserveAndVerify(key_, 1000, 4, 500, 2);
+  addAndVerify(key_, "item1", 1000, 4, 500, 2, 1);
+
+  bool exists = false;
+  auto s = cuckoo_->Exists(*ctx_, key_, "item2", &exists);
+  ASSERT_TRUE(s.ok());
+  ASSERT_FALSE(exists) << "Item should not exist";
+}
+
+TEST_F(RedisCuckooFilterTest, ExistsNonExistentFilter) {
+  bool exists = true;
+  auto s = cuckoo_->Exists(*ctx_, "nonexistent_key", "item", &exists);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  ASSERT_FALSE(exists);
+}
+
+TEST_F(RedisCuckooFilterTest, ExistsMultipleItems) {
+  reserveAndVerify(key_, 1000, 4, 500, 2);
+
+  std::vector<std::string> items = {"apple", "banana", "cherry", "date", "elderberry"};
+  for (size_t i = 0; i < items.size(); ++i) {
+    addAndVerify(key_, items[i], 1000, 4, 500, 2, i + 1);
+  }
+
+  for (const auto &item : items) {
+    bool exists = false;
+    auto s = cuckoo_->Exists(*ctx_, key_, item, &exists);
+    ASSERT_TRUE(s.ok()) << "Failed to check: " << item;
+    ASSERT_TRUE(exists) << "Item should exist: " << item;
+  }
+
+  std::vector<std::string> non_items = {"fig", "grape", "honeydew"};
+  for (const auto &item : non_items) {
+    bool exists = false;
+    auto s = cuckoo_->Exists(*ctx_, key_, item, &exists);
+    ASSERT_TRUE(s.ok());
+    ASSERT_FALSE(exists) << "Item should not exist: " << item;
+  }
+}
+
+TEST_F(RedisCuckooFilterTest, ExistsDuplicateItems) {
+  reserveAndVerify(key_, 1000, 4, 500, 2);
+
+  std::string item = "duplicate_item";
+  for (int i = 0; i < 3; ++i) {
+    addAndVerify(key_, item, 1000, 4, 500, 2, i + 1);
+  }
+
+  bool exists = false;
+  auto s = cuckoo_->Exists(*ctx_, key_, item, &exists);
+  ASSERT_TRUE(s.ok());
+  ASSERT_TRUE(exists) << "Duplicate item should exist";
+}
+
+TEST_F(RedisCuckooFilterTest, ExistsEmptyString) {
+  reserveAndVerify(key_, 1000, 4, 500, 2);
+  addAndVerify(key_, "", 1000, 4, 500, 2, 1);
+
+  bool exists = false;
+  auto s = cuckoo_->Exists(*ctx_, key_, "", &exists);
+  ASSERT_TRUE(s.ok());
+  ASSERT_TRUE(exists) << "Empty string should exist";
+}
+
+TEST_F(RedisCuckooFilterTest, ExistsBinaryData) {
+  reserveAndVerify(key_, 1000, 4, 500, 2);
+  std::string binary_item = std::string("\x00\x01\x02\xFF\xFE", 5);
+  addAndVerify(key_, binary_item, 1000, 4, 500, 2, 1);
+
+  bool exists = false;
+  auto s = cuckoo_->Exists(*ctx_, key_, binary_item, &exists);
+  ASSERT_TRUE(s.ok());
+  ASSERT_TRUE(exists) << "Binary data should exist";
+}
+
+TEST_F(RedisCuckooFilterTest, ExistsAfterExpansion) {
+  reserveAndVerify(key_, 10, 2, 500, 2);
+
+  std::vector<std::string> items;
+  items.reserve(30);
+  for (int i = 0; i < 30; ++i) {
+    items.push_back("item_" + std::to_string(i));
+  }
+
+  for (const auto &item : items) {
+    bool added = false;
+    auto s = cuckoo_->Add(*ctx_, key_, item, &added);
+    if (s.ok() && added) {
+      bool exists = false;
+      s = cuckoo_->Exists(*ctx_, key_, item, &exists);
+      ASSERT_TRUE(s.ok());
+      ASSERT_TRUE(exists) << "Item should exist: " << item;
+    }
+  }
+}
+
+TEST_F(RedisCuckooFilterTest, ExistsWithDifferentBucketSizes) {
+  std::vector<uint8_t> bucket_sizes = {1, 2, 4, 8};
+
+  for (size_t i = 0; i < bucket_sizes.size(); ++i) {
+    std::string test_key = key_ + "_bucket_" + std::to_string(bucket_sizes[i]);
+    reserveAndVerify(test_key, 100, bucket_sizes[i], 500, 2);
+
+    std::vector<std::string> items = {"item1", "item2", "item3"};
+    for (size_t j = 0; j < items.size(); ++j) {
+      addAndVerify(test_key, items[j], 100, bucket_sizes[i], 500, 2, j + 1);
+    }
+
+    for (const auto &item : items) {
+      bool exists = false;
+      auto s = cuckoo_->Exists(*ctx_, test_key, item, &exists);
+      ASSERT_TRUE(s.ok()) << "bucket_size=" << static_cast<int>(bucket_sizes[i]);
+      ASSERT_TRUE(exists) << "Item should exist with bucket_size=" << static_cast<int>(bucket_sizes[i]);
+    }
+  }
+}
+
+TEST_F(RedisCuckooFilterTest, ExistsLongString) {
+  reserveAndVerify(key_, 1000, 4, 500, 2);
+  std::string long_item(10000, 'x');
+  addAndVerify(key_, long_item, 1000, 4, 500, 2, 1);
+
+  bool exists = false;
+  auto s = cuckoo_->Exists(*ctx_, key_, long_item, &exists);
+  ASSERT_TRUE(s.ok());
+  ASSERT_TRUE(exists) << "Long string should exist";
+
+  std::string different_long_item(10000, 'y');
+  exists = false;
+  s = cuckoo_->Exists(*ctx_, key_, different_long_item, &exists);
+  ASSERT_TRUE(s.ok());
+  ASSERT_FALSE(exists) << "Different long string should not exist";
+}
+
+TEST_F(RedisCuckooFilterTest, MExistsBasic) {
+  reserveAndVerify(key_, 1000, 4, 500, 2);
+  addAndVerify(key_, "alpha", 1000, 4, 500, 2, 1);
+  addAndVerify(key_, "gamma", 1000, 4, 500, 2, 2);
+
+  std::vector<bool> exists;
+  auto s = cuckoo_->MExists(*ctx_, key_, {"alpha", "beta", "gamma"}, &exists);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  ASSERT_EQ(exists.size(), 3);
+  EXPECT_TRUE(exists[0]);
+  EXPECT_FALSE(exists[1]);
+  EXPECT_TRUE(exists[2]);
+}
+
+TEST_F(RedisCuckooFilterTest, MExistsNonExistentFilter) {
+  std::vector<bool> exists;
+  auto s = cuckoo_->MExists(*ctx_, "nonexistent_key", {"alpha", "beta"}, &exists);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  ASSERT_EQ(exists.size(), 2);
+  EXPECT_FALSE(exists[0]);
+  EXPECT_FALSE(exists[1]);
+}
+
+TEST_F(RedisCuckooFilterTest, MExistsAfterExpansion) {
+  reserveAndVerify(key_, 4, 1, 1, 2);
+
+  std::vector<std::string> inserted_items;
+  for (int i = 0; i < 20; ++i) {
+    std::string item = "expand_item_" + std::to_string(i);
+    bool added = false;
+    auto s = cuckoo_->Add(*ctx_, key_, item, &added);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    ASSERT_TRUE(added);
+    inserted_items.emplace_back(std::move(item));
+  }
+
+  auto metadata = getMetadata(key_);
+  ASSERT_GT(metadata.n_filters, 1);
+  ASSERT_EQ(metadata.size, 20);
+
+  std::vector<bool> exists;
+  auto s = cuckoo_->MExists(*ctx_, key_, {inserted_items.front(), "definitely_absent", inserted_items.back()}, &exists);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  ASSERT_EQ(exists.size(), 3);
+  EXPECT_TRUE(exists[0]);
+  EXPECT_FALSE(exists[1]);
+  EXPECT_TRUE(exists[2]);
+}
+
+TEST_F(RedisCuckooFilterTest, MExistsStopsAfterAllItemsFoundInNewestFilter) {
+  CuckooChainMetadata metadata;
+  metadata.size = 0;
+  metadata.base_capacity = 1000;
+  metadata.bucket_size = 4;
+  metadata.max_iterations = 500;
+  metadata.expansion = 2;
+  metadata.n_filters = 2;
+  metadata.num_deleted_items = 0;
+  metadata.page_size = kCuckooFilterDefaultPageSize;
+  writeMetadata(key_, metadata);
+
+  writePage(makePageKey(key_, metadata, 0, 0), "corrupt");
+
+  addAndVerify(key_, "alpha", metadata.base_capacity, metadata.bucket_size, metadata.max_iterations, metadata.expansion,
+               1, metadata.n_filters);
+  addAndVerify(key_, "beta", metadata.base_capacity, metadata.bucket_size, metadata.max_iterations, metadata.expansion,
+               2, metadata.n_filters);
+
+  std::vector<bool> exists;
+  auto s = cuckoo_->MExists(*ctx_, key_, {"alpha", "beta"}, &exists);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  ASSERT_EQ(exists.size(), 2);
+  EXPECT_TRUE(exists[0]);
+  EXPECT_TRUE(exists[1]);
+}
+
+TEST_F(RedisCuckooFilterTest, ExistsBatchTest) {
+  reserveAndVerify(key_, 1000, 4, 500, 2);
+
+  for (int x = 0; x < 100; ++x) {
+    addAndVerify(key_, std::to_string(x), 1000, 4, 500, 2, x + 1);
+  }
+
+  for (int x = 0; x < 100; ++x) {
+    bool exists = false;
+    auto s = cuckoo_->Exists(*ctx_, key_, std::to_string(x), &exists);
+    ASSERT_TRUE(s.ok()) << "Failed to check item " << x;
+    ASSERT_TRUE(exists) << "Item " << x << " should exist";
+  }
+}
+
+TEST_F(RedisCuckooFilterTest, ExistsWithRepeatedInsertions) {
+  reserveAndVerify(key_, 1000, 4, 500, 2);
+
+  std::string item = "k1";
+  addAndVerify(key_, item, 1000, 4, 500, 2, 1);
+  addAndVerify(key_, item, 1000, 4, 500, 2, 2);
+
+  bool exists = false;
+  auto s = cuckoo_->Exists(*ctx_, key_, item, &exists);
+  ASSERT_TRUE(s.ok());
+  ASSERT_TRUE(exists) << "Item should exist after duplicate insertions";
 }

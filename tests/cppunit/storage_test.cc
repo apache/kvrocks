@@ -18,6 +18,7 @@
  *
  */
 
+#include <common/rocksdb_crc32c.h>
 #include <config/config.h>
 #include <gtest/gtest.h>
 #include <status.h>
@@ -29,6 +30,8 @@
 #include <string>
 #include <vector>
 
+#include "test_base.h"
+
 TEST(Storage, CreateBackup) {
   std::error_code ec;
 
@@ -39,6 +42,7 @@ TEST(Storage, CreateBackup) {
   std::filesystem::remove_all(config.db_dir, ec);
   ASSERT_TRUE(!ec);
 
+  auto cleanup = MakeDBDirCleanup(config.db_dir);
   auto storage = std::make_unique<engine::Storage>(&config);
   auto s = storage->Open();
   ASSERT_TRUE(s.IsOK());
@@ -58,9 +62,6 @@ TEST(Storage, CreateBackup) {
   // check if backup success without caring about the sequence number
   s = storage->CreateBackup();
   ASSERT_TRUE(s.IsOK());
-
-  std::filesystem::remove_all(config.db_dir, ec);
-  ASSERT_TRUE(!ec);
 }
 
 TEST(Storage, ReadOnlyTransactions) {
@@ -185,6 +186,7 @@ TEST(Storage, GetFullReplDataInfoRejectsEmptyCheckpoint) {
   std::filesystem::create_directory(test_dir, ec);
   ASSERT_FALSE(ec);
 
+  auto cleanup = MakeDBDirCleanup(test_dir);
   auto storage = std::make_unique<engine::Storage>(&config);
   auto s = storage->Open();
   ASSERT_TRUE(s.IsOK()) << s.Msg();
@@ -207,9 +209,6 @@ TEST(Storage, GetFullReplDataInfoRejectsEmptyCheckpoint) {
   s = engine::Storage::ReplDataManager::GetFullReplDataInfo(storage.get(), &files);
   EXPECT_FALSE(s.IsOK());
   EXPECT_TRUE(files.empty());
-
-  std::filesystem::remove_all(test_dir, ec);
-  ASSERT_FALSE(ec);
 }
 
 TEST(Storage, TryPurgeCheckpoint) {
@@ -226,6 +225,7 @@ TEST(Storage, TryPurgeCheckpoint) {
   std::filesystem::create_directory(test_dir, ec);
   ASSERT_FALSE(ec);
 
+  auto cleanup = MakeDBDirCleanup(test_dir);
   auto storage = std::make_unique<engine::Storage>(&config);
   auto s = storage->Open();
   ASSERT_TRUE(s.IsOK()) << s.Msg();
@@ -256,7 +256,80 @@ TEST(Storage, TryPurgeCheckpoint) {
   s = engine::Storage::ReplDataManager::GetFullReplDataInfo(storage.get(), &files);
   ASSERT_TRUE(s.IsOK()) << s.Msg();
   EXPECT_TRUE(storage->ExistCheckpoint());
+}
+
+TEST(Storage, ReplDataManagerFileExistsCRC) {
+  std::error_code ec;
+  const std::string test_dir = "test_repl_crc_check";
+
+  Config config;
+  config.db_dir = test_dir + "/db";
+  config.checkpoint_dir = test_dir + "/checkpoint";
+  config.slot_id_encoded = false;
 
   std::filesystem::remove_all(test_dir, ec);
   ASSERT_FALSE(ec);
+  std::filesystem::create_directories(test_dir + "/sync", ec);
+  ASSERT_FALSE(ec);
+
+  auto cleanup = MakeDBDirCleanup(test_dir);
+  auto storage = std::make_unique<engine::Storage>(&config);
+  auto s = storage->Open();
+  ASSERT_TRUE(s.IsOK()) << s.Msg();
+
+  auto write_file_and_get_crc = [&](const std::string &file_name, size_t file_size) -> uint32_t {
+    std::string path = test_dir + "/sync/" + file_name;
+    std::string content(file_size, '\0');
+    for (size_t i = 0; i < file_size; i++) {
+      content[i] = static_cast<char>(i & 0xFF);
+    }
+    std::ofstream ofs(path, std::ios::binary);
+    ofs.write(content.data(), static_cast<std::streamsize>(content.size()));
+    ofs.close();
+
+    uint32_t crc = 0;
+    crc = rocksdb::crc32c::Extend(crc, content.data(), content.size());
+    return crc;
+  };
+
+  // Small file (<= 4096 bytes, single chunk)
+  {
+    std::string file_name = "small_file";
+    uint32_t crc = write_file_and_get_crc(file_name, 1024);
+    EXPECT_TRUE(engine::Storage::ReplDataManager::FileExists(storage.get(), test_dir + "/sync", file_name, crc));
+  }
+
+  // Large file (> 4096 bytes, multiple chunks) — this is the case the bug affected
+  {
+    std::string file_name = "large_file";
+    uint32_t crc = write_file_and_get_crc(file_name, 16384);
+    EXPECT_TRUE(engine::Storage::ReplDataManager::FileExists(storage.get(), test_dir + "/sync", file_name, crc));
+  }
+
+  // File size exactly at chunk boundary
+  {
+    std::string file_name = "boundary_file";
+    uint32_t crc = write_file_and_get_crc(file_name, 4096);
+    EXPECT_TRUE(engine::Storage::ReplDataManager::FileExists(storage.get(), test_dir + "/sync", file_name, crc));
+  }
+
+  // File size just past chunk boundary
+  {
+    std::string file_name = "just_over_file";
+    uint32_t crc = write_file_and_get_crc(file_name, 4097);
+    EXPECT_TRUE(engine::Storage::ReplDataManager::FileExists(storage.get(), test_dir + "/sync", file_name, crc));
+  }
+
+  // Wrong CRC should return false
+  {
+    std::string file_name = "large_file";
+    uint32_t wrong_crc = 0xDEADBEEF;
+    EXPECT_FALSE(engine::Storage::ReplDataManager::FileExists(storage.get(), test_dir + "/sync", file_name, wrong_crc));
+  }
+
+  // CRC of 0 should skip verification and return true
+  {
+    std::string file_name = "large_file";
+    EXPECT_TRUE(engine::Storage::ReplDataManager::FileExists(storage.get(), test_dir + "/sync", file_name, 0));
+  }
 }

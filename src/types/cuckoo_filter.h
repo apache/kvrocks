@@ -37,6 +37,7 @@ constexpr uint64_t kCuckooFilterMaxSupportedBuckets = std::numeric_limits<uint32
 constexpr uint64_t kCuckooFilterFingerprintModulus = 255;
 constexpr uint64_t kCuckooFilterAltHashMultiplier = 0x5bd1e995ULL;
 constexpr uint8_t kEmptyCuckooFingerprint = 0;
+constexpr size_t kCuckooFilterMaxScanDumpSize = 16 * 1024 * 1024;
 
 // Cuckoo filter implementation from the paper:
 // "Cuckoo Filter: Practically Better Than Bloom" by Fan et al.

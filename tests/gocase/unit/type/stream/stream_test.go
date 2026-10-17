@@ -22,11 +22,13 @@ package stream
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/rand"
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -2767,4 +2769,245 @@ func parseStreamEntryID(id string) (ts int64, seqNum int64) {
 	seqNum, _ = strconv.ParseInt(values[1], 10, 64)
 
 	return
+}
+
+func TestBlockingXReadWokenByTransaction(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{})
+	defer srv.Close()
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	const readers = 4
+	clients := make([]*redis.Client, readers)
+	for i := range clients {
+		clients[i] = srv.NewClientWithOption(&redis.Options{MaxRetries: -1})
+		defer func() { require.NoError(t, clients[i].Close()) }()
+	}
+
+	for round := 0; round < 4; round++ {
+		results := make(chan *redis.XStreamSliceCmd, readers)
+		for _, client := range clients {
+			go func() {
+				results <- client.XRead(ctx, &redis.XReadArgs{
+					Streams: []string{"mystream", "$"},
+					Count:   1,
+					Block:   10 * time.Second,
+				})
+			}()
+		}
+		require.Eventually(t, func() bool {
+			return util.FindInfoEntry(rdb, "blocked_clients") == strconv.Itoa(readers)
+		}, 5*time.Second, 10*time.Millisecond)
+
+		pipe := rdb.TxPipeline()
+		value := strconv.Itoa(round)
+		added := pipe.XAdd(ctx, &redis.XAddArgs{Stream: "mystream", Values: []string{"field", value}})
+		for i := 0; i < 64; i++ {
+			pipe.ZAdd(ctx, "myzset", redis.Z{Score: float64(i), Member: fmt.Sprintf("member-%d-%d", round, i)})
+		}
+		_, err := pipe.Exec(ctx)
+		require.NoError(t, err)
+		id, err := added.Result()
+		require.NoError(t, err)
+
+		require.Eventually(t, func() bool { return len(results) == readers }, 5*time.Second, 10*time.Millisecond)
+		for i := 0; i < readers; i++ {
+			streams, err := (<-results).Result()
+			require.NoError(t, err)
+			require.Equal(t, []redis.XStream{{
+				Stream:   "mystream",
+				Messages: []redis.XMessage{{ID: id, Values: map[string]interface{}{"field": value}}},
+			}}, streams)
+		}
+	}
+	require.NoError(t, rdb.Set(ctx, "after", "ok", 0).Err())
+}
+
+func TestBlockingXReadGroupWokenByTransaction(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{})
+	defer srv.Close()
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+	require.NoError(t, rdb.XGroupCreateMkStream(ctx, "mystream", "mygroup", "0").Err())
+
+	const readers = 4
+	const rounds = 4
+	clients := make([]*redis.Client, readers)
+	consumerPending := make(map[string]int64, readers)
+	for i := range clients {
+		clients[i] = srv.NewClientWithOption(&redis.Options{MaxRetries: -1})
+		defer func() { require.NoError(t, clients[i].Close()) }()
+		consumerPending[fmt.Sprintf("consumer-%d", i)] = rounds
+	}
+
+	type readResult struct {
+		consumer string
+		cmd      *redis.XStreamSliceCmd
+	}
+	expected := make([]redis.XMessage, 0, readers*rounds)
+	owners := make(map[string]string, readers*rounds)
+	for round := 0; round < rounds; round++ {
+		results := make(chan readResult, readers)
+		for i, client := range clients {
+			go func() {
+				consumer := fmt.Sprintf("consumer-%d", i)
+				results <- readResult{consumer: consumer, cmd: client.XReadGroup(ctx, &redis.XReadGroupArgs{
+					Group:    "mygroup",
+					Consumer: consumer,
+					Streams:  []string{"mystream", ">"},
+					Count:    1,
+					Block:    10 * time.Second,
+				})}
+			}()
+		}
+		require.Eventually(t, func() bool {
+			return util.FindInfoEntry(rdb, "blocked_clients") == strconv.Itoa(readers)
+		}, 5*time.Second, 10*time.Millisecond)
+
+		pipe := rdb.TxPipeline()
+		for i := 0; i < readers; i++ {
+			id := fmt.Sprintf("%d-0", round*readers+i+1)
+			value := strconv.Itoa(round*readers + i)
+			pipe.XAdd(ctx, &redis.XAddArgs{Stream: "mystream", ID: id, Values: []string{"field", value}})
+			expected = append(expected, redis.XMessage{ID: id, Values: map[string]interface{}{"field": value}})
+		}
+		for i := 0; i < 64; i++ {
+			pipe.ZAdd(ctx, "myzset", redis.Z{Score: float64(i), Member: fmt.Sprintf("member-%d-%d", round, i)})
+		}
+		_, err := pipe.Exec(ctx)
+		require.NoError(t, err)
+
+		require.Eventually(t, func() bool { return len(results) == readers }, 5*time.Second, 10*time.Millisecond)
+		messages := make([]redis.XMessage, 0, readers)
+		for i := 0; i < readers; i++ {
+			result := <-results
+			streams, err := result.cmd.Result()
+			require.NoError(t, err)
+			require.Len(t, streams, 1)
+			require.Equal(t, "mystream", streams[0].Stream)
+			require.Len(t, streams[0].Messages, 1)
+			message := streams[0].Messages[0]
+			require.NotContains(t, owners, message.ID, "a message must only be assigned once")
+			owners[message.ID] = result.consumer
+			messages = append(messages, message)
+		}
+		require.ElementsMatch(t, expected[round*readers:], messages)
+	}
+
+	pending, err := rdb.XPending(ctx, "mystream", "mygroup").Result()
+	require.NoError(t, err)
+	require.Equal(t, &redis.XPending{
+		Count:     readers * rounds,
+		Lower:     expected[0].ID,
+		Higher:    expected[len(expected)-1].ID,
+		Consumers: consumerPending,
+	}, pending)
+	entries, err := rdb.XPendingExt(ctx, &redis.XPendingExtArgs{
+		Stream: "mystream",
+		Group:  "mygroup",
+		Start:  "-",
+		End:    "+",
+		Count:  readers*rounds + 1,
+	}).Result()
+	require.NoError(t, err)
+	require.Len(t, entries, len(expected))
+	for i, entry := range entries {
+		require.Equal(t, expected[i].ID, entry.ID)
+		require.Equal(t, owners[entry.ID], entry.Consumer)
+		require.EqualValues(t, 1, entry.RetryCount)
+	}
+
+	groups, err := rdb.XInfoGroups(ctx, "mystream").Result()
+	require.NoError(t, err)
+	require.Len(t, groups, 1)
+	require.Equal(t, "mygroup", groups[0].Name)
+	require.EqualValues(t, readers, groups[0].Consumers)
+	require.EqualValues(t, readers*rounds, groups[0].Pending)
+	require.Equal(t, expected[len(expected)-1].ID, groups[0].LastDeliveredID)
+	consumers, err := rdb.XInfoConsumers(ctx, "mystream", "mygroup").Result()
+	require.NoError(t, err)
+	require.Len(t, consumers, readers)
+	for _, consumer := range consumers {
+		require.Contains(t, consumerPending, consumer.Name)
+		require.Equal(t, consumerPending[consumer.Name], consumer.Pending)
+	}
+	require.NoError(t, rdb.Set(ctx, "after", "ok", 0).Err())
+}
+
+// TestPotentialDataRaceInBlockingStreamRead checks that the wake-up callback of a
+// blocked XREAD/XREADGROUP doesn't race with a concurrent transaction: the XADD
+// inside MULTI/EXEC wakes the reader while the EXEC still holds the storage in
+// transaction mode, the same shape as TestPotentialDataRaceInBlockingCommand.
+//
+// For more information, please refer to: https://github.com/apache/kvrocks/issues/2900
+func TestPotentialDataRaceInBlockingStreamRead(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{})
+	defer srv.Close()
+
+	ctx, cancelFn := context.WithCancel(context.Background())
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	streamKey := "mystream"
+	require.NoError(t, rdb.Del(ctx, streamKey).Err())
+	require.NoError(t, rdb.XGroupCreateMkStream(ctx, streamKey, "mygroup", "$").Err())
+
+	var wg sync.WaitGroup
+	for i := 0; i < 4; i++ {
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			for {
+				err := rdb.XRead(ctx, &redis.XReadArgs{
+					Streams: []string{streamKey, "$"},
+					Count:   10,
+					Block:   3500 * time.Millisecond,
+				}).Err()
+				if errors.Is(err, redis.Nil) {
+					continue
+				} else if errors.Is(err, context.Canceled) {
+					return
+				} else {
+					require.NoError(t, err)
+				}
+			}
+		}()
+		go func(consumer string) {
+			defer wg.Done()
+			for {
+				err := rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+					Group:    "mygroup",
+					Consumer: consumer,
+					Streams:  []string{streamKey, ">"},
+					Count:    10,
+					Block:    3500 * time.Millisecond,
+				}).Err()
+				if errors.Is(err, redis.Nil) {
+					continue
+				} else if errors.Is(err, context.Canceled) {
+					return
+				} else {
+					require.NoError(t, err)
+				}
+			}
+		}(fmt.Sprintf("consumer-%d", i))
+	}
+
+	for i := 0; i < 64; i++ {
+		pipe := rdb.TxPipeline()
+		pipe.XAdd(ctx, &redis.XAddArgs{Stream: streamKey, Values: []string{"field", "value"}})
+		for j := 0; j < 64; j++ {
+			pipe.ZAdd(ctx, "myzset", redis.Z{Score: float64(j), Member: fmt.Sprintf("member-%d-%d", i, j)})
+		}
+		_, err := pipe.Exec(ctx)
+		require.NoError(t, err)
+		time.Sleep(time.Millisecond * 100)
+	}
+	// The server must still accept writes after the transactions.
+	require.NoError(t, rdb.Set(ctx, "after", "ok", 0).Err())
+
+	cancelFn()
+	wg.Wait()
 }

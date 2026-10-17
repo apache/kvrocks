@@ -222,6 +222,9 @@ Status Cluster::SetClusterNodes(const std::string &nodes_str, int64_t version, b
   migrated_slots_.clear();
   imported_slots_.clear();
 
+  // Refresh master lease on topology update (controller probe)
+  RefreshMasterLease();
+
   return Status::OK();
 }
 
@@ -925,6 +928,16 @@ Status Cluster::CanExecByMySelf(const redis::CommandAttributes *attributes, cons
       return {Status::RedisTryAgain, "Can't write to slot being migrated which is in write forbidden phase"};
     }
 
+    // Split-brain prevention: if this master's lease has expired, reject writes.
+    // This handles the case where a network partition isolates the old master
+    // while the controller has already promoted a replica to be the new master.
+    if ((flags & redis::kCmdWrite) && myself_->role == kClusterMaster && IsMasterLeaseEnabled() &&
+        IsMasterLeaseExpired()) {
+      WARN("Master lease expired (expire_at_ms={}), rejecting write to prevent split-brain",
+           master_lease_expire_at_ms_);
+      return {Status::RedisClusterDown, "Master lease expired, cannot accept writes"};
+    }
+
     return Status::OK();  // I'm serving this slot
   }
 
@@ -997,4 +1010,94 @@ Status Cluster::Reset() {
   // unlink the cluster nodes file if exists
   unlink(srv_->GetConfig()->NodesFilePath().data());
   return Status::OK();
+}
+
+Status Cluster::Failover(bool takeover) {
+  if (!myself_) {
+    return {Status::RedisExecErr, errClusterNoInitialized};
+  }
+
+  if (myself_->role == kClusterMaster) {
+    return {Status::RedisExecErr, "The node is already a master"};
+  }
+
+  // Verify master exists in cluster topology
+  auto master_it = nodes_.find(myself_->master_id);
+  if (master_it == nodes_.end()) {
+    return {Status::RedisExecErr, "Master node not found in cluster topology"};
+  }
+
+  auto master_node = master_it->second;
+
+  if (!takeover) {
+    // FORCE mode: we try to contact master and ask it to do a manual failover.
+    // For now we treat FORCE the same as TAKEOVER since we don't have a way
+    // to coordinate with master reliably in current architecture.
+    // TODO: Implement FORCE mode where we send CLUSTER FAILOVER to master first
+    // and only fall back to TAKEOVER if master is unreachable.
+    INFO("FORCE failover requested for master {}:{}, falling back to TAKEOVER mode", master_node->host,
+         master_node->port);
+  }
+
+  INFO("Starting CLUSTER FAILOVER TAKEOVER: promoting {} (me) to master, demoting master {} to slave", myid_,
+       myself_->master_id);
+
+  // 1. Update myself: slave -> master
+  myself_->role = kClusterMaster;
+  myself_->master_id.clear();
+
+  // 2. Update old master: master -> slave
+  master_node->role = kClusterSlave;
+  master_node->master_id = myid_;
+
+  // 3. Clear old master's replicas list (it no longer has any)
+  master_node->replicas.clear();
+
+  // 4. Update myself's replicas list to include old master
+  myself_->replicas.clear();
+  myself_->replicas.push_back(master_node->id);
+
+  // 5. Increment version (config epoch)
+  version_++;
+
+  // 6. Recalculate size_ (count of masters with slots)
+  size_ = 0;
+  for (const auto &[node_id, node] : nodes_) {
+    if (node->role == kClusterMaster && node->slots.count() > 0) {
+      size_++;
+    }
+  }
+
+  // 7. Clear migrated/imported slot info
+  migrated_slots_.clear();
+  imported_slots_.clear();
+
+  // 8. Set replication relationship (this will switch us from slave to master)
+  auto s = SetMasterSlaveRepl();
+  if (!s.IsOK()) {
+    return s.Prefixed("failed to set master-replica replication during failover");
+  }
+
+  INFO("CLUSTER FAILOVER TAKEOVER completed successfully. New version: {}", version_);
+  return Status::OK();
+}
+
+void Cluster::RefreshMasterLease() {
+  if (master_lease_duration_sec_ <= 0) return;
+
+  auto now_ms = util::GetTimeStampMS();
+  master_lease_expire_at_ms_ = now_ms + master_lease_duration_sec_ * 1000;
+
+  if (myself_ && myself_->role == kClusterMaster) {
+    INFO("Master lease refreshed, expires at {} (duration={}s)", master_lease_expire_at_ms_,
+         master_lease_duration_sec_);
+  }
+}
+
+bool Cluster::IsMasterLeaseExpired() const {
+  if (master_lease_duration_sec_ <= 0) return false;  // Disabled, never expires
+  if (master_lease_expire_at_ms_ == 0) return false;  // Never been set up
+
+  auto now_ms = util::GetTimeStampMS();
+  return now_ms > master_lease_expire_at_ms_;
 }

@@ -180,6 +180,89 @@ func TestNamespace(t *testing.T) {
 	})
 }
 
+func TestCommandNamespaceSubcommands(t *testing.T) {
+	password := "pwd"
+	srv := util.StartServer(t, map[string]string{
+		"requirepass": password,
+	})
+	defer srv.Close()
+
+	ctx := context.Background()
+	rdb := srv.NewClientWithOption(&redis.Options{
+		Password: password,
+	})
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	assertInvalidNamespaceSubcommand := func(t *testing.T, args ...string) {
+		t.Helper()
+
+		commandArgs := make([]interface{}, len(args))
+		for i, arg := range args {
+			commandArgs[i] = arg
+		}
+
+		err := rdb.Do(ctx, commandArgs...).Err()
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "NAMESPACE subcommand must be one of")
+		for _, subcommand := range []string{"ADD", "CURRENT", "DEL", "GET", "SET"} {
+			require.Contains(t, err.Error(), subcommand)
+		}
+	}
+
+	t.Run("NAMESPACE CURRENT returns default namespace", func(t *testing.T) {
+		r := rdb.Do(ctx, "NAMESPACE", "CURRENT")
+		require.NoError(t, r.Err())
+		require.Equal(t, "__namespace", r.Val())
+	})
+
+	t.Run("NAMESPACE ADD GET SET DEL work via registered subcommands", func(t *testing.T) {
+		r := rdb.Do(ctx, "NAMESPACE", "ADD", "ns1", "token1")
+		require.NoError(t, r.Err())
+		require.Equal(t, "OK", r.Val())
+
+		r = rdb.Do(ctx, "NAMESPACE", "GET", "ns1")
+		require.NoError(t, r.Err())
+		require.Equal(t, "token1", r.Val())
+
+		r = rdb.Do(ctx, "NAMESPACE", "SET", "ns1", "token2")
+		require.NoError(t, r.Err())
+		require.Equal(t, "OK", r.Val())
+
+		r = rdb.Do(ctx, "NAMESPACE", "GET", "ns1")
+		require.NoError(t, r.Err())
+		require.Equal(t, "token2", r.Val())
+
+		r = rdb.Do(ctx, "NAMESPACE", "DEL", "ns1")
+		require.NoError(t, r.Err())
+		require.Equal(t, "OK", r.Val())
+
+		r = rdb.Do(ctx, "NAMESPACE", "GET", "ns1")
+		require.EqualError(t, r.Err(), redis.Nil.Error())
+	})
+
+	t.Run("NAMESPACE subcommands reject wrong arity", func(t *testing.T) {
+		for _, args := range [][]string{
+			{"NAMESPACE", "GET"},
+			{"NAMESPACE", "ADD", "ns1"},
+			{"NAMESPACE", "SET", "ns1"},
+			{"NAMESPACE", "DEL"},
+		} {
+			commandArgs := make([]interface{}, len(args))
+			for i, arg := range args {
+				commandArgs[i] = arg
+			}
+			err := rdb.Do(ctx, commandArgs...).Err()
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "wrong number of arguments")
+		}
+	})
+
+	t.Run("NAMESPACE keeps legacy invalid subcommand error", func(t *testing.T) {
+		assertInvalidNamespaceSubcommand(t, "NAMESPACE", "MISSING")
+		assertInvalidNamespaceSubcommand(t, "NAMESPACE", "MISSING", "arg1")
+	})
+}
+
 func TestNamespaceReplicate(t *testing.T) {
 	password := "pwd"
 	masterSrv := util.StartServer(t, map[string]string{

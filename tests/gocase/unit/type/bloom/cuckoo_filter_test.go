@@ -20,7 +20,9 @@
 package bloom
 
 import (
+	"bytes"
 	"context"
+	"encoding/binary"
 	"fmt"
 	"testing"
 
@@ -242,6 +244,88 @@ func TestCuckooFilter(t *testing.T) {
 		result := rdb.Do(ctx, "cf.add", key, string(largeItem))
 		require.NoError(t, result.Err())
 		require.Equal(t, int64(1), result.Val())
+	})
+
+	t.Run("CF.SCANDUMP validate input", func(t *testing.T) {
+		require.ErrorContains(t, rdb.Do(ctx, "cf.scandump", "missing", "0").Err(), "NotFound")
+		require.ErrorContains(t, rdb.Do(ctx, "cf.scandump", "key", "invalid").Err(), "Invalid position")
+		require.ErrorContains(t, rdb.Do(ctx, "cf.scandump", "key", "9223372036854775808").Err(), "Invalid position")
+	})
+
+	t.Run("CF.SCANDUMP empty filter", func(t *testing.T) {
+		key := "test_cuckoo_filter_scandump_empty"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "100").Err())
+		header := rdb.Do(ctx, "cf.scandump", key, "0")
+		require.NoError(t, header.Err())
+		headerValues, ok := header.Val().([]interface{})
+		require.True(t, ok)
+		require.Equal(t, int64(1), headerValues[0])
+		require.NotEmpty(t, headerValues[1])
+
+		dataReply := rdb.Do(ctx, "cf.scandump", key, "1")
+		require.NoError(t, dataReply.Err())
+		dataValues, ok := dataReply.Val().([]interface{})
+		require.True(t, ok)
+		chunk, ok := dataValues[1].(string)
+		require.True(t, ok)
+		require.NotEmpty(t, chunk)
+		require.True(t, bytes.Equal(make([]byte, len(chunk)), []byte(chunk)))
+		require.Equal(t, int64(1+len(chunk)), dataValues[0])
+
+		endReply := rdb.Do(ctx, "cf.scandump", key, dataValues[0])
+		require.NoError(t, endReply.Err())
+		require.Equal(t, []interface{}{int64(0), nil}, endReply.Val())
+	})
+
+	t.Run("CF.SCANDUMP returns header", func(t *testing.T) {
+		key := "test_cuckoo_filter_scandump_header"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "100", "BUCKETSIZE", "5", "MAXITERATIONS", "20", "EXPANSION", "2").Err())
+		require.Equal(t, int64(1), rdb.Do(ctx, "cf.add", key, "scandump-item").Val())
+
+		headerReply := rdb.Do(ctx, "cf.scandump", key, "0")
+		require.NoError(t, headerReply.Err())
+		headerValues, ok := headerReply.Val().([]interface{})
+		require.True(t, ok)
+		require.Len(t, headerValues, 2)
+		require.Equal(t, int64(1), headerValues[0])
+		header, ok := headerValues[1].(string)
+		require.True(t, ok)
+		require.Len(t, header, 23)
+		require.Equal(t, uint64(1), binary.BigEndian.Uint64([]byte(header[0:8])))
+		require.Equal(t, uint16(1), binary.BigEndian.Uint16([]byte(header[16:18])))
+		require.Equal(t, byte(5), header[18])
+	})
+
+	t.Run("CF.SCANDUMP iterates over populated filter data", func(t *testing.T) {
+		key := "test_cuckoo_filter_scandump_data"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "100", "BUCKETSIZE", "5", "MAXITERATIONS", "20", "EXPANSION", "1").Err())
+		require.Equal(t, int64(1), rdb.Do(ctx, "cf.add", key, "scandump-item").Val())
+
+		iterator := int64(1)
+		var dump []byte
+		for {
+			reply := rdb.Do(ctx, "cf.scandump", key, iterator)
+			require.NoError(t, reply.Err())
+			values, ok := reply.Val().([]interface{})
+			require.True(t, ok)
+			require.Len(t, values, 2)
+			iterator, ok = values[0].(int64)
+			require.True(t, ok)
+			if iterator == 0 {
+				require.Nil(t, values[1])
+				break
+			}
+			chunk, ok := values[1].(string)
+			require.True(t, ok)
+			require.NotEmpty(t, chunk)
+			require.LessOrEqual(t, len(chunk), 16*1024*1024)
+			dump = append(dump, []byte(chunk)...)
+		}
+		require.NotEmpty(t, dump)
+		require.NotEqual(t, make([]byte, len(dump)), dump)
 	})
 }
 

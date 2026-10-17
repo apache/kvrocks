@@ -36,6 +36,7 @@ StatusOr<std::vector<std::string>> LookupHostByName(const std::string &host);
 StatusOr<int> SockConnect(const std::string &host, uint32_t port, int conn_timeout = 0, int timeout = 0);
 Status SockSetTcpNoDelay(int fd, int val);
 Status SockSetTcpKeepalive(int fd, int interval);
+Status SockSetReceiveTimeout(int fd, int timeout_ms);
 Status SockSend(int fd, const std::string &data);
 StatusOr<std::string> SockReadLine(int fd);
 Status SockSendFile(int out_fd, int in_fd, size_t size);

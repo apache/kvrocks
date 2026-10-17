@@ -194,6 +194,7 @@ struct Config {
   int sequence_gap;
   int migrate_batch_size_kb;
   int migrate_batch_rate_limit_mb;
+  int migrate_response_timeout_ms;
 
   bool redis_cursor_compatible = false;
   int redis_databases = 0;

@@ -68,8 +68,8 @@ class CuckooFilterHelper {
       return rocksdb::Status::InvalidArgument("bucket_size must be larger than 0");
     }
 
-    auto max_supported_capacity =
-        static_cast<uint64_t>(kCuckooFilterMaxSupportedBuckets * bucket_size * kCuckooFilterLoadFactor);
+    auto max_supported_capacity = static_cast<uint64_t>(
+        static_cast<long double>(kCuckooFilterMaxSupportedBuckets * bucket_size) * kCuckooFilterLoadFactor);
     if (capacity > max_supported_capacity) {
       return rocksdb::Status::InvalidArgument("capacity is too large");
     }

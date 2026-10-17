@@ -857,3 +857,23 @@ TEST_F(WALIteratorTest, NextSequence) {
   ASSERT_EQ(expected_next_sequences.size(), next_sequences.size());
   ASSERT_TRUE(std::equal(expected_next_sequences.begin(), expected_next_sequences.end(), next_sequences.begin()));
 }
+
+TEST_F(WALIteratorTest, IsBatchEnd) {
+  auto start_seq = storage_->GetDB()->GetLatestSequenceNumber();
+  uint64_t ret = 0;
+  redis::Hash hash(storage_.get(), "test_ns3");
+  hash.MSet(*ctx_, "hash-batch-end", {{"f0", "v0"}, {"f1", "v1"}, {"f2", "v2"}}, false, &ret);
+
+  engine::WALIterator iter(storage_.get());
+  size_t total_items = 0;
+  size_t batch_end_count = 0;
+  for (iter.Seek(start_seq + 1); iter.Valid(); iter.Next()) {
+    total_items++;
+    if (iter.IsBatchEnd()) {
+      batch_end_count++;
+    }
+  }
+  EXPECT_GT(total_items, 1);
+  EXPECT_EQ(batch_end_count, 1);
+}
+

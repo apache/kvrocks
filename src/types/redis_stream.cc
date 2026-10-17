@@ -23,6 +23,7 @@
 #include <rocksdb/status.h>
 
 #include <memory>
+#include <set>
 #include <utility>
 #include <vector>
 
@@ -352,7 +353,11 @@ rocksdb::Status Stream::DeletePelEntries(engine::Context &ctx, const Slice &stre
   if (!s.ok()) return s;
 
   std::map<std::string, uint64_t> consumer_acknowledges;
+  std::set<StreamEntryID> seen;
   for (const auto &id : entry_ids) {
+    if (!seen.insert(id).second) {
+      continue;
+    }
     std::string entry_key = internalPelKeyFromGroupAndEntryId(ns_key, metadata, group_name, id);
     std::string value;
     s = storage_->Get(ctx, ctx.GetReadOptions(), stream_cf_handle_, entry_key, &value);
@@ -371,7 +376,8 @@ rocksdb::Status Stream::DeletePelEntries(engine::Context &ctx, const Slice &stre
   }
   if (*acknowledged > 0) {
     StreamConsumerGroupMetadata group_metadata = decodeStreamConsumerGroupMetadataValue(get_group_value);
-    group_metadata.pending_number -= *acknowledged;
+    group_metadata.pending_number =
+        group_metadata.pending_number >= *acknowledged ? group_metadata.pending_number - *acknowledged : 0;
     std::string group_value = encodeStreamConsumerGroupMetadataValue(group_metadata);
     s = batch->Put(stream_cf_handle_, group_key, group_value);
     if (!s.ok()) return s;
@@ -385,7 +391,8 @@ rocksdb::Status Stream::DeletePelEntries(engine::Context &ctx, const Slice &stre
       }
       if (s.ok()) {
         auto consumer_metadata = decodeStreamConsumerMetadataValue(consumer_meta_original);
-        consumer_metadata.pending_number -= ack_count;
+        consumer_metadata.pending_number =
+            consumer_metadata.pending_number >= ack_count ? consumer_metadata.pending_number - ack_count : 0;
         s = batch->Put(stream_cf_handle_, consumer_meta_key, encodeStreamConsumerMetadataValue(consumer_metadata));
         if (!s.ok()) return s;
       }
@@ -437,7 +444,12 @@ rocksdb::Status Stream::ClaimPelEntries(engine::Context &ctx, const Slice &strea
   s = batch->PutLogData(log_data.Encode());
   if (!s.ok()) return s;
 
+  std::map<std::string, uint64_t> original_consumer_decrements;
+  std::set<StreamEntryID> seen;
   for (const auto &id : entry_ids) {
+    if (!seen.insert(id).second) {
+      continue;
+    }
     std::string raw_value;
     rocksdb::Status s = getEntryRawValue(ctx, ns_key, metadata, id, &raw_value);
     if (!s.ok() && !s.IsNotFound()) {
@@ -473,25 +485,14 @@ rocksdb::Status Stream::ClaimPelEntries(engine::Context &ctx, const Slice &strea
         result->entries.emplace_back(id.ToString(), std::move(values));
       }
 
-      if (pel_entry.consumer_name != "") {
-        std::string original_consumer_key =
-            internalKeyFromConsumerName(ns_key, metadata, group_name, pel_entry.consumer_name);
-        std::string get_original_consumer_value;
-        s = storage_->Get(ctx, ctx.GetReadOptions(), stream_cf_handle_, original_consumer_key,
-                          &get_original_consumer_value);
-        if (!s.ok()) {
-          return s;
-        }
-        StreamConsumerMetadata original_consumer_metadata =
-            decodeStreamConsumerMetadataValue(get_original_consumer_value);
-        original_consumer_metadata.pending_number -= 1;
-        s = batch->Put(stream_cf_handle_, original_consumer_key,
-                       encodeStreamConsumerMetadataValue(original_consumer_metadata));
-        if (!s.ok()) return s;
+      if (!pel_entry.consumer_name.empty() && pel_entry.consumer_name != consumer_name) {
+        original_consumer_decrements[pel_entry.consumer_name] += 1;
+        consumer_metadata.pending_number += 1;
+      } else if (pel_entry.consumer_name.empty()) {
+        consumer_metadata.pending_number += 1;
       }
 
       pel_entry.consumer_name = consumer_name;
-      consumer_metadata.pending_number += 1;
       if (options.with_time) {
         pel_entry.last_delivery_time_ms = options.last_delivery_time_ms;
       } else {
@@ -512,6 +513,22 @@ rocksdb::Status Stream::ClaimPelEntries(engine::Context &ctx, const Slice &strea
       s = batch->Put(stream_cf_handle_, entry_key, pel_value);
       if (!s.ok()) return s;
     }
+  }
+
+  for (const auto &[original_consumer, decrement] : original_consumer_decrements) {
+    std::string original_consumer_key = internalKeyFromConsumerName(ns_key, metadata, group_name, original_consumer);
+    std::string original_consumer_value;
+    s = storage_->Get(ctx, ctx.GetReadOptions(), stream_cf_handle_, original_consumer_key, &original_consumer_value);
+    if (!s.ok()) {
+      return s;
+    }
+    StreamConsumerMetadata original_consumer_metadata = decodeStreamConsumerMetadataValue(original_consumer_value);
+    original_consumer_metadata.pending_number = original_consumer_metadata.pending_number >= decrement
+                                                    ? original_consumer_metadata.pending_number - decrement
+                                                    : 0;
+    s = batch->Put(stream_cf_handle_, original_consumer_key,
+                   encodeStreamConsumerMetadataValue(original_consumer_metadata));
+    if (!s.ok()) return s;
   }
 
   if (options.with_last_id && options.last_delivered_id > group_metadata.last_delivered_id) {
@@ -630,14 +647,13 @@ rocksdb::Status Stream::AutoClaim(engine::Context &ctx, const Slice &stream_name
       ++total_claimed_count;
       claimed_consumer_entity_count[penl_entry.consumer_name] += 1;
       penl_entry.consumer_name = consumer_name;
-      penl_entry.last_delivery_time_ms = now_ms;
-      // Increment the delivery attempts counter unless JUSTID option provided
-      if (!options.just_id) {
-        penl_entry.last_delivery_count += 1;
-      }
-      s = batch->Put(stream_cf_handle_, iter->key(), encodeStreamPelEntryValue(penl_entry));
-      if (!s.ok()) return s;
     }
+    penl_entry.last_delivery_time_ms = now_ms;
+    if (!options.just_id) {
+      penl_entry.last_delivery_count += 1;
+    }
+    s = batch->Put(stream_cf_handle_, iter->key(), encodeStreamPelEntryValue(penl_entry));
+    if (!s.ok()) return s;
   }
 
   // A claim keeps the group total (entry moves between consumers); a deleted dangling

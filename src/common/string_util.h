@@ -74,7 +74,7 @@ std::string StringJoin(const T &con, F &&f, std::string_view sep = ", ") {
     } else {
       res += sep;
     }
-    res += std::forward<F>(f)(v);
+    res += f(v);
   }
   return res;
 }

@@ -40,7 +40,7 @@ StatusOr<std::thread> CreateThread(const char *name, F f) {
     return std::thread([name, f = std::move(f)] {
       // Block SIGTERM and SIGINT signals in this thread,
       // the signal should be handled by the main thread or a dedicated thread.
-      sigset_t signal_set;
+      sigset_t signal_set{};
       sigemptyset(&signal_set);
       sigaddset(&signal_set, SIGTERM);
       sigaddset(&signal_set, SIGINT);

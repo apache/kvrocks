@@ -69,7 +69,7 @@ FeedSlaveThread::FeedSlaveThread(Server *srv, redis::Connection *conn, rocksdb::
 
 Status FeedSlaveThread::Start() {
   auto s = util::CreateThread("feed-replica", [this] {
-    sigset_t mask, omask;
+    sigset_t mask{}, omask{};
     sigemptyset(&mask);
     sigemptyset(&omask);
     sigaddset(&mask, SIGCHLD);

@@ -1327,10 +1327,10 @@ class CommandXRead : public Commander,
       timeval tm;
       if (block_timeout_ > 1000) {
         tm.tv_sec = block_timeout_ / 1000;
-        tm.tv_usec = (block_timeout_ % 1000) * 1000;
+        tm.tv_usec = static_cast<decltype(tm.tv_usec)>((block_timeout_ % 1000) * 1000);
       } else {
         tm.tv_sec = 0;
-        tm.tv_usec = block_timeout_ * 1000;
+        tm.tv_usec = static_cast<decltype(tm.tv_usec)>(block_timeout_ * 1000);
       }
 
       evtimer_add(timer_.get(), &tm);
@@ -1650,10 +1650,10 @@ class CommandXReadGroup : public Commander,
       timeval tm;
       if (block_timeout_ > 1000) {
         tm.tv_sec = block_timeout_ / 1000;
-        tm.tv_usec = (block_timeout_ % 1000) * 1000;
+        tm.tv_usec = static_cast<decltype(tm.tv_usec)>((block_timeout_ % 1000) * 1000);
       } else {
         tm.tv_sec = 0;
-        tm.tv_usec = block_timeout_ * 1000;
+        tm.tv_usec = static_cast<decltype(tm.tv_usec)>(block_timeout_ * 1000);
       }
 
       evtimer_add(timer_.get(), &tm);

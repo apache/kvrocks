@@ -221,8 +221,12 @@ ssize_t SendFileImpl(int out_fd, int in_fd, off_t offset, size_t count) {
   return sendfile(out_fd, in_fd, &offset, count);
 
 #elif defined(__APPLE__)
-  off_t len = count;
-  if (sendfile(in_fd, out_fd, offset, &len, NULL, 0) == -1)
+  if (count > static_cast<size_t>(std::numeric_limits<off_t>::max())) {
+    errno = EINVAL;
+    return -1;
+  }
+  auto len = static_cast<off_t>(count);
+  if (sendfile(in_fd, out_fd, offset, &len, nullptr, 0) == -1)
     return -1;
   else
     return (ssize_t)len;

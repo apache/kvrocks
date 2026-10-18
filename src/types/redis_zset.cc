@@ -717,16 +717,17 @@ rocksdb::Status ZSet::InterCard(engine::Context &ctx, const std::vector<std::str
     if (!s.ok() || mscores.empty()) return s;
     mscores_list.emplace_back(std::move(mscores));
   }
-  std::sort(mscores_list.begin(), mscores_list.end(),
-            [](const MemberScores &v1, const MemberScores &v2) { return v1.size() < v2.size(); });
-
-  auto base_mscores = mscores_list[0];
+  const auto base_it =
+      std::min_element(mscores_list.cbegin(), mscores_list.cend(),
+                       [](const MemberScores &v1, const MemberScores &v2) { return v1.size() < v2.size(); });
+  const auto &base_mscores = *base_it;
   std::map<std::string, size_t> member_counters;
   uint64_t cardinality = 0;
   for (const auto &base_ms : base_mscores) {
     member_counters[base_ms.member] = 1;
-    for (size_t i = 1; i < mscores_list.size(); i++) {
-      for (const auto &ms : mscores_list[i]) {
+    for (auto it = mscores_list.cbegin(); it != mscores_list.cend(); ++it) {
+      if (it == base_it) continue;
+      for (const auto &ms : *it) {
         if (base_ms.member == ms.member) {
           member_counters[ms.member]++;
           break;

@@ -111,7 +111,7 @@ static Status InitSpdlog(const Config &config) {
       return {Status::NotOK, "cannot get valid directory in config option log-dir"};
     }
 
-    auto dir = vals[0];
+    const auto &dir = vals[0];
     auto level_str = vals.size() >= 2 ? vals[1] : "info";
     auto it = std::find_if(log_levels.begin(), log_levels.end(), [&](const auto &v) { return v.name == level_str; });
     if (it == log_levels.end()) {

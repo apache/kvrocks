@@ -24,9 +24,9 @@ namespace detail {
 
 static uint64_t WrappedSignedBitfieldPlus(uint64_t value, int64_t incr, uint8_t bits) {
   uint64_t res = value + static_cast<uint64_t>(incr);
-  if (bits < 64) {
+  if (bits > 0 && bits < 64) {
     auto mask = std::numeric_limits<uint64_t>::max() << bits;
-    if ((res & (1 << (bits - 1))) != 0) {
+    if ((res & (uint64_t{1} << (bits - 1))) != 0) {
       res |= mask;
     } else {
       res &= ~mask;
@@ -44,8 +44,8 @@ StatusOr<bool> SignedBitfieldPlus(uint64_t value, int64_t incr, uint8_t bits, Bi
   }
 
   auto max = std::numeric_limits<int64_t>::max();
-  if (bits != 64) {
-    max = (static_cast<int64_t>(1) << (bits - 1)) - 1;
+  if (bits > 0 && bits < 64) {
+    max = static_cast<int64_t>((uint64_t{1} << (bits - 1)) - 1);
   }
   int64_t min = -max - 1;
 
@@ -79,6 +79,7 @@ StatusOr<bool> SignedBitfieldPlus(uint64_t value, int64_t incr, uint8_t bits, Bi
 }
 
 static uint64_t WrappedUnsignedBitfieldPlus(uint64_t value, int64_t incr, uint8_t bits) {
+  if (bits == 0 || bits >= 64) return value + static_cast<uint64_t>(incr);
   uint64_t mask = std::numeric_limits<uint64_t>::max() << bits;
   uint64_t res = value + incr;
   res &= ~mask;
@@ -93,7 +94,10 @@ StatusOr<bool> UnsignedBitfieldPlus(uint64_t value, int64_t incr, uint8_t bits, 
     return bits_status;
   }
 
-  auto max = (static_cast<uint64_t>(1) << bits) - 1;
+  auto max = std::numeric_limits<uint64_t>::max();
+  if (bits > 0 && bits < 64) {
+    max = (uint64_t{1} << bits) - 1;
+  }
   int64_t max_incr = CastToSignedWithoutBitChanges(max - value);
   int64_t min_incr = CastToSignedWithoutBitChanges((~value) + 1);
 

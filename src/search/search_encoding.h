@@ -439,7 +439,7 @@ struct HnswVectorFieldMetadata : IndexFieldMetadata {
 };
 
 struct HnswNodeFieldMetadata {
-  uint16_t num_neighbours;
+  uint16_t num_neighbours = 0;
   std::vector<double> vector;
 
   HnswNodeFieldMetadata() = default;

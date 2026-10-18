@@ -52,19 +52,19 @@ template <typename Iter1, typename Iter2, typename F>
 void ForEachMerged(Iter1 first1, Iter1 last1, Iter2 first2, Iter2 last2, F &&f) {
   while (first1 != last1) {
     if (first2 == last2) {
-      std::for_each(first1, last1, std::forward<F>(f));
+      std::for_each(first1, last1, f);
       return;
     }
 
     if (*first2 < *first1) {
-      std::forward<F>(f)(*first2);
+      f(*first2);
       ++first2;
     } else {
-      std::forward<F>(f)(*first1);
+      f(*first1);
       ++first1;
     }
   }
-  std::for_each(first2, last2, std::forward<F>(f));
+  std::for_each(first2, last2, f);
 }
 
 struct IntervalSet {

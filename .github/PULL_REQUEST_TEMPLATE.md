@@ -33,17 +33,6 @@ discussion, or mailing list thread. Minor fixes do not require a separate issue.
 
 <!-- Link relevant issues, discussions, or mailing list threads, if any. Use "Fixes #..." only when this PR resolves the issue. -->
 
-## Testing
-
-<!-- Describe the tests/checks you ran and their results. Explain any missing coverage or checks you could not run.
-Examples, as applicable:
-- C++ unit tests: ./x.py test cpp
-- Go tests: ./x.py test go
-- Formatting: ./x.py format and ./x.py check format
-- Static analysis: ./x.py check tidy
-- Go lint: ./x.py check golangci-lint
--->
-
 ## AI assistance
 
 <!-- State "None" if no AI tools were used. Otherwise, name the LLM tools used and briefly describe
@@ -60,4 +49,3 @@ https://kvrocks.apache.org/community/contributing#guidelines-for-ai-assisted-con
 - [ ] I understand the changes and can explain the design and edge cases, and I am willing to address review feedback and maintain the contribution.
 - [ ] I have added or updated tests for the change (required for large patches).
 - [ ] I have run the applicable formatting, lint, and test checks and recorded the results above.
-- [ ] I have reviewed the contribution for incompatible licenses and undisclosed third-party code, including any AI-generated content.

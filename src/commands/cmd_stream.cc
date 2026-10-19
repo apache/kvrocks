@@ -1360,6 +1360,14 @@ class CommandXRead : public Commander,
     conn_->SetCB(bev);
     bufferevent_enable(bev, EV_READ);
 
+    // The read below runs from the wake-up callback, outside ExecuteCommands, so it
+    // must not overlap an exclusive command: while EXEC runs, the storage is in
+    // transaction mode and this read would walk (and, for XREADGROUP, write into)
+    // the shared transaction write batch from another worker thread. This mirrors
+    // BlockingCommander::OnWrite. For more context, please refer to:
+    // https://github.com/apache/kvrocks/issues/2900
+    auto concurrency = srv_->WorkConcurrencyGuard();
+
     redis::Stream stream_db(srv_->storage, conn_->GetNamespace());
 
     std::vector<StreamReadResult> results;
@@ -1674,6 +1682,14 @@ class CommandXReadGroup : public Commander,
     unblockAll();
     conn_->SetCB(bev);
     bufferevent_enable(bev, EV_READ);
+
+    // The read below runs from the wake-up callback, outside ExecuteCommands, so it
+    // must not overlap an exclusive command: while EXEC runs, the storage is in
+    // transaction mode and this read would walk (and, for XREADGROUP, write into)
+    // the shared transaction write batch from another worker thread. This mirrors
+    // BlockingCommander::OnWrite. For more context, please refer to:
+    // https://github.com/apache/kvrocks/issues/2900
+    auto concurrency = srv_->WorkConcurrencyGuard();
 
     redis::Stream stream_db(srv_->storage, conn_->GetNamespace());
 

@@ -665,6 +665,12 @@ class CommandHSetExpire : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
     ttl_ = GET_OR_RET(ParseInt<uint64_t>(args[2], 10));
+    // Reject TTLs whose expire time in milliseconds would overflow, otherwise it wraps
+    // into the past and the whole hash is expired immediately.
+    constexpr auto max_expire_ms = static_cast<uint64_t>(std::numeric_limits<int64_t>::max());
+    if (ttl_ > (max_expire_ms - util::GetTimeStampMS()) / 1000) {
+      return {Status::RedisParseErr, errInvalidExpireTime};
+    }
     if ((args.size() - 3) % 2 != 0) {
       return {Status::RedisParseErr, "Invalid number of arguments: field-value pairs must be complete"};
     }

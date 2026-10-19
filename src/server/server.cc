@@ -452,9 +452,9 @@ int Server::PublishMessage(const std::string &channel, const std::string &msg) {
 
   std::string channel_reply;
   channel_reply.append(redis::MultiLen(3));
-  channel_reply.append(redis::BulkString("message"));
-  channel_reply.append(redis::BulkString(channel));
-  channel_reply.append(redis::BulkString(msg));
+  redis::AppendBulkString(&channel_reply, "message");
+  redis::AppendBulkString(&channel_reply, channel);
+  redis::AppendBulkString(&channel_reply, msg);
   for (const auto &conn_ctx : to_publish_conn_ctxs) {
     auto s = conn_ctx.owner->Reply(conn_ctx.fd, channel_reply);
     if (s.IsOK()) {
@@ -466,10 +466,10 @@ int Server::PublishMessage(const std::string &channel, const std::string &msg) {
   for (const auto &conn_ctx : to_publish_patterns_conn_ctxs) {
     std::string pattern_reply;
     pattern_reply.append(redis::MultiLen(4));
-    pattern_reply.append(redis::BulkString("pmessage"));
-    pattern_reply.append(redis::BulkString(patterns[index++]));
-    pattern_reply.append(redis::BulkString(channel));
-    pattern_reply.append(redis::BulkString(msg));
+    redis::AppendBulkString(&pattern_reply, "pmessage");
+    redis::AppendBulkString(&pattern_reply, patterns[index++]);
+    redis::AppendBulkString(&pattern_reply, channel);
+    redis::AppendBulkString(&pattern_reply, msg);
     auto s = conn_ctx.owner->Reply(conn_ctx.fd, pattern_reply);
     if (s.IsOK()) {
       cnt++;

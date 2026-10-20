@@ -23,8 +23,8 @@
 #include <rocksdb/status.h>
 
 #include <memory>
-#include <utility>
 #include <set>
+#include <utility>
 #include <vector>
 
 #include "db_util.h"
@@ -1021,7 +1021,7 @@ rocksdb::Status Stream::DeleteEntries(engine::Context &ctx, const Slice &stream_
   std::set<StreamEntryID> seen_ids;
   for (const auto &id : ids) {
     if (!seen_ids.insert(id).second) {
-      continue; 
+      continue;
     }
 
     std::string entry_key = internalKeyFromEntryID(ns_key, metadata, id);
@@ -1075,6 +1075,7 @@ rocksdb::Status Stream::DeleteEntries(engine::Context &ctx, const Slice &stream_
     s = batch->Put(metadata_cf_handle_, ns_key, bytes);
     if (!s.ok()) return s;
   }
+  
   return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 

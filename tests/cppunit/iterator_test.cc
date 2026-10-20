@@ -876,4 +876,3 @@ TEST_F(WALIteratorTest, IsBatchEnd) {
   EXPECT_GT(total_items, 1);
   EXPECT_EQ(batch_end_count, 1);
 }
-

@@ -130,4 +130,3 @@ TEST_P(HashBatchExtractorTest, MergedBatchMultipleListCommands) {
 }
 
 INSTANTIATE_TEST_SUITE_P(SlotEncoding, HashBatchExtractorTest, ::testing::Bool());
-

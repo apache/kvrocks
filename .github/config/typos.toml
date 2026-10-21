@@ -47,3 +47,6 @@ ignore-hidden = false
 
 #Fix name (Yann Collet)
 "Collet" = "Collet"
+
+#Used in replicaof test for typo in "no" keyword
+"noo" = "noo"

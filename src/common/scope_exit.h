@@ -29,7 +29,7 @@ struct ScopeExit {
   explicit ScopeExit(F f) : enabled(true), f(std::move(f)) {}
 
   ScopeExit(const ScopeExit&) = delete;
-  ScopeExit(ScopeExit&& se) : enabled(se.enabled), f(std::move(se.f)) {}
+  ScopeExit(ScopeExit&& se) : enabled(se.enabled), f(std::move(se.f)) { se.Disable(); }
 
   ScopeExit& operator=(const ScopeExit&) = delete;
 

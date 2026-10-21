@@ -1075,7 +1075,7 @@ rocksdb::Status Stream::DeleteEntries(engine::Context &ctx, const Slice &stream_
     s = batch->Put(metadata_cf_handle_, ns_key, bytes);
     if (!s.ok()) return s;
   }
-  
+
   return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
 }
 

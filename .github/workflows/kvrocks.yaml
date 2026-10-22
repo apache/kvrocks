@@ -17,7 +17,14 @@
 
 name: CI
 
-on: [push, pull_request]
+on:
+  push:
+    branches:
+      - unstable
+      - '*.*'
+      - '*.*.*'
+      - 'action/**'
+  pull_request:
 
 # Concurrency strategy:
 #   github.workflow: distinguish this workflow from others

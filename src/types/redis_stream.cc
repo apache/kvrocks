@@ -22,6 +22,7 @@
 
 #include <rocksdb/status.h>
 
+#include <algorithm>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -31,6 +32,12 @@
 #include "time_util.h"
 
 namespace redis {
+
+// Trims removing at most this many entries use point deletes. Each range tombstone written to the
+// mutable memtable invalidates its cached tombstone fragments, which the next reader or trim then
+// rebuilds over every range tombstone in the memtable. One DeleteRange per small trim (e.g. every
+// XADD with MAXLEN) therefore costs far more than the few point deletes it replaces.
+constexpr uint64_t kTrimPointDeleteLimit = 128;
 
 const char *errSetEntryIdSmallerThanLastGenerated =
     "The ID specified in XSETID is smaller than the target stream top item";
@@ -1179,20 +1186,27 @@ rocksdb::Status Stream::range(engine::Context &ctx, const std::string &ns_key, c
     return rocksdb::Status::OK();
   }
 
-  std::string next_version_prefix_key =
-      InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode();
-  std::string prefix_key = InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode();
+  if (metadata.size == 0) {
+    return rocksdb::Status::OK();
+  }
+
+  // Trimmed and deleted entries leave tombstones below first_entry_id and above last_entry_id.
+  // Bounding the iterator to the live span keeps reads such as XRANGE - + from stepping over them.
+  std::string first_key = internalKeyFromEntryID(ns_key, metadata, metadata.first_entry_id);
+  std::string last_key = internalKeyFromEntryID(ns_key, metadata, metadata.last_entry_id);
+  std::string upper_key = last_key + '\0';
 
   rocksdb::ReadOptions read_options = ctx.DefaultScanOptions();
-  rocksdb::Slice upper_bound(next_version_prefix_key);
+  rocksdb::Slice upper_bound(upper_key);
   read_options.iterate_upper_bound = &upper_bound;
-  rocksdb::Slice lower_bound(prefix_key);
+  rocksdb::Slice lower_bound(first_key);
   read_options.iterate_lower_bound = &lower_bound;
 
+  const std::string &seek_key = options.reverse ? std::min(start_key, last_key) : std::max(start_key, first_key);
   auto iter = util::UniqueIterator(ctx, read_options, stream_cf_handle_);
-  iter->Seek(start_key);
-  if (options.reverse && (!iter->Valid() || iter->key().ToString() != start_key)) {
-    iter->SeekForPrev(start_key);
+  iter->Seek(seek_key);
+  if (options.reverse && (!iter->Valid() || iter->key() != seek_key)) {
+    iter->SeekForPrev(seek_key);
   }
 
   for (; iter->Valid() && (options.reverse ? iter->key().ToString() >= end_key : iter->key().ToString() <= end_key);
@@ -1670,6 +1684,7 @@ rocksdb::Status Stream::trim(engine::Context &ctx, const std::string &ns_key, co
   iter->Seek(start_key);
 
   std::string last_deleted;
+  std::vector<std::string> deleted_keys;
   while (iter->Valid() && metadata->size > 0) {
     if (options.strategy == StreamTrimStrategy::MaxLen && metadata->size <= options.max_len) {
       break;
@@ -1682,6 +1697,9 @@ rocksdb::Status Stream::trim(engine::Context &ctx, const std::string &ns_key, co
     delete_cnt += 1;
     metadata->size -= 1;
     last_deleted = iter->key().ToString();
+    if (delete_cnt <= kTrimPointDeleteLimit) {
+      deleted_keys.push_back(last_deleted);
+    }
 
     iter->Next();
 
@@ -1694,16 +1712,19 @@ rocksdb::Status Stream::trim(engine::Context &ctx, const std::string &ns_key, co
     }
   }
 
-  // Remove the counted run with one range tombstone rather than the per-entry Delete() above:
-  // the write batch stays O(1) instead of O(entries removed), and readers skip the span via the
-  // range-del aggregator instead of stepping over (and re-scanning) N point tombstones. The scan
-  // stopped on the first surviving entry, so its key is the exclusive upper bound; a full trim
-  // uses the version upper bound. Group/consumer/PEL subkeys sort above entries, so either bound
-  // keeps them outside the deleted range.
-  if (delete_cnt > 0) {
+  // Large trims remove the counted run with one range tombstone so the write batch stays O(1).
+  // The scan stopped on the first surviving entry, so its key is the exclusive upper bound; a full
+  // trim uses the version upper bound. Group/consumer/PEL subkeys sort above entries, so either
+  // bound keeps them outside the deleted range.
+  if (delete_cnt > kTrimPointDeleteLimit) {
     std::string range_end = iter->Valid() ? iter->key().ToString() : next_version_prefix_key;
     auto s = batch->DeleteRange(stream_cf_handle_, start_key, range_end);
     if (!s.ok()) return s;
+  } else {
+    for (const auto &key : deleted_keys) {
+      auto s = batch->Delete(stream_cf_handle_, key);
+      if (!s.ok()) return s;
+    }
   }
 
   if (metadata->size == 0) {

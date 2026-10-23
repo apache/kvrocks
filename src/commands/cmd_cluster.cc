@@ -62,7 +62,29 @@ class CommandCluster : public Commander {
 
     if (subcommand_ == "replicas" && args_.size() == 3) return Status::OK();
 
-    return {Status::RedisParseErr, "CLUSTER command, CLUSTER INFO|NODES|SLOTS|KEYSLOT|RESET|REPLICAS"};
+    // CLUSTER FAILOVER [FORCE|TAKEOVER]
+    if (subcommand_ == "failover") {
+      if (args_.size() == 2) {
+        // No flag specified, default to TAKEOVER (operator-driven with unreachable master)
+        takeover_ = true;
+        return Status::OK();
+      }
+      if (args_.size() == 3) {
+        auto flag = util::ToLower(args_[2]);
+        if (flag == "takeover") {
+          takeover_ = true;
+          return Status::OK();
+        }
+        if (flag == "force") {
+          takeover_ = false;
+          return Status::OK();
+        }
+        return {Status::RedisParseErr, errInvalidSyntax};
+      }
+      return {Status::RedisParseErr, errWrongNumOfArguments};
+    }
+
+    return {Status::RedisParseErr, "CLUSTER command, CLUSTER INFO|NODES|SLOTS|KEYSLOT|RESET|REPLICAS|FAILOVER"};
   }
 
   Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
@@ -131,6 +153,20 @@ class CommandCluster : public Commander {
       } else {
         return s;
       }
+    } else if (subcommand_ == "failover") {
+      Status s = srv->cluster->Failover(takeover_);
+      if (s.IsOK()) {
+        // Persist cluster nodes info if persistence is enabled
+        if (srv->GetConfig()->persist_cluster_nodes_enabled) {
+          auto persist_s = srv->cluster->DumpClusterNodes(srv->GetConfig()->NodesFilePath());
+          if (!persist_s.IsOK()) {
+            WARN("CLUSTER FAILOVER completed but failed to persist nodes info: {}", persist_s.Msg());
+          }
+        }
+        *output = redis::RESP_OK;
+      } else {
+        return s;
+      }
     } else {
       return {Status::RedisExecErr, "Invalid cluster command options"};
     }
@@ -141,6 +177,7 @@ class CommandCluster : public Commander {
   std::string subcommand_;
   std::vector<SlotRange> slot_ranges_;
   ImportStatus state_ = kImportNone;
+  bool takeover_ = true;
 };
 
 class CommandClusterX : public Commander {

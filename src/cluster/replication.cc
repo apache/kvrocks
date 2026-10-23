@@ -55,6 +55,8 @@
 #include <event2/bufferevent_ssl.h>
 #include <openssl/err.h>
 #include <openssl/ssl.h>
+
+#include "server/tls_util.h"
 #endif
 
 FeedSlaveThread::FeedSlaveThread(Server *srv, redis::Connection *conn, rocksdb::SequenceNumber next_repl_seq)
@@ -375,6 +377,12 @@ void ReplicationThread::CallbacksStateMachine::Start() {
       ssl = SSL_new(repl_->srv_->ssl_ctx.get());
       if (!ssl) {
         ERROR("Failed to construct SSL structure for new connection: {}", fmt::streamed(SSLErrors{}));
+        evutil_closesocket(*cfd);
+        return;
+      }
+      if (auto s = SetTLSServerName(ssl, repl_->host_); !s.IsOK()) {
+        ERROR("[replication] {}", s.Msg());
+        SSL_free(ssl);
         evutil_closesocket(*cfd);
         return;
       }
@@ -946,6 +954,14 @@ Status ReplicationThread::parallelFetchFile(const std::string &dir,
 #ifdef ENABLE_OPENSSL
           if (this->srv_->GetConfig()->tls_replication) {
             ssl = SSL_new(this->srv_->ssl_ctx.get());
+            if (!ssl) {
+              return {Status::NotOK, fmt::format("Failed to construct SSL structure for new connection: {}",
+                                                 fmt::streamed(SSLErrors{}))};
+            }
+            if (auto s = SetTLSServerName(ssl, this->host_); !s.IsOK()) {
+              SSL_free(ssl);
+              return s;
+            }
           }
           auto exit = MakeScopeExit([ssl] { SSL_free(ssl); });
 #endif

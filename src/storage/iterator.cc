@@ -174,6 +174,7 @@ rocksdb::Status WALBatchExtractor::PutCF(uint32_t column_family_id, const Slice 
     return rocksdb::Status::OK();
   }
   items_.emplace_back(WALItem::Type::kTypePut, column_family_id, key.ToString(), value.ToString());
+  has_mutation_ = true;
   return rocksdb::Status::OK();
 }
 
@@ -183,6 +184,7 @@ rocksdb::Status WALBatchExtractor::DeleteCF(uint32_t column_family_id, const roc
     return rocksdb::Status::OK();
   }
   items_.emplace_back(WALItem::Type::kTypeDelete, column_family_id, key.ToString(), std::string{});
+  has_mutation_ = true;
   return rocksdb::Status::OK();
 }
 
@@ -200,6 +202,7 @@ rocksdb::Status WALBatchExtractor::DeleteRangeCF(uint32_t column_family_id, cons
     }
   }
   items_.emplace_back(WALItem::Type::kTypeDeleteRange, column_family_id, begin_key.ToString(), end_key.ToString());
+  has_mutation_ = true;
   return rocksdb::Status::OK();
 }
 
@@ -207,11 +210,16 @@ void WALBatchExtractor::LogData(const rocksdb::Slice &blob) {
   items_.emplace_back(WALItem::Type::kTypeLogData, 0, blob.ToString(), std::string{});
 };
 
-void WALBatchExtractor::Clear() { items_.clear(); }
+void WALBatchExtractor::Clear() {
+  items_.clear();
+  has_mutation_ = false;
+}
 
 WALBatchExtractor::Iter WALBatchExtractor::GetIter() { return Iter(&items_); }
 
 bool WALBatchExtractor::Iter::Valid() { return items_ && cur_ < items_->size(); }
+
+bool WALBatchExtractor::Iter::IsLast() const { return items_ && cur_ + 1 == items_->size(); }
 
 void WALBatchExtractor::Iter::Next() { cur_++; }
 
@@ -282,6 +290,10 @@ WALItem WALIterator::Item() {
   }
   return {};
 }
+
+bool WALIterator::IsLastItemInBatch() const { return batch_iter_ && batch_iter_->IsLast(); }
+
+bool WALIterator::HasMutationInBatch() const { return extractor_.HasMutation(); }
 
 rocksdb::SequenceNumber WALIterator::NextSequenceNumber() const { return next_batch_seq_; }
 

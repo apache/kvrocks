@@ -39,10 +39,14 @@ import (
 type BITOP int32
 
 const (
-	AND BITOP = 0
-	OR  BITOP = 1
-	XOR BITOP = 2
-	NOT BITOP = 3
+	AND   BITOP = 0
+	OR    BITOP = 1
+	XOR   BITOP = 2
+	NOT   BITOP = 3
+	DIFF  BITOP = 4
+	DIFF1 BITOP = 5
+	ANDOR BITOP = 6
+	ONE   BITOP = 7
 )
 
 func Set2SetBit(t *testing.T, rdb *redis.Client, ctx context.Context, key string, bs []byte) {
@@ -91,22 +95,69 @@ func SimulateBitOp(op BITOP, values ...[]byte) string {
 			} else {
 				x = '0'
 			}
-		}
-		for j := 1; j < len(binaryArray); j++ {
-			left := int(x - '0')
-			right := int(binaryArray[j][i] - '0')
-			switch op {
-			case AND:
-				left = left & right
-			case XOR:
-				left = left ^ right
-			case OR:
-				left = left | right
+		} else if op == DIFF {
+			// bits in X but not in any Y
+			for j := 1; j < len(binaryArray); j++ {
+				if binaryArray[j][i] == '1' {
+					x = '0'
+				}
 			}
-			if left == 0 {
-				x = '0'
-			} else {
+		} else if op == DIFF1 {
+			// bits in any Y but not in X
+			orRest := byte('0')
+			for j := 1; j < len(binaryArray); j++ {
+				if binaryArray[j][i] == '1' {
+					orRest = '1'
+				}
+			}
+			if orRest == '1' && x == '0' {
 				x = '1'
+			} else {
+				x = '0'
+			}
+		} else if op == ANDOR {
+			// bits in X AND at least one Y
+			orRest := byte('0')
+			for j := 1; j < len(binaryArray); j++ {
+				if binaryArray[j][i] == '1' {
+					orRest = '1'
+				}
+			}
+			if x == '1' && orRest == '1' {
+				x = '1'
+			} else {
+				x = '0'
+			}
+		} else if op == ONE {
+			// bits set in exactly one key
+			count := 0
+			for j := 0; j < len(binaryArray); j++ {
+				if binaryArray[j][i] == '1' {
+					count++
+				}
+			}
+			if count == 1 {
+				x = '1'
+			} else {
+				x = '0'
+			}
+		} else {
+			for j := 1; j < len(binaryArray); j++ {
+				left := int(x - '0')
+				right := int(binaryArray[j][i] - '0')
+				switch op {
+				case AND:
+					left = left & right
+				case XOR:
+					left = left ^ right
+				case OR:
+					left = left | right
+				}
+				if left == 0 {
+					x = '0'
+				} else {
+					x = '1'
+				}
 			}
 		}
 		binaryResult = append(binaryResult, x)
@@ -411,6 +462,170 @@ func TestBitmap(t *testing.T) {
 		a, b, x := p+"a", p+"b", p+"x"
 		Set2SetBit(t, rdb, ctx, a, []byte("\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"))
 		require.EqualValues(t, 32, rdb.BitOpOr(ctx, x, a, b).Val())
+	})
+
+	t.Run("BITOP DIFF basic", func(t *testing.T) {
+		require.NoError(t, rdb.FlushDB(ctx).Err())
+		// X=0xff, Y=0x0f -> DIFF = 0xf0 (bits in X not in Y)
+		Set2SetBit(t, rdb, ctx, "x", []byte("\xff"))
+		Set2SetBit(t, rdb, ctx, "y", []byte("\x0f"))
+		require.NoError(t, rdb.Do(ctx, "BITOP", "DIFF", "dest", "x", "y").Err())
+		require.EqualValues(t, SimulateBitOp(DIFF, []byte("\xff"), []byte("\x0f")), rdb.Get(ctx, "dest").Val())
+	})
+
+	t.Run("BITOP DIFF with multiple Y keys", func(t *testing.T) {
+		require.NoError(t, rdb.FlushDB(ctx).Err())
+		Set2SetBit(t, rdb, ctx, "x", []byte("\xff"))
+		Set2SetBit(t, rdb, ctx, "y1", []byte("\x0f"))
+		Set2SetBit(t, rdb, ctx, "y2", []byte("\xf0"))
+		require.NoError(t, rdb.Do(ctx, "BITOP", "DIFF", "dest", "x", "y1", "y2").Err())
+		require.EqualValues(t, SimulateBitOp(DIFF, []byte("\xff"), []byte("\x0f"), []byte("\xf0")), rdb.Get(ctx, "dest").Val())
+	})
+
+	t.Run("BITOP DIFF missing key treated as zero", func(t *testing.T) {
+		require.NoError(t, rdb.FlushDB(ctx).Err())
+		Set2SetBit(t, rdb, ctx, "x", []byte("\xaa"))
+		require.NoError(t, rdb.Do(ctx, "BITOP", "DIFF", "dest", "x", "no-such-key").Err())
+		require.EqualValues(t, SimulateBitOp(DIFF, []byte("\xaa"), []byte("\x00")), rdb.Get(ctx, "dest").Val())
+	})
+
+	t.Run("BITOP DIFF1 basic", func(t *testing.T) {
+		require.NoError(t, rdb.FlushDB(ctx).Err())
+		// X=0xff, Y=0x0f -> DIFF1 = 0x00 (bits in Y not in X, but X has all bits set)
+		Set2SetBit(t, rdb, ctx, "x", []byte("\xff"))
+		Set2SetBit(t, rdb, ctx, "y", []byte("\x0f"))
+		require.NoError(t, rdb.Do(ctx, "BITOP", "DIFF1", "dest", "x", "y").Err())
+		require.EqualValues(t, SimulateBitOp(DIFF1, []byte("\xff"), []byte("\x0f")), rdb.Get(ctx, "dest").Val())
+	})
+
+	t.Run("BITOP DIFF1 with partial overlap", func(t *testing.T) {
+		require.NoError(t, rdb.FlushDB(ctx).Err())
+		// X=0x0f, Y=0xff -> DIFF1 = 0xf0 (bits in Y not in X)
+		Set2SetBit(t, rdb, ctx, "x", []byte("\x0f"))
+		Set2SetBit(t, rdb, ctx, "y", []byte("\xff"))
+		require.NoError(t, rdb.Do(ctx, "BITOP", "DIFF1", "dest", "x", "y").Err())
+		require.EqualValues(t, SimulateBitOp(DIFF1, []byte("\x0f"), []byte("\xff")), rdb.Get(ctx, "dest").Val())
+	})
+
+	t.Run("BITOP ANDOR basic", func(t *testing.T) {
+		require.NoError(t, rdb.FlushDB(ctx).Err())
+		// X=0xff, Y=0x0f -> ANDOR = 0x0f (bits in X AND at least one Y)
+		Set2SetBit(t, rdb, ctx, "x", []byte("\xff"))
+		Set2SetBit(t, rdb, ctx, "y", []byte("\x0f"))
+		require.NoError(t, rdb.Do(ctx, "BITOP", "ANDOR", "dest", "x", "y").Err())
+		require.EqualValues(t, SimulateBitOp(ANDOR, []byte("\xff"), []byte("\x0f")), rdb.Get(ctx, "dest").Val())
+	})
+
+	t.Run("BITOP ANDOR with multiple Y keys", func(t *testing.T) {
+		require.NoError(t, rdb.FlushDB(ctx).Err())
+		Set2SetBit(t, rdb, ctx, "x", []byte("\xff"))
+		Set2SetBit(t, rdb, ctx, "y1", []byte("\x0f"))
+		Set2SetBit(t, rdb, ctx, "y2", []byte("\xf0"))
+		require.NoError(t, rdb.Do(ctx, "BITOP", "ANDOR", "dest", "x", "y1", "y2").Err())
+		require.EqualValues(t, SimulateBitOp(ANDOR, []byte("\xff"), []byte("\x0f"), []byte("\xf0")), rdb.Get(ctx, "dest").Val())
+	})
+
+	// Redis semantics: when X (first source key) does not exist, it is treated as
+	// a stream of zero bytes. So DIFF(nosuch, y) = 0 & ~y = 0, not y.
+	t.Run("BITOP DIFF missing first key X treated as zero (Redis semantics)", func(t *testing.T) {
+		require.NoError(t, rdb.FlushDB(ctx).Err())
+		Set2SetBit(t, rdb, ctx, "y", []byte("\x0f"))
+		require.NoError(t, rdb.Do(ctx, "BITOP", "DIFF", "dest", "nosuch", "y").Err())
+		// X=0x00, Y=0x0f -> DIFF = 0x00 & ~0x0f = 0x00
+		require.EqualValues(t, SimulateBitOp(DIFF, []byte("\x00"), []byte("\x0f")), rdb.Get(ctx, "dest").Val())
+	})
+
+	t.Run("BITOP DIFF1 missing first key X treated as zero (Redis semantics)", func(t *testing.T) {
+		require.NoError(t, rdb.FlushDB(ctx).Err())
+		Set2SetBit(t, rdb, ctx, "y", []byte("\x0f"))
+		require.NoError(t, rdb.Do(ctx, "BITOP", "DIFF1", "dest", "nosuch", "y").Err())
+		// X=0x00, Y=0x0f -> DIFF1 = 0x0f & ~0x00 = 0x0f
+		require.EqualValues(t, SimulateBitOp(DIFF1, []byte("\x00"), []byte("\x0f")), rdb.Get(ctx, "dest").Val())
+	})
+
+	t.Run("BITOP ANDOR missing first key X treated as zero (Redis semantics)", func(t *testing.T) {
+		require.NoError(t, rdb.FlushDB(ctx).Err())
+		Set2SetBit(t, rdb, ctx, "y", []byte("\x0f"))
+		require.NoError(t, rdb.Do(ctx, "BITOP", "ANDOR", "dest", "nosuch", "y").Err())
+		// X=0x00, Y=0x0f -> ANDOR = 0x00 & 0x0f = 0x00
+		require.EqualValues(t, SimulateBitOp(ANDOR, []byte("\x00"), []byte("\x0f")), rdb.Get(ctx, "dest").Val())
+	})
+
+	// Redis requires at least 2 source keys for DIFF, DIFF1, ANDOR (X + at least one Y).
+	// Calling with only X and no Y keys should return an error.
+	t.Run("BITOP DIFF requires at least one Y key (Redis semantics)", func(t *testing.T) {
+		require.NoError(t, rdb.FlushDB(ctx).Err())
+		Set2SetBit(t, rdb, ctx, "x", []byte("\xaa"))
+		util.ErrorRegexp(t, rdb.Do(ctx, "BITOP", "DIFF", "dest", "x").Err(), ".*")
+	})
+
+	t.Run("BITOP DIFF1 requires at least one Y key (Redis semantics)", func(t *testing.T) {
+		require.NoError(t, rdb.FlushDB(ctx).Err())
+		Set2SetBit(t, rdb, ctx, "x", []byte("\xaa"))
+		util.ErrorRegexp(t, rdb.Do(ctx, "BITOP", "DIFF1", "dest", "x").Err(), ".*")
+	})
+
+	t.Run("BITOP ANDOR requires at least one Y key (Redis semantics)", func(t *testing.T) {
+		require.NoError(t, rdb.FlushDB(ctx).Err())
+		Set2SetBit(t, rdb, ctx, "x", []byte("\xaa"))
+		util.ErrorRegexp(t, rdb.Do(ctx, "BITOP", "ANDOR", "dest", "x").Err(), ".*")
+	})
+
+	t.Run("BITOP ONE basic", func(t *testing.T) {
+		require.NoError(t, rdb.FlushDB(ctx).Err())
+		// A=0xff, B=0x0f -> ONE = 0xf0 (bits set in exactly one key)
+		Set2SetBit(t, rdb, ctx, "a", []byte("\xff"))
+		Set2SetBit(t, rdb, ctx, "b", []byte("\x0f"))
+		require.NoError(t, rdb.Do(ctx, "BITOP", "ONE", "dest", "a", "b").Err())
+		require.EqualValues(t, SimulateBitOp(ONE, []byte("\xff"), []byte("\x0f")), rdb.Get(ctx, "dest").Val())
+	})
+
+	t.Run("BITOP ONE with three keys", func(t *testing.T) {
+		require.NoError(t, rdb.FlushDB(ctx).Err())
+		Set2SetBit(t, rdb, ctx, "a", []byte("\xff"))
+		Set2SetBit(t, rdb, ctx, "b", []byte("\x0f"))
+		Set2SetBit(t, rdb, ctx, "c", []byte("\xf0"))
+		require.NoError(t, rdb.Do(ctx, "BITOP", "ONE", "dest", "a", "b", "c").Err())
+		require.EqualValues(t, SimulateBitOp(ONE, []byte("\xff"), []byte("\x0f"), []byte("\xf0")), rdb.Get(ctx, "dest").Val())
+	})
+
+	t.Run("BITOP ONE single key returns same key", func(t *testing.T) {
+		require.NoError(t, rdb.FlushDB(ctx).Err())
+		Set2SetBit(t, rdb, ctx, "a", []byte("\xaa"))
+		require.NoError(t, rdb.Do(ctx, "BITOP", "ONE", "dest", "a").Err())
+		require.EqualValues(t, SimulateBitOp(ONE, []byte("\xaa")), rdb.Get(ctx, "dest").Val())
+	})
+
+	t.Run("BITOP new ops fuzzing", func(t *testing.T) {
+		require.NoError(t, rdb.FlushDB(ctx).Err())
+		for i := 0; i < 10; i++ {
+			numKeys := 2 + i%3
+			vec := make([][]byte, numKeys)
+			veckeys := make([]string, numKeys)
+			for k := 0; k < numKeys; k++ {
+				vec[k] = []byte(util.RandStringWithSeed(1, 10, util.Binary, int64(i*100+k)))
+				veckeys[k] = fmt.Sprintf("fuzz-%d-%d", i, k)
+				Set2SetBit(t, rdb, ctx, veckeys[k], vec[k])
+			}
+			doArgs := func(op string) []interface{} {
+				args := []interface{}{"BITOP", op, "target"}
+				for _, k := range veckeys {
+					args = append(args, k)
+				}
+				return args
+			}
+			require.NoError(t, rdb.Do(ctx, doArgs("DIFF")...).Err())
+			require.EqualValues(t, SimulateBitOp(DIFF, vec...), rdb.Get(ctx, "target").Val())
+
+			require.NoError(t, rdb.Do(ctx, doArgs("DIFF1")...).Err())
+			require.EqualValues(t, SimulateBitOp(DIFF1, vec...), rdb.Get(ctx, "target").Val())
+
+			require.NoError(t, rdb.Do(ctx, doArgs("ANDOR")...).Err())
+			require.EqualValues(t, SimulateBitOp(ANDOR, vec...), rdb.Get(ctx, "target").Val())
+
+			require.NoError(t, rdb.Do(ctx, doArgs("ONE")...).Err())
+			require.EqualValues(t, SimulateBitOp(ONE, vec...), rdb.Get(ctx, "target").Val())
+		}
 	})
 
 	t.Run("BITFIELD and BITFIELD_RO on string type", func(t *testing.T) {

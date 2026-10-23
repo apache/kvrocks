@@ -23,6 +23,7 @@
 
 #include <mutex>
 #include <nonstd/span.hpp>
+#include <optional>
 #include <shared_mutex>
 
 #include "commands/commander.h"
@@ -151,7 +152,7 @@ void Connection::Detach() { owner_->DetachConnection(this); }
 
 void Connection::OnRead([[maybe_unused]] struct bufferevent *bev) {
   is_running_ = true;
-  MakeScopeExit([this] { is_running_ = false; });
+  auto reset_running = MakeScopeExit([this] { is_running_ = false; });
 
   SetLastInteraction();
   auto s = req_.Tokenize(Input());
@@ -164,6 +165,8 @@ void Connection::OnRead([[maybe_unused]] struct bufferevent *bev) {
 
   ExecuteCommands(req_.GetCommands());
   if (IsFlagEnabled(kCloseAsync)) {
+    // Close() deletes this, so the guard must not access it afterward.
+    reset_running.Disable();
     Close();
   }
 }
@@ -634,6 +637,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
     }
 
     SetLastCmd(cmd_name);
+    std::vector<KeyspaceEvent> keyspace_events;
     {
       std::optional<MultiLockGuard> guard;
       if (cmd_flags & kCmdWrite) {
@@ -652,6 +656,9 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
         guard.emplace(srv_->storage->GetLockManager(), lock_keys);
       }
       engine::Context ctx(srv_->storage);
+      if (cmd_flags & kCmdWrite) {
+        ctx.EnableKeyspaceEventCollection(config->notify_keyspace_event_channels, config->notify_keyspace_event_types);
+      }
 
       std::vector<GlobalIndexer::RecordResult> index_records;
       if (!srv_->index_mgr.index_map.empty() && IsCmdForIndexing(cmd_flags, attributes->category) &&
@@ -679,6 +686,13 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
           WARN("[connection] index updating failed for key: {}", record.key);
         }
       }
+      if (ctx.HasKeyspaceEvents()) {
+        keyspace_events = ctx.TakeKeyspaceEvents();
+      }
+    }
+    // Nested Lua and function commands reuse their outer context. Publish only after index updates and key unlocking.
+    if (!keyspace_events.empty()) {
+      queueOrPublishKeyspaceEvents(std::move(keyspace_events));
     }
 
     if (!(cmd_flags & redis::kCmdSkipMonitor)) {
@@ -709,10 +723,40 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
   }
 }
 
+void Connection::queueOrPublishKeyspaceEvents(std::vector<KeyspaceEvent> &&events) {
+  if (events.empty()) return;
+
+  if (in_exec_) {
+    // Queue transaction events until commit.
+    for (auto &event : events) {
+      pending_keyspace_events_.emplace_back(std::move(event));
+    }
+    return;
+  }
+
+  for (const auto &event : events) {
+    srv_->NotifyKeyspaceEvent(event);
+  }
+}
+
+void Connection::FlushKeyspaceEvents() {
+  for (const auto &e : pending_keyspace_events_) {
+    srv_->NotifyKeyspaceEvent(e);
+  }
+  pending_keyspace_events_.clear();
+}
+
 void Connection::ResetMultiExec() {
   in_exec_ = false;
   multi_error_ = false;
   multi_cmds_.clear();
+  // Drop events from failed or aborted transactions.
+  pending_keyspace_events_.clear();
+  // Retain capacity for typical transactions, but request releasing unusually large buffers.
+  constexpr std::size_t kMaxRetainedKeyspaceEvents = 1024;
+  if (pending_keyspace_events_.capacity() > kMaxRetainedKeyspaceEvents) {
+    pending_keyspace_events_.shrink_to_fit();
+  }
   DisableFlag(Connection::kMultiExec);
 }
 

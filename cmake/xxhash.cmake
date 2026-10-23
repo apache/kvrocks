@@ -20,8 +20,8 @@ include_guard()
 include(cmake/utils.cmake)
 
 FetchContent_DeclareGitHubWithMirror(xxhash
-  Cyan4973/xxHash v0.8.3
-  MD5=19b919a066c28a9121dd9767e01d0c71
+  Cyan4973/xxHash v0.8.4
+  MD5=e5a27d0c97839ea27950c4530b574b8d
 )
 
 FetchContent_GetProperties(xxhash)
@@ -31,5 +31,5 @@ if(NOT xxhash_POPULATED)
   set(BUILD_SHARED_LIBS OFF)
   set(XXHASH_BUILD_XXHSUM OFF)
 
-  add_subdirectory(${xxhash_SOURCE_DIR}/cmake_unofficial ${xxhash_BINARY_DIR} EXCLUDE_FROM_ALL)
+  add_subdirectory(${xxhash_SOURCE_DIR}/build/cmake ${xxhash_BINARY_DIR} EXCLUDE_FROM_ALL)
 endif()

@@ -1118,6 +1118,44 @@ func TestSlotMigrateDataType(t *testing.T) {
 		require.EqualValues(t, []string{"element985", "element986", "element987", "element988", "element989"},
 			rdb1.LRange(ctx, srcListName, -5, -1).Val())
 	})
+
+	t.Run("MIGRATE - XTRIM via parsing WAL logs", func(t *testing.T) {
+		testSlot += 1
+
+		streamName := fmt.Sprintf("stream_{%s}", util.SlotTable[testSlot])
+		fillerListName := fmt.Sprintf("list_filler_{%s}", util.SlotTable[testSlot])
+		require.NoError(t, rdb0.Del(ctx, streamName).Err())
+		require.NoError(t, rdb0.Del(ctx, fillerListName).Err())
+
+		// Seed the stream so its entries are part of the migration snapshot.
+		for i := 1; i <= 10; i++ {
+			require.NoError(t, rdb0.XAdd(ctx, &redis.XAddArgs{
+				Stream: streamName, ID: fmt.Sprintf("%d-0", i), Values: map[string]interface{}{"f": "v"},
+			}).Err())
+		}
+
+		// Slow down the migration so the XTRIM below is synced via the WAL, where the trim is a
+		// single range tombstone. If that range delete were dropped (as it was before), the
+		// destination would keep the trimmed entries while its metadata claimed they were gone.
+		require.NoError(t, rdb0.ConfigSet(ctx, "migrate-batch-size-kb", "1").Err())
+		require.NoError(t, rdb0.ConfigSet(ctx, "migrate-batch-rate-limit-mb", "1").Err())
+		fillerValue := strings.Repeat("a", 512)
+		for i := 0; i < 10000; i++ {
+			require.NoError(t, rdb0.LPush(ctx, fillerListName, fillerValue).Err())
+		}
+
+		require.Equal(t, "OK", rdb0.Do(ctx, "clusterx", "migrate", testSlot, id1).Val())
+		requireMigrateState(t, rdb0, testSlot, SlotMigrationStateStarted)
+
+		require.NoError(t, rdb0.XTrimMinID(ctx, streamName, "6-0").Err())
+		waitForMigrateStateInDuration(t, rdb0, testSlot, SlotMigrationStateSuccess, time.Minute)
+
+		require.EqualValues(t, 5, rdb1.XLen(ctx, streamName).Val())
+		items := rdb1.XRange(ctx, streamName, "-", "+").Val()
+		require.Len(t, items, 5)
+		require.EqualValues(t, "6-0", items[0].ID)
+		require.EqualValues(t, "10-0", items[4].ID)
+	})
 }
 
 func TestSlotMigrateDestNotSupportApplyBatch(t *testing.T) {

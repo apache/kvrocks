@@ -20,25 +20,58 @@
 
 #include "cuckoo_filter_sub_filter.h"
 
+#include <vector>
+
 #include "cuckoo_filter.h"
-#include "types/cuckoo_filter_page.h"
+#include "cuckoo_filter_page.h"
 
 namespace redis {
 
-CuckooSubFilter::CuckooSubFilter(CuckooPageCache *pages, uint16_t filter_index, uint32_t num_buckets)
-    : bucket_size_(pages->GetBucketSize()), filter_index_(filter_index), num_buckets_(num_buckets), pages_(pages) {}
+CuckooSubFilter::CuckooSubFilter(CuckooPageCache &pages, uint16_t filter_index, uint32_t num_buckets)
+    : bucket_size_(pages.BucketSize()), filter_index_(filter_index), num_buckets_(num_buckets), pages_(pages) {}
 
 rocksdb::Status CuckooSubFilter::TryInsert(uint64_t hash, uint8_t fingerprint, bool *inserted) {
   *inserted = false;
   uint32_t bucket1_idx = getPrimaryBucketIndex(hash);
   uint32_t bucket2_idx = getSecondaryBucketIndex(hash, fingerprint);
-  auto s = pages_->PrefetchBuckets(filter_index_, num_buckets_, bucket1_idx, bucket2_idx);
+  auto s = pages_.PrefetchBuckets(filter_index_, num_buckets_, bucket1_idx, bucket2_idx);
   if (!s.ok()) return s;
 
-  s = pages_->TryInsertInBucket(filter_index_, num_buckets_, bucket1_idx, fingerprint, inserted);
+  s = pages_.TryInsertInBucket(filter_index_, num_buckets_, bucket1_idx, fingerprint, inserted);
   if (!s.ok() || *inserted || bucket1_idx == bucket2_idx) return s;
 
-  return pages_->TryInsertInBucket(filter_index_, num_buckets_, bucket2_idx, fingerprint, inserted);
+  return pages_.TryInsertInBucket(filter_index_, num_buckets_, bucket2_idx, fingerprint, inserted);
+}
+
+rocksdb::Status CuckooSubFilter::Contains(uint64_t hash, uint8_t fingerprint, bool *exists) {
+  *exists = false;
+  uint32_t bucket1_idx = getPrimaryBucketIndex(hash);
+  uint32_t bucket2_idx = getSecondaryBucketIndex(hash, fingerprint);
+  auto s = pages_.PrefetchBuckets(filter_index_, num_buckets_, bucket1_idx, bucket2_idx);
+  if (!s.ok()) return s;
+
+  uint8_t slot = 0;
+  for (size_t i = 0; i < bucket_size_; ++i) {
+    s = pages_.GetBucketSlot(filter_index_, num_buckets_, bucket1_idx, static_cast<uint32_t>(i), &slot);
+    if (!s.ok()) return s;
+    if (slot == fingerprint) {
+      *exists = true;
+      return rocksdb::Status::OK();
+    }
+  }
+
+  if (bucket1_idx == bucket2_idx) return rocksdb::Status::OK();
+
+  for (size_t i = 0; i < bucket_size_; ++i) {
+    s = pages_.GetBucketSlot(filter_index_, num_buckets_, bucket2_idx, static_cast<uint32_t>(i), &slot);
+    if (!s.ok()) return s;
+    if (slot == fingerprint) {
+      *exists = true;
+      return rocksdb::Status::OK();
+    }
+  }
+
+  return rocksdb::Status::OK();
 }
 
 rocksdb::Status CuckooSubFilter::TryKickOutInsert(uint64_t hash, uint8_t fingerprint, uint16_t max_iterations,
@@ -48,20 +81,29 @@ rocksdb::Status CuckooSubFilter::TryKickOutInsert(uint64_t hash, uint8_t fingerp
   uint32_t current_bucket_idx = getPrimaryBucketIndex(hash);
   uint8_t current_fp = fingerprint;
   uint32_t victim_slot = 0;
+  std::vector<CuckooPageCache::SlotMutation> mutations;
+  mutations.reserve(max_iterations);
+
+  auto rollback = [&]() {
+    for (auto it = mutations.rbegin(); it != mutations.rend(); ++it) {
+      auto s = pages_.RestoreBucketSlot(*it);
+      if (!s.ok()) return s;
+    }
+    return rocksdb::Status::OK();
+  };
+
+  auto rollback_and_return = [&](const rocksdb::Status &status) {
+    auto rollback_status = rollback();
+    return rollback_status.ok() ? status : rollback_status;
+  };
 
   for (uint16_t iteration = 0; iteration < max_iterations; ++iteration) {
-    uint8_t old_fp = 0;
-    auto s = pages_->GetBucketSlot(filter_index_, num_buckets_, current_bucket_idx, victim_slot, &old_fp);
-    if (!s.ok()) {
-      pages_->DiscardCachedPages();
-      return s;
-    }
-    s = pages_->SetBucketSlot(filter_index_, num_buckets_, current_bucket_idx, victim_slot, current_fp);
-    if (!s.ok()) {
-      pages_->DiscardCachedPages();
-      return s;
-    }
-    current_fp = old_fp;
+    CuckooPageCache::SlotMutation mutation;
+    auto s = pages_.SetBucketSlotWithUndo(filter_index_, num_buckets_, current_bucket_idx, victim_slot, current_fp,
+                                          &mutation);
+    if (!s.ok()) return rollback_and_return(s);
+    current_fp = mutation.OldFingerprint();
+    mutations.push_back(mutation);
 
     if (current_fp == 0) {
       *inserted = true;
@@ -71,11 +113,8 @@ rocksdb::Status CuckooSubFilter::TryKickOutInsert(uint64_t hash, uint8_t fingerp
     uint32_t alt_bucket_idx = CuckooFilterHelper::GetAltBucketIndex(current_bucket_idx, current_fp, num_buckets_);
 
     bool inserted_in_alt_bucket = false;
-    s = pages_->TryInsertInBucket(filter_index_, num_buckets_, alt_bucket_idx, current_fp, &inserted_in_alt_bucket);
-    if (!s.ok()) {
-      pages_->DiscardCachedPages();
-      return s;
-    }
+    s = pages_.TryInsertInBucket(filter_index_, num_buckets_, alt_bucket_idx, current_fp, &inserted_in_alt_bucket);
+    if (!s.ok()) return rollback_and_return(s);
     if (inserted_in_alt_bucket) {
       *inserted = true;
       return rocksdb::Status::OK();
@@ -85,12 +124,7 @@ rocksdb::Status CuckooSubFilter::TryKickOutInsert(uint64_t hash, uint8_t fingerp
     victim_slot = (victim_slot + 1) % bucket_size_;
   }
 
-  pages_->DiscardCachedPages();
-  return rocksdb::Status::OK();
-}
-
-rocksdb::Status CuckooSubFilter::WriteToBatch(rocksdb::WriteBatchBase *batch) {
-  return pages_->WriteBackDirtyPages(batch);
+  return rollback();
 }
 
 uint32_t CuckooSubFilter::getPrimaryBucketIndex(uint64_t hash) const { return hash % num_buckets_; }

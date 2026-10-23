@@ -219,6 +219,23 @@ func testJSON(t *testing.T, configs util.KvrocksServerConfigs) {
 		EqualJSON(t, `{"f2":{"a":3,"b":4},"f3":[2,4,6]}`, rdb.Do(ctx, "JSON.GET", "key").Val())
 	})
 
+	t.Run("MERGE returns error on invalid inputs", func(t *testing.T) {
+		// Setup: create a key with valid JSON
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "merge-err-key", "$", `{"a":1, "b":{"c":2}}`).Err())
+
+		// Invalid JSON as merge value should return an error, not silently succeed
+		require.ErrorContains(t, rdb.Do(ctx, "JSON.MERGE", "merge-err-key", "$.a", `not_valid_json`).Err(), "Invalid")
+
+		// Invalid jsonpath should also return an error
+		require.ErrorContains(t, rdb.Do(ctx, "JSON.MERGE", "merge-err-key", `[invalid`, `1`).Err(), "Expected")
+
+		// Verify the original value is unchanged after failed merges
+		EqualJSON(t, `{"a":1,"b":{"c":2}}`, rdb.Do(ctx, "JSON.GET", "merge-err-key").Val())
+
+		// Invalid JSON on non-existent key should also return an error
+		require.ErrorContains(t, rdb.Do(ctx, "JSON.MERGE", "non-existent-key", "$", `{broken`).Err(), "Invalid")
+	})
+
 	t.Run("Clear JSON values", func(t *testing.T) {
 		require.NoError(t, rdb.Do(ctx, "JSON.SET", "bb", "$", `{"obj":{"a":1, "b":2}, "arr":[1,2,3], "str": "foo", "bool": true, "int": 42, "float": 3.14}`).Err())
 

@@ -20,13 +20,15 @@
 
 #pragma once
 
+#include <vector>
+
 #include "cuckoo_filter.h"
 #include "storage/redis_db.h"
 #include "storage/redis_metadata.h"
 
 namespace redis {
 
-class CuckooSubFilter;
+class CuckooPageCache;
 
 // Default values for a newly created cuckoo filter.
 const uint32_t kCFDefaultCapacity = 1024;
@@ -50,21 +52,29 @@ class CuckooChain : public Database {
   // Returns the count of an item in the cuckoo filter, or 0 if not found.
   rocksdb::Status Count(engine::Context &ctx, const Slice &user_key, const Slice &item, uint64_t *count);
 
+  // Returns true if the item might exist, and false if it definitely does not.
+  rocksdb::Status Exists(engine::Context &ctx, const Slice &user_key, const Slice &item, bool *exists);
+
+  // Returns whether each item might exist in the cuckoo filter.
+  rocksdb::Status MExists(engine::Context &ctx, const Slice &user_key, const std::vector<std::string> &items,
+                          std::vector<bool> *exists);
+
  private:
   // Loads metadata for a cuckoo filter key.
   rocksdb::Status getCuckooChainMetadata(engine::Context &ctx, const Slice &ns_key, CuckooChainMetadata *metadata);
 
   static rocksdb::Status validateMetadata(const CuckooChainMetadata &metadata);
 
-  rocksdb::Status tryCuckooInsert(engine::Context &ctx, const Slice &user_key, const std::string &ns_key,
-                                  CuckooChainMetadata *metadata, uint64_t hash, uint8_t fingerprint, bool *inserted);
-  rocksdb::Status tryCuckooKickOut(engine::Context &ctx, const Slice &user_key, const std::string &ns_key,
-                                   CuckooChainMetadata *metadata, uint64_t hash, uint8_t fingerprint, bool *inserted);
-  rocksdb::Status expandAndInsertCuckooChain(engine::Context &ctx, const Slice &user_key, const std::string &ns_key,
-                                             CuckooChainMetadata *metadata, uint64_t hash, uint8_t fingerprint,
-                                             bool *inserted);
-  rocksdb::Status commitSubFilterAndMetadata(engine::Context &ctx, const Slice &user_key, const std::string &ns_key,
-                                             CuckooChainMetadata *metadata, CuckooSubFilter *sub_filter);
+  static rocksdb::Status tryInsertFingerprint(CuckooChainMetadata *metadata, CuckooPageCache &pages, uint64_t hash,
+                                              uint8_t fingerprint, bool *inserted);
+  static rocksdb::Status tryCuckooInsert(const CuckooChainMetadata *metadata, CuckooPageCache &pages, uint64_t hash,
+                                         uint8_t fingerprint, bool *inserted);
+  static rocksdb::Status tryCuckooKickOut(const CuckooChainMetadata *metadata, CuckooPageCache &pages, uint64_t hash,
+                                          uint8_t fingerprint, bool *inserted);
+  static rocksdb::Status expandAndInsertCuckooChain(CuckooChainMetadata *metadata, CuckooPageCache &pages,
+                                                    uint64_t hash, uint8_t fingerprint, bool *inserted);
+  rocksdb::Status commitPagesAndMetadata(engine::Context &ctx, const Slice &user_key, const std::string &ns_key,
+                                         const CuckooChainMetadata *metadata, CuckooPageCache &pages);
 };
 
 }  // namespace redis

@@ -23,6 +23,7 @@
 #include <rocksdb/status.h>
 
 #include <memory>
+#include <set>
 #include <utility>
 #include <vector>
 
@@ -1017,7 +1018,12 @@ rocksdb::Status Stream::DeleteEntries(engine::Context &ctx, const Slice &stream_
 
   auto iter = util::UniqueIterator(ctx, read_options, stream_cf_handle_);
 
+  std::set<StreamEntryID> seen_ids;
   for (const auto &id : ids) {
+    if (!seen_ids.insert(id).second) {
+      continue;
+    }
+
     std::string entry_key = internalKeyFromEntryID(ns_key, metadata, id);
     std::string value;
     s = storage_->Get(ctx, read_options, stream_cf_handle_, entry_key, &value);
@@ -1062,7 +1068,7 @@ rocksdb::Status Stream::DeleteEntries(engine::Context &ctx, const Slice &stream_
   }
 
   if (*deleted_cnt > 0) {
-    metadata.size -= *deleted_cnt;
+    metadata.size = *deleted_cnt > metadata.size ? 0 : metadata.size - *deleted_cnt;
 
     std::string bytes;
     metadata.Encode(&bytes);
@@ -1679,11 +1685,6 @@ rocksdb::Status Stream::trim(engine::Context &ctx, const std::string &ns_key, co
       break;
     }
 
-    auto s = batch->Delete(stream_cf_handle_, iter->key());
-    if (!s.ok()) {
-      return s;
-    }
-
     delete_cnt += 1;
     metadata->size -= 1;
     last_deleted = iter->key().ToString();
@@ -1697,6 +1698,18 @@ rocksdb::Status Stream::trim(engine::Context &ctx, const std::string &ns_key, co
       metadata->first_entry_id.Clear();
       metadata->recorded_first_entry_id.Clear();
     }
+  }
+
+  // Remove the counted run with one range tombstone rather than the per-entry Delete() above:
+  // the write batch stays O(1) instead of O(entries removed), and readers skip the span via the
+  // range-del aggregator instead of stepping over (and re-scanning) N point tombstones. The scan
+  // stopped on the first surviving entry, so its key is the exclusive upper bound; a full trim
+  // uses the version upper bound. Group/consumer/PEL subkeys sort above entries, so either bound
+  // keeps them outside the deleted range.
+  if (delete_cnt > 0) {
+    std::string range_end = iter->Valid() ? iter->key().ToString() : next_version_prefix_key;
+    auto s = batch->DeleteRange(stream_cf_handle_, start_key, range_end);
+    if (!s.ok()) return s;
   }
 
   if (metadata->size == 0) {

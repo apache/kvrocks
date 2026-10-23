@@ -556,6 +556,47 @@ class CommandTDigestTrimmedMean : public Commander {
   double high_cut_quantile_;
 };
 
+class CommandTDigestCDF : public Commander {
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() == 2) return {Status::RedisParseErr, errWrongNumOfArguments};
+    key_name_ = args[1];
+    inputs_.reserve(args.size() - 2);
+    for (size_t i = 2; i < args.size(); i++) {
+      auto value = ParseFloat(args[i]);
+      if (!value) {
+        return {Status::RedisParseErr, errValueIsNotFloat};
+      }
+      if (std::isnan(*value)) {
+        return {Status::RedisParseErr, errValueIsNotFloat};
+      }
+      inputs_.push_back(*value);
+    }
+    return Status::OK();
+  }
+
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    TDigest tdigest(srv->storage, conn->GetNamespace());
+    TDigestCDFResult result;
+    auto s = tdigest.CDF(ctx, key_name_, inputs_, &result);
+    if (!s.ok()) {
+      if (s.IsNotFound()) {
+        return {Status::RedisExecErr, errKeyNotFound};
+      }
+      return {Status::RedisExecErr, s.ToString()};
+    }
+
+    output->append(redis::MultiLen(result.cdf_values.size()));
+    for (auto const value : result.cdf_values) {
+      output->append(conn->Double(value));
+    }
+    return Status::OK();
+  }
+
+ private:
+  std::string key_name_;
+  std::vector<double> inputs_;
+};
+
 std::vector<CommandKeyRange> GetMergeKeyRange(const std::vector<std::string> &args) {
   auto numkeys = ParseInt<int>(args[2], 10).ValueOr(0);
   return {{1, 1, 1}, {3, 2 + numkeys, 1}};
@@ -573,5 +614,6 @@ REDIS_REGISTER_COMMANDS(TDigest, MakeCmdAttr<CommandTDigestCreate>("tdigest.crea
                         MakeCmdAttr<CommandTDigestQuantile>("tdigest.quantile", -3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandTDigestTrimmedMean>("tdigest.trimmed_mean", 4, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandTDigestReset>("tdigest.reset", 2, "write", 1, 1, 1),
-                        MakeCmdAttr<CommandTDigestMerge>("tdigest.merge", -4, "write", GetMergeKeyRange));
+                        MakeCmdAttr<CommandTDigestMerge>("tdigest.merge", -4, "write", GetMergeKeyRange),
+                        MakeCmdAttr<CommandTDigestCDF>("tdigest.cdf", -3, "read-only", 1, 1, 1));
 }  // namespace redis

@@ -22,11 +22,13 @@ package stream
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/rand"
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -502,6 +504,20 @@ var streamTests = func(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.Subset(t, items[0].Values, map[string]interface{}{"foo": "value0"})
 		require.Subset(t, items[1].Values, map[string]interface{}{"foo": "value2"})
 	})
+	t.Run("XDEL with repeated IDs counts each entry once", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "somestream").Err())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "somestream", ID: "1-0", Values: []string{"foo", "value0"}}).Err())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "somestream", ID: "2-0", Values: []string{"foo", "value1"}}).Err())
+		// A repeated ID must be counted once; the stream length must stay consistent.
+		require.EqualValues(t, 1, rdb.XDel(ctx, "somestream", "1-0", "1-0").Val())
+		require.EqualValues(t, 1, rdb.XLen(ctx, "somestream").Val())
+		items := rdb.XRange(ctx, "somestream", "-", "+").Val()
+		require.Len(t, items, 1)
+		require.Equal(t, "2-0", items[0].ID)
+		// Deleting the last entry with repeats must not underflow the length.
+		require.EqualValues(t, 1, rdb.XDel(ctx, "somestream", "2-0", "2-0", "2-0").Val())
+		require.EqualValues(t, 0, rdb.XLen(ctx, "somestream").Val())
+	})
 
 	// Here the idea is to check the consistency of the stream data structure as we remove all the elements down to zero elements.
 	t.Run("XDEL fuzz test", func(t *testing.T) {
@@ -648,6 +664,85 @@ var streamTests = func(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.EqualValues(t, "3-0", items[0].ID)
 		require.EqualValues(t, "4-0", items[1].ID)
 		require.EqualValues(t, "5-0", items[2].ID)
+	})
+
+	t.Run("XTRIM removing every entry keeps the consumer group and its PEL", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "mystream").Err())
+		for i := 1; i <= 3; i++ {
+			require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "mystream", ID: fmt.Sprintf("%d-0", i), Values: []string{"f", "v"}}).Err())
+		}
+		require.NoError(t, rdb.XGroupCreate(ctx, "mystream", "g1", "0").Err())
+		require.NoError(t, rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    "g1",
+			Consumer: "c1",
+			Streams:  []string{"mystream", ">"},
+			Count:    3,
+		}).Err())
+
+		require.NoError(t, rdb.XTrimMinID(ctx, "mystream", "4-0").Err())
+		require.EqualValues(t, 0, rdb.XLen(ctx, "mystream").Val())
+
+		groups := rdb.XInfoGroups(ctx, "mystream").Val()
+		require.Len(t, groups, 1)
+		require.EqualValues(t, "g1", groups[0].Name)
+		require.EqualValues(t, 3, groups[0].Pending)
+		require.EqualValues(t, "3-0", groups[0].LastDeliveredID)
+
+		// groups[0].Pending above is only the count cached in group metadata; read the PEL
+		// subkeys back with XPENDING's extended form to prove the entries themselves survived
+		// the range tombstone (which stops at the first group/consumer/PEL subkey).
+		pending, err := rdb.XPendingExt(ctx, &redis.XPendingExtArgs{
+			Stream: "mystream",
+			Group:  "g1",
+			Start:  "-",
+			End:    "+",
+			Count:  10,
+		}).Result()
+		require.NoError(t, err)
+		require.Len(t, pending, 3)
+		require.EqualValues(t, "1-0", pending[0].ID)
+		require.EqualValues(t, "2-0", pending[1].ID)
+		require.EqualValues(t, "3-0", pending[2].ID)
+	})
+
+	t.Run("XADD after trimming a stream to empty keeps the new entries visible", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "mystream").Err())
+		for i := 1; i <= 3; i++ {
+			require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "mystream", ID: fmt.Sprintf("%d-0", i), Values: []string{"f", "v"}}).Err())
+		}
+		require.NoError(t, rdb.XTrimMaxLen(ctx, "mystream", 0).Err())
+		require.EqualValues(t, 0, rdb.XLen(ctx, "mystream").Val())
+
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "mystream", ID: "4-0", Values: []string{"f", "v"}}).Err())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "mystream", ID: "5-0", Values: []string{"f", "v"}}).Err())
+		items := rdb.XRange(ctx, "mystream", "-", "+").Val()
+		require.Len(t, items, 2)
+		require.EqualValues(t, "4-0", items[0].ID)
+		require.EqualValues(t, "5-0", items[1].ID)
+	})
+
+	t.Run("repeated XTRIM MINID interleaved with XADD keeps exact survivors and bookkeeping", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "mystream").Err())
+		for i := 1; i <= 4; i++ {
+			require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "mystream", ID: fmt.Sprintf("%d-0", i), Values: []string{"f", "v"}}).Err())
+		}
+		require.NoError(t, rdb.XTrimMinID(ctx, "mystream", "3-0").Err())
+		require.EqualValues(t, 2, rdb.XLen(ctx, "mystream").Val())
+
+		for i := 5; i <= 6; i++ {
+			require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "mystream", ID: fmt.Sprintf("%d-0", i), Values: []string{"f", "v"}}).Err())
+		}
+		require.NoError(t, rdb.XTrimMinID(ctx, "mystream", "5-0").Err())
+
+		items := rdb.XRange(ctx, "mystream", "-", "+").Val()
+		require.Len(t, items, 2)
+		require.EqualValues(t, "5-0", items[0].ID)
+		require.EqualValues(t, "6-0", items[1].ID)
+
+		r := rdb.XInfoStreamFull(ctx, "mystream", 0).Val()
+		require.Equal(t, "5-0", r.RecordedFirstEntryID)
+		require.Equal(t, "4-0", r.MaxDeletedEntryID)
+		require.EqualValues(t, 6, r.EntriesAdded)
 	})
 
 	t.Run("XADD with LIMIT consecutive calls", func(t *testing.T) {
@@ -2688,4 +2783,245 @@ func parseStreamEntryID(id string) (ts int64, seqNum int64) {
 	seqNum, _ = strconv.ParseInt(values[1], 10, 64)
 
 	return
+}
+
+func TestBlockingXReadWokenByTransaction(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{})
+	defer srv.Close()
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	const readers = 4
+	clients := make([]*redis.Client, readers)
+	for i := range clients {
+		clients[i] = srv.NewClientWithOption(&redis.Options{MaxRetries: -1})
+		defer func() { require.NoError(t, clients[i].Close()) }()
+	}
+
+	for round := 0; round < 4; round++ {
+		results := make(chan *redis.XStreamSliceCmd, readers)
+		for _, client := range clients {
+			go func() {
+				results <- client.XRead(ctx, &redis.XReadArgs{
+					Streams: []string{"mystream", "$"},
+					Count:   1,
+					Block:   10 * time.Second,
+				})
+			}()
+		}
+		require.Eventually(t, func() bool {
+			return util.FindInfoEntry(rdb, "blocked_clients") == strconv.Itoa(readers)
+		}, 5*time.Second, 10*time.Millisecond)
+
+		pipe := rdb.TxPipeline()
+		value := strconv.Itoa(round)
+		added := pipe.XAdd(ctx, &redis.XAddArgs{Stream: "mystream", Values: []string{"field", value}})
+		for i := 0; i < 64; i++ {
+			pipe.ZAdd(ctx, "myzset", redis.Z{Score: float64(i), Member: fmt.Sprintf("member-%d-%d", round, i)})
+		}
+		_, err := pipe.Exec(ctx)
+		require.NoError(t, err)
+		id, err := added.Result()
+		require.NoError(t, err)
+
+		require.Eventually(t, func() bool { return len(results) == readers }, 5*time.Second, 10*time.Millisecond)
+		for i := 0; i < readers; i++ {
+			streams, err := (<-results).Result()
+			require.NoError(t, err)
+			require.Equal(t, []redis.XStream{{
+				Stream:   "mystream",
+				Messages: []redis.XMessage{{ID: id, Values: map[string]interface{}{"field": value}}},
+			}}, streams)
+		}
+	}
+	require.NoError(t, rdb.Set(ctx, "after", "ok", 0).Err())
+}
+
+func TestBlockingXReadGroupWokenByTransaction(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{})
+	defer srv.Close()
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+	require.NoError(t, rdb.XGroupCreateMkStream(ctx, "mystream", "mygroup", "0").Err())
+
+	const readers = 4
+	const rounds = 4
+	clients := make([]*redis.Client, readers)
+	consumerPending := make(map[string]int64, readers)
+	for i := range clients {
+		clients[i] = srv.NewClientWithOption(&redis.Options{MaxRetries: -1})
+		defer func() { require.NoError(t, clients[i].Close()) }()
+		consumerPending[fmt.Sprintf("consumer-%d", i)] = rounds
+	}
+
+	type readResult struct {
+		consumer string
+		cmd      *redis.XStreamSliceCmd
+	}
+	expected := make([]redis.XMessage, 0, readers*rounds)
+	owners := make(map[string]string, readers*rounds)
+	for round := 0; round < rounds; round++ {
+		results := make(chan readResult, readers)
+		for i, client := range clients {
+			go func() {
+				consumer := fmt.Sprintf("consumer-%d", i)
+				results <- readResult{consumer: consumer, cmd: client.XReadGroup(ctx, &redis.XReadGroupArgs{
+					Group:    "mygroup",
+					Consumer: consumer,
+					Streams:  []string{"mystream", ">"},
+					Count:    1,
+					Block:    10 * time.Second,
+				})}
+			}()
+		}
+		require.Eventually(t, func() bool {
+			return util.FindInfoEntry(rdb, "blocked_clients") == strconv.Itoa(readers)
+		}, 5*time.Second, 10*time.Millisecond)
+
+		pipe := rdb.TxPipeline()
+		for i := 0; i < readers; i++ {
+			id := fmt.Sprintf("%d-0", round*readers+i+1)
+			value := strconv.Itoa(round*readers + i)
+			pipe.XAdd(ctx, &redis.XAddArgs{Stream: "mystream", ID: id, Values: []string{"field", value}})
+			expected = append(expected, redis.XMessage{ID: id, Values: map[string]interface{}{"field": value}})
+		}
+		for i := 0; i < 64; i++ {
+			pipe.ZAdd(ctx, "myzset", redis.Z{Score: float64(i), Member: fmt.Sprintf("member-%d-%d", round, i)})
+		}
+		_, err := pipe.Exec(ctx)
+		require.NoError(t, err)
+
+		require.Eventually(t, func() bool { return len(results) == readers }, 5*time.Second, 10*time.Millisecond)
+		messages := make([]redis.XMessage, 0, readers)
+		for i := 0; i < readers; i++ {
+			result := <-results
+			streams, err := result.cmd.Result()
+			require.NoError(t, err)
+			require.Len(t, streams, 1)
+			require.Equal(t, "mystream", streams[0].Stream)
+			require.Len(t, streams[0].Messages, 1)
+			message := streams[0].Messages[0]
+			require.NotContains(t, owners, message.ID, "a message must only be assigned once")
+			owners[message.ID] = result.consumer
+			messages = append(messages, message)
+		}
+		require.ElementsMatch(t, expected[round*readers:], messages)
+	}
+
+	pending, err := rdb.XPending(ctx, "mystream", "mygroup").Result()
+	require.NoError(t, err)
+	require.Equal(t, &redis.XPending{
+		Count:     readers * rounds,
+		Lower:     expected[0].ID,
+		Higher:    expected[len(expected)-1].ID,
+		Consumers: consumerPending,
+	}, pending)
+	entries, err := rdb.XPendingExt(ctx, &redis.XPendingExtArgs{
+		Stream: "mystream",
+		Group:  "mygroup",
+		Start:  "-",
+		End:    "+",
+		Count:  readers*rounds + 1,
+	}).Result()
+	require.NoError(t, err)
+	require.Len(t, entries, len(expected))
+	for i, entry := range entries {
+		require.Equal(t, expected[i].ID, entry.ID)
+		require.Equal(t, owners[entry.ID], entry.Consumer)
+		require.EqualValues(t, 1, entry.RetryCount)
+	}
+
+	groups, err := rdb.XInfoGroups(ctx, "mystream").Result()
+	require.NoError(t, err)
+	require.Len(t, groups, 1)
+	require.Equal(t, "mygroup", groups[0].Name)
+	require.EqualValues(t, readers, groups[0].Consumers)
+	require.EqualValues(t, readers*rounds, groups[0].Pending)
+	require.Equal(t, expected[len(expected)-1].ID, groups[0].LastDeliveredID)
+	consumers, err := rdb.XInfoConsumers(ctx, "mystream", "mygroup").Result()
+	require.NoError(t, err)
+	require.Len(t, consumers, readers)
+	for _, consumer := range consumers {
+		require.Contains(t, consumerPending, consumer.Name)
+		require.Equal(t, consumerPending[consumer.Name], consumer.Pending)
+	}
+	require.NoError(t, rdb.Set(ctx, "after", "ok", 0).Err())
+}
+
+// TestPotentialDataRaceInBlockingStreamRead checks that the wake-up callback of a
+// blocked XREAD/XREADGROUP doesn't race with a concurrent transaction: the XADD
+// inside MULTI/EXEC wakes the reader while the EXEC still holds the storage in
+// transaction mode, the same shape as TestPotentialDataRaceInBlockingCommand.
+//
+// For more information, please refer to: https://github.com/apache/kvrocks/issues/2900
+func TestPotentialDataRaceInBlockingStreamRead(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{})
+	defer srv.Close()
+
+	ctx, cancelFn := context.WithCancel(context.Background())
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	streamKey := "mystream"
+	require.NoError(t, rdb.Del(ctx, streamKey).Err())
+	require.NoError(t, rdb.XGroupCreateMkStream(ctx, streamKey, "mygroup", "$").Err())
+
+	var wg sync.WaitGroup
+	for i := 0; i < 4; i++ {
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			for {
+				err := rdb.XRead(ctx, &redis.XReadArgs{
+					Streams: []string{streamKey, "$"},
+					Count:   10,
+					Block:   3500 * time.Millisecond,
+				}).Err()
+				if errors.Is(err, redis.Nil) {
+					continue
+				} else if errors.Is(err, context.Canceled) {
+					return
+				} else {
+					require.NoError(t, err)
+				}
+			}
+		}()
+		go func(consumer string) {
+			defer wg.Done()
+			for {
+				err := rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+					Group:    "mygroup",
+					Consumer: consumer,
+					Streams:  []string{streamKey, ">"},
+					Count:    10,
+					Block:    3500 * time.Millisecond,
+				}).Err()
+				if errors.Is(err, redis.Nil) {
+					continue
+				} else if errors.Is(err, context.Canceled) {
+					return
+				} else {
+					require.NoError(t, err)
+				}
+			}
+		}(fmt.Sprintf("consumer-%d", i))
+	}
+
+	for i := 0; i < 64; i++ {
+		pipe := rdb.TxPipeline()
+		pipe.XAdd(ctx, &redis.XAddArgs{Stream: streamKey, Values: []string{"field", "value"}})
+		for j := 0; j < 64; j++ {
+			pipe.ZAdd(ctx, "myzset", redis.Z{Score: float64(j), Member: fmt.Sprintf("member-%d-%d", i, j)})
+		}
+		_, err := pipe.Exec(ctx)
+		require.NoError(t, err)
+		time.Sleep(time.Millisecond * 100)
+	}
+	// The server must still accept writes after the transactions.
+	require.NoError(t, rdb.Set(ctx, "after", "ok", 0).Err())
+
+	cancelFn()
+	wg.Wait()
 }

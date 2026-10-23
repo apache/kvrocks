@@ -63,14 +63,12 @@ struct NewOpt {
 static void PrintUsage(const char *program, std::ostream &os = std::cout) {
   os << program << " implements the Redis protocol based on RocksDB" << std::endl
      << "Usage:" << std::endl
-     << std::left << new_opt << "-c, --config <filename>"
-     << "set config file to <filename>, or `-` for stdin" << std::endl
-     << new_opt << "-v, --version"
-     << "print version information" << std::endl
-     << new_opt << "-h, --help"
-     << "print this help message" << std::endl
-     << new_opt << "--<config-key> <config-value>"
-     << "overwrite specific config option <config-key> to <config-value>" << std::endl;
+     << std::left << new_opt << "-c, --config <filename>" << "set config file to <filename>, or `-` for stdin"
+     << std::endl
+     << new_opt << "-v, --version" << "print version information" << std::endl
+     << new_opt << "-h, --help" << "print this help message" << std::endl
+     << new_opt << "--<config-key> <config-value>" << "overwrite specific config option <config-key> to <config-value>"
+     << std::endl;
 }
 
 static CLIOptions ParseCommandLineOptions(int argc, char **argv) {

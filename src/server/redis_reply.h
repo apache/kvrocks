@@ -62,6 +62,7 @@ inline std::string NilString(RESP ver) {
 }
 
 std::string BulkString(std::string_view data);
+void AppendBulkString(std::string *dst, std::string_view data);
 
 template <typename T, std::enable_if_t<std::is_integral_v<T>, int> = 0>
 std::string MultiLen(T len) {

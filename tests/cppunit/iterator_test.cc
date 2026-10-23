@@ -241,6 +241,44 @@ TEST_F(DBIteratorTest, BasicList) {
   }
 }
 
+TEST_F(DBIteratorTest, IncludeExpiredSnapshotSubkeys) {
+  redis::List list(storage_.get(), "test_ns4");
+  ASSERT_TRUE(list.Expire(*ctx_, "list-1", 1).ok());
+
+  engine::Context snapshot_ctx(storage_.get());
+  auto read_options = storage_->DefaultScanOptions();
+  read_options.snapshot = snapshot_ctx.GetSnapshot();
+  const auto key = ComposeNamespaceKey("test_ns4", "list-1", storage_->IsSlotIdEncoded());
+
+  // Recreate the expired key after the snapshot. The raw iterator must retain
+  // the old metadata's version and its subkeys, not the new list's elements.
+  uint64_t size = 0;
+  ASSERT_TRUE(list.Push(*ctx_, "list-1", {"new"}, false, &size).ok());
+  ASSERT_EQ(size, 1);
+
+  auto scan_ctx = engine::Context::NoTransactionContext(storage_.get());
+  engine::DBIterator live_iter(scan_ctx, read_options);
+  live_iter.Seek(key);
+  ASSERT_TRUE(!live_iter.Valid() || live_iter.Key() != key);
+
+  engine::DBIterator raw_iter(scan_ctx, read_options, -1, true /* include_expired */);
+  raw_iter.Seek(key);
+  ASSERT_TRUE(raw_iter.Valid());
+  ASSERT_EQ(raw_iter.Key(), key);
+  ASSERT_EQ(raw_iter.Type(), kRedisList);
+  Metadata metadata(kRedisNone, false);
+  ASSERT_TRUE(metadata.Decode(raw_iter.Value()).ok());
+  ASSERT_TRUE(metadata.Expired());
+
+  auto subkeys = raw_iter.GetSubKeyIterator();
+  ASSERT_NE(subkeys, nullptr);
+  std::vector<std::string> values;
+  for (subkeys->Seek(); subkeys->Valid(); subkeys->Next()) {
+    values.push_back(subkeys->Value().ToString());
+  }
+  ASSERT_EQ(values, (std::vector<std::string>{"l0", "l1", "l2"}));
+}
+
 TEST_F(DBIteratorTest, BasicStream) {
   engine::DBIterator iter(*ctx_, rocksdb::ReadOptions());
   auto prefix = ComposeNamespaceKey("test_ns5", "", storage_->IsSlotIdEncoded());

@@ -584,12 +584,14 @@ Status SlotMigrator::sendSnapshot() {
   BatchSender batch_sender(*dst_fd_, migrate_batch_size_bytes_, migrate_batch_bytes_per_sec_);
 
   for (iter.Seek(prefix); iter.Valid(); iter.Next()) {
+    if (stop_migration_) {
+      return {Status::NotOK, std::string(errMigrationTaskCanceled)};
+    }
     // Iteration is out of range
     auto key_slot_id = ExtractSlotId(iter.Key());
     if (!slot_range.Contains(key_slot_id)) {
       break;
     }
-
     auto redis_type = iter.Type();
     std::string log_data;
     if (redis_type == RedisType::kRedisList) {
@@ -617,6 +619,9 @@ Status SlotMigrator::sendSnapshot() {
     }
 
     for (subkey_iter->Seek(); subkey_iter->Valid(); subkey_iter->Next()) {
+      if (stop_migration_) {
+        return {Status::NotOK, std::string(errMigrationTaskCanceled)};
+      }
       GET_OR_RET(batch_sender.Put(subkey_iter->ColumnFamilyHandle(), subkey_iter->Key(), subkey_iter->Value()));
       if (batch_sender.IsFull()) {
         GET_OR_RET(sendMigrationBatch(&batch_sender));
@@ -671,7 +676,9 @@ Status SlotMigrator::syncWAL() {
     wal_begin_seq_ = wal_incremental_seq;
     epoch++;
   }
-
+  if (stop_migration_) {
+    return {Status::NotOK, std::string(errMigrationTaskCanceled)};
+  }
   setForbiddenSlotRange(slot_range_);
 
   wal_incremental_seq = storage_->GetDB()->GetLatestSequenceNumber();
@@ -708,6 +715,9 @@ Status SlotMigrator::migrateIncrementalDataByRawKV(uint64_t end_seq, BatchSender
   engine::WALIterator wal_iter(storage_, slot_range_);
   uint64_t start_seq = wal_begin_seq_ + 1;
   for (wal_iter.Seek(start_seq); wal_iter.Valid(); wal_iter.Next()) {
+    if (stop_migration_) {
+      return {Status::NotOK, std::string(errMigrationTaskCanceled)};
+    }
     if (wal_iter.NextSequenceNumber() > end_seq + 1) {
       break;
     }

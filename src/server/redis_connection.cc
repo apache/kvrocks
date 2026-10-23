@@ -152,7 +152,7 @@ void Connection::Detach() { owner_->DetachConnection(this); }
 
 void Connection::OnRead([[maybe_unused]] struct bufferevent *bev) {
   is_running_ = true;
-  MakeScopeExit([this] { is_running_ = false; });
+  auto reset_running = MakeScopeExit([this] { is_running_ = false; });
 
   SetLastInteraction();
   auto s = req_.Tokenize(Input());
@@ -165,6 +165,8 @@ void Connection::OnRead([[maybe_unused]] struct bufferevent *bev) {
 
   ExecuteCommands(req_.GetCommands());
   if (IsFlagEnabled(kCloseAsync)) {
+    // Close() deletes this, so the guard must not access it afterward.
+    reset_running.Disable();
     Close();
   }
 }

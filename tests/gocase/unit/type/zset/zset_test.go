@@ -1295,6 +1295,27 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, enabledRES
 
 	})
 
+	t.Run(fmt.Sprintf("ZINTERCARD with non-first smallest input - %s", encoding), func(t *testing.T) {
+		createZset(rdb, ctx, "zset_large", []redis.Z{
+			{Score: 1, Member: "a"},
+			{Score: 2, Member: "b"},
+			{Score: 3, Member: "c"},
+			{Score: 4, Member: "d"},
+		})
+		createZset(rdb, ctx, "zset_small", []redis.Z{
+			{Score: 1, Member: "a"},
+			{Score: 2, Member: "b"},
+		})
+		createZset(rdb, ctx, "zset_medium", []redis.Z{
+			{Score: 1, Member: "a"},
+			{Score: 2, Member: "b"},
+			{Score: 3, Member: "e"},
+		})
+
+		require.Equal(t, int64(2), rdb.ZInterCard(ctx, 0, "zset_large", "zset_small", "zset_medium").Val())
+		require.Equal(t, int64(1), rdb.ZInterCard(ctx, 1, "zset_large", "zset_small", "zset_medium").Val())
+	})
+
 	t.Run(fmt.Sprintf("ZMSCORE - %s", encoding), func(t *testing.T) {
 		rdb.Del(ctx, "zset")
 		createZset(rdb, ctx, "zset", []redis.Z{

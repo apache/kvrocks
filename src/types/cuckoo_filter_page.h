@@ -61,6 +61,8 @@ class CuckooPageCache {
   rocksdb::Status SetBucketSlotWithUndo(uint16_t filter_index, uint32_t num_buckets, uint32_t bucket_index,
                                         uint32_t slot_idx, uint8_t fingerprint, SlotMutation *mutation);
   rocksdb::Status RestoreBucketSlot(const SlotMutation &mutation);
+  rocksdb::Status ReadRangeWithoutCache(uint16_t filter_index, uint32_t num_buckets, uint64_t offset, size_t length,
+                                        std::string *data);
   rocksdb::Status WriteBackDirtyPages(rocksdb::WriteBatchBase *batch);
 
   void DiscardCleanPages();

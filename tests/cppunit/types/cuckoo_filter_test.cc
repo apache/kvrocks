@@ -1077,3 +1077,14 @@ TEST_F(RedisCuckooFilterTest, ExistsWithRepeatedInsertions) {
   ASSERT_TRUE(s.ok());
   ASSERT_TRUE(exists) << "Item should exist after duplicate insertions";
 }
+
+TEST_F(RedisCuckooFilterTest, CountSingleCandidateBucket) {
+  reserveAndVerify(key_, 2, 4, 20, 0);
+  addAndVerify(key_, "duplicate", 2, 4, 20, 0, 1);
+  addAndVerify(key_, "duplicate", 2, 4, 20, 0, 2);
+
+  uint64_t count = 0;
+  auto s = cuckoo_->Count(*ctx_, key_, "duplicate", &count);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  EXPECT_EQ(count, 2);
+}

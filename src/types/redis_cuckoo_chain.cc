@@ -170,6 +170,73 @@ rocksdb::Status CuckooChain::Add(engine::Context &ctx, const Slice &user_key, co
   return rocksdb::Status::OK();
 }
 
+rocksdb::Status CuckooChain::Insert(engine::Context &ctx, const Slice &user_key, const std::vector<std::string> &items,
+                                    CuckooFilterInsertOptions &insert_options,
+                                    std::vector<CuckooFilterInsertResult> &ret) {
+  std::string ns_key = AppendNamespacePrefix(user_key);
+
+  CuckooChainMetadata metadata(false);
+  auto s = getCuckooChainMetadata(ctx, ns_key, &metadata);
+
+  if (s.IsNotFound()) {
+    if (!insert_options.auto_create) {
+      return s;
+    }
+
+    if (insert_options.capacity < 2) {
+      return rocksdb::Status::InvalidArgument("capacity must be at least 2");
+    }
+
+    if (!CuckooFilterHelper::IsCapacitySupported(insert_options.capacity, kCFDefaultBucketSize)) {
+      return rocksdb::Status::InvalidArgument("capacity is too large");
+    }
+
+    metadata = CuckooChainMetadata();
+    metadata.size = 0;
+    metadata.base_capacity = insert_options.capacity;
+    metadata.bucket_size = kCFDefaultBucketSize;
+    metadata.max_iterations = kCFDefaultMaxIterations;
+    metadata.expansion = kCFDefaultExpansion;
+    metadata.n_filters = 1;
+    metadata.num_deleted_items = 0;
+    metadata.page_size = kCuckooFilterDefaultPageSize;
+  } else if (!s.ok()) {
+    return s;
+  }
+
+  s = validateMetadata(metadata);
+  if (!s.ok()) return s;
+
+  CuckooPageCache pages(storage_, ctx, ns_key, storage_->IsSlotIdEncoded(), metadata.version, metadata.bucket_size,
+                        metadata.page_size);
+  bool inserted_something = false;
+
+  for (size_t i = 0; i < items.size(); ++i) {
+    const auto &item = items[i];
+    uint64_t hash = CuckooFilterHelper::Hash(item.data(), item.size());
+    uint8_t fingerprint = CuckooFilterHelper::GenerateFingerprint(hash);
+
+    bool inserted = false;
+    s = tryInsertFingerprint(&metadata, pages, hash, fingerprint, &inserted);
+    if (!s.ok()) return s;
+    if (inserted) {
+      inserted_something = true;
+      ret[i] = CuckooFilterInsertResult::kOk;
+      continue;
+    }
+
+    // No expansion allowed and filter is full
+    ret[i] = CuckooFilterInsertResult::kFull;
+  }
+
+  if (inserted_something) {
+    s = commitPagesAndMetadata(ctx, user_key, ns_key, &metadata, pages);
+    if (!s.ok()) return s;
+  }
+
+  return rocksdb::Status::OK();
+}
+
 rocksdb::Status CuckooChain::tryInsertFingerprint(CuckooChainMetadata *metadata, CuckooPageCache &pages, uint64_t hash,
                                                   uint8_t fingerprint, bool *inserted) {
   auto s = tryCuckooInsert(metadata, pages, hash, fingerprint, inserted);

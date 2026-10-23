@@ -37,6 +37,17 @@ const uint16_t kCFDefaultMaxIterations = 20;
 const uint16_t kCFDefaultExpansion = 1;
 const uint16_t kCFMaxExpansion = 32768;
 
+enum class CuckooFilterInsertResult {
+  kOk,
+  kExist,
+  kFull,
+};
+
+struct CuckooFilterInsertOptions {
+  uint64_t capacity = kCFDefaultCapacity;
+  bool auto_create = true;
+};
+
 class CuckooChain : public Database {
  public:
   CuckooChain(engine::Storage *storage, const std::string &ns) : Database(storage, ns) {}
@@ -55,6 +66,9 @@ class CuckooChain : public Database {
   // Returns whether each item might exist in the cuckoo filter.
   rocksdb::Status MExists(engine::Context &ctx, const Slice &user_key, const std::vector<std::string> &items,
                           std::vector<bool> *exists);
+
+  rocksdb::Status Insert(engine::Context &ctx, const Slice &user_key, const std::vector<std::string> &items,
+                         CuckooFilterInsertOptions &options, std::vector<CuckooFilterInsertResult> &rets);
 
  private:
   // Loads metadata for a cuckoo filter key.

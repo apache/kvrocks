@@ -879,3 +879,41 @@ func TestZSetSort(t *testing.T) {
 		require.Equal(t, []string{"mary", "tom", ""}, sortResult)
 	})
 }
+
+func TestSortStoreWatchedKey(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{})
+	defer srv.Close()
+
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	watcher := srv.NewClient()
+	defer func() { require.NoError(t, watcher.Close()) }()
+
+	t.Run("SORT ... STORE aborts a transaction watching the created destination key", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "sort_store_src", "sort_store_dst").Err())
+		require.NoError(t, rdb.RPush(ctx, "sort_store_src", 3, 1, 2).Err())
+
+		require.NoError(t, watcher.Do(ctx, "WATCH", "sort_store_dst").Err())
+		require.EqualValues(t, 3, rdb.Do(ctx, "SORT", "sort_store_src", "STORE", "sort_store_dst").Val())
+
+		require.NoError(t, watcher.Do(ctx, "MULTI").Err())
+		require.NoError(t, watcher.Do(ctx, "SET", "sort_store_dst", "mine").Err())
+		require.Nil(t, watcher.Do(ctx, "EXEC").Val())
+
+		// The aborted transaction must not have overwritten the sorted list.
+		require.Equal(t, []string{"1", "2", "3"}, rdb.LRange(ctx, "sort_store_dst", 0, -1).Val())
+	})
+
+	t.Run("SORT ... STORE aborts a transaction watching the overwritten destination key", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "sort_store_dst", "old", 0).Err())
+
+		require.NoError(t, watcher.Do(ctx, "WATCH", "sort_store_dst").Err())
+		require.EqualValues(t, 3, rdb.Do(ctx, "SORT", "sort_store_src", "STORE", "sort_store_dst").Val())
+
+		require.NoError(t, watcher.Do(ctx, "MULTI").Err())
+		require.NoError(t, watcher.Do(ctx, "EXISTS", "sort_store_dst").Err())
+		require.Nil(t, watcher.Do(ctx, "EXEC").Val())
+	})
+}

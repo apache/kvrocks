@@ -154,6 +154,17 @@ var testHash = func(t *testing.T, configs util.KvrocksServerConfigs) {
 		util.ErrorRegexp(t, r.Err(), pattern)
 	})
 
+	t.Run("HSETEXPIRE rejects overflowing expire time", func(t *testing.T) {
+		testKey := "hsetexpireOverflow"
+		require.NoError(t, rdb.HSet(ctx, testKey, "key1", "val1").Err())
+		for _, ttl := range []string{"18446744073709551", "18446744073709551615", "9223372036854776"} {
+			r := rdb.Do(ctx, "hsetexpire", testKey, ttl, "key2", "val2")
+			util.ErrorRegexp(t, r.Err(), ".*invalid expire time.*")
+		}
+		require.Equal(t, map[string]string{"key1": "val1"}, rdb.HGetAll(ctx, testKey).Val())
+		require.EqualValues(t, -1, rdb.TTL(ctx, testKey).Val())
+	})
+
 	t.Run("HSET/HSETEXPIRE/HSETEXPIRE/persist update expire time", func(t *testing.T) {
 		ttlStr := "3600"
 		testKey := "hsetKeyUpdateTime"

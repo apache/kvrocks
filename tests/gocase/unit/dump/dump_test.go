@@ -220,3 +220,30 @@ func TestDump_SortedInt(t *testing.T) {
 	expectedMembers := []string{"5", "12", "23", "89", "100"}
 	require.ElementsMatch(t, expectedMembers, members)
 }
+
+func TestDump_HyperLogLog(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{})
+	defer srv.Close()
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	key := "test_hyperloglog_key"
+	require.NoError(t, rdb.Del(ctx, key).Err())
+
+	require.EqualValues(t, 1, rdb.Do(ctx, "PFADD", key, "a", "b", "c").Val())
+	require.EqualValues(t, 3, rdb.Do(ctx, "PFCOUNT", key).Val())
+
+	serialized, err := rdb.Dump(ctx, key).Result()
+	require.NoError(t, err)
+
+	restoredKey := fmt.Sprintf("restore_%s", key)
+	require.NoError(t, rdb.RestoreReplace(ctx, restoredKey, 0, serialized).Err())
+
+	require.EqualValues(t, "string", rdb.Type(ctx, restoredKey).Val())
+
+	content := rdb.Get(ctx, restoredKey).Val()
+	require.Equal(t, 12304, len(content), "HLL data should be 12304 bytes (Header + Registers)")
+
+	require.Equal(t, "HYLL", content[:4], "Should have Redis HLL Header")
+}

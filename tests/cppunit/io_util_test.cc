@@ -20,9 +20,34 @@
 #include "common/io_util.h"
 
 #include <gtest/gtest.h>
+#include <sys/socket.h>
+#include <unistd.h>
+
+#include <chrono>
+#include <string_view>
+#include <thread>
 
 TEST(IOUtil, MatchListeningIP) {
   // bind 0.0.0.0 should at least match 127.0.0.1
   std::vector<std::string> binds{"0.0.0.0"};
   ASSERT_TRUE(util::MatchListeningIP(binds, "127.0.0.1"));
+}
+
+TEST(IOUtil, SockReadLineWaitsForConfiguredReceiveTimeout) {
+  int sockets[2];
+  ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, sockets), 0);
+  ASSERT_TRUE(util::SockSetReceiveTimeout(sockets[0], 2000).IsOK());
+
+  std::thread writer([fd = sockets[1]] {
+    std::this_thread::sleep_for(std::chrono::milliseconds(1100));
+    constexpr std::string_view response = "+OK\r\n";
+    (void)write(fd, response.data(), response.size());
+    close(fd);
+  });
+  auto response = util::SockReadLine(sockets[0]);
+  writer.join();
+  close(sockets[0]);
+
+  ASSERT_TRUE(response.IsOK());
+  EXPECT_EQ(*response, "+OK");
 }

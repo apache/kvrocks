@@ -170,6 +170,41 @@ rocksdb::Status CuckooChain::Add(engine::Context &ctx, const Slice &user_key, co
   return rocksdb::Status::OK();
 }
 
+rocksdb::Status CuckooChain::Info(engine::Context &ctx, const Slice &user_key, CuckooFilterInfo *info) {
+  std::string ns_key = AppendNamespacePrefix(user_key);
+  CuckooChainMetadata metadata(false);
+  auto s = getCuckooChainMetadata(ctx, ns_key, &metadata);
+  if (!s.ok()) {
+    return s;
+  }
+
+  s = validateMetadata(metadata);
+  if (!s.ok()) {
+    return s;
+  }
+
+  info->n_buckets = 0;
+  for (uint16_t filter_idx = 0; filter_idx < metadata.n_filters; filter_idx++) {
+    uint32_t num_buckets = 0;
+    s = CuckooFilterHelper::GetFilterNumBuckets(metadata.base_capacity, metadata.expansion, metadata.bucket_size,
+                                                filter_idx, &num_buckets);
+    if (!s.ok()) {
+      return s;
+    }
+
+    info->n_buckets += num_buckets;
+  }
+  info->size = metadata.bucket_size * info->n_buckets;
+  info->n_filters = metadata.n_filters;
+  info->n_items_inserted = metadata.size;
+  info->n_items_deleted = metadata.num_deleted_items;
+  info->bucket_size = metadata.bucket_size;
+  info->expansion = metadata.expansion;
+  info->max_iterations = metadata.max_iterations;
+
+  return rocksdb::Status::OK();
+}
+
 rocksdb::Status CuckooChain::tryInsertFingerprint(CuckooChainMetadata *metadata, CuckooPageCache &pages, uint64_t hash,
                                                   uint8_t fingerprint, bool *inserted) {
   auto s = tryCuckooInsert(metadata, pages, hash, fingerprint, inserted);

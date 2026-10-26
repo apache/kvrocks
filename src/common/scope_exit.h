@@ -47,6 +47,6 @@ struct ScopeExit {
 
 // use CTAD in C++17 or above
 template <typename F>
-ScopeExit<F> MakeScopeExit(F&& f, bool enabled = true) {
+[[nodiscard]] ScopeExit<F> MakeScopeExit(F&& f, bool enabled = true) {
   return ScopeExit<F>(std::forward<F>(f), enabled);
 }

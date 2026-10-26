@@ -242,8 +242,8 @@ func TestSlotMigrateSourceServerFlushedOrKilled(t *testing.T) {
 		require.Equal(t, "OK", rdb0.Do(ctx, "clusterx", "migrate", slot, id1).Val())
 		waitForMigrateState(t, rdb0, slot, SlotMigrationStateStarted)
 		require.NoError(t, rdb0.FlushDB(ctx).Err())
-		// The stop flag set by FLUSHDB is only checked when finishing the migration,
-		// so it takes a while for the rate-limited migration to reach the failed state.
+		// The stop flag set by FLUSHDB is checked during the migration process,
+		// it takes a while for the rate-limited migration to reach the failed state.
 		waitForMigrateStateInDuration(t, rdb0, slot, SlotMigrationStateFailed, time.Minute)
 	})
 

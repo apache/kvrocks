@@ -241,7 +241,6 @@ class CommandCFInfo : public Commander {
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
-
     switch (type_) {
       case CuckooInfoType::kAll:
         *output = redis::MultiLen(2 * 8);
@@ -295,9 +294,22 @@ class CommandCFInfo : public Commander {
   CuckooInfoType type_ = CuckooInfoType::kAll;
 };
 
-// Register the CF.RESERVE, CF.ADD, CF.EXISTS, CF.MEXISTS, and CF.INFO commands
+class CommandCFDel : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    // CF.DEL key item
+    if (args.size() != 3) {
+      return {Status::RedisParseErr, errWrongNumOfArguments};
+    }
+    bool deleted = false;
+    auto s = cuckoo_db.Delete(ctx, args_[1], args_[2], &deleted);
+    *output = redis::Integer(deleted ? 1 : 0);
+    return Status::OK();
+  }
+};
 REDIS_REGISTER_COMMANDS(CuckooFilter, MakeCmdAttr<CommandCFReserve>("cf.reserve", -3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandCFAdd>("cf.add", 3, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandCFDel>("cf.del", 3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandCFExists>("cf.exists", 3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandCFMExists>("cf.mexists", -3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandCFInfo>("cf.info", -2, "read-only", 1, 1, 1))

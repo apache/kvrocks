@@ -329,5 +329,7 @@ target_link_libraries(unittest PRIVATE kvrocks_objs kvrocks2redis_objs gtest_mai
 
 # RESP serialization microbenchmark. Build it explicitly with
 # `cmake --build build --target resp_reply_benchmark`.
-add_executable(resp_reply_benchmark EXCLUDE_FROM_ALL tests/benchmark/resp_reply_benchmark.cc)
-target_link_libraries(resp_reply_benchmark PRIVATE kvrocks_objs ${EXTERNAL_LIBS})
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/benchmark/resp_reply_benchmark.cc")
+  add_executable(resp_reply_benchmark EXCLUDE_FROM_ALL tests/benchmark/resp_reply_benchmark.cc)
+  target_link_libraries(resp_reply_benchmark PRIVATE kvrocks_objs ${EXTERNAL_LIBS})
+endif()

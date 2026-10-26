@@ -342,7 +342,7 @@ func TestCuckooFilter(t *testing.T) {
 		require.Equal(t, int64(1), headerValues[0])
 		header, ok := headerValues[1].(string)
 		require.True(t, ok)
-		require.Len(t, header, 23)
+		require.Len(t, header, 31)
 		require.Equal(t, uint64(1), binary.BigEndian.Uint64([]byte(header[0:8])))
 		require.Equal(t, uint16(1), binary.BigEndian.Uint16([]byte(header[16:18])))
 		require.Equal(t, byte(5), header[18])

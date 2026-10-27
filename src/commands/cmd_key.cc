@@ -26,6 +26,7 @@
 #include "server/redis_reply.h"
 #include "server/server.h"
 #include "storage/redis_db.h"
+#include "string_util.h"
 #include "time_util.h"
 
 namespace redis {
@@ -469,6 +470,25 @@ class CommandCopy : public Commander {
 template <bool ReadOnly>
 class CommandSort : public Commander {
  public:
+  static std::vector<CommandKeyRange> Range(const std::vector<std::string> &args) {
+    int store_key = 0;
+    for (size_t i = 2; i < args.size(); i++) {
+      if (util::EqualICase(args[i], "STORE") && i + 1 < args.size()) {
+        store_key = static_cast<int>(i + 1);
+        i++;
+      } else if ((util::EqualICase(args[i], "BY") || util::EqualICase(args[i], "GET")) && i + 1 < args.size()) {
+        i++;
+      } else if (util::EqualICase(args[i], "LIMIT") && i + 2 < args.size()) {
+        i += 2;
+      }
+    }
+
+    if (store_key > 0) {
+      return {{1, 1, 1}, {store_key, store_key, 1}};
+    }
+    return {{1, 1, 1}};
+  }
+
   Status Parse(const std::vector<std::string> &args) override {
     CommandParser parser(args, 2);
     while (parser.Good()) {
@@ -565,6 +585,7 @@ class CommandSort : public Commander {
           }
           *output = redis::Array(output_vec);
         } else {
+          srv->UpdateWatchedKeysManually({sort_argument_.storekey});
           *output = Integer(sorted_elems.size());
         }
         break;
@@ -654,7 +675,7 @@ REDIS_REGISTER_COMMANDS(Key, MakeCmdAttr<CommandTTL>("ttl", 2, "read-only", 1, 1
                         MakeCmdAttr<CommandRename>("rename", 3, "write", 1, 2, 1),
                         MakeCmdAttr<CommandRenameNX>("renamenx", 3, "write", 1, 2, 1),
                         MakeCmdAttr<CommandCopy>("copy", -3, "write", 1, 2, 1),
-                        MakeCmdAttr<CommandSort<false>>("sort", -2, "write slow", 1, 1, 1),
+                        MakeCmdAttr<CommandSort<false>>("sort", -2, "write slow", CommandSort<false>::Range),
                         MakeCmdAttr<CommandSort<true>>("sort_ro", -2, "read-only slow", 1, 1, 1),
                         MakeCmdAttr<CommandKMetadata>("kmetadata", 2, "read-only", 1, 1, 1))
 

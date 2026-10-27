@@ -878,4 +878,16 @@ func TestZSetSort(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, []string{"mary", "tom", ""}, sortResult)
 	})
+
+	t.Run("SORT STORE invalidates watched key", func(t *testing.T) {
+		rdb.Del(ctx, "src", "dst")
+		rdb.RPush(ctx, "src", "3", "1", "2")
+		require.NoError(t, rdb.Do(ctx, "WATCH", "dst").Err())
+		storedLen, err := rdb.Do(ctx, "Sort", "src", "STORE", "dst").Result()
+		require.NoError(t, err)
+		require.Equal(t, int64(3), storedLen)
+		require.NoError(t, rdb.Do(ctx, "MULTI").Err())
+		require.NoError(t, rdb.Do(ctx, "PING").Err())
+		require.Equal(t, rdb.Do(ctx, "EXEC").Val(), nil)
+	})
 }

@@ -24,6 +24,7 @@
 
 #include <algorithm>
 #include <memory>
+#include <set>
 #include <utility>
 #include <vector>
 
@@ -1024,7 +1025,12 @@ rocksdb::Status Stream::DeleteEntries(engine::Context &ctx, const Slice &stream_
 
   auto iter = util::UniqueIterator(ctx, read_options, stream_cf_handle_);
 
+  std::set<StreamEntryID> seen_ids;
   for (const auto &id : ids) {
+    if (!seen_ids.insert(id).second) {
+      continue;
+    }
+
     std::string entry_key = internalKeyFromEntryID(ns_key, metadata, id);
     std::string value;
     s = storage_->Get(ctx, read_options, stream_cf_handle_, entry_key, &value);
@@ -1069,7 +1075,7 @@ rocksdb::Status Stream::DeleteEntries(engine::Context &ctx, const Slice &stream_
   }
 
   if (*deleted_cnt > 0) {
-    metadata.size -= *deleted_cnt;
+    metadata.size = *deleted_cnt > metadata.size ? 0 : metadata.size - *deleted_cnt;
 
     std::string bytes;
     metadata.Encode(&bytes);

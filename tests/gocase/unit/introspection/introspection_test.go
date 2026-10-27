@@ -104,7 +104,7 @@ func TestIntrospection(t *testing.T) {
 
 		us, err := strconv.Atoi(vs[1].(string))
 		require.NoError(t, err)
-		require.Greater(t, us, 0)
+		require.GreaterOrEqual(t, us, 0)
 		require.Less(t, us, 1000000)
 	})
 

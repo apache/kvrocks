@@ -1686,6 +1686,12 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, enabledRES
 		require.EqualValues(t, int64(0), cmd.Val())
 		require.Equal(t, []redis.Z([]redis.Z{}), rdb.ZRangeWithScores(ctx, "setres", 0, -1).Val())
 	})
+
+	t.Run("ZDIFFSTORE / ZINTERSTORE / ZUNIONSTORE with numkeys 0 returns error", func(t *testing.T) {
+		util.ErrorRegexp(t, rdb.Do(ctx, "ZDIFFSTORE", "dst", "0", "s").Err(), ".*value is out of range, must be positive.*")
+		util.ErrorRegexp(t, rdb.Do(ctx, "ZINTERSTORE", "dst", "0", "s").Err(), ".*value is out of range, must be positive.*")
+		util.ErrorRegexp(t, rdb.Do(ctx, "ZUNIONSTORE", "dst", "0", "s").Err(), ".*value is out of range, must be positive.*")
+	})
 }
 
 func stressTests(t *testing.T, rdb *redis.Client, ctx context.Context, encoding string) {

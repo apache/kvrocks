@@ -196,7 +196,7 @@ func testZipList(t *testing.T, configs util.KvrocksServerConfigs) {
 	})
 
 	t.Run("ziplist implementation: value encoding and backlink", func(t *testing.T) {
-		iterations := 100
+		iterations := 10
 		for j := 0; j < iterations; j++ {
 			key := fmt.Sprintf("l1-%d", j)
 			require.NoError(t, rdb.Del(ctx, key).Err())

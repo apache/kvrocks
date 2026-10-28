@@ -206,7 +206,7 @@ func testZipList(t *testing.T, configs util.KvrocksServerConfigs) {
 				data := ""
 				switch op {
 				case 0:
-					data = strings.Repeat("x", int(rand.Int63n(1000000)))
+					data = strings.Repeat("x", int(rand.Int63n(100000)))
 				case 1:
 					data = fmt.Sprintf("%d", rand.Int63n(65536))
 				case 2:

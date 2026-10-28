@@ -445,7 +445,7 @@ ReplicationThread::ReplicationThread(std::string host, uint32_t port, Server *sr
                     CallbackType{CallbacksStateMachine::WRITE, "fullsync write", &ReplicationThread::fullSyncWriteCB},
                     CallbackType{CallbacksStateMachine::READ, "fullsync read", &ReplicationThread::fullSyncReadCB}}) {}
 
-Status ReplicationThread::Start(std::function<bool()> &&pre_fullsync_cb, std::function<void()> &&post_fullsync_cb) {
+Status ReplicationThread::Start(std::function<bool()> &&pre_fullsync_cb, std::function<void(bool)> &&post_fullsync_cb) {
   pre_fullsync_cb_ = std::move(pre_fullsync_cb);
   post_fullsync_cb_ = std::move(post_fullsync_cb);
 
@@ -887,7 +887,9 @@ ReplicationThread::CBState ReplicationThread::fullSyncReadCB(bufferevent *bev) {
       repl_state_.store(kReplFetchSST, std::memory_order_relaxed);
       auto s = parallelFetchFile(target_dir, meta.files);
       if (!s.IsOK()) {
-        if (pre_fullsync_done) post_fullsync_cb_();
+        // The DB was closed (and possibly emptied) by 'pre_fullsync_cb_', ask the
+        // callback to reopen it so the slave can keep serving while retrying.
+        if (pre_fullsync_done) post_fullsync_cb_(/*need_open_db=*/true);
         ERROR("[replication] Failed to parallel fetch files while {}", s.Msg());
         return CBState::RESTART;
       }
@@ -904,12 +906,14 @@ ReplicationThread::CBState ReplicationThread::fullSyncReadCB(bufferevent *bev) {
       }
       if (!s.IsOK()) {
         ERROR("[replication] Failed to restore backup while {}, restart fullsync", s.Msg());
-        post_fullsync_cb_();
+        // The restore path already tried to reopen the previous DB; the callback
+        // only opens a new one when that left db_ null.
+        post_fullsync_cb_(/*need_open_db=*/true);
         return CBState::RESTART;
       }
       INFO("[replication] Succeeded restoring the backup, fullsync was finish");
       reconnect_attempts_.store(0, std::memory_order_relaxed);  // Reset backoff counter on successful fullsync
-      post_fullsync_cb_();
+      post_fullsync_cb_(/*need_open_db=*/false);
 
       // It needs to reload namespaces from DB after the full sync is done,
       // or namespaces are not visible in the replica.

@@ -37,6 +37,17 @@ const uint16_t kCFDefaultMaxIterations = 20;
 const uint16_t kCFDefaultExpansion = 1;
 const uint16_t kCFMaxExpansion = 32768;
 
+struct CuckooFilterInfo {
+  uint64_t size;
+  uint64_t n_buckets;
+  uint16_t n_filters;
+  uint64_t n_items_inserted;
+  uint64_t n_items_deleted;
+  uint8_t bucket_size;
+  uint16_t expansion;
+  uint16_t max_iterations;
+};
+
 // Command tags recorded in WriteBatchLogData for cuckoo filter mutations.
 constexpr const char *kCFLogDataReserve = "reserve";
 constexpr const char *kCFLogDataAdd = "add";
@@ -62,6 +73,9 @@ class CuckooChain : public Database {
                           std::vector<bool> *exists);
   // Deletes one matching fingerprint from the cuckoo filter.
   rocksdb::Status Delete(engine::Context &ctx, const Slice &user_key, const Slice &item, bool *deleted);
+
+  // Retrieves information about the cuckoo filter associated with the given key.
+  rocksdb::Status Info(engine::Context &ctx, const Slice &user_key, CuckooFilterInfo *info);
 
  private:
   // Loads metadata for a cuckoo filter key.

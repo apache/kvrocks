@@ -504,6 +504,20 @@ var streamTests = func(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.Subset(t, items[0].Values, map[string]interface{}{"foo": "value0"})
 		require.Subset(t, items[1].Values, map[string]interface{}{"foo": "value2"})
 	})
+	t.Run("XDEL with repeated IDs counts each entry once", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "somestream").Err())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "somestream", ID: "1-0", Values: []string{"foo", "value0"}}).Err())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "somestream", ID: "2-0", Values: []string{"foo", "value1"}}).Err())
+		// A repeated ID must be counted once; the stream length must stay consistent.
+		require.EqualValues(t, 1, rdb.XDel(ctx, "somestream", "1-0", "1-0").Val())
+		require.EqualValues(t, 1, rdb.XLen(ctx, "somestream").Val())
+		items := rdb.XRange(ctx, "somestream", "-", "+").Val()
+		require.Len(t, items, 1)
+		require.Equal(t, "2-0", items[0].ID)
+		// Deleting the last entry with repeats must not underflow the length.
+		require.EqualValues(t, 1, rdb.XDel(ctx, "somestream", "2-0", "2-0", "2-0").Val())
+		require.EqualValues(t, 0, rdb.XLen(ctx, "somestream").Val())
+	})
 
 	// Here the idea is to check the consistency of the stream data structure as we remove all the elements down to zero elements.
 	t.Run("XDEL fuzz test", func(t *testing.T) {

@@ -907,7 +907,9 @@ func TestSortStoreWatchedKey(t *testing.T) {
 	})
 
 	t.Run("SORT ... STORE aborts a transaction watching the overwritten destination key", func(t *testing.T) {
-		require.NoError(t, rdb.Set(ctx, "sort_store_dst", "old", 0).Err())
+		require.NoError(t, rdb.Del(ctx, "sort_store_src", "sort_store_dst").Err())
+		require.NoError(t, rdb.RPush(ctx, "sort_store_src", 3, 1, 2).Err())
+		require.NoError(t, rdb.RPush(ctx, "sort_store_dst", 9).Err())
 
 		require.NoError(t, watcher.Do(ctx, "WATCH", "sort_store_dst").Err())
 		require.EqualValues(t, 3, rdb.Do(ctx, "SORT", "sort_store_src", "STORE", "sort_store_dst").Val())
@@ -915,5 +917,8 @@ func TestSortStoreWatchedKey(t *testing.T) {
 		require.NoError(t, watcher.Do(ctx, "MULTI").Err())
 		require.NoError(t, watcher.Do(ctx, "EXISTS", "sort_store_dst").Err())
 		require.Nil(t, watcher.Do(ctx, "EXEC").Val())
+
+		// The aborted transaction must not have revived the stale destination value.
+		require.Equal(t, []string{"1", "2", "3"}, rdb.LRange(ctx, "sort_store_dst", 0, -1).Val())
 	})
 }

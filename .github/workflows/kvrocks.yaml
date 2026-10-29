@@ -17,7 +17,14 @@
 
 name: CI
 
-on: [push, pull_request]
+on:
+  push:
+    branches:
+      - unstable
+      - '*.*'
+      - '*.*.*'
+      - 'action/**'
+  pull_request:
 
 # Concurrency strategy:
 #   github.workflow: distinguish this workflow from others
@@ -61,7 +68,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Check typos
-        uses: crate-ci/typos@v1.50.2
+        uses: crate-ci/typos@v1.51.1
         with:
           config: .github/config/typos.toml
       - uses: apache/skywalking-eyes/header@v0.9.0
@@ -127,36 +134,20 @@ jobs:
       matrix:
         include:
           - name: Darwin Clang arm64
-            os: macos-14
+            os: macos-15
             compiler: auto
           - name: Darwin Clang arm64 without Jemalloc
-            os: macos-14
+            os: macos-15
             compiler: auto
             without_jemalloc: -DDISABLE_JEMALLOC=ON
           - name: Darwin Clang arm64 with OpenSSL
-            os: macos-14
+            os: macos-15
             compiler: auto
             with_openssl: -DENABLE_OPENSSL=ON
           - name: Darwin Clang arm64 without luaJIT
-            os: macos-14
+            os: macos-15
             compiler: auto
             without_luajit: -DENABLE_LUAJIT=OFF
-          # FIXME: temporarily disable macos-13 build, refer to #2874
-          # - name: Darwin Clang
-          #   os: macos-13
-          #   compiler: auto
-          # - name: Darwin Clang without Jemalloc
-          #   os: macos-13
-          #   compiler: auto
-          #   without_jemalloc: -DDISABLE_JEMALLOC=ON
-          # - name: Darwin Clang with OpenSSL
-          #   os: macos-13
-          #   compiler: auto
-          #   with_openssl: -DENABLE_OPENSSL=ON
-          # - name: Darwin Clang without luaJIT
-          #   os: macos-13
-          #   compiler: auto
-          #   without_luajit: -DENABLE_LUAJIT=OFF
           - name: Ubuntu GCC
             os: ubuntu-22.04
             compiler: gcc
@@ -352,7 +343,7 @@ jobs:
         if: ${{ matrix.sonarcloud }}
 
       - name: Install Build Wrapper
-        uses: SonarSource/sonarqube-scan-action/install-build-wrapper@ba9859eae8dd6bd29e412f25ddbbef3d032000f4 # v8.2.2
+        uses: SonarSource/sonarqube-scan-action/install-build-wrapper@d209202bc7d53ff1cc128f7f907dac145c9d6ae9 # v8.3.0
         if: ${{ matrix.sonarcloud }}
 
       - name: Build Kvrocks

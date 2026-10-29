@@ -29,7 +29,7 @@ struct ScopeExit {
   explicit ScopeExit(F f) : enabled(true), f(std::move(f)) {}
 
   ScopeExit(const ScopeExit&) = delete;
-  ScopeExit(ScopeExit&& se) : enabled(se.enabled), f(std::move(se.f)) {}
+  ScopeExit(ScopeExit&& se) : enabled(se.enabled), f(std::move(se.f)) { se.Disable(); }
 
   ScopeExit& operator=(const ScopeExit&) = delete;
 
@@ -47,6 +47,6 @@ struct ScopeExit {
 
 // use CTAD in C++17 or above
 template <typename F>
-ScopeExit<F> MakeScopeExit(F&& f, bool enabled = true) {
+[[nodiscard]] ScopeExit<F> MakeScopeExit(F&& f, bool enabled = true) {
   return ScopeExit<F>(std::forward<F>(f), enabled);
 }

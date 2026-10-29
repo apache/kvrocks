@@ -28,7 +28,7 @@
 
 namespace redis {
 
-class CuckooSubFilter;
+class CuckooPageCache;
 
 // Default values for a newly created cuckoo filter.
 const uint32_t kCFDefaultCapacity = 1024;
@@ -36,6 +36,11 @@ const uint8_t kCFDefaultBucketSize = 2;
 const uint16_t kCFDefaultMaxIterations = 20;
 const uint16_t kCFDefaultExpansion = 1;
 const uint16_t kCFMaxExpansion = 32768;
+
+// Command tags recorded in WriteBatchLogData for cuckoo filter mutations.
+constexpr const char *kCFLogDataReserve = "reserve";
+constexpr const char *kCFLogDataAdd = "add";
+constexpr const char *kCFLogDataDel = "del";
 
 class CuckooChain : public Database {
  public:
@@ -55,6 +60,8 @@ class CuckooChain : public Database {
   // Returns whether each item might exist in the cuckoo filter.
   rocksdb::Status MExists(engine::Context &ctx, const Slice &user_key, const std::vector<std::string> &items,
                           std::vector<bool> *exists);
+  // Deletes one matching fingerprint from the cuckoo filter.
+  rocksdb::Status Delete(engine::Context &ctx, const Slice &user_key, const Slice &item, bool *deleted);
 
  private:
   // Loads metadata for a cuckoo filter key.
@@ -62,15 +69,17 @@ class CuckooChain : public Database {
 
   static rocksdb::Status validateMetadata(const CuckooChainMetadata &metadata);
 
-  rocksdb::Status tryCuckooInsert(engine::Context &ctx, const Slice &user_key, const std::string &ns_key,
-                                  CuckooChainMetadata *metadata, uint64_t hash, uint8_t fingerprint, bool *inserted);
-  rocksdb::Status tryCuckooKickOut(engine::Context &ctx, const Slice &user_key, const std::string &ns_key,
-                                   CuckooChainMetadata *metadata, uint64_t hash, uint8_t fingerprint, bool *inserted);
-  rocksdb::Status expandAndInsertCuckooChain(engine::Context &ctx, const Slice &user_key, const std::string &ns_key,
-                                             CuckooChainMetadata *metadata, uint64_t hash, uint8_t fingerprint,
-                                             bool *inserted);
-  rocksdb::Status commitSubFilterAndMetadata(engine::Context &ctx, const Slice &user_key, const std::string &ns_key,
-                                             CuckooChainMetadata *metadata, CuckooSubFilter *sub_filter);
+  static rocksdb::Status tryInsertFingerprint(CuckooChainMetadata *metadata, CuckooPageCache &pages, uint64_t hash,
+                                              uint8_t fingerprint, bool *inserted);
+  static rocksdb::Status tryCuckooInsert(const CuckooChainMetadata *metadata, CuckooPageCache &pages, uint64_t hash,
+                                         uint8_t fingerprint, bool *inserted);
+  static rocksdb::Status tryCuckooKickOut(const CuckooChainMetadata *metadata, CuckooPageCache &pages, uint64_t hash,
+                                          uint8_t fingerprint, bool *inserted);
+  static rocksdb::Status expandAndInsertCuckooChain(CuckooChainMetadata *metadata, CuckooPageCache &pages,
+                                                    uint64_t hash, uint8_t fingerprint, bool *inserted);
+  rocksdb::Status commitPagesAndMetadata(engine::Context &ctx, const Slice &user_key, const std::string &ns_key,
+                                         const CuckooChainMetadata *metadata, CuckooPageCache &pages,
+                                         const std::string &command);
 };
 
 }  // namespace redis

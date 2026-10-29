@@ -268,4 +268,13 @@ func TestExpire(t *testing.T) {
 		util.ErrorRegexp(t, rdb.Do(ctx, "expire", "foo", "").Err(), ".*not started as an integer*.")
 	})
 
+	t.Run("Overflowing EX and EXPIRE should return error and preserve key", func(t *testing.T) {
+		require.NoError(t, rdb.Set(ctx, "k_overflow", "old", 0).Err())
+		util.ErrorRegexp(t, rdb.Do(ctx, "SET", "k_overflow", "new", "EX", "9223372036854775807").Err(), ".*invalid expire time.*")
+		require.Equal(t, "old", rdb.Get(ctx, "k_overflow").Val())
+
+		util.ErrorRegexp(t, rdb.Do(ctx, "EXPIRE", "k_overflow", "9223372036854775807").Err(), ".*invalid expire time.*")
+		require.Equal(t, "old", rdb.Get(ctx, "k_overflow").Val())
+	})
+
 }

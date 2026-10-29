@@ -220,7 +220,7 @@ void FeedSlaveThread::loop() {
       return;
     }
     updates_in_batches += batch.writeBatchPtr->Count();
-    batches_bulk += redis::BulkString(batch.writeBatchPtr->Data());
+    redis::AppendBulkString(&batches_bulk, batch.writeBatchPtr->Data());
     // 1. We must send the first replication batch, as said above.
     // 2. To avoid frequently calling 'write' system call to send replication stream,
     //    we pack multiple batches into one big bulk if possible, and only send once.
@@ -235,7 +235,7 @@ void FeedSlaveThread::loop() {
       // get the last sequence number of the batch, because WAIT uses
       // the last sequence number to wake up the connection.
       if (shouldSendGetAck(batch.sequence + batch.writeBatchPtr->Count() - 1)) {
-        batches_bulk += redis::BulkString("_getack");
+        redis::AppendBulkString(&batches_bulk, "_getack");
       }
 
       // Send entire bulk which contain multiple batches with timeout

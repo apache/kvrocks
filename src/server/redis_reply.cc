@@ -68,10 +68,17 @@ std::string BulkString(std::string_view data) {
   return res;
 }
 
+void AppendBulkString(std::string *dst, std::string_view data) {
+  const auto data_size = std::to_string(data.size());
+  dst->reserve(dst->size() + 1 + data_size.size() + 2 + data.size() + 2);
+  dst->append("$").append(data_size).append(CRLF);
+  dst->append(data).append(CRLF);
+}
+
 std::string ArrayOfBulkStrings(const std::vector<std::string> &elems) {
   std::string result = MultiLen(elems.size());
   for (const auto &elem : elems) {
-    result += BulkString(elem);
+    AppendBulkString(&result, elem);
   }
   return result;
 }
@@ -89,7 +96,7 @@ std::string MultiBulkString(RESP ver, const std::vector<std::string> &values) {
     if (value.empty()) {
       result += NilString(ver);
     } else {
-      result += BulkString(value);
+      AppendBulkString(&result, value);
     }
   }
   return result;
@@ -102,7 +109,7 @@ std::string MultiBulkString(RESP ver, const std::vector<std::string> &values,
     if (i < statuses.size() && !statuses[i].ok()) {
       result += NilString(ver);
     } else {
-      result += BulkString(values[i]);
+      AppendBulkString(&result, values[i]);
     }
   }
   return result;
@@ -112,7 +119,7 @@ std::string SetOfBulkStrings(RESP ver, const std::vector<std::string> &elems) {
   std::string result;
   result += HeaderOfSet(ver, elems.size());
   for (const auto &elem : elems) {
-    result += BulkString(elem);
+    AppendBulkString(&result, elem);
   }
   return result;
 }
@@ -123,7 +130,7 @@ std::string MapOfBulkStrings(RESP ver, const std::vector<std::string> &elems) {
   std::string result;
   result += HeaderOfMap(ver, elems.size() / 2);
   for (const auto &elem : elems) {
-    result += BulkString(elem);
+    AppendBulkString(&result, elem);
   }
   return result;
 }

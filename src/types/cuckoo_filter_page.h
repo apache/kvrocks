@@ -61,8 +61,8 @@ class CuckooPageCache {
   rocksdb::Status SetBucketSlotWithUndo(uint16_t filter_index, uint32_t num_buckets, uint32_t bucket_index,
                                         uint32_t slot_idx, uint8_t fingerprint, SlotMutation *mutation);
   rocksdb::Status RestoreBucketSlot(const SlotMutation &mutation);
-  rocksdb::Status ReadRangeWithoutCache(uint16_t filter_index, uint32_t num_buckets, uint64_t offset, size_t length,
-                                        std::string *data);
+  rocksdb::Status ScanPageBytes(uint16_t filter_index, uint32_t num_buckets, uint64_t offset, size_t length,
+                                std::string *data);
   rocksdb::Status WriteBackDirtyPages(rocksdb::WriteBatchBase *batch);
 
   void DiscardCleanPages();
@@ -87,12 +87,19 @@ class CuckooPageCache {
     uint32_t expected_page_size = 0;
   };
 
+  struct PageRead {
+    BucketLocation location;
+    size_t page_offset = 0;
+    size_t length = 0;
+  };
+
   rocksdb::Status resolveBucketLocation(uint16_t filter_index, uint32_t num_buckets, uint32_t bucket_index,
                                         BucketLocation *location) const;
   rocksdb::Status ensureBucketLoaded(uint16_t filter_index, uint32_t num_buckets, uint32_t bucket_index,
                                      BucketRef *bucket);
   rocksdb::Status loadPage(const BucketLocation &location, PageEntry **page);
   rocksdb::Status loadPages(const std::vector<BucketLocation> &locations);
+  rocksdb::Status batchGetPageBytes(const std::vector<PageRead> &reads, size_t start, size_t count, std::string *data);
   static rocksdb::Status normalizePage(const rocksdb::Status &status, uint32_t expected_size, PageEntry *page);
 
   static bool tryInsertInBucketRef(const BucketRef &bucket, uint8_t fingerprint, size_t *slot_idx);

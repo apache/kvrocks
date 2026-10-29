@@ -38,17 +38,18 @@ void EncodeDumpHeader(const CuckooChainMetadata &metadata, std::string *output) 
   PutFixed16(output, metadata.max_iterations);
   PutFixed16(output, metadata.expansion);
   PutFixed64(output, metadata.base_capacity);
+  PutFixed32(output, metadata.page_size);
 }
 
 rocksdb::Status DecodeDumpHeader(rocksdb::Slice input, CuckooChainMetadata *metadata) {
-  constexpr size_t kDumpHeaderSize = sizeof(uint64_t) * 3 + sizeof(uint16_t) * 3 + sizeof(uint8_t);
+  constexpr size_t kDumpHeaderSize = sizeof(uint64_t) * 3 + sizeof(uint32_t) + sizeof(uint16_t) * 3 + sizeof(uint8_t);
   if (input.size() != kDumpHeaderSize) {
     return rocksdb::Status::InvalidArgument("invalid cuckoo filter dump header size");
   }
   if (!GetFixed64(&input, &metadata->size) || !GetFixed64(&input, &metadata->num_deleted_items) ||
       !GetFixed16(&input, &metadata->n_filters) || !GetFixed8(&input, &metadata->bucket_size) ||
       !GetFixed16(&input, &metadata->max_iterations) || !GetFixed16(&input, &metadata->expansion) ||
-      !GetFixed64(&input, &metadata->base_capacity) || !input.empty()) {
+      !GetFixed64(&input, &metadata->base_capacity) || !GetFixed32(&input, &metadata->page_size) || !input.empty()) {
     return rocksdb::Status::InvalidArgument("invalid cuckoo filter dump header");
   }
   return rocksdb::Status::OK();
@@ -464,7 +465,7 @@ rocksdb::Status CuckooChain::ScanDump(engine::Context &ctx, const Slice &user_ke
   }
   CuckooPageCache pages(storage_, ctx, ns_key, storage_->IsSlotIdEncoded(), metadata.version, metadata.bucket_size,
                         metadata.page_size);
-  s = pages.ReadRangeWithoutCache(filter_index, num_buckets, read_offset, length, data);
+  s = pages.ScanPageBytes(filter_index, num_buckets, read_offset, length, data);
   if (!s.ok()) return s;
   *next_iterator = iterator + length;
   *has_data = true;

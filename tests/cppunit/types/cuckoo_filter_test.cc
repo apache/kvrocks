@@ -1345,7 +1345,7 @@ TEST_F(RedisCuckooFilterTest, ScanDumpEmptyFilterReturnsHeader) {
   auto s = cuckoo_->ScanDump(*ctx_, key_, 0, &next_iterator, &data, &has_data);
   ASSERT_TRUE(s.ok()) << s.ToString();
   EXPECT_EQ(next_iterator, 1);
-  ASSERT_EQ(data.size(), 31);
+  ASSERT_EQ(data.size(), 35);
   EXPECT_EQ(DecodeFixed64(data.data()), 0U);
   EXPECT_EQ(DecodeFixed64(data.data() + 8), 0U);
   EXPECT_EQ(DecodeFixed16(data.data() + 16), 1U);
@@ -1353,6 +1353,7 @@ TEST_F(RedisCuckooFilterTest, ScanDumpEmptyFilterReturnsHeader) {
   EXPECT_EQ(DecodeFixed16(data.data() + 19), 20U);
   EXPECT_EQ(DecodeFixed16(data.data() + 21), 2U);
   EXPECT_EQ(DecodeFixed64(data.data() + 23), 100U);
+  EXPECT_EQ(DecodeFixed32(data.data() + 31), kCuckooFilterDefaultPageSize);
   EXPECT_TRUE(has_data);
 
   s = cuckoo_->ScanDump(*ctx_, key_, next_iterator, &next_iterator, &data, &has_data);
@@ -1382,7 +1383,8 @@ TEST_F(RedisCuckooFilterTest, ScanDumpReturnsHeaderAndInsertedData) {
   ASSERT_TRUE(s.ok()) << s.ToString();
   ASSERT_TRUE(has_data);
   EXPECT_EQ(next_iterator, 1);
-  EXPECT_EQ(header.size(), 31);
+  EXPECT_EQ(header.size(), 35);
+  EXPECT_EQ(DecodeFixed32(header.data() + 31), kCuckooFilterDefaultPageSize);
 
   std::string data;
   s = cuckoo_->ScanDump(*ctx_, key_, next_iterator, &next_iterator, &data, &has_data);
@@ -1420,7 +1422,8 @@ TEST_F(RedisCuckooFilterTest, ScanDumpUsesRedisBloomChunkBoundaries) {
   s = cuckoo_->ScanDump(*ctx_, key_, 0, &next_iterator, &data, &has_data);
   ASSERT_TRUE(s.ok()) << s.ToString();
   EXPECT_EQ(next_iterator, 1);
-  EXPECT_EQ(data.size(), 31);
+  EXPECT_EQ(data.size(), 35);
+  EXPECT_EQ(DecodeFixed32(data.data() + 31), page_size);
   EXPECT_TRUE(has_data);
 
   s = cuckoo_->ScanDump(*ctx_, key_, next_iterator, &next_iterator, &data, &has_data);
@@ -1498,7 +1501,8 @@ TEST_F(RedisCuckooFilterTest, ScanDumpExpansionMatchesAllPages) {
   auto s = cuckoo_->ScanDump(*ctx_, key_, iterator, &iterator, &header, &has_data);
   ASSERT_TRUE(s.ok()) << s.ToString();
   ASSERT_TRUE(has_data);
-  ASSERT_EQ(header.size(), 31);
+  ASSERT_EQ(header.size(), 35);
+  EXPECT_EQ(DecodeFixed32(header.data() + 31), metadata.page_size);
   ASSERT_EQ(iterator, 1);
 
   std::string dump;

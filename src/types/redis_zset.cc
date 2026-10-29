@@ -63,7 +63,7 @@ rocksdb::Status ZSet::Add(engine::Context &ctx, const Slice &user_key, ZAddFlags
       s = storage_->Get(ctx, ctx.GetReadOptions(), member_key, &old_score_bytes);
       if (!s.ok() && !s.IsNotFound()) return s;
       if (s.ok()) {
-        if (!s.IsNotFound() && flags.HasNX()) {
+        if (flags.HasNX()) {
           continue;
         }
         double old_score = DecodeDouble(old_score_bytes.data());

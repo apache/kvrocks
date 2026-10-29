@@ -190,6 +190,54 @@ TEST_F(RedisCuckooPageCacheTest, PrefetchBucketsOnDifferentPagesLoadsBothPages) 
   EXPECT_EQ(fingerprint, 55);
 }
 
+TEST_F(RedisCuckooPageCacheTest, ScanPageBytesReadsAcrossPagesAndFillsMissingPages) {
+  auto metadata = makeMetadata(1, 1, 4);
+  auto page_key = makePageKey(metadata, 0, 1);
+  writePage(page_key,
+            std::string{static_cast<char>(10), static_cast<char>(11), static_cast<char>(12), static_cast<char>(13)});
+  redis::CuckooPageCache pages(storage_.get(), *ctx_, ns_key_, storage_->IsSlotIdEncoded(), metadata.version,
+                               metadata.bucket_size, metadata.page_size);
+
+  std::string data;
+  auto s = pages.ScanPageBytes(0, 12, 2, 8, &data);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  EXPECT_EQ(data, std::string({0, 0, 10, 11, 12, 13, 0, 0}));
+}
+
+TEST_F(RedisCuckooPageCacheTest, ScanPageBytesReadsExistingPages) {
+  auto metadata = makeMetadata(1, 1, 4);
+  writePage(makePageKey(metadata, 0, 0), std::string({1, 2, 3, 4}));
+  writePage(makePageKey(metadata, 0, 1), std::string({5, 6, 7, 8}));
+  redis::CuckooPageCache pages(storage_.get(), *ctx_, ns_key_, storage_->IsSlotIdEncoded(), metadata.version,
+                               metadata.bucket_size, metadata.page_size);
+
+  std::string data;
+  auto s = pages.ScanPageBytes(0, 8, 1, 6, &data);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  EXPECT_EQ(data, std::string({2, 3, 4, 5, 6, 7}));
+}
+
+TEST_F(RedisCuckooPageCacheTest, ScanPageBytesRejectsCorruptedPageSize) {
+  auto metadata = makeMetadata(1, 1, 4);
+  writePage(makePageKey(metadata, 0, 0), std::string({1, 2, 3}));
+  redis::CuckooPageCache pages(storage_.get(), *ctx_, ns_key_, storage_->IsSlotIdEncoded(), metadata.version,
+                               metadata.bucket_size, metadata.page_size);
+
+  std::string data;
+  auto s = pages.ScanPageBytes(0, 4, 0, 1, &data);
+  EXPECT_TRUE(s.IsCorruption()) << s.ToString();
+}
+
+TEST_F(RedisCuckooPageCacheTest, ScanPageBytesRejectsInvalidRange) {
+  auto metadata = makeMetadata(2, 1, 4);
+  redis::CuckooPageCache pages(storage_.get(), *ctx_, ns_key_, storage_->IsSlotIdEncoded(), metadata.version,
+                               metadata.bucket_size, metadata.page_size);
+
+  std::string data;
+  auto s = pages.ScanPageBytes(0, 2, 3, 2, &data);
+  EXPECT_TRUE(s.IsInvalidArgument()) << s.ToString();
+}
+
 TEST_F(RedisCuckooPageCacheTest, NonDefaultPageSizeControlsBucketMapping) {
   auto metadata = makeMetadata(4, 1, 8);
   redis::CuckooPageCache pages(storage_.get(), *ctx_, ns_key_, storage_->IsSlotIdEncoded(), metadata.version,

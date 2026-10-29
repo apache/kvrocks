@@ -23,11 +23,14 @@
 #include <algorithm>
 
 #include "common/encoding.h"
+#include "cuckoo_filter.h"
 #include "storage/redis_db.h"
 
 namespace redis {
 
 namespace {
+
+constexpr size_t kMaxMultiGetPages = kCuckooFilterMaxScanDumpSize / kCuckooFilterDefaultPageSize;
 
 uint32_t GetBucketsPerPage(uint32_t page_size, uint8_t bucket_size) {
   return std::max<uint32_t>(1, page_size / bucket_size);
@@ -154,6 +157,65 @@ rocksdb::Status CuckooPageCache::RestoreBucketSlot(const SlotMutation &mutation)
 
   it->second.data[offset] = static_cast<char>(mutation.old_fingerprint);
   it->second.is_dirty = mutation.page_was_dirty;
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status CuckooPageCache::ScanPageBytes(uint16_t filter_index, uint32_t num_buckets, uint64_t offset,
+                                               size_t length, std::string *data) {
+  const uint64_t filter_size = static_cast<uint64_t>(num_buckets) * bucket_size_;
+  if (offset > filter_size || length > filter_size - offset) {
+    return rocksdb::Status::InvalidArgument("invalid cuckoo filter range");
+  }
+
+  data->clear();
+  data->reserve(length);
+  std::vector<PageRead> reads;
+  while (length > 0) {
+    auto bucket_index = static_cast<uint32_t>(offset / bucket_size_);
+    BucketLocation location;
+    auto s = resolveBucketLocation(filter_index, num_buckets, bucket_index, &location);
+    if (!s.ok()) return s;
+    auto page_offset = static_cast<size_t>(location.offset + offset % bucket_size_);
+    auto chunk_size = std::min(length, static_cast<size_t>(location.expected_page_size) - page_offset);
+    reads.push_back({.location = std::move(location), .page_offset = page_offset, .length = chunk_size});
+    offset += chunk_size;
+    length -= chunk_size;
+  }
+
+  for (size_t batch_start = 0; batch_start < reads.size(); batch_start += kMaxMultiGetPages) {
+    const auto batch_size = std::min(kMaxMultiGetPages, reads.size() - batch_start);
+    auto s = batchGetPageBytes(reads, batch_start, batch_size, data);
+    if (!s.ok()) return s;
+  }
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status CuckooPageCache::batchGetPageBytes(const std::vector<PageRead> &reads, size_t start, size_t count,
+                                                   std::string *data) {
+  std::vector<rocksdb::Slice> keys;
+  keys.reserve(count);
+  for (size_t i = start; i < start + count; ++i) {
+    keys.emplace_back(reads[i].location.page_key);
+  }
+  std::vector<rocksdb::PinnableSlice> values(count);
+  std::vector<rocksdb::Status> statuses(count);
+  auto read_options = ctx_.DefaultMultiGetOptions();
+  read_options.fill_cache = false;
+  storage_->MultiGet(ctx_, read_options, storage_->GetDB()->DefaultColumnFamily(), count, keys.data(), values.data(),
+                     statuses.data());
+  for (size_t i = 0; i < count; ++i) {
+    const auto &read = reads[start + i];
+    if (statuses[i].IsNotFound()) {
+      data->append(read.length, 0);
+      continue;
+    }
+    if (!statuses[i].ok()) return statuses[i];
+    if (values[i].size() != read.location.expected_page_size) {
+      return rocksdb::Status::Corruption("invalid cuckoo filter page size");
+    }
+    data->append(values[i].data() + read.page_offset, read.length);
+    values[i].Reset();
+  }
   return rocksdb::Status::OK();
 }
 

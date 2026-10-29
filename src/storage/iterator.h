@@ -125,6 +125,7 @@ class WALBatchExtractor : public rocksdb::WriteBatch::Handler {
     bool Valid();
     void Next();
     WALItem Value();
+    bool IsLast() const { return items_ && cur_ + 1 >= items_->size(); }
 
    private:
     explicit Iter(std::vector<WALItem> *items) : items_(items), cur_(0) {}
@@ -151,6 +152,7 @@ class WALIterator {
   void Seek(rocksdb::SequenceNumber seq);
   void Next();
   WALItem Item();
+  bool IsBatchEnd() const { return !batch_iter_ || batch_iter_->IsLast(); }
 
   rocksdb::SequenceNumber NextSequenceNumber() const;
   void Reset();

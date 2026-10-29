@@ -299,7 +299,17 @@ Status Server::AddMaster(const std::string &host, uint32_t port, bool force_reco
 
   replication_thread_ = std::make_unique<ReplicationThread>(host, master_listen_port, this);
   auto s = replication_thread_->Start([this]() { return PrepareRestoreDB(); },
-                                      [this]() {
+                                      [this](bool need_open_db) {
+                                        // A failed full sync may leave the DB closed (and possibly emptied)
+                                        // after 'PrepareRestoreDB'. Reopen it before clearing 'is_loading_',
+                                        // otherwise workers would dereference a null DB. The restore paths
+                                        // already reopen the previous DB on failure, so only open when it is
+                                        // still null; an empty DB is created when the data dir was deleted.
+                                        if (need_open_db && storage->GetDB() == nullptr) {
+                                          auto s = storage->Open();
+                                          // If this fails too, this slave has no DB and cannot serve.
+                                          CHECK(s.IsOK());
+                                        }
                                         this->is_loading_ = false;
                                         if (auto s = task_runner_.Start(); !s) {
                                           WARN("Failed to start task runner: {}", s.Msg());

@@ -252,6 +252,9 @@ class CommandGeoRadius : public CommandGeoBase {
       return {Status::RedisParseErr, errValueIsNotFloat};
     }
     radius_ = *radius;
+    if (radius_ < 0) {
+      return {Status::RedisParseErr, "radius cannot be negative"};
+    }
 
     s = ParseDistanceUnit(args[5]);
     if (!s.IsOK()) return s;
@@ -418,6 +421,9 @@ class CommandGeoSearch : public CommandGeoBase {
         auto s = setShapeType(kGeoShapeTypeCircular);
         if (!s.IsOK()) return s;
         radius_ = GET_OR_RET(parser.TakeFloat());
+        if (radius_ < 0) {
+          return {Status::RedisParseErr, "radius cannot be negative"};
+        }
         std::string distance_raw = GET_OR_RET(parser.TakeStr());
         s = ParseDistanceUnit(distance_raw);
         if (!s.IsOK()) return s;
@@ -426,6 +432,9 @@ class CommandGeoSearch : public CommandGeoBase {
         if (!s.IsOK()) return s;
         width_ = GET_OR_RET(parser.TakeFloat());
         height_ = GET_OR_RET(parser.TakeFloat());
+        if (width_ < 0 || height_ < 0) {
+          return {Status::RedisParseErr, "height or width cannot be negative"};
+        }
         std::string distance_raw = GET_OR_RET(parser.TakeStr());
         s = ParseDistanceUnit(distance_raw);
         if (!s.IsOK()) return s;
@@ -583,6 +592,9 @@ class CommandGeoSearchStore : public CommandGeoSearch {
         auto s = setShapeType(kGeoShapeTypeCircular);
         if (!s.IsOK()) return s;
         radius_ = GET_OR_RET(parser.TakeFloat());
+        if (radius_ < 0) {
+          return {Status::RedisParseErr, "radius cannot be negative"};
+        }
         std::string distance_raw = GET_OR_RET(parser.TakeStr());
         s = ParseDistanceUnit(distance_raw);
         if (!s.IsOK()) return s;
@@ -591,6 +603,9 @@ class CommandGeoSearchStore : public CommandGeoSearch {
         if (!s.IsOK()) return s;
         width_ = GET_OR_RET(parser.TakeFloat());
         height_ = GET_OR_RET(parser.TakeFloat());
+        if (width_ < 0 || height_ < 0) {
+          return {Status::RedisParseErr, "height or width cannot be negative"};
+        }
         std::string distance_raw = GET_OR_RET(parser.TakeStr());
         s = ParseDistanceUnit(distance_raw);
         if (!s.IsOK()) return s;
@@ -655,6 +670,9 @@ class CommandGeoRadiusByMember : public CommandGeoRadius {
       return {Status::RedisParseErr, errValueIsNotFloat};
     }
     radius_ = *radius;
+    if (radius_ < 0) {
+      return {Status::RedisParseErr, "radius cannot be negative"};
+    }
 
     auto s = ParseDistanceUnit(args[4]);
     if (!s.IsOK()) return s;

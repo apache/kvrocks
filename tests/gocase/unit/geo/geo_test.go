@@ -447,6 +447,18 @@ var testGeo = func(t *testing.T, configs util.KvrocksServerConfigs) {
 			rdb.GeoSearch(ctx, "points", &redis.GeoSearchQuery{BoxWidth: 200, BoxHeight: 200, BoxUnit: "km", Member: "Washington", Sort: "DESC"}).Val())
 	})
 
+	t.Run("GEO commands with negative radius or box", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "points").Err())
+		require.NoError(t, rdb.GeoAdd(ctx, "points", &redis.GeoLocation{Name: "a", Longitude: 1, Latitude: 1}).Err())
+
+		util.ErrorRegexp(t, rdb.Do(ctx, "GEORADIUS", "points", 1, 1, -1, "km").Err(), ".*radius cannot be negative.*")
+		util.ErrorRegexp(t, rdb.Do(ctx, "GEORADIUSBYMEMBER", "points", "a", -1, "km").Err(), ".*radius cannot be negative.*")
+		util.ErrorRegexp(t, rdb.Do(ctx, "GEOSEARCH", "points", "FROMLONLAT", 1, 1, "BYRADIUS", -1, "km").Err(), ".*radius cannot be negative.*")
+		util.ErrorRegexp(t, rdb.Do(ctx, "GEOSEARCH", "points", "FROMLONLAT", 1, 1, "BYBOX", -1, 1, "km").Err(), ".*height or width cannot be negative.*")
+		util.ErrorRegexp(t, rdb.Do(ctx, "GEOSEARCHSTORE", "points2", "points", "FROMLONLAT", 1, 1, "BYRADIUS", -1, "km").Err(), ".*radius cannot be negative.*")
+		util.ErrorRegexp(t, rdb.Do(ctx, "GEOSEARCHSTORE", "points2", "points", "FROMLONLAT", 1, 1, "BYBOX", 1, -1, "km").Err(), ".*height or width cannot be negative.*")
+	})
+
 	t.Run("GEOSEARCHSTORE errors", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "points").Err())
 		require.NoError(t, rdb.Del(ctx, "points2").Err())

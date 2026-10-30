@@ -21,7 +21,9 @@ package dump
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/apache/kvrocks/tests/gocase/util"
@@ -219,4 +221,39 @@ func TestDump_SortedInt(t *testing.T) {
 	members := rdb.SMembers(ctx, restoredKey).Val()
 	expectedMembers := []string{"5", "12", "23", "89", "100"}
 	require.ElementsMatch(t, expectedMembers, members)
+}
+
+func TestDump_BloomFilter(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{})
+	defer srv.Close()
+
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	key := "test_bloom_filter_key"
+	require.NoError(t, rdb.Del(ctx, key).Err())
+
+	// A tiny capacity forces extra sub-filters as items are inserted.
+	require.NoError(t, rdb.Do(ctx, "BF.RESERVE", key, "0.001", "1").Err())
+	for i := 0; i < 10; i++ {
+		require.NoError(t, rdb.Do(ctx, "BF.ADD", key, fmt.Sprintf("item%d", i)).Err())
+	}
+	nFilters, err := rdb.Do(ctx, "BF.INFO", key, "filters").Int64()
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, nFilters, int64(2))
+	require.EqualValues(t, "MBbloom--", rdb.Type(ctx, key).Val())
+
+	serialized, err := rdb.Dump(ctx, key).Result()
+	require.NoError(t, err)
+
+	restoredKey := fmt.Sprintf("restore_%s", key)
+	require.NoError(t, rdb.RestoreReplace(ctx, restoredKey, 0, serialized).Err())
+	require.EqualValues(t, "string", rdb.Type(ctx, restoredKey).Val())
+
+	content := rdb.Get(ctx, restoredKey).Val()
+	require.Greater(t, len(content), 10)
+	require.True(t, strings.HasPrefix(content, "KVBLOOM"))
+	require.Equal(t, byte(1), content[7])
+	require.GreaterOrEqual(t, binary.LittleEndian.Uint16([]byte(content[8:10])), uint16(2))
 }

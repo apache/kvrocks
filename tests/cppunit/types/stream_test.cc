@@ -19,6 +19,7 @@
  */
 
 #include <gtest/gtest.h>
+#include <rocksdb/perf_context.h>
 
 #include "test_base.h"
 #include "time_util.h"
@@ -2861,4 +2862,133 @@ TEST_F(RedisStreamTest, DestroyGroupDoesNotAffectOtherGroups) {
   // Clean up
   s = stream_->Del(*ctx_, stream_name);
   EXPECT_TRUE(s.ok());
+}
+
+TEST_F(RedisStreamTest, TrimUsesPointDeletesOnlyForSmallTrims) {
+  auto *db = storage_->GetDB();
+  auto *cf = storage_->GetCFHandle(ColumnFamilyID::Stream);
+  auto memtable_point_deletes = [&] {
+    uint64_t n = 0;
+    EXPECT_TRUE(db->GetIntProperty(cf, "rocksdb.num-deletes-active-mem-table", &n));
+    return n;
+  };
+
+  redis::StreamAddOptions add_options;
+  redis::StreamEntryID id;
+  for (int i = 1; i <= 1000; i++) {
+    add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy(std::to_string(i) + "-0");
+    auto s = stream_->Add(*ctx_, name_, add_options, {"k", "v"}, &id);
+    EXPECT_TRUE(s.ok());
+  }
+
+  // An XADD with MAXLEN that trims a single entry must not leave a range tombstone per write
+  uint64_t before = memtable_point_deletes();
+  add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy("1001-0");
+  add_options.trim_options.strategy = redis::StreamTrimStrategy::MaxLen;
+  add_options.trim_options.max_len = 1000;
+  auto s = stream_->Add(*ctx_, name_, add_options, {"k", "v"}, &id);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(memtable_point_deletes() - before, 1);
+
+  redis::StreamTrimOptions trim_options;
+  trim_options.strategy = redis::StreamTrimStrategy::MinID;
+  trim_options.min_id = redis::StreamEntryID{100, 0};
+  uint64_t trimmed = 0;
+  before = memtable_point_deletes();
+  s = stream_->Trim(*ctx_, name_, trim_options, &trimmed);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(trimmed, 98);
+  EXPECT_EQ(memtable_point_deletes() - before, 98);
+
+  // A large trim is removed with a single range tombstone instead
+  trim_options.min_id = redis::StreamEntryID{900, 0};
+  before = memtable_point_deletes();
+  s = stream_->Trim(*ctx_, name_, trim_options, &trimmed);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(trimmed, 800);
+  EXPECT_EQ(memtable_point_deletes() - before, 0);
+
+  uint64_t length = 0;
+  s = stream_->Len(*ctx_, name_, redis::StreamLenOptions{}, &length);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(length, 102);
+}
+
+TEST_F(RedisStreamTest, RangeDoesNotScanTrimmedOrDeletedEntries) {
+  redis::StreamAddOptions add_options;
+  redis::StreamEntryID id;
+  for (int i = 1; i <= 1000; i++) {
+    add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy(std::to_string(i) + "-0");
+    auto s = stream_->Add(*ctx_, name_, add_options, {"k", "v"}, &id);
+    EXPECT_TRUE(s.ok());
+  }
+
+  // Point tombstones from single-entry trims, a range tombstone from a large trim, and point
+  // tombstones above the last entry from XDEL
+  add_options.trim_options.strategy = redis::StreamTrimStrategy::MaxLen;
+  add_options.trim_options.max_len = 1000;
+  for (int i = 1001; i <= 1500; i++) {
+    add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy(std::to_string(i) + "-0");
+    auto s = stream_->Add(*ctx_, name_, add_options, {"k", "v"}, &id);
+    EXPECT_TRUE(s.ok());
+  }
+  redis::StreamTrimOptions trim_options;
+  trim_options.strategy = redis::StreamTrimStrategy::MinID;
+  trim_options.min_id = redis::StreamEntryID{800, 0};
+  uint64_t trimmed = 0;
+  auto s = stream_->Trim(*ctx_, name_, trim_options, &trimmed);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(trimmed, 299);
+  std::vector<redis::StreamEntryID> tail;
+  for (uint64_t i = 1500; i >= 1491; i--) tail.emplace_back(i, 0);
+  uint64_t deleted = 0;
+  s = stream_->DeleteEntries(*ctx_, name_, tail, &deleted);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(deleted, 10);
+
+  rocksdb::SetPerfLevel(rocksdb::PerfLevel::kEnableCount);
+  rocksdb::get_perf_context()->Reset();
+
+  redis::StreamRangeOptions range_options;
+  range_options.start = redis::StreamEntryID::Minimum();
+  range_options.end = redis::StreamEntryID::Maximum();
+  range_options.with_count = true;
+  range_options.count = 3;
+  std::vector<redis::StreamEntry> entries;
+  s = stream_->Range(*ctx_, name_, range_options, &entries);
+  EXPECT_TRUE(s.ok());
+  ASSERT_EQ(entries.size(), 3);
+  EXPECT_EQ(entries[0].key, "800-0");
+  EXPECT_EQ(entries[2].key, "802-0");
+
+  // An excluded start below the first entry must not exclude the first entry
+  range_options.start = redis::StreamEntryID{0, 1};
+  range_options.exclude_start = true;
+  s = stream_->Range(*ctx_, name_, range_options, &entries);
+  EXPECT_TRUE(s.ok());
+  ASSERT_EQ(entries.size(), 3);
+  EXPECT_EQ(entries[0].key, "800-0");
+
+  range_options.reverse = true;
+  range_options.exclude_start = false;
+  range_options.start = redis::StreamEntryID::Maximum();
+  range_options.end = redis::StreamEntryID::Minimum();
+  s = stream_->Range(*ctx_, name_, range_options, &entries);
+  EXPECT_TRUE(s.ok());
+  ASSERT_EQ(entries.size(), 3);
+  EXPECT_EQ(entries[0].key, "1490-0");
+  EXPECT_EQ(entries[2].key, "1488-0");
+
+  // A reverse read that runs past the first entry
+  range_options.start = redis::StreamEntryID{801, 0};
+  s = stream_->Range(*ctx_, name_, range_options, &entries);
+  EXPECT_TRUE(s.ok());
+  ASSERT_EQ(entries.size(), 2);
+  EXPECT_EQ(entries[0].key, "801-0");
+  EXPECT_EQ(entries[1].key, "800-0");
+
+  auto *perf = rocksdb::get_perf_context();
+  EXPECT_EQ(perf->internal_delete_skipped_count, 0);
+  EXPECT_EQ(perf->internal_range_del_reseek_count, 0);
+  rocksdb::SetPerfLevel(rocksdb::PerfLevel::kDisable);
 }

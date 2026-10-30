@@ -297,9 +297,13 @@ Status Cluster::SetSlotRangeImported(const SlotRange &slot_range) {
   if (!slot_range.IsValid()) {
     return {Status::NotOK, errSlotRangeInvalid};
   }
-
+  
   // It is called by command 'cluster import'. When executing the command, the
   // exclusive lock has been locked. Therefore, it can't be locked again.
+  // The imported slots supersede the importing ones.
+  if (myself_) {
+    myself_->importing_slot_range = {-1, -1};
+  }
   for (auto slot = slot_range.start; slot <= slot_range.end; slot++) {
     imported_slots_.insert(slot);
   }
@@ -361,20 +365,24 @@ Status Cluster::ImportSlotRange(redis::Connection *conn, const SlotRange &slot_r
     }
   }
 
+  // Use connection id for exclusive importing
+  uint64_t conn_id = conn->GetID();
   Status s;
   switch (state) {
     case kImportStart:
-      s = srv_->slot_import->Start(slot_range);
+      s = srv_->slot_import->Start(slot_range, conn_id);
       if (!s.IsOK()) return s;
 
       // Set link importing
       conn->SetImporting();
-      myself_->importing_slot_range = slot_range;
+      if (myself_) {
+        myself_->importing_slot_range = slot_range;
+      }
       // Set link error callback
-      conn->close_cb = [object_ptr = srv_->slot_import.get(), slot_range]([[maybe_unused]] int fd) {
-        auto s = object_ptr->StopForLinkError();
+      conn->close_cb = [object_ptr = srv_->slot_import.get(), slot_range, conn_id]([[maybe_unused]] int fd) {
+        auto s = object_ptr->StopForLinkError(conn_id);
         if (!s.IsOK()) {
-          ERROR("[import] Failed to stop importing slot(s) {}: {}", slot_range.String(), s.Msg());
+          ERROR("[import] Failed to stop importing slot(s) {} by conn {}: {}", slot_range.String(), conn_id, s.Msg());
         }
       };  // Stop forbidding writing slot to accept write commands
       if (slot_range.HasOverlap(srv_->slot_migrator->GetForbiddenSlotRange())) {
@@ -387,12 +395,12 @@ Status Cluster::ImportSlotRange(redis::Connection *conn, const SlotRange &slot_r
       INFO("[import] Start importing slot(s) {}", slot_range.String());
       break;
     case kImportSuccess:
-      s = srv_->slot_import->Success(slot_range);
+      s = srv_->slot_import->Success(slot_range, conn_id);
       if (!s.IsOK()) return s;
       INFO("[import] Mark the importing slot(s) {} as succeed", slot_range.String());
       break;
     case kImportFailed:
-      s = srv_->slot_import->Fail(slot_range);
+      s = srv_->slot_import->Fail(slot_range, conn_id);
       if (!s.IsOK()) return s;
       INFO("[import] Mark the importing slot(s) {} as failed", slot_range.String());
       break;
@@ -400,6 +408,21 @@ Status Cluster::ImportSlotRange(redis::Connection *conn, const SlotRange &slot_r
       return {Status::NotOK, errInvalidImportState};
   }
 
+  return Status::OK();
+}
+
+Status Cluster::ClearImportSlotRange(const SlotRange &slot_range) {
+  if (!slot_range.IsValid()) {
+    return {Status::NotOK, errSlotRangeInvalid};
+  }
+  // Clear importing slot range
+  if (myself_) {
+    myself_->importing_slot_range = {-1, -1};
+  }
+  // Clear imported slot range as exists in imported_slots_
+  for (auto slot = slot_range.start; slot <= slot_range.end; slot++) {
+    imported_slots_.erase(slot);
+  }
   return Status::OK();
 }
 

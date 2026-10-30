@@ -28,11 +28,11 @@ SlotImport::SlotImport(Server *srv)
   metadata_cf_handle_ = nullptr;
 }
 
-Status SlotImport::Start(const SlotRange &slot_range) {
+Status SlotImport::Start(const SlotRange &slot_range, uint64_t conn_id) {
   std::lock_guard<std::mutex> guard(mutex_);
   if (import_status_ == kImportStart) {
-    // return ok if the same slot is importing
-    if (import_slot_range_ == slot_range) {
+    // Same range is already importing. Keep import_conn_id_ so this link can still clean itself up.
+    if (import_slot_range_ == slot_range && import_conn_id_ == conn_id) {
       return Status::OK();
     }
     return {Status::NotOK,
@@ -48,11 +48,16 @@ Status SlotImport::Start(const SlotRange &slot_range) {
 
   import_status_ = kImportStart;
   import_slot_range_ = slot_range;
+  import_conn_id_ = conn_id;
   return Status::OK();
 }
 
-Status SlotImport::Success(const SlotRange &slot_range) {
+Status SlotImport::Success(const SlotRange &slot_range, uint64_t conn_id) {
   std::lock_guard<std::mutex> guard(mutex_);
+  if (import_conn_id_ != conn_id) {
+    return {Status::NotOK, fmt::format("mismatch conn id, importing slot(s): {}, conn id: {}",
+                                       import_slot_range_.String(), conn_id)};
+  }
   if (import_slot_range_ != slot_range) {
     return {Status::NotOK, fmt::format("mismatch slot, importing slot(s): {}, but got: {}", import_slot_range_.String(),
                                        slot_range.String())};
@@ -67,8 +72,12 @@ Status SlotImport::Success(const SlotRange &slot_range) {
   return Status::OK();
 }
 
-Status SlotImport::Fail(const SlotRange &slot_range) {
+Status SlotImport::Fail(const SlotRange &slot_range, uint64_t conn_id) {
   std::lock_guard<std::mutex> guard(mutex_);
+  if (import_conn_id_ != conn_id) {
+    return {Status::NotOK, fmt::format("mismatch conn id, importing slot(s): {}, conn id: {}",
+                                       import_slot_range_.String(), conn_id)};
+  }
   if (import_slot_range_ != slot_range) {
     return {Status::NotOK, fmt::format("mismatch slot, importing slot(s): {}, but got: {}", import_slot_range_.String(),
                                        slot_range.String())};
@@ -80,15 +89,23 @@ Status SlotImport::Fail(const SlotRange &slot_range) {
   if (!s.ok()) {
     return {Status::NotOK, fmt::format("clear keys of slot(s) error: {}", s.ToString())};
   }
+  // Clear importing slot range as failed
+  if (!srv_->cluster->ClearImportSlotRange(slot_range).IsOK()) {
+    return {Status::NotOK, fmt::format("unable to clear import status: {}", slot_range.String())};
+  }
 
   import_status_ = kImportFailed;
   return Status::OK();
 }
 
-Status SlotImport::StopForLinkError() {
+Status SlotImport::StopForLinkError(uint64_t conn_id) {
+  // The close callback does not hold the work lock, while other workers may be reading
+  // importing_slot_range / imported_slots_ under the shared lock. Take the exclusive lock
+  // before mutex_: CLUSTER IMPORT already holds the work lock and then locks mutex_ in Fail().
+  auto exclusivity = srv_->WorkExclusivityGuard();
   std::lock_guard<std::mutex> guard(mutex_);
   // We don't need to do anything if the importer is not started yet.
-  if (import_status_ != kImportStart) return Status::OK();
+  if (import_status_ != kImportStart || import_conn_id_ != conn_id) return Status::OK();
 
   // Maybe server has failovered
   // Situation:
@@ -106,6 +123,9 @@ Status SlotImport::StopForLinkError() {
     if (!s.ok()) {
       return {Status::NotOK, fmt::format("clear keys of slot error: {}", s.ToString())};
     }
+  }
+  if (!srv_->cluster->ClearImportSlotRange(import_slot_range_).IsOK()) {
+    return {Status::NotOK, fmt::format("unable to clear import status: {}", import_slot_range_.String())};
   }
 
   import_status_ = kImportFailed;

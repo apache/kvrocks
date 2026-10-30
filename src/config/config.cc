@@ -20,14 +20,17 @@
 
 #include "config.h"
 
+#include <fcntl.h>
 #include <fmt/format.h>
 #include <rocksdb/env.h>
 #include <spdlog/spdlog.h>
 #include <strings.h>
+#include <unistd.h>
 
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <iterator>
@@ -35,8 +38,10 @@
 #include <utility>
 #include <vector>
 
+#include "common/io_util.h"
 #include "common/keyspace_events.h"
 #include "common/string_util.h"
+#include "common/unique_fd.h"
 #include "config_type.h"
 #include "config_util.h"
 #include "parse_util.h"
@@ -1177,11 +1182,32 @@ Status Config::Rewrite(const std::map<std::string, std::string> &tokens) {
   }
   std::string tmp_path = path_ + ".tmp";
   remove(tmp_path.data());
-  std::ofstream output_file(tmp_path, std::ios::out);
-  output_file << out_buf;
-  output_file.close();
+  int fd = open(tmp_path.data(), O_WRONLY | O_CREAT | O_TRUNC, 0666);
+  if (fd < 0) {
+    return {Status::NotOK, fmt::format("open tmp file encounter error: {}", strerror(errno))};
+  }
+  UniqueFD unique_fd(fd);
+  if (auto s = util::Write(unique_fd.Get(), out_buf); !s.IsOK()) {
+    return s;
+  }
+  if (fsync(unique_fd.Get()) < 0) {
+    return {Status::NotOK, fmt::format("fsync tmp file encounter error: {}", strerror(errno))};
+  }
+  unique_fd.Close();
+
   if (rename(tmp_path.data(), path_.data()) < 0) {
     return {Status::NotOK, fmt::format("rename file encounter error: {}", strerror(errno))};
   }
+
+  auto parent_dir = std::filesystem::path(path_).parent_path();
+  if (parent_dir.empty()) {
+    parent_dir = ".";
+  }
+  int dir_fd = open(parent_dir.c_str(), O_RDONLY);
+  if (dir_fd >= 0) {
+    UniqueFD unique_dir_fd(dir_fd);
+    fsync(unique_dir_fd.Get());
+  }
+
   return Status::OK();
 }

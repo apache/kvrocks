@@ -244,6 +244,21 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, enabledRES
 		require.ErrorContains(t, rdb.Do(ctx, "zunionstore", "out", "3.3", "myzet").Err(), "value is not an integer or out of range")
 	})
 
+	t.Run("ZUNIONSTORE/ZINTERSTORE/ZDIFFSTORE - numkeys must be positive", func(t *testing.T) {
+		rdb.Del(ctx, "out")
+		rdb.Del(ctx, "myzet")
+		rdb.ZAdd(ctx, "myzet", redis.Z{Score: 1, Member: "a"})
+
+		for _, cmd := range []string{"zunionstore", "zinterstore", "zdiffstore"} {
+			for _, numkeys := range []string{"0", "-1"} {
+				require.ErrorContains(t, rdb.Do(ctx, cmd, "out", numkeys, "myzet").Err(), "value is out of range, must be positive")
+			}
+		}
+
+		require.EqualValues(t, int64(1), rdb.ZCard(ctx, "myzet").Val())
+		require.EqualValues(t, int64(0), rdb.ZCard(ctx, "out").Val())
+	})
+
 	t.Run("ZUNIONSTORE - invalid weights will raise error", func(t *testing.T) {
 		rdb.Del(ctx, "out")
 		rdb.Del(ctx, "myzet")

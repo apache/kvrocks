@@ -489,6 +489,10 @@ var testGeo = func(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.NoError(t, rdb.Do(ctx, "geoadd", "dst", "20", "20", "Guangzhou").Err())
 		require.EqualValues(t, 0, rdb.Do(ctx, "GEOSEARCHSTORE", "dst", "src", "FROMLONLAT", 15, 37, "BYBOX", 88, 88, "m").Val())
 		require.EqualValues(t, 0, rdb.Exists(ctx, "dst").Val())
+
+		// FROMLONLAT the search result set is empty and dst key does not exist.
+		require.NoError(t, rdb.Do(ctx, "GEOSEARCHSTORE", "dst", "src", "FROMLONLAT", 15, 37, "BYBOX", 88, 88, "m").Err())
+		require.EqualValues(t, 0, rdb.Exists(ctx, "dst").Val())
 	})
 
 	t.Run("GEOSEARCHSTORE with BYRADIUS", func(t *testing.T) {

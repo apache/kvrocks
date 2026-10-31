@@ -146,6 +146,16 @@ var streamTests = func(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.ErrorContains(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "mystream", ID: "1-*", Values: []string{"c", "d"}}).Err(), "ERR")
 	})
 
+	t.Run("XADD rejects IDs above the maximum entry ID", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "mystream").Err())
+		for _, id := range []string{"18446744073709551615-0", "18446744073709551615-18446744073709551615", "18446744073709551615-*"} {
+			require.ErrorContains(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "mystream", ID: id, Values: []string{"a", "b"}}).Err(),
+				"The stream has exhausted the last possible ID")
+		}
+		require.EqualValues(t, int64(0), rdb.XLen(ctx, "mystream").Val())
+		require.Empty(t, rdb.XRange(ctx, "mystream", "-", "+").Val())
+	})
+
 	t.Run("XADD 0-* should succeed", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "mystream").Err())
 		x := rdb.XAdd(ctx, &redis.XAddArgs{Stream: "mystream", ID: "0-*", Values: []string{"a", "b"}}).Val()

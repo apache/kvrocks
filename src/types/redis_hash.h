@@ -129,6 +129,11 @@ class Hash : public SubKeyScanner {
   static rocksdb::Status decodeValue(const HashMetadata &metadata, Slice *value, uint64_t *expire = nullptr);
   rocksdb::Status scanAndRepair(engine::Context &ctx, const Slice &ns_key, HashMetadata *metadata, uint64_t now,
                                 uint64_t *size);
+  // Checks whether existing metadata is still valid when all fields may have expired via HFE.
+  // If metadata is stale (all fields expired), resets it to fresh metadata with a new version,
+  // clearing the stale key-level TTL. Sets *was_reset to true if metadata was reset.
+  rocksdb::Status ensureValidMetadata(engine::Context &ctx, const std::string &ns_key, HashMetadata *metadata,
+                                      bool *was_reset);
 
   friend struct FieldValueRetriever;
 };

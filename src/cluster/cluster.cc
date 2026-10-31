@@ -733,6 +733,49 @@ Status Cluster::LoadClusterNodes(const std::string &file_path) {
   return SetClusterNodes(nodes_info, version, false);
 }
 
+// Split a Redis-style node address "<host>:<port>[@<bus_port>]" into host and
+// port, e.g. "127.0.0.1:30002@40002" or "[::1]:30002". The bus port, if
+// present, is ignored since kvrocks does not use a separate bus port.
+static bool ParseNodeAddress(const std::string &addr, std::string *host, uint16_t *port) {
+  std::string host_part;
+  std::string port_part;
+  if (!addr.empty() && addr[0] == '[') {
+    auto pos = addr.find(']');
+    if (pos == std::string::npos || pos + 1 >= addr.size() || addr[pos + 1] != ':') {
+      return false;
+    }
+    host_part = addr.substr(1, pos - 1);
+    port_part = addr.substr(pos + 2);
+  } else {
+    auto pos = addr.rfind(':');
+    if (pos == std::string::npos) {
+      return false;
+    }
+    host_part = addr.substr(0, pos);
+    port_part = addr.substr(pos + 1);
+  }
+  if (host_part.empty()) {
+    return false;
+  }
+  auto at = port_part.find('@');
+  if (at != std::string::npos) {
+    // The bus port is not used for connectivity, but it must still be a
+    // valid port rather than silently accepting garbage like "@foo".
+    auto bus_port = port_part.substr(at + 1);
+    if (!ParseInt<uint16_t>(bus_port, 10)) {
+      return false;
+    }
+    port_part = port_part.substr(0, at);
+  }
+  auto parse_result = ParseInt<uint16_t>(port_part, 10);
+  if (!parse_result) {
+    return false;
+  }
+  *host = host_part;
+  *port = *parse_result;
+  return true;
+}
+
 Status Cluster::parseClusterNodes(const std::string &nodes_str, ClusterNodes *nodes,
                                   std::unordered_map<int, std::string> *slots_nodes) {
   std::vector<std::string> nodes_info = util::Split(nodes_str, "\n");
@@ -745,6 +788,32 @@ Status Cluster::parseClusterNodes(const std::string &nodes_str, ClusterNodes *no
   // Parse all nodes
   for (const auto &node_str : nodes_info) {
     std::vector<std::string> fields = util::Split(node_str, " ");
+
+    // Also accept the Redis-style combined address "<host>:<port>[@<bus_port>]"
+    // (the same format GetClusterNodes prints). Detect it by checking whether
+    // the role keyword lands on fields[2] instead of fields[3] -- checking
+    // for ':' in the host field would misclassify the old layout when the
+    // host is an IPv6 address. The combined form is normalized to the plain
+    // "<host> <port>" layout so the parser below stays unchanged.
+    if (fields.size() >= 3) {
+      bool role_on_addr = false;
+      for (const auto &flag : util::Split(fields[2], ",")) {
+        if (util::EqualICase(flag, "master") || util::EqualICase(flag, "slave") || util::EqualICase(flag, "replica")) {
+          role_on_addr = true;
+          break;
+        }
+      }
+      if (role_on_addr) {
+        std::string addr_host;
+        uint16_t addr_port = 0;
+        if (!ParseNodeAddress(fields[1], &addr_host, &addr_port)) {
+          return {Status::ClusterInvalidInfo, "Invalid cluster node port"};
+        }
+        fields[1] = addr_host;
+        fields.insert(fields.begin() + 2, std::to_string(addr_port));
+      }
+    }
+
     if (fields.size() < 5) {
       return {Status::ClusterInvalidInfo, errInvalidClusterNodeInfo};
     }

@@ -171,6 +171,24 @@ TEST_F(RedisSetTest, Diff) {
   s = set_->Del(*ctx_, k3);
 }
 
+TEST_F(RedisSetTest, DiffCard) {
+  uint64_t ret = 0;
+  std::string k1 = "key1", k2 = "key2", k3 = "key3";
+  rocksdb::Status s = set_->Add(*ctx_, k1, {"a", "b", "c", "d"}, &ret);
+  EXPECT_EQ(ret, 4);
+  set_->Add(*ctx_, k2, {"c"}, &ret);
+  EXPECT_EQ(ret, 1);
+  set_->Add(*ctx_, k3, {"a", "c", "e"}, &ret);
+  EXPECT_EQ(ret, 3);
+  set_->DiffCard(*ctx_, {k1, k2, k3}, 0, &ret);
+  EXPECT_EQ(ret, 2);
+  set_->DiffCard(*ctx_, {k1, k2, k3}, 1, &ret);
+  EXPECT_EQ(ret, 1);
+  s = set_->Del(*ctx_, k1);
+  s = set_->Del(*ctx_, k2);
+  s = set_->Del(*ctx_, k3);
+}
+
 TEST_F(RedisSetTest, Union) {
   uint64_t ret = 0;
   std::string k1 = "key1", k2 = "key2", k3 = "key3";

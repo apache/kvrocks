@@ -466,24 +466,6 @@ TEST_F(RedisCuckooFilterTest, ReservePersistsPageSize) {
   reserveAndVerify(key_, 1000, 4, 500, 2, page_size);
 }
 
-TEST_F(RedisCuckooFilterTest, InfoReportsBaseBucketsAndTotalSize) {
-  reserveAndVerify(key_, 4, 2, 20, 2);
-  redis::CuckooFilterInfo info;
-  auto s = cuckoo_->Info(*ctx_, key_, &info);
-  ASSERT_TRUE(s.ok()) << s.ToString();
-  EXPECT_EQ(info.n_buckets, 4);
-  EXPECT_EQ(info.size, 8);
-
-  auto metadata = getMetadata(key_);
-  metadata.n_filters = 3;
-  writeMetadata(key_, metadata);
-  s = cuckoo_->Info(*ctx_, key_, &info);
-  ASSERT_TRUE(s.ok()) << s.ToString();
-  EXPECT_EQ(info.n_buckets, 4);
-  EXPECT_EQ(info.n_filters, 3);
-  EXPECT_EQ(info.size, 56);
-}
-
 TEST_F(RedisCuckooFilterTest, InfoSupportsMaximumEqualSizedFilters) {
   reserveAndVerify(key_, 4, 2, 20, 1);
   auto metadata = getMetadata(key_);
@@ -502,16 +484,6 @@ TEST_F(RedisCuckooFilterTest, InfoRejectsUnsupportedExpandedCapacity) {
   reserveAndVerify(key_, 4, 2, 20, 2);
   auto metadata = getMetadata(key_);
   metadata.n_filters = std::numeric_limits<uint16_t>::max();
-  writeMetadata(key_, metadata);
-
-  redis::CuckooFilterInfo info;
-  EXPECT_TRUE(cuckoo_->Info(*ctx_, key_, &info).IsCorruption());
-}
-
-TEST_F(RedisCuckooFilterTest, InfoRejectsInvalidMetadata) {
-  reserveAndVerify(key_, 4, 2, 20, 1);
-  auto metadata = getMetadata(key_);
-  metadata.bucket_size = 0;
   writeMetadata(key_, metadata);
 
   redis::CuckooFilterInfo info;

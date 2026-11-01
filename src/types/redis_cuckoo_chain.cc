@@ -20,6 +20,8 @@
 
 #include "redis_cuckoo_chain.h"
 
+#include <limits>
+
 #include "cuckoo_filter.h"
 #include "cuckoo_filter_page.h"
 #include "cuckoo_filter_sub_filter.h"
@@ -183,18 +185,29 @@ rocksdb::Status CuckooChain::Info(engine::Context &ctx, const Slice &user_key, C
     return s;
   }
 
-  info->n_buckets = 0;
-  for (uint16_t filter_idx = 0; filter_idx < metadata.n_filters; filter_idx++) {
-    uint32_t num_buckets = 0;
-    s = CuckooFilterHelper::GetFilterNumBuckets(metadata.base_capacity, metadata.expansion, metadata.bucket_size,
-                                                filter_idx, &num_buckets);
-    if (!s.ok()) {
-      return s;
-    }
+  uint32_t base_buckets = 0;
+  s = CuckooFilterHelper::GetFilterNumBuckets(metadata.base_capacity, metadata.expansion, metadata.bucket_size, 0,
+                                              &base_buckets);
+  if (!s.ok()) return s;
 
-    info->n_buckets += num_buckets;
+  info->n_buckets = base_buckets;
+  uint64_t total_buckets = base_buckets;
+  if (metadata.expansion == 1) {
+    total_buckets *= metadata.n_filters;
+  } else {
+    uint64_t capacity = metadata.base_capacity;
+    for (uint16_t filter_idx = 1; filter_idx < metadata.n_filters; ++filter_idx) {
+      if (metadata.expansion != 0 && capacity > std::numeric_limits<uint64_t>::max() / metadata.expansion) {
+        return rocksdb::Status::Corruption("invalid metadata: filter capacity is too large");
+      }
+      capacity *= metadata.expansion;
+      uint32_t num_buckets = 0;
+      s = CuckooFilterHelper::CalculateRequiredBuckets(capacity, metadata.bucket_size, &num_buckets);
+      if (!s.ok()) return rocksdb::Status::Corruption("invalid metadata: filter capacity is too large");
+      total_buckets += num_buckets;
+    }
   }
-  info->size = metadata.bucket_size * info->n_buckets;
+  info->size = metadata.bucket_size * total_buckets;
   info->n_filters = metadata.n_filters;
   info->n_items_inserted = metadata.size;
   info->n_items_deleted = metadata.num_deleted_items;
@@ -203,7 +216,7 @@ rocksdb::Status CuckooChain::Info(engine::Context &ctx, const Slice &user_key, C
   info->max_iterations = metadata.max_iterations;
   return rocksdb::Status::OK();
 }
-  
+
 rocksdb::Status CuckooChain::Delete(engine::Context &ctx, const Slice &user_key, const Slice &item, bool *deleted) {
   *deleted = false;
   std::string ns_key = AppendNamespacePrefix(user_key);
@@ -243,6 +256,9 @@ rocksdb::Status CuckooChain::Delete(engine::Context &ctx, const Slice &user_key,
     *deleted = true;
     return commitPagesAndMetadata(ctx, user_key, ns_key, &metadata, pages, kCFLogDataDel);
   }
+
+  return rocksdb::Status::OK();
+}
 
 rocksdb::Status CuckooChain::tryInsertFingerprint(CuckooChainMetadata *metadata, CuckooPageCache &pages, uint64_t hash,
                                                   uint8_t fingerprint, bool *inserted) {

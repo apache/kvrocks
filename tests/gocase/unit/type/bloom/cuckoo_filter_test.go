@@ -22,7 +22,9 @@ package bloom
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/apache/kvrocks/tests/gocase/util"
 	"github.com/stretchr/testify/require"
@@ -305,16 +307,17 @@ func TestCuckooFilter(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, key).Err())
 		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "1024").Err())
 
-		all := rdb.Do(ctx, "cf.info", key).Val().([]interface{})
-		require.Equal(t, []interface{}{
-			"Size", int64(2048),
-			"Number of buckets", int64(1024),
-			"Number of filters", int64(1),
-			"Number of items inserted", int64(0),
-			"Number of items deleted", int64(0),
-			"Bucket size", int64(2),
-			"Expansion rate", int64(1),
-			"Max iterations", int64(20),
+		all, err := rdb.Do(ctx, "cf.info", key).Result()
+		require.NoError(t, err)
+		require.Equal(t, map[interface{}]interface{}{
+			"Size":                     int64(2048),
+			"Number of buckets":        int64(1024),
+			"Number of filters":        int64(1),
+			"Number of items inserted": int64(0),
+			"Number of items deleted":  int64(0),
+			"Bucket size":              int64(2),
+			"Expansion rate":           int64(1),
+			"Max iterations":           int64(20),
 		}, all)
 	})
 
@@ -336,11 +339,46 @@ func TestCuckooFilter(t *testing.T) {
 		key := "test_cf_info_items_add"
 		require.NoError(t, rdb.Del(ctx, key).Err())
 		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "1000").Err())
-		require.Equal(t, int64(0), rdb.Do(ctx, "cf.info", key, "items").Val().([]interface{})[1])
+		require.Equal(t, int64(0), rdb.Do(ctx, "cf.info", key, "items").Val().(map[interface{}]interface{})["Number of items inserted"])
 		require.NoError(t, rdb.Do(ctx, "cf.add", key, "item1").Err())
-		require.Equal(t, int64(1), rdb.Do(ctx, "cf.info", key, "items").Val().([]interface{})[1])
+		require.Equal(t, int64(1), rdb.Do(ctx, "cf.info", key, "items").Val().(map[interface{}]interface{})["Number of items inserted"])
 		require.NoError(t, rdb.Do(ctx, "cf.add", key, "item2").Err())
-		require.Equal(t, int64(2), rdb.Do(ctx, "cf.info", key, "items").Val().([]interface{})[1])
+		require.Equal(t, int64(2), rdb.Do(ctx, "cf.info", key, "items").Val().(map[interface{}]interface{})["Number of items inserted"])
+	})
+
+	t.Run("Info items after deletion", func(t *testing.T) {
+		key := "test_cf_info_items_delete"
+		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "1000").Err())
+		for i := 0; i < 3; i++ {
+			require.Equal(t, int64(1), rdb.Do(ctx, "cf.add", key, "item").Val())
+		}
+		require.Equal(t, int64(1), rdb.Do(ctx, "cf.del", key, "item").Val())
+		items, err := rdb.Do(ctx, "cf.info", key, "items").Result()
+		require.NoError(t, err)
+		require.Equal(t, map[interface{}]interface{}{
+			"Number of items inserted": int64(2),
+			"Number of items deleted":  int64(1),
+		}, items)
+	})
+
+	t.Run("Info filter deleted by negative TTL", func(t *testing.T) {
+		key := "test_cf_info_deleted_by_ttl"
+		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "1000").Err())
+		require.Equal(t, int64(1), rdb.Do(ctx, "pexpire", key, "-1").Val())
+		require.ErrorContains(t, rdb.Do(ctx, "cf.info", key).Err(), "filter is not found")
+	})
+
+	t.Run("Info naturally expired filter", func(t *testing.T) {
+		key := "test_cf_info_naturally_expired"
+		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "1000").Err())
+		require.NoError(t, rdb.Do(ctx, "cf.info", key).Err())
+		expire := rdb.PExpire(ctx, key, time.Second)
+		require.NoError(t, expire.Err())
+		require.True(t, expire.Val())
+		require.Eventually(t, func() bool {
+			err := rdb.Do(ctx, "cf.info", key).Err()
+			return err != nil && strings.Contains(err.Error(), "filter is not found")
+		}, 5*time.Second, 10*time.Millisecond)
 	})
 
 	t.Run("Info duplicate items increments", func(t *testing.T) {
@@ -350,9 +388,9 @@ func TestCuckooFilter(t *testing.T) {
 		for i := 0; i < 3; i++ {
 			require.NoError(t, rdb.Do(ctx, "cf.add", key, "dup_item").Err())
 		}
-		items := rdb.Do(ctx, "cf.info", key, "items").Val().([]interface{})
-		require.Equal(t, int64(3), items[1])
-		require.Equal(t, int64(0), items[3])
+		items := rdb.Do(ctx, "cf.info", key, "items").Val().(map[interface{}]interface{})
+		require.Equal(t, int64(3), items["Number of items inserted"])
+		require.Equal(t, int64(0), items["Number of items deleted"])
 	})
 
 	t.Run("Info filters after expansion", func(t *testing.T) {
@@ -360,10 +398,23 @@ func TestCuckooFilter(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, key).Err())
 		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "4", "BUCKETSIZE", "1", "MAXITERATIONS", "1", "EXPANSION", "2").Err())
 		require.Equal(t, int64(1), rdb.Do(ctx, "cf.info", key, "filters").Val())
+		require.Equal(t, int64(8), rdb.Do(ctx, "cf.info", key, "buckets").Val())
+		require.Equal(t, int64(8), rdb.Do(ctx, "cf.info", key, "size").Val())
 		for i := 0; i < 10; i++ {
 			require.NoError(t, rdb.Do(ctx, "cf.add", key, fmt.Sprintf("expand_%d", i)).Err())
 		}
-		require.Greater(t, rdb.Do(ctx, "cf.info", key, "filters").Val(), int64(1))
+		filters, err := rdb.Do(ctx, "cf.info", key, "filters").Int64()
+		require.NoError(t, err)
+		require.Greater(t, filters, int64(1))
+		require.Equal(t, int64(8), rdb.Do(ctx, "cf.info", key, "buckets").Val())
+		require.Equal(t, int64(8)*((int64(1)<<filters)-1), rdb.Do(ctx, "cf.info", key, "size").Val())
+		result, err := rdb.Do(ctx, "cf.info", key).Result()
+		require.NoError(t, err)
+		require.IsType(t, map[interface{}]interface{}{}, result)
+		all := result.(map[interface{}]interface{})
+		require.Equal(t, int64(8), all["Number of buckets"])
+		require.Equal(t, filters, all["Number of filters"])
+		require.Equal(t, int64(8)*((int64(1)<<filters)-1), all["Size"])
 	})
 
 	t.Run("Info individual fields", func(t *testing.T) {
@@ -373,7 +424,7 @@ func TestCuckooFilter(t *testing.T) {
 		require.Equal(t, int64(1024), rdb.Do(ctx, "cf.info", key, "size").Val())
 		require.Equal(t, int64(256), rdb.Do(ctx, "cf.info", key, "buckets").Val())
 		require.Equal(t, int64(1), rdb.Do(ctx, "cf.info", key, "filters").Val())
-		require.Equal(t, int64(0), rdb.Do(ctx, "cf.info", key, "items").Val().([]interface{})[1])
+		require.Equal(t, int64(0), rdb.Do(ctx, "cf.info", key, "items").Val().(map[interface{}]interface{})["Number of items inserted"])
 		require.Equal(t, int64(4), rdb.Do(ctx, "cf.info", key, "bucket_size").Val())
 		require.Equal(t, interface{}(nil), rdb.Do(ctx, "cf.info", key, "expansion").Val())
 		require.Equal(t, int64(20), rdb.Do(ctx, "cf.info", key, "max_iterations").Val())

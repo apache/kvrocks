@@ -154,6 +154,23 @@ func TestClusterNodes(t *testing.T) {
 		require.Contains(t, nodes, "0-100")
 		require.Contains(t, nodes, "slave")
 	})
+
+	t.Run("accept Redis-style combined address", func(t *testing.T) {
+		// the combined "host:port[@bus]" notation as printed by CLUSTER NODES
+		clusterNodes := fmt.Sprintf("%s %s:%d@%d master - 0-300", nodeID, srv.Host(), srv.Port(), srv.Port()+10000)
+		require.NoError(t, rdb.Do(ctx, "clusterx", "SETNODES", clusterNodes, "3").Err())
+		require.EqualValues(t, "3", rdb.Do(ctx, "clusterx", "version").Val())
+
+		// the same address without the bus port
+		clusterNodes = fmt.Sprintf("%s %s:%d master - 0-300", nodeID, srv.Host(), srv.Port())
+		require.NoError(t, rdb.Do(ctx, "clusterx", "SETNODES", clusterNodes, "4").Err())
+		require.EqualValues(t, "4", rdb.Do(ctx, "clusterx", "version").Val())
+
+		// a malformed bus port must be rejected even though the bus port
+		// itself is not used for connectivity
+		clusterNodes = fmt.Sprintf("%s %s:%d@not-a-port master - 0-300", nodeID, srv.Host(), srv.Port())
+		require.ErrorContains(t, rdb.Do(ctx, "clusterx", "SETNODES", clusterNodes, "5").Err(), "Invalid cluster node")
+	})
 }
 
 func TestClusterReplicas(t *testing.T) {
@@ -574,13 +591,14 @@ func TestClusterReset(t *testing.T) {
 
 	t.Run("cannot reset cluster if the db is migrating the slot", func(t *testing.T) {
 		slotNum := 2
+		key := util.SlotTable[slotNum]
 		// slow down the migration speed to ensure we can observe the "start" state
 		// before migration completes (especially on fast hardware like macOS ARM)
 		require.NoError(t, rdb0.ConfigSet(ctx, "migrate-batch-size-kb", "1").Err())
 		require.NoError(t, rdb0.ConfigSet(ctx, "migrate-batch-rate-limit-mb", "1").Err())
 		value := strings.Repeat("a", 512)
 		for i := 0; i < 4096; i++ {
-			require.NoError(t, rdb0.RPush(ctx, "my-list", value).Err())
+			require.NoError(t, rdb0.RPush(ctx, key, value).Err())
 		}
 
 		require.Equal(t, "OK", rdb0.Do(ctx, "clusterx", "migrate", slotNum, id1).Val())

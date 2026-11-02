@@ -235,7 +235,7 @@ class CommandCFInsert : public Commander {
 
   Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
     redis::CuckooChain cuckoo_db(srv->storage, conn->GetNamespace());
-    std::vector<CuckooFilterInsertResult> rets(items_.size(), CuckooFilterInsertResult::kOk);
+    std::vector<CuckooFilterInsertResult> rets;
 
     auto s = cuckoo_db.Insert(ctx, args_[1], items_, insert_options_, rets);
 
@@ -247,13 +247,10 @@ class CommandCFInsert : public Commander {
     for (const auto &ret : rets) {
       switch (ret) {
         case CuckooFilterInsertResult::kOk:
-          *output += redis::Integer(1);
+          *output += conn->Bool(true);
           break;
-        case CuckooFilterInsertResult::kExist:
-          std::cout << "Item exists result in add command is not possible" << std::endl;
-          std::abort();
         case CuckooFilterInsertResult::kFull:
-          *output += redis::Integer(-1);
+          *output += conn->GetProtocolVersion() == RESP::v3 ? conn->Bool(false) : redis::Integer(-1);
           break;
       }
     }

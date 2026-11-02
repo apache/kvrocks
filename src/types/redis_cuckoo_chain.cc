@@ -171,8 +171,9 @@ rocksdb::Status CuckooChain::Add(engine::Context &ctx, const Slice &user_key, co
 }
 
 rocksdb::Status CuckooChain::Insert(engine::Context &ctx, const Slice &user_key, const std::vector<std::string> &items,
-                                    CuckooFilterInsertOptions &insert_options,
+                                    const CuckooFilterInsertOptions &insert_options,
                                     std::vector<CuckooFilterInsertResult> &ret) {
+  ret.resize(items.size());
   std::string ns_key = AppendNamespacePrefix(user_key);
 
   CuckooChainMetadata metadata(false);
@@ -217,7 +218,7 @@ rocksdb::Status CuckooChain::Insert(engine::Context &ctx, const Slice &user_key,
     uint8_t fingerprint = CuckooFilterHelper::GenerateFingerprint(hash);
 
     bool inserted = false;
-    s = tryInsertFingerprint(&metadata, pages, hash, fingerprint, &inserted);
+    s = tryInsertFingerprint(&metadata, pages, hash, fingerprint, &inserted, /*error_on_limit=*/false);
     if (!s.ok()) return s;
     if (inserted) {
       inserted_something = true;
@@ -225,7 +226,7 @@ rocksdb::Status CuckooChain::Insert(engine::Context &ctx, const Slice &user_key,
       continue;
     }
 
-    // No expansion allowed and filter is full
+    // A full filter or expansion limit affects only this item.
     ret[i] = CuckooFilterInsertResult::kFull;
   }
 
@@ -281,7 +282,7 @@ rocksdb::Status CuckooChain::Delete(engine::Context &ctx, const Slice &user_key,
 }
 
 rocksdb::Status CuckooChain::tryInsertFingerprint(CuckooChainMetadata *metadata, CuckooPageCache &pages, uint64_t hash,
-                                                  uint8_t fingerprint, bool *inserted) {
+                                                  uint8_t fingerprint, bool *inserted, bool error_on_limit) {
   auto s = tryCuckooInsert(metadata, pages, hash, fingerprint, inserted);
   if (!s.ok()) return s;
 
@@ -291,7 +292,7 @@ rocksdb::Status CuckooChain::tryInsertFingerprint(CuckooChainMetadata *metadata,
   }
 
   if (!*inserted) {
-    s = expandAndInsertCuckooChain(metadata, pages, hash, fingerprint, inserted);
+    s = expandAndInsertCuckooChain(metadata, pages, hash, fingerprint, inserted, error_on_limit);
     if (!s.ok()) return s;
   }
 
@@ -350,13 +351,16 @@ rocksdb::Status CuckooChain::tryCuckooKickOut(const CuckooChainMetadata *metadat
 }
 
 rocksdb::Status CuckooChain::expandAndInsertCuckooChain(CuckooChainMetadata *metadata, CuckooPageCache &pages,
-                                                        uint64_t hash, uint8_t fingerprint, bool *inserted) {
+                                                        uint64_t hash, uint8_t fingerprint, bool *inserted,
+                                                        bool error_on_limit) {
   *inserted = false;
 
   // Kick-out failed, try to expand if allowed
   if (metadata->expansion == 0) return rocksdb::Status::OK();
 
-  if (metadata->n_filters >= UINT16_MAX) return rocksdb::Status::Aborted("maximum number of filters reached");
+  if (metadata->n_filters >= UINT16_MAX) {
+    return error_on_limit ? rocksdb::Status::Aborted("maximum number of filters reached") : rocksdb::Status::OK();
+  }
 
   // Retry insertion in the new expanded filter
   uint16_t new_filter_idx = metadata->n_filters;
@@ -364,7 +368,7 @@ rocksdb::Status CuckooChain::expandAndInsertCuckooChain(CuckooChainMetadata *met
   auto s = CuckooFilterHelper::GetFilterNumBuckets(metadata->base_capacity, metadata->expansion, metadata->bucket_size,
                                                    new_filter_idx, &new_num_buckets);
   if (s.IsCorruption()) {
-    return rocksdb::Status::Aborted("maximum filter capacity reached");
+    return error_on_limit ? rocksdb::Status::Aborted("maximum filter capacity reached") : rocksdb::Status::OK();
   }
   if (!s.ok()) return s;
 

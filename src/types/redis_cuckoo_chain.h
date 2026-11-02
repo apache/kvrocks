@@ -39,7 +39,6 @@ const uint16_t kCFMaxExpansion = 32768;
 
 enum class CuckooFilterInsertResult {
   kOk,
-  kExist,
   kFull,
 };
 
@@ -75,8 +74,9 @@ class CuckooChain : public Database {
   // Deletes one matching fingerprint from the cuckoo filter.
   rocksdb::Status Delete(engine::Context &ctx, const Slice &user_key, const Slice &item, bool *deleted);
 
+  // Stages all items and commits successful insertions once. Full filters produce per-item failures.
   rocksdb::Status Insert(engine::Context &ctx, const Slice &user_key, const std::vector<std::string> &items,
-                         CuckooFilterInsertOptions &options, std::vector<CuckooFilterInsertResult> &rets);
+                         const CuckooFilterInsertOptions &options, std::vector<CuckooFilterInsertResult> &rets);
 
  private:
   // Loads metadata for a cuckoo filter key.
@@ -85,13 +85,14 @@ class CuckooChain : public Database {
   static rocksdb::Status validateMetadata(const CuckooChainMetadata &metadata);
 
   static rocksdb::Status tryInsertFingerprint(CuckooChainMetadata *metadata, CuckooPageCache &pages, uint64_t hash,
-                                              uint8_t fingerprint, bool *inserted);
+                                              uint8_t fingerprint, bool *inserted, bool error_on_limit = true);
   static rocksdb::Status tryCuckooInsert(const CuckooChainMetadata *metadata, CuckooPageCache &pages, uint64_t hash,
                                          uint8_t fingerprint, bool *inserted);
   static rocksdb::Status tryCuckooKickOut(const CuckooChainMetadata *metadata, CuckooPageCache &pages, uint64_t hash,
                                           uint8_t fingerprint, bool *inserted);
   static rocksdb::Status expandAndInsertCuckooChain(CuckooChainMetadata *metadata, CuckooPageCache &pages,
-                                                    uint64_t hash, uint8_t fingerprint, bool *inserted);
+                                                    uint64_t hash, uint8_t fingerprint, bool *inserted,
+                                                    bool error_on_limit);
   rocksdb::Status commitPagesAndMetadata(engine::Context &ctx, const Slice &user_key, const std::string &ns_key,
                                          const CuckooChainMetadata *metadata, CuckooPageCache &pages,
                                          const std::string &command);

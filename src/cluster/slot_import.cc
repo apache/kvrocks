@@ -55,8 +55,8 @@ Status SlotImport::Start(const SlotRange &slot_range, uint64_t conn_id) {
 Status SlotImport::Success(const SlotRange &slot_range, uint64_t conn_id) {
   std::lock_guard<std::mutex> guard(mutex_);
   if (import_conn_id_ != conn_id) {
-    return {Status::NotOK, fmt::format("mismatch conn id, importing slot(s): {}, conn id: {}",
-                                       import_slot_range_.String(), conn_id)};
+    return {Status::NotOK,
+            fmt::format("mismatch conn id, importing slot(s): {}, conn id: {}", import_slot_range_.String(), conn_id)};
   }
   if (import_slot_range_ != slot_range) {
     return {Status::NotOK, fmt::format("mismatch slot, importing slot(s): {}, but got: {}", import_slot_range_.String(),
@@ -75,8 +75,8 @@ Status SlotImport::Success(const SlotRange &slot_range, uint64_t conn_id) {
 Status SlotImport::Fail(const SlotRange &slot_range, uint64_t conn_id) {
   std::lock_guard<std::mutex> guard(mutex_);
   if (import_conn_id_ != conn_id) {
-    return {Status::NotOK, fmt::format("mismatch conn id, importing slot(s): {}, conn id: {}",
-                                       import_slot_range_.String(), conn_id)};
+    return {Status::NotOK,
+            fmt::format("mismatch conn id, importing slot(s): {}, conn id: {}", import_slot_range_.String(), conn_id)};
   }
   if (import_slot_range_ != slot_range) {
     return {Status::NotOK, fmt::format("mismatch slot, importing slot(s): {}, but got: {}", import_slot_range_.String(),

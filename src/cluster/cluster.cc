@@ -297,7 +297,7 @@ Status Cluster::SetSlotRangeImported(const SlotRange &slot_range) {
   if (!slot_range.IsValid()) {
     return {Status::NotOK, errSlotRangeInvalid};
   }
-  
+
   // It is called by command 'cluster import'. When executing the command, the
   // exclusive lock has been locked. Therefore, it can't be locked again.
   // The imported slots supersede the importing ones.

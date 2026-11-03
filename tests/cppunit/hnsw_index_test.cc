@@ -25,6 +25,7 @@
 #include <memory>
 #include <random>
 
+#include "scope_exit.h"
 #include "search/hnsw_indexer.h"
 #include "search/indexer.h"
 #include "search/search_encoding.h"
@@ -118,6 +119,10 @@ TEST_F(HnswIndexTest, ComputeSimilarity) {
 }
 
 TEST_F(HnswIndexTest, RandomizeLayer) {
+  auto restore_generator =
+      MakeScopeExit([generator = redis::HnswIndex::generator] { redis::HnswIndex::generator = generator; });
+  redis::HnswIndex::generator.seed(0);
+
   constexpr size_t kSampleSize = 50000;
 
   std::vector<uint16_t> layers;

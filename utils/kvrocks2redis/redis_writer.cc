@@ -24,18 +24,18 @@
 #include <fcntl.h>
 #include <unistd.h>
 
+#include <string_view>
+
 #include "io_util.h"
 #include "parse_util.h"
 #include "server/redis_reply.h"
 #include "thread_util.h"
 
-namespace {
-
 constexpr size_t kCRLFLen = 2;
 
 // Parses a `*<number>` or `$<number>` line at `*pos` and advances `*pos` past it.
 // Returns -1 if the line hasn't been fully appended to the AOF file yet.
-StatusOr<int64_t> ParseLengthLine(std::string_view data, char prefix, size_t *pos) {
+static StatusOr<int64_t> ParseLengthLine(std::string_view data, char prefix, size_t *pos) {
   auto line_end = data.find(CRLF, *pos);
   if (line_end == std::string_view::npos) return -1;
 
@@ -55,7 +55,7 @@ StatusOr<int64_t> ParseLengthLine(std::string_view data, char prefix, size_t *po
 
 // Returns the length of the command at the head of `data`, or 0 if it hasn't been
 // fully appended yet.
-StatusOr<size_t> ParseCommandLength(std::string_view data) {
+static StatusOr<size_t> ParseCommandLength(std::string_view data) {
   size_t pos = 0;
   auto argc = GET_OR_RET(ParseLengthLine(data, '*', &pos));
   if (argc < 0) return 0;
@@ -71,9 +71,10 @@ StatusOr<size_t> ParseCommandLength(std::string_view data) {
   return pos;
 }
 
-}  // namespace
-
-StatusOr<std::string_view> ParseCommands(std::string_view data) {
+// Returns the leading part of `data` that holds complete RESP commands. The AOF file
+// is read while the writer thread is still appending to it, so its tail may hold a
+// command that is only half written.
+static StatusOr<std::string_view> ParseCommands(std::string_view data) {
   size_t complete_len = 0;
 
   while (complete_len < data.size()) {

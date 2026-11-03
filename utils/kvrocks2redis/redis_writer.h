@@ -22,11 +22,17 @@
 
 #include <map>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <vector>
 
 #include "logging.h"
 #include "writer.h"
+
+// Returns the leading part of `data` that holds complete RESP commands. The AOF file
+// is read while the writer thread is still appending to it, so its tail may hold a
+// command that is only half written.
+StatusOr<std::string_view> ParseCommands(std::string_view data);
 
 class RedisWriter : public Writer {
  public:

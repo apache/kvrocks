@@ -25,8 +25,66 @@
 #include <unistd.h>
 
 #include "io_util.h"
+#include "parse_util.h"
 #include "server/redis_reply.h"
 #include "thread_util.h"
+
+namespace {
+
+constexpr size_t kCRLFLen = 2;
+
+// Parses a `*<number>` or `$<number>` line at `*pos` and advances `*pos` past it.
+// Returns -1 if the line hasn't been fully appended to the AOF file yet.
+StatusOr<int64_t> ParseLengthLine(std::string_view data, char prefix, size_t *pos) {
+  auto line_end = data.find(CRLF, *pos);
+  if (line_end == std::string_view::npos) return -1;
+
+  auto line = data.substr(*pos, line_end - *pos);
+  if (line.empty() || line[0] != prefix) {
+    return {Status::NotOK, fmt::format("expected '{}', but got: {}", prefix, line)};
+  }
+
+  auto len = ParseInt<int64_t>(line.substr(1), 10);
+  if (!len || *len < 0) {
+    return {Status::NotOK, fmt::format("invalid length line: {}", line)};
+  }
+
+  *pos = line_end + kCRLFLen;
+  return *len;
+}
+
+// Returns the length of the command at the head of `data`, or 0 if it hasn't been
+// fully appended yet.
+StatusOr<size_t> ParseCommandLength(std::string_view data) {
+  size_t pos = 0;
+  auto argc = GET_OR_RET(ParseLengthLine(data, '*', &pos));
+  if (argc < 0) return 0;
+
+  for (int64_t i = 0; i < argc; i++) {
+    auto bulk_len = GET_OR_RET(ParseLengthLine(data, '$', &pos));
+    if (bulk_len < 0) return 0;
+    if (bulk_len + kCRLFLen > data.size() - pos) return 0;
+
+    pos += bulk_len + kCRLFLen;
+  }
+
+  return pos;
+}
+
+}  // namespace
+
+StatusOr<std::string_view> ParseCommands(std::string_view data) {
+  size_t complete_len = 0;
+
+  while (complete_len < data.size()) {
+    auto command_len = GET_OR_RET(ParseCommandLength(data.substr(complete_len)));
+    if (command_len == 0) break;
+
+    complete_len += command_len;
+  }
+
+  return data.substr(0, complete_len);
+}
 
 RedisWriter::RedisWriter(kvrocks2redis::Config *config) : Writer(config) {
   auto t = util::CreateThread("redis-writer", [this]() {
@@ -111,16 +169,30 @@ void RedisWriter::sync() {
       }
 
       while (true) {
-        auto getted_line_leng = pread(aof_fds_[iter.first], buffer.get(), chunk_size, next_offsets_[iter.first]);
-        if (getted_line_leng <= 0) {
-          if (getted_line_leng < 0) {
+        auto read_len = pread(aof_fds_[iter.first], buffer.get(), chunk_size, next_offsets_[iter.first]);
+        if (read_len <= 0) {
+          if (read_len < 0) {
             ERROR("failed to read AOF file: {}", strerror(errno));
           }
           break;
         }
 
-        std::string con = std::string(buffer.get(), getted_line_leng);
-        s = util::SockSend(redis_fds_[iter.first], con);
+        auto commands = ParseCommands({buffer.get(), static_cast<size_t>(read_len)});
+        if (!commands) {
+          ERROR("Failed to scan the AOF file at offset {}: {}", next_offsets_[iter.first], commands.Msg());
+          break;
+        }
+        // Sending a half written command would stall the sync: redis waits for the rest of
+        // the command while we wait for its reply. Leave those bytes to the next round,
+        // unless they cannot fit into the buffer, which would stall the sync as well.
+        if (commands->empty()) {
+          if (static_cast<size_t>(read_len) < chunk_size) break;
+          chunk_size *= 2;
+          buffer = std::make_unique<char[]>(chunk_size);
+          continue;
+        }
+
+        s = util::SockSend(redis_fds_[iter.first], std::string(*commands));
         if (!s.IsOK()) {
           ERROR("Failed to send data to redis err: {}", s.Msg());
           break;
@@ -141,7 +213,8 @@ void RedisWriter::sync() {
           return;
         }
 
-        s = updateNextOffset(iter.first, next_offsets_[iter.first] + getted_line_leng);
+        s = updateNextOffset(iter.first,
+                             next_offsets_[iter.first] + static_cast<std::istream::off_type>(commands->size()));
         if (!s.IsOK()) {
           ERROR("Failed to updating next offset: {}", s.Msg());
           break;

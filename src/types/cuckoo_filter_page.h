@@ -20,6 +20,7 @@
 
 #pragma once
 
+#include <rocksdb/slice.h>
 #include <rocksdb/status.h>
 #include <rocksdb/write_batch.h>
 
@@ -31,6 +32,28 @@
 #include "storage/storage.h"
 
 namespace redis {
+
+struct CuckooDumpPayload {
+  class Builder {
+   public:
+    explicit Builder(uint32_t page_index, std::string *output);
+
+    void AppendPage(const rocksdb::Slice &page);
+    rocksdb::Status AppendSkippedPageIndex(size_t page_index);
+    void Encode();
+
+    static rocksdb::Status Decode(const rocksdb::Slice &payload, CuckooDumpPayload *decoded);
+
+   private:
+    uint32_t page_index_;
+    std::string *output_ = nullptr;
+    std::vector<uint32_t> skipped_page_indexes_;
+  };
+
+  rocksdb::Slice page_bytes;
+  uint32_t page_index = 0;
+  std::vector<uint32_t> skipped_page_indexes;
+};
 
 class CuckooPageCache {
  public:
@@ -61,7 +84,7 @@ class CuckooPageCache {
   rocksdb::Status SetBucketSlotWithUndo(uint16_t filter_index, uint32_t num_buckets, uint32_t bucket_index,
                                         uint32_t slot_idx, uint8_t fingerprint, SlotMutation *mutation);
   rocksdb::Status RestoreBucketSlot(const SlotMutation &mutation);
-  rocksdb::Status ScanPageBytes(uint16_t filter_index, uint32_t num_buckets, uint64_t offset, size_t length,
+  rocksdb::Status ScanPageBytes(uint16_t filter_index, uint32_t num_buckets, uint32_t page_index, uint32_t page_count,
                                 std::string *data);
   rocksdb::Status WriteBackDirtyPages(rocksdb::WriteBatchBase *batch);
 
@@ -89,8 +112,7 @@ class CuckooPageCache {
 
   struct PageRead {
     BucketLocation location;
-    size_t page_offset = 0;
-    size_t length = 0;
+    uint32_t page_index = 0;
   };
 
   rocksdb::Status resolveBucketLocation(uint16_t filter_index, uint32_t num_buckets, uint32_t bucket_index,
@@ -99,7 +121,8 @@ class CuckooPageCache {
                                      BucketRef *bucket);
   rocksdb::Status loadPage(const BucketLocation &location, PageEntry **page);
   rocksdb::Status loadPages(const std::vector<BucketLocation> &locations);
-  rocksdb::Status batchGetPageBytes(const std::vector<PageRead> &reads, size_t start, size_t count, std::string *data);
+  rocksdb::Status batchGetPageBytes(const std::vector<PageRead> &reads, size_t start, size_t count,
+                                    CuckooDumpPayload::Builder *builder);
   static rocksdb::Status normalizePage(const rocksdb::Status &status, uint32_t expected_size, PageEntry *page);
 
   static bool tryInsertInBucketRef(const BucketRef &bucket, uint8_t fingerprint, size_t *slot_idx);

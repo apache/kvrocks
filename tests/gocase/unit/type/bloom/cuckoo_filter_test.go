@@ -20,7 +20,6 @@
 package bloom
 
 import (
-	"bytes"
 	"context"
 	"encoding/binary"
 	"fmt"
@@ -296,6 +295,21 @@ func TestCuckooFilter(t *testing.T) {
 		require.Equal(t, int64(1), result.Val())
 	})
 
+	decodeDumpChunk := func(chunk string) (uint32, []byte, []uint32) {
+		raw := []byte(chunk)
+		require.GreaterOrEqual(t, len(raw), 2*4)
+		skippedCount := binary.BigEndian.Uint32(raw[len(raw)-8 : len(raw)-4])
+		pageIndex := binary.BigEndian.Uint32(raw[len(raw)-4:])
+		metadataSize := len(raw) - 8
+		require.LessOrEqual(t, uint64(skippedCount)*4, uint64(metadataSize))
+		pageBytesSize := len(raw) - 8 - int(skippedCount)*4
+		skipped := make([]uint32, skippedCount)
+		for i := range skipped {
+			skipped[i] = binary.BigEndian.Uint32(raw[pageBytesSize+i*4 : pageBytesSize+(i+1)*4])
+		}
+		return pageIndex, raw[:pageBytesSize], skipped
+	}
+
 	t.Run("CF.SCANDUMP validate input", func(t *testing.T) {
 		require.ErrorContains(t, rdb.Do(ctx, "cf.scandump", "missing", "0").Err(), "NotFound")
 		require.ErrorContains(t, rdb.Do(ctx, "cf.scandump", "key", "invalid").Err(), "Invalid position")
@@ -319,9 +333,11 @@ func TestCuckooFilter(t *testing.T) {
 		require.True(t, ok)
 		chunk, ok := dataValues[1].(string)
 		require.True(t, ok)
-		require.NotEmpty(t, chunk)
-		require.True(t, bytes.Equal(make([]byte, len(chunk)), []byte(chunk)))
-		require.Equal(t, int64(1+len(chunk)), dataValues[0])
+		pageIndex, pageBytes, skipped := decodeDumpChunk(chunk)
+		require.Empty(t, pageBytes)
+		require.Equal(t, uint32(0), pageIndex)
+		require.Equal(t, []uint32{0}, skipped)
+		require.Equal(t, int64(2), dataValues[0])
 
 		endReply := rdb.Do(ctx, "cf.scandump", key, dataValues[0])
 		require.NoError(t, endReply.Err())
@@ -356,7 +372,9 @@ func TestCuckooFilter(t *testing.T) {
 
 		iterator := int64(1)
 		var dump []byte
+		pageCount := uint32(0)
 		for {
+			chunkStart := iterator
 			reply := rdb.Do(ctx, "cf.scandump", key, iterator)
 			require.NoError(t, reply.Err())
 			values, ok := reply.Val().([]interface{})
@@ -372,10 +390,15 @@ func TestCuckooFilter(t *testing.T) {
 			require.True(t, ok)
 			require.NotEmpty(t, chunk)
 			require.LessOrEqual(t, len(chunk), 16*1024*1024)
-			dump = append(dump, []byte(chunk)...)
+			pageIndex, pageBytes, skipped := decodeDumpChunk(chunk)
+			require.Equal(t, uint32(chunkStart-1), pageIndex)
+			require.LessOrEqual(t, uint64(len(skipped)), uint64(iterator-chunkStart))
+			pageCount += uint32(iterator - chunkStart)
+			dump = append(dump, pageBytes...)
 		}
 		require.NotEmpty(t, dump)
 		require.NotEqual(t, make([]byte, len(dump)), dump)
+		require.NotZero(t, pageCount)
 	})
 }
 

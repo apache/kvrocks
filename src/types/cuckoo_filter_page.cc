@@ -21,6 +21,7 @@
 #include "cuckoo_filter_page.h"
 
 #include <algorithm>
+#include <limits>
 
 #include "common/encoding.h"
 #include "cuckoo_filter.h"
@@ -58,6 +59,50 @@ std::string GetCuckooPageKey(const Slice &ns_key, uint64_t version, bool slot_id
 }
 
 }  // namespace
+
+CuckooDumpPayload::Builder::Builder(uint32_t page_index, std::string *output)
+    : page_index_(page_index), output_(output) {}
+
+void CuckooDumpPayload::Builder::AppendPage(const rocksdb::Slice &page) { output_->append(page.data(), page.size()); }
+
+rocksdb::Status CuckooDumpPayload::Builder::AppendSkippedPageIndex(size_t page_index) {
+  if (page_index < page_index_ || page_index - page_index_ > std::numeric_limits<uint32_t>::max()) {
+    return rocksdb::Status::InvalidArgument("invalid cuckoo filter skipped page index");
+  }
+  skipped_page_indexes_.push_back(static_cast<uint32_t>(page_index - page_index_));
+  return rocksdb::Status::OK();
+}
+
+void CuckooDumpPayload::Builder::Encode() {
+  for (const auto page_index : skipped_page_indexes_) PutFixed32(output_, page_index);
+  PutFixed32(output_, static_cast<uint32_t>(skipped_page_indexes_.size()));
+  PutFixed32(output_, page_index_);
+}
+
+rocksdb::Status CuckooDumpPayload::Builder::Decode(const rocksdb::Slice &payload, CuckooDumpPayload *decoded) {
+  if (payload.size() < 2 * sizeof(uint32_t)) {
+    return rocksdb::Status::Corruption("invalid cuckoo filter scan dump payload");
+  }
+
+  const auto page_index = DecodeFixed32(payload.data() + payload.size() - sizeof(uint32_t));
+  const auto skipped_page_count = DecodeFixed32(payload.data() + payload.size() - 2 * sizeof(uint32_t));
+  const auto metadata_size = payload.size() - 2 * sizeof(uint32_t);
+  if (skipped_page_count > metadata_size / sizeof(uint32_t)) {
+    return rocksdb::Status::Corruption("invalid cuckoo filter scan dump payload");
+  }
+
+  const auto skipped_page_indexes_size = static_cast<size_t>(skipped_page_count) * sizeof(uint32_t);
+  const auto page_bytes_size = payload.size() - 2 * sizeof(uint32_t) - skipped_page_indexes_size;
+  decoded->page_bytes = rocksdb::Slice(payload.data(), page_bytes_size);
+  decoded->page_index = page_index;
+  decoded->skipped_page_indexes.clear();
+  decoded->skipped_page_indexes.reserve(skipped_page_count);
+  const auto *skipped_page_indexes = payload.data() + page_bytes_size;
+  for (uint32_t i = 0; i < skipped_page_count; ++i) {
+    decoded->skipped_page_indexes.push_back(DecodeFixed32(skipped_page_indexes + i * sizeof(uint32_t)));
+  }
+  return rocksdb::Status::OK();
+}
 
 CuckooPageCache::CuckooPageCache(engine::Storage *storage, engine::Context &ctx, const Slice &ns_key,
                                  bool slot_id_encoded, uint64_t version, uint8_t bucket_size, uint32_t page_size)
@@ -160,38 +205,42 @@ rocksdb::Status CuckooPageCache::RestoreBucketSlot(const SlotMutation &mutation)
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status CuckooPageCache::ScanPageBytes(uint16_t filter_index, uint32_t num_buckets, uint64_t offset,
-                                               size_t length, std::string *data) {
-  const uint64_t filter_size = static_cast<uint64_t>(num_buckets) * bucket_size_;
-  if (offset > filter_size || length > filter_size - offset) {
-    return rocksdb::Status::InvalidArgument("invalid cuckoo filter range");
+rocksdb::Status CuckooPageCache::ScanPageBytes(uint16_t filter_index, uint32_t num_buckets, uint32_t page_index,
+                                               uint32_t page_count, std::string *data) {
+  if (num_buckets == 0 || bucket_size_ == 0) {
+    return rocksdb::Status::InvalidArgument("invalid cuckoo filter page range");
   }
 
+  const auto buckets_per_page = GetBucketsPerPage(page_size_, bucket_size_);
+  const auto total_pages = (num_buckets - 1) / buckets_per_page + 1;
+  if (page_index > total_pages || page_count > total_pages - page_index) {
+    return rocksdb::Status::InvalidArgument("invalid cuckoo filter page range");
+  }
   data->clear();
-  data->reserve(length);
+  CuckooDumpPayload::Builder builder(page_index, data);
+  data->reserve(static_cast<size_t>(page_count) * page_size_);
   std::vector<PageRead> reads;
-  while (length > 0) {
-    auto bucket_index = static_cast<uint32_t>(offset / bucket_size_);
+  reads.reserve(page_count);
+  for (uint32_t i = 0; i < page_count; ++i) {
+    const auto current_page_index = page_index + i;
+    const auto bucket_index = current_page_index * buckets_per_page;
     BucketLocation location;
     auto s = resolveBucketLocation(filter_index, num_buckets, bucket_index, &location);
     if (!s.ok()) return s;
-    auto page_offset = static_cast<size_t>(location.offset + offset % bucket_size_);
-    auto chunk_size = std::min(length, static_cast<size_t>(location.expected_page_size) - page_offset);
-    reads.push_back({.location = std::move(location), .page_offset = page_offset, .length = chunk_size});
-    offset += chunk_size;
-    length -= chunk_size;
+    reads.push_back({.location = std::move(location), .page_index = current_page_index});
   }
 
   for (size_t batch_start = 0; batch_start < reads.size(); batch_start += kMaxMultiGetPages) {
     const auto batch_size = std::min(kMaxMultiGetPages, reads.size() - batch_start);
-    auto s = batchGetPageBytes(reads, batch_start, batch_size, data);
+    auto s = batchGetPageBytes(reads, batch_start, batch_size, &builder);
     if (!s.ok()) return s;
   }
+  builder.Encode();
   return rocksdb::Status::OK();
 }
 
 rocksdb::Status CuckooPageCache::batchGetPageBytes(const std::vector<PageRead> &reads, size_t start, size_t count,
-                                                   std::string *data) {
+                                                   CuckooDumpPayload::Builder *builder) {
   std::vector<rocksdb::Slice> keys;
   keys.reserve(count);
   for (size_t i = start; i < start + count; ++i) {
@@ -206,14 +255,15 @@ rocksdb::Status CuckooPageCache::batchGetPageBytes(const std::vector<PageRead> &
   for (size_t i = 0; i < count; ++i) {
     const auto &read = reads[start + i];
     if (statuses[i].IsNotFound()) {
-      data->append(read.length, 0);
+      auto s = builder->AppendSkippedPageIndex(read.page_index);
+      if (!s.ok()) return s;
       continue;
     }
     if (!statuses[i].ok()) return statuses[i];
     if (values[i].size() != read.location.expected_page_size) {
       return rocksdb::Status::Corruption("invalid cuckoo filter page size");
     }
-    data->append(values[i].data() + read.page_offset, read.length);
+    builder->AppendPage(values[i]);
     values[i].Reset();
   }
   return rocksdb::Status::OK();

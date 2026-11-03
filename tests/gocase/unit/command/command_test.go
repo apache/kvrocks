@@ -134,6 +134,25 @@ func TestCommand(t *testing.T) {
 		require.Equal(t, "key2", vs[1])
 	})
 
+	t.Run("COMMAND GETKEYS SUNIONCARD", func(t *testing.T) {
+		for _, opts := range [][]interface{}{nil, {"APPROX"}, {"LIMIT", 3}, {"APPROX", "LIMIT", 3}, {"LIMIT", 3, "APPROX"}} {
+			args := append([]interface{}{"COMMAND", "GETKEYS", "SUNIONCARD", 3, "key1", "key2", "key1"}, opts...)
+			keys, err := rdb.Do(ctx, args...).StringSlice()
+			require.NoError(t, err)
+			require.Equal(t, []string{"key1", "key2", "key1"}, keys)
+		}
+		keys, err := rdb.Do(ctx, "COMMAND", "GETKEYS", "SUNIONCARD", 2, "APPROX", "LIMIT", "LIMIT", 1).StringSlice()
+		require.NoError(t, err)
+		require.Equal(t, []string{"APPROX", "LIMIT"}, keys)
+		for _, args := range [][]interface{}{
+			{"SUNIONCARD", "invalid", "key"}, {"SUNIONCARD", 0, "key"},
+			{"SUNIONCARD", "9223372036854775807", "key"}, {"SUNIONCARD", 2, "key"},
+			{"SUNIONCARD", 1, "key", "LIMIT"}, {"SUNIONCARD", 1, "key", "APPROX", "unknown"},
+		} {
+			require.Error(t, rdb.Do(ctx, append([]interface{}{"COMMAND", "GETKEYS"}, args...)...).Err())
+		}
+	})
+
 	t.Run("COMMAND GETKEYS ZINTER", func(t *testing.T) {
 		r := rdb.Do(ctx, "COMMAND", "GETKEYS", "ZINTER", "2", "key1", "key2")
 		vs, err := r.Slice()

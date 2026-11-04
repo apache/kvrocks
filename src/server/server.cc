@@ -1281,9 +1281,8 @@ Server::InfoEntries Server::GetMemoryInfo() {
 
 Server::InfoEntries Server::GetReplicationInfo() {
   InfoEntries entries;
-  if (is_loading_) return entries;
-
   entries.emplace_back("role", (IsSlave() ? "slave" : "master"));
+
   if (IsSlave()) {
     int64_t now_secs = util::GetTimeStamp<std::chrono::seconds>();
     entries.emplace_back("master_host", master_host_);
@@ -1292,10 +1291,14 @@ Server::InfoEntries Server::GetReplicationInfo() {
     entries.emplace_back("master_link_status", (state == kReplConnected ? "up" : "down"));
     entries.emplace_back("master_sync_unrecoverable_error", (state == kReplError ? "yes" : "no"));
     entries.emplace_back("master_sync_in_progress", (state == kReplFetchMeta || state == kReplFetchSST));
+    if (is_loading_) return entries;
+
     entries.emplace_back("master_last_io_seconds_ago", now_secs - replication_thread_->LastIOTimeSecs());
     entries.emplace_back("slave_repl_offset", storage->LatestSeqNumber());
     entries.emplace_back("slave_priority", config_->slave_priority);
   }
+
+  if (is_loading_) return entries;
 
   int idx = 0;
 

@@ -197,6 +197,10 @@ class CommandCFInsert : public Commander {
       return {Status::RedisParseErr, errWrongNumOfArguments};
     }
 
+    insert_options_ = CuckooFilterInsertOptions{};
+    has_items_ = false;
+    items_.clear();
+
     CommandParser parser(args, 2);
     while (parser.Good()) {
       if (parser.EatEqICase("CAPACITY")) {
@@ -205,7 +209,7 @@ class CommandCFInsert : public Commander {
           return {Status::RedisParseErr, "invalid capacity"};
         }
         insert_options_.capacity = parse_capacity.GetValue();
-        if (insert_options_.capacity <= 0) {
+        if (insert_options_.capacity == 0) {
           return {Status::RedisParseErr, "capacity must be larger than 0"};
         }
       } else if (parser.EatEqICase("NOCREATE")) {

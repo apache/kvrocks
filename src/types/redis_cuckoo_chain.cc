@@ -173,6 +173,19 @@ rocksdb::Status CuckooChain::Add(engine::Context &ctx, const Slice &user_key, co
 rocksdb::Status CuckooChain::Insert(engine::Context &ctx, const Slice &user_key, const std::vector<std::string> &items,
                                     const CuckooFilterInsertOptions &insert_options,
                                     std::vector<CuckooFilterInsertResult> &ret) {
+  if (items.empty()) {
+    return rocksdb::Status::InvalidArgument("num of items should be greater than 0");
+  }
+  if (insert_options.capacity == 0) {
+    return rocksdb::Status::InvalidArgument("capacity must be larger than 0");
+  }
+  if (insert_options.capacity < 2) {
+    return rocksdb::Status::InvalidArgument("capacity must be at least 2");
+  }
+  if (!CuckooFilterHelper::IsCapacitySupported(insert_options.capacity, kCFDefaultBucketSize)) {
+    return rocksdb::Status::InvalidArgument("capacity is too large");
+  }
+
   ret.resize(items.size());
   std::string ns_key = AppendNamespacePrefix(user_key);
 
@@ -182,14 +195,6 @@ rocksdb::Status CuckooChain::Insert(engine::Context &ctx, const Slice &user_key,
   if (s.IsNotFound()) {
     if (!insert_options.auto_create) {
       return s;
-    }
-
-    if (insert_options.capacity < 2) {
-      return rocksdb::Status::InvalidArgument("capacity must be at least 2");
-    }
-
-    if (!CuckooFilterHelper::IsCapacitySupported(insert_options.capacity, kCFDefaultBucketSize)) {
-      return rocksdb::Status::InvalidArgument("capacity is too large");
     }
 
     metadata = CuckooChainMetadata();

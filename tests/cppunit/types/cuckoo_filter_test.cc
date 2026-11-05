@@ -1395,13 +1395,28 @@ TEST_F(RedisCuckooFilterTest, InsertInvalidCapacity) {
   std::vector<redis::CuckooFilterInsertResult> rets(1, redis::CuckooFilterInsertResult::kOk);
   redis::CuckooFilterInsertOptions options;
 
-  options.capacity = 1;
+  options.capacity = 0;
   auto s = cuckoo_->Insert(*ctx_, key_, items, options, rets);
+  ASSERT_TRUE(s.IsInvalidArgument()) << s.ToString();
+
+  options.capacity = 1;
+  s = cuckoo_->Insert(*ctx_, key_, items, options, rets);
   ASSERT_TRUE(s.IsInvalidArgument()) << s.ToString();
 
   options.capacity = std::numeric_limits<uint64_t>::max();
   s = cuckoo_->Insert(*ctx_, key_, items, options, rets);
   ASSERT_TRUE(s.IsInvalidArgument()) << s.ToString();
+
+  reserveAndVerify(key_, 1000, 4, 500, 2);
+
+  options.capacity = 1;
+  s = cuckoo_->Insert(*ctx_, key_, items, options, rets);
+  ASSERT_TRUE(s.IsInvalidArgument()) << s.ToString();
+
+  options.capacity = std::numeric_limits<uint64_t>::max();
+  s = cuckoo_->Insert(*ctx_, key_, items, options, rets);
+  ASSERT_TRUE(s.IsInvalidArgument()) << s.ToString();
+  verifyMetadata(key_, 1000, 4, 500, 2, 0, 1);
 }
 
 TEST_F(RedisCuckooFilterTest, InsertExistingFilterIgnoresCapacity) {

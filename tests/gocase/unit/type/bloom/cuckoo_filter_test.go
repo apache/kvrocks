@@ -308,12 +308,13 @@ func TestCuckooFilterInsert(t *testing.T) {
 		require.Error(t, rdb.Do(ctx, "cf.insert").Err())
 		require.Error(t, rdb.Do(ctx, "cf.insert", "key_only").Err())
 		require.Error(t, rdb.Do(ctx, "cf.insert", "key_only", "ITEMS").Err())
+		require.Error(t, rdb.Do(ctx, "cf.insert", "key_only", "item1").Err())
 	})
 
 	t.Run("Insert missing ITEMS keyword returns syntax error", func(t *testing.T) {
 		key := "test_cf_insert_no_items_kw"
 		require.NoError(t, rdb.Del(ctx, key).Err())
-		require.ErrorContains(t, rdb.Do(ctx, "cf.insert", key, "item1").Err(), "ERR wrong number of arguments")
+		require.ErrorContains(t, rdb.Do(ctx, "cf.insert", key, "NOCREATE", "item1").Err(), "syntax error")
 	})
 
 	t.Run("Insert auto-creates filter", func(t *testing.T) {
@@ -346,6 +347,12 @@ func TestCuckooFilterInsert(t *testing.T) {
 		require.ErrorContains(t, rdb.Do(ctx, "cf.insert", key, "CAPACITY", "abc", "ITEMS", "item1").Err(), "invalid capacity")
 		require.ErrorContains(t, rdb.Do(ctx, "cf.insert", key, "CAPACITY", "0", "ITEMS", "item1").Err(), "capacity must be larger than 0")
 		require.ErrorContains(t, rdb.Do(ctx, "cf.insert", key, "CAPACITY", "1", "ITEMS", "item1").Err(), "capacity must be at least 2")
+		require.ErrorContains(t, rdb.Do(ctx, "cf.insert", key, "NOCREATE", "CAPACITY", "1", "ITEMS", "item1").Err(), "capacity must be at least 2")
+
+		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "1000").Err())
+		require.ErrorContains(t, rdb.Do(ctx, "cf.insert", key, "CAPACITY", "1", "ITEMS", "item1").Err(), "capacity must be at least 2")
+		require.ErrorContains(t, rdb.Do(ctx, "cf.insert", key, "CAPACITY", "18446744073709551615", "ITEMS", "item1").Err(), "capacity is too large")
+		require.Equal(t, int64(0), rdb.Do(ctx, "cf.exists", key, "item1").Val())
 	})
 
 	t.Run("Insert CAPACITY ignored when filter already exists", func(t *testing.T) {
@@ -463,7 +470,6 @@ func TestCuckooFilterInsert(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, []interface{}{int64(1), int64(1), int64(1), int64(1), int64(1)}, result)
 	})
-
 }
 
 func TestCuckooFilterRESP3(t *testing.T) {

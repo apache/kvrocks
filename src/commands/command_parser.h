@@ -24,6 +24,7 @@
 #include <cctype>
 #include <functional>
 #include <iterator>
+#include <limits>
 #include <type_traits>
 
 #include "parse_util.h"
@@ -150,6 +151,11 @@ struct CommandParser {
     }
 
     return res;
+  }
+
+  template <typename T = long long>
+  StatusOr<T> TakePositiveInt() {
+    return TakeInt<T>(NumericRange<T>{1, std::numeric_limits<T>::max()});
   }
 
   template <typename T = double>

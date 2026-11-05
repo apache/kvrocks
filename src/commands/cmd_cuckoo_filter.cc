@@ -26,6 +26,17 @@
 
 namespace redis {
 
+namespace {
+
+Status CuckooFilterCommandStatus(const rocksdb::Status &status) {
+  if (status.IsInvalidArgument() && status.ToString().find(kErrMsgWrongType) != std::string::npos) {
+    return {Status::RedisWrongType, "Operation against a key holding the wrong kind of value"};
+  }
+  return {Status::RedisExecErr, status.ToString()};
+}
+
+}  // namespace
+
 class CommandCFReserve : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
@@ -89,8 +100,7 @@ class CommandCFReserve : public Commander {
 
     if (!s.ok()) {
       if (s.IsInvalidArgument()) {
-        // Return error message to client
-        return {Status::RedisExecErr, s.ToString()};
+        return CuckooFilterCommandStatus(s);
       }
       return {Status::RedisExecErr, "failed to create cuckoo filter"};
     }
@@ -122,7 +132,7 @@ class CommandCFAdd : public Commander {
     auto s = cuckoo_db.Add(ctx, args_[1], args_[2], &added);
 
     if (!s.ok()) {
-      return {Status::RedisExecErr, s.ToString()};
+      return CuckooFilterCommandStatus(s);
     }
 
     // Duplicate items are allowed, so successful insertions return 1.
@@ -147,7 +157,7 @@ class CommandCFExists : public Commander {
     auto s = cuckoo_db.Exists(ctx, args_[1], args_[2], &exists);
 
     if (!s.ok()) {
-      return {Status::RedisExecErr, s.ToString()};
+      return CuckooFilterCommandStatus(s);
     }
 
     *output = conn->Bool(exists);
@@ -175,7 +185,7 @@ class CommandCFMExists : public Commander {
     auto s = cuckoo_db.MExists(ctx, args_[1], items_, &exists);
 
     if (!s.ok()) {
-      return {Status::RedisExecErr, s.ToString()};
+      return CuckooFilterCommandStatus(s);
     }
 
     *output = redis::MultiLen(items_.size());
@@ -205,7 +215,7 @@ class CommandCFDel : public Commander {
     auto s = cuckoo_db.Delete(ctx, args_[1], args_[2], &deleted);
 
     if (!s.ok()) {
-      return {Status::RedisExecErr, s.ToString()};
+      return CuckooFilterCommandStatus(s);
     }
 
     *output = redis::Integer(deleted ? 1 : 0);
@@ -228,11 +238,8 @@ class CommandCFCount : public Commander {
     uint64_t count = 0;
     auto s = cuckoo_db.Count(ctx, args_[1], args_[2], &count);
 
-    if (s.IsInvalidArgument() && s.ToString().find(kErrMsgWrongType) != std::string::npos) {
-      return {Status::RedisWrongType, "Operation against a key holding the wrong kind of value"};
-    }
     if (!s.ok()) {
-      return {Status::RedisExecErr, s.ToString()};
+      return CuckooFilterCommandStatus(s);
     }
 
     *output = redis::Integer(count);

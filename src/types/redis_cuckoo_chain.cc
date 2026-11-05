@@ -36,6 +36,9 @@ rocksdb::Status CuckooChain::validateMetadata(const CuckooChainMetadata &metadat
   if (metadata.n_filters == 0) {
     return rocksdb::Status::Corruption("invalid metadata: n_filters is 0");
   }
+  if (metadata.expansion == 0 && metadata.n_filters > 1) {
+    return rocksdb::Status::Corruption("invalid metadata: non-scaling filter has multiple filters");
+  }
   if (metadata.base_capacity == 0) {
     return rocksdb::Status::Corruption("invalid metadata: base_capacity is 0");
   }

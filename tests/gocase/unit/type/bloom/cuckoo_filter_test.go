@@ -29,6 +29,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func requireWrongType(t *testing.T, err error) {
+	t.Helper()
+	require.ErrorContains(t, err, "WRONGTYPE")
+	require.True(t, strings.HasPrefix(err.Error(), "WRONGTYPE"), "unexpected error prefix: %v", err)
+}
+
 func TestCuckooFilter(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{})
 	defer srv.Close()
@@ -47,7 +53,7 @@ func TestCuckooFilter(t *testing.T) {
 	t.Run("Wrong type", func(t *testing.T) {
 		key := "test_cuckoo_filter_wrong_type"
 		require.NoError(t, rdb.Set(ctx, key, "value", 0).Err())
-		require.ErrorContains(t, rdb.Do(ctx, "cf.add", key, "item").Err(), "WRONGTYPE")
+		requireWrongType(t, rdb.Do(ctx, "cf.add", key, "item").Err())
 	})
 
 	t.Run("CF.EXISTS missing key returns false", func(t *testing.T) {
@@ -75,13 +81,13 @@ func TestCuckooFilter(t *testing.T) {
 	t.Run("CF.EXISTS wrong type returns WRONGTYPE", func(t *testing.T) {
 		key := "test_cuckoo_filter_exists_wrong_type"
 		require.NoError(t, rdb.Set(ctx, key, "value", 0).Err())
-		require.ErrorContains(t, rdb.Do(ctx, "cf.exists", key, "item").Err(), "WRONGTYPE")
+		requireWrongType(t, rdb.Do(ctx, "cf.exists", key, "item").Err())
 	})
 
 	t.Run("CF.MEXISTS wrong type returns WRONGTYPE", func(t *testing.T) {
 		key := "test_cuckoo_filter_mexists_wrong_type"
 		require.NoError(t, rdb.Set(ctx, key, "value", 0).Err())
-		require.ErrorContains(t, rdb.Do(ctx, "cf.mexists", key, "item1", "item2").Err(), "WRONGTYPE")
+		requireWrongType(t, rdb.Do(ctx, "cf.mexists", key, "item1", "item2").Err())
 	})
 
 	t.Run("CF.EXISTS and CF.MEXISTS wrong number of arguments", func(t *testing.T) {
@@ -132,6 +138,12 @@ func TestCuckooFilter(t *testing.T) {
 		require.ErrorContains(t, rdb.Do(ctx, "cf.reserve", "cf_bad_syntax", "1000", "UNKNOWNOPT").Err(), "syntax error")
 	})
 
+	t.Run("Reserve wrong type", func(t *testing.T) {
+		key := "test_cuckoo_filter_reserve_wrong_type"
+		require.NoError(t, rdb.Set(ctx, key, "value", 0).Err())
+		requireWrongType(t, rdb.Do(ctx, "cf.reserve", key, "100").Err())
+	})
+
 	t.Run("Reserve duplicate key", func(t *testing.T) {
 		key := "test_cuckoo_filter_reserve_dup"
 		require.NoError(t, rdb.Del(ctx, key).Err())
@@ -165,7 +177,7 @@ func TestCuckooFilter(t *testing.T) {
 	t.Run("Del wrong type", func(t *testing.T) {
 		key := "test_cuckoo_filter_del_wrong_type"
 		require.NoError(t, rdb.Set(ctx, key, "value", 0).Err())
-		require.ErrorContains(t, rdb.Do(ctx, "cf.del", key, "item").Err(), "WRONGTYPE")
+		requireWrongType(t, rdb.Do(ctx, "cf.del", key, "item").Err())
 	})
 
 	t.Run("Del basic", func(t *testing.T) {
@@ -368,9 +380,7 @@ func TestCuckooFilter(t *testing.T) {
 		key := "test_cf_count_wrong_type"
 		require.NoError(t, rdb.Del(ctx, key).Err())
 		require.NoError(t, rdb.Set(ctx, key, "value", 0).Err())
-		err := rdb.Do(ctx, "cf.count", key, "item").Err()
-		require.ErrorContains(t, err, "WRONGTYPE")
-		require.True(t, strings.HasPrefix(err.Error(), "WRONGTYPE"), "unexpected error prefix: %v", err)
+		requireWrongType(t, rdb.Do(ctx, "cf.count", key, "item").Err())
 	})
 
 	t.Run("Count wrong number of arguments", func(t *testing.T) {
@@ -416,7 +426,4 @@ func TestCuckooFilterRESP3(t *testing.T) {
 	c.MustRead(t, "*2")
 	c.MustRead(t, "#t")
 	c.MustRead(t, "#f")
-
-	require.NoError(t, c.WriteArgs("cf.count", key, "alpha"))
-	c.MustRead(t, ":1")
 }

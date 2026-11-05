@@ -328,6 +328,49 @@ TEST_F(RedisCuckooFilterTest, CalculateRequiredBucketsCalculation) {
   }
 }
 
+TEST_F(RedisCuckooFilterTest, CalculateFilterCapacity) {
+  struct TestCase {
+    uint64_t base_capacity;
+    uint16_t expansion;
+    uint16_t filter_index;
+    uint64_t expected_capacity;
+    bool expected_ok;
+  };
+
+  const std::vector<TestCase> test_cases = {
+      {1000, 2, 0, 1000, true},
+      {1000, 2, 5, 32000, true},
+      {1000, 1, 500, 1000, true},
+      {1000, 0, 500, 1000, true},
+      {std::numeric_limits<uint64_t>::max() / 2 + 1, 2, 1, 0, false},
+  };
+
+  for (const auto &test_case : test_cases) {
+    uint64_t capacity = 0;
+    auto ok = redis::CuckooFilterHelper::CalculateFilterCapacity(test_case.base_capacity, test_case.expansion,
+                                                                 test_case.filter_index, &capacity);
+    EXPECT_EQ(ok, test_case.expected_ok) << "base=" << test_case.base_capacity << ", expansion=" << test_case.expansion
+                                         << ", index=" << test_case.filter_index;
+    if (ok) {
+      EXPECT_EQ(capacity, test_case.expected_capacity);
+    }
+  }
+}
+
+TEST_F(RedisCuckooFilterTest, CountRejectsInvalidMetadata) {
+  reserveAndVerify(key_, 1000, 4, 500, 2);
+  addAndVerify(key_, "known", 1000, 4, 500, 2, 1);
+  auto metadata = getMetadata(key_);
+  metadata.expansion = 0;
+  metadata.n_filters = 2;
+  writeMetadata(key_, metadata);
+
+  uint64_t count = 1;
+  auto s = cuckoo_->Count(*ctx_, key_, "item", &count);
+  EXPECT_TRUE(s.IsCorruption()) << s.ToString();
+  EXPECT_EQ(count, 0);
+}
+
 TEST_F(RedisCuckooFilterTest, FingerprintGeneration) {
   // Test fingerprint generation ensures non-zero values in range [1, 255]
   // Standard implementation: fp = hash % 255 + 1

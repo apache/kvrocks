@@ -116,10 +116,25 @@ class CuckooFilterHelper {
   // Returns false if overflow would occur.
   static bool CalculateFilterCapacity(uint64_t base_capacity, uint16_t expansion, uint16_t filter_index,
                                       uint64_t *filter_capacity) {
+    // expansion 0/1 keeps the same capacity for every sub-filter.
+    if (expansion <= 1) {
+      *filter_capacity = base_capacity;
+      return true;
+    }
+
+    // Exponentiation by squaring keeps this O(log filter_index) instead of O(filter_index) for every lookup.
     uint64_t capacity = base_capacity;
-    for (uint16_t i = 0; i < filter_index; ++i) {
-      if (expansion != 0 && capacity > std::numeric_limits<uint64_t>::max() / expansion) return false;
-      capacity *= expansion;
+    uint64_t factor = expansion;
+    uint16_t power = filter_index;
+    while (power > 0) {
+      if ((power & 1U) != 0) {
+        if (capacity > std::numeric_limits<uint64_t>::max() / factor) return false;
+        capacity *= factor;
+      }
+      power >>= 1;
+      if (power == 0) break;
+      if (factor > std::numeric_limits<uint64_t>::max() / factor) return false;
+      factor *= factor;
     }
     *filter_capacity = capacity;
     return true;

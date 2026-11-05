@@ -970,13 +970,30 @@ rocksdb::Status Hash::Delete(engine::Context &ctx, const Slice &user_key, const 
   uint64_t persistent_removed = 0;
   std::unordered_set<std::string_view> field_set;
   uint64_t now = util::GetTimeStampMS();
+  std::vector<std::string> encoded_keys;
+  std::vector<rocksdb::Slice> keys;
+  encoded_keys.reserve(fields.size());
+  keys.reserve(fields.size());
   for (const auto &field : fields) {
     if (!field_set.emplace(field.ToStringView()).second) {
       continue;
     }
-    std::string sub_key = InternalKey(ns_key, field, metadata.version, storage_->IsSlotIdEncoded()).Encode();
+    encoded_keys.emplace_back(InternalKey(ns_key, field, metadata.version, storage_->IsSlotIdEncoded()).Encode());
+    keys.emplace_back(encoded_keys.back());
+  }
+  if (keys.empty()) return rocksdb::Status::OK();
+
+  std::vector<rocksdb::PinnableSlice> raw_values(keys.size());
+  std::vector<rocksdb::Status> statuses(keys.size());
+  storage_->MultiGet(ctx, ctx.DefaultMultiGetOptions(), storage_->GetDB()->DefaultColumnFamily(), keys.size(),
+                     keys.data(), raw_values.data(), statuses.data());
+
+  for (size_t i = 0; i < keys.size(); ++i) {
+    if (statuses[i].IsNotFound()) continue;
+    if (!statuses[i].ok()) return statuses[i];
+    const auto &sub_key = keys[i];
     HashFieldState state;
-    s = LoadFieldState(storage_, ctx, metadata, sub_key, now, &state);
+    s = DecodeFieldState(metadata, Slice(raw_values[i]), now, &state);
     if (!s.ok()) return s;
     switch (state.kind) {
       case HashFieldStateKind::kMissing:

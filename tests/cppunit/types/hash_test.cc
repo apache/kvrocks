@@ -313,9 +313,13 @@ TEST_F(RedisHashTest, MSetAndDeleteRepeated) {
   s = hash_->Size(*ctx_, key_, &ret);
   EXPECT_TRUE(s.ok() && ret == static_cast<uint64_t>(fvs.size() - 1));
 
-  std::vector<rocksdb::Slice> fields_to_delete{"f1", "f2", "f2"};
+  std::vector<rocksdb::Slice> fields_to_delete{"missing", "f1", "f2", "f2", "missing", "f1"};
   s = hash_->Delete(*ctx_, key_, fields_to_delete, &ret);
-  EXPECT_TRUE(s.ok() && ret == static_cast<uint64_t>(fields_to_delete.size() - 1));
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  EXPECT_EQ(ret, 2);
+  s = hash_->Delete(*ctx_, key_, fields_to_delete, &ret);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  EXPECT_EQ(ret, 0);
   s = hash_->Size(*ctx_, key_, &ret);
   EXPECT_TRUE(s.ok() && ret == 1);
   s = hash_->Get(*ctx_, key_, "f3", &got);
@@ -922,7 +926,8 @@ TEST_F(RedisHashFieldExpirationEncodingTest, DeleteHandlesPersistentLiveExpiredM
   s = putHashMetadata(key.ToString(), metadata);
   ASSERT_TRUE(s.ok()) << s.ToString();
 
-  s = hash_->Delete(*ctx_, key, {"persistent", "live", "expired", "missing", "persistent"}, &ret);
+  s = hash_->Delete(*ctx_, key,
+                    {"persistent", "live", "expired", "missing", "persistent", "live", "expired", "missing"}, &ret);
   ASSERT_TRUE(s.ok()) << s.ToString();
   EXPECT_EQ(ret, 2);
   metadata = hashMetadata(key.ToString());

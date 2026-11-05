@@ -1127,8 +1127,9 @@ func TestSlotMigrateDataType(t *testing.T) {
 		require.NoError(t, rdb0.Del(ctx, streamName).Err())
 		require.NoError(t, rdb0.Del(ctx, fillerListName).Err())
 
-		// Seed the stream so its entries are part of the migration snapshot.
-		for i := 1; i <= 10; i++ {
+		// Seed the stream so its entries are part of the migration snapshot. The trim below removes
+		// more than the point-delete limit of a trim, so it is written as a single range tombstone.
+		for i := 1; i <= 200; i++ {
 			require.NoError(t, rdb0.XAdd(ctx, &redis.XAddArgs{
 				Stream: streamName, ID: fmt.Sprintf("%d-0", i), Values: map[string]interface{}{"f": "v"},
 			}).Err())
@@ -1147,14 +1148,14 @@ func TestSlotMigrateDataType(t *testing.T) {
 		require.Equal(t, "OK", rdb0.Do(ctx, "clusterx", "migrate", testSlot, id1).Val())
 		requireMigrateState(t, rdb0, testSlot, SlotMigrationStateStarted)
 
-		require.NoError(t, rdb0.XTrimMinID(ctx, streamName, "6-0").Err())
+		require.NoError(t, rdb0.XTrimMinID(ctx, streamName, "151-0").Err())
 		waitForMigrateStateInDuration(t, rdb0, testSlot, SlotMigrationStateSuccess, time.Minute)
 
-		require.EqualValues(t, 5, rdb1.XLen(ctx, streamName).Val())
+		require.EqualValues(t, 50, rdb1.XLen(ctx, streamName).Val())
 		items := rdb1.XRange(ctx, streamName, "-", "+").Val()
-		require.Len(t, items, 5)
-		require.EqualValues(t, "6-0", items[0].ID)
-		require.EqualValues(t, "10-0", items[4].ID)
+		require.Len(t, items, 50)
+		require.EqualValues(t, "151-0", items[0].ID)
+		require.EqualValues(t, "200-0", items[49].ID)
 	})
 }
 

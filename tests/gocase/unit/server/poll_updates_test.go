@@ -291,9 +291,7 @@ func TestPollUpdates_WithRESPFormat(t *testing.T) {
 	})
 
 	t.Run("Stream trim", func(t *testing.T) {
-		// Trim removes entries with one range tombstone; POLLUPDATES must still reconstruct an
-		// equivalent command. A partial trim becomes XTRIM MINID <first surviving id>; a trim that
-		// empties the stream becomes XTRIM MAXLEN 0.
+		// Small trims remove entries with point deletes, which POLLUPDATES reconstructs as XDEL.
 		for _, id := range []string{"1-0", "2-0", "3-0"} {
 			require.NoError(t, rdb0.XAdd(ctx, &redis.XAddArgs{
 				Stream: "trimstream", ID: id, Values: map[string]interface{}{"f": "v"},
@@ -311,10 +309,34 @@ func TestPollUpdates_WithRESPFormat(t *testing.T) {
 				{"XADD", "trimstream", "1-0", "f", "v"},
 				{"XADD", "trimstream", "2-0", "f", "v"},
 				{"XADD", "trimstream", "3-0", "f", "v"},
-				{"XTRIM", "trimstream", "MINID", "2-0"},
-				{"XTRIM", "trimstream", "MAXLEN", "0"},
+				{"XDEL", "trimstream", "1-0"},
+				{"XDEL", "trimstream", "2-0"},
+				{"XDEL", "trimstream", "3-0"},
 			}},
 		}, pollUpdates.Updates)
+
+		// Large trims remove entries with one range tombstone; POLLUPDATES must still reconstruct an
+		// equivalent command. A partial trim becomes XTRIM MINID <first surviving id>; a trim that
+		// empties the stream becomes XTRIM MAXLEN 0.
+		var expected [][]string
+		for i := 1; i <= 300; i++ {
+			id := fmt.Sprintf("%d-0", i)
+			require.NoError(t, rdb0.XAdd(ctx, &redis.XAddArgs{
+				Stream: "bigtrimstream", ID: id, Values: map[string]interface{}{"f": "v"},
+			}).Err())
+			expected = append(expected, []string{"XADD", "bigtrimstream", id, "f", "v"})
+		}
+		require.NoError(t, rdb0.XTrimMinID(ctx, "bigtrimstream", "151-0").Err())
+		require.NoError(t, rdb0.XTrimMaxLen(ctx, "bigtrimstream", 0).Err())
+		expected = append(expected,
+			[]string{"XTRIM", "bigtrimstream", "MINID", "151-0"},
+			[]string{"XTRIM", "bigtrimstream", "MAXLEN", "0"})
+		result, err = rdb0.Do(ctx, "POLLUPDATES", pollUpdates.NextSeq, "MAX", 1000, "FORMAT", "RESP").Result()
+		require.NoError(t, err)
+
+		pollUpdates = parsePollUpdatesResult(t, result.(map[any]any), true)
+		require.Len(t, pollUpdates.Updates, 1)
+		require.EqualValues(t, []any{RESPFormat{Commands: expected}}, pollUpdates.Updates)
 	})
 
 	t.Run("JSON type", func(t *testing.T) {

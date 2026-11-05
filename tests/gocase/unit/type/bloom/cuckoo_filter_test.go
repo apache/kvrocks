@@ -27,7 +27,6 @@ import (
 	"time"
 
 	"github.com/apache/kvrocks/tests/gocase/util"
-	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 )
 
@@ -318,7 +317,12 @@ func TestCuckooFilter(t *testing.T) {
 	t.Run("Info of no exists key", func(t *testing.T) {
 		key := "no_exist_key"
 		require.NoError(t, rdb.Del(ctx, key).Err())
-		require.ErrorContains(t, rdb.Do(ctx, "cf.info", key).Err(), "filter is not found")
+		require.ErrorContains(t, rdb.Do(ctx, "cf.info", key).Err(), "Not found")
+	})
+
+	t.Run("Info wrong number of arguments", func(t *testing.T) {
+		require.ErrorContains(t, rdb.Do(ctx, "cf.info").Err(), "wrong number of arguments")
+		require.ErrorContains(t, rdb.Do(ctx, "cf.info", "key", "size", "extra").Err(), "wrong number of arguments")
 	})
 
 	t.Run("Info empty filter", func(t *testing.T) {
@@ -338,6 +342,22 @@ func TestCuckooFilter(t *testing.T) {
 			"Expansion rate":           int64(1),
 			"Max iterations":           int64(20),
 		}, all)
+	})
+
+	t.Run("Info full output for non-scaling filter", func(t *testing.T) {
+		key := "test_cf_info_non_scaling_full"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "1000", "EXPANSION", "0").Err())
+
+		all, err := rdb.Do(ctx, "cf.info", key).Result()
+		require.NoError(t, err)
+		info := all.(map[interface{}]interface{})
+		require.Equal(t, int64(2048), info["Size"])
+		require.Equal(t, int64(1024), info["Number of buckets"])
+		require.Equal(t, int64(1), info["Number of filters"])
+		expansion, ok := info["Expansion rate"]
+		require.True(t, ok)
+		require.Equal(t, int64(0), expansion)
 	})
 
 	t.Run("Info wrong type key", func(t *testing.T) {
@@ -390,7 +410,7 @@ func TestCuckooFilter(t *testing.T) {
 		key := "test_cf_info_deleted_by_ttl"
 		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "1000").Err())
 		require.Equal(t, int64(1), rdb.Do(ctx, "pexpire", key, "-1000").Val())
-		require.ErrorContains(t, rdb.Do(ctx, "cf.info", key).Err(), "filter is not found")
+		require.ErrorContains(t, rdb.Do(ctx, "cf.info", key).Err(), "Not found")
 	})
 
 	t.Run("Info naturally expired filter", func(t *testing.T) {
@@ -402,7 +422,7 @@ func TestCuckooFilter(t *testing.T) {
 		require.True(t, expire.Val())
 		require.Eventually(t, func() bool {
 			err := rdb.Do(ctx, "cf.info", key).Err()
-			return err != nil && strings.Contains(err.Error(), "filter is not found")
+			return err != nil && strings.Contains(err.Error(), "Not found")
 		}, 5*time.Second, 10*time.Millisecond)
 	})
 
@@ -445,6 +465,22 @@ func TestCuckooFilter(t *testing.T) {
 		require.Equal(t, int64(8)*((int64(1)<<filters)-1), all["Size"])
 	})
 
+	t.Run("Info equal-sized expanded filters", func(t *testing.T) {
+		key := "test_cf_info_expansion_one"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "2", "BUCKETSIZE", "1", "MAXITERATIONS", "1", "EXPANSION", "1").Err())
+
+		for i := 0; i < 100; i++ {
+			require.NoError(t, rdb.Do(ctx, "cf.add", key, fmt.Sprintf("equal_%d", i)).Err())
+		}
+
+		filters, err := rdb.Do(ctx, "cf.info", key, "filters").Int64()
+		require.NoError(t, err)
+		require.Greater(t, filters, int64(1))
+		require.Equal(t, int64(4), rdb.Do(ctx, "cf.info", key, "buckets").Val())
+		require.Equal(t, int64(4)*filters, rdb.Do(ctx, "cf.info", key, "size").Val())
+	})
+
 	t.Run("Info individual fields", func(t *testing.T) {
 		key := "test_cf_info_fields"
 		require.NoError(t, rdb.Del(ctx, key).Err())
@@ -460,8 +496,8 @@ func TestCuckooFilter(t *testing.T) {
 		}, items)
 		require.Equal(t, int64(4), rdb.Do(ctx, "cf.info", key, "bucket_size").Val())
 		expansion, err := rdb.Do(ctx, "cf.info", key, "expansion").Result()
-		require.ErrorIs(t, err, redis.Nil)
-		require.Nil(t, expansion)
+		require.NoError(t, err)
+		require.Equal(t, int64(0), expansion)
 		require.Equal(t, int64(20), rdb.Do(ctx, "cf.info", key, "max_iterations").Val())
 	})
 }

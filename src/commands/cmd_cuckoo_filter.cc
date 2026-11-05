@@ -26,17 +26,6 @@
 
 namespace redis {
 
-enum class CuckooInfoType {
-  kAll,
-  kSize,
-  kBuckets,
-  kFilters,
-  kItems,
-  kBucketSize,
-  kExpansion,
-  kMaxIterations,
-};
-
 class CommandCFReserve : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
@@ -201,6 +190,18 @@ class CommandCFMExists : public Commander {
 };
 
 class CommandCFInfo : public Commander {
+ private:
+  enum class CuckooInfoType {
+    kAll,
+    kSize,
+    kBuckets,
+    kFilters,
+    kItems,
+    kBucketSize,
+    kExpansion,
+    kMaxIterations,
+  };
+
  public:
   Status Parse(const std::vector<std::string> &args) override {
     // CF.INFO key [field]
@@ -236,7 +237,7 @@ class CommandCFInfo : public Commander {
     auto s = cuckoo_db.Info(ctx, args_[1], &info);
 
     if (s.IsNotFound()) {
-      return {Status::RedisExecErr, "filter is not found"};
+      return {Status::RedisExecErr, "Not found"};
     }
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
@@ -245,13 +246,13 @@ class CommandCFInfo : public Commander {
       case CuckooInfoType::kAll:
         *output = conn->HeaderOfMap(8);
         *output += redis::SimpleString("Size");
-        *output += redis::Integer(info.size);
+        *output += redis::Integer(info.bucket_bytes);
         *output += redis::SimpleString("Number of buckets");
-        *output += redis::Integer(info.n_buckets);
+        *output += redis::Integer(info.base_buckets);
         *output += redis::SimpleString("Number of filters");
         *output += redis::Integer(info.n_filters);
         *output += redis::SimpleString("Number of items inserted");
-        *output += redis::Integer(info.n_items_inserted);
+        *output += redis::Integer(info.item_count);
         *output += redis::SimpleString("Number of items deleted");
         *output += redis::Integer(info.n_items_deleted);
         *output += redis::SimpleString("Bucket size");
@@ -262,10 +263,10 @@ class CommandCFInfo : public Commander {
         *output += redis::Integer(info.max_iterations);
         break;
       case CuckooInfoType::kSize:
-        *output = redis::Integer(info.size);
+        *output = redis::Integer(info.bucket_bytes);
         break;
       case CuckooInfoType::kBuckets:
-        *output = redis::Integer(info.n_buckets);
+        *output = redis::Integer(info.base_buckets);
         break;
       case CuckooInfoType::kFilters:
         *output = redis::Integer(info.n_filters);
@@ -273,7 +274,7 @@ class CommandCFInfo : public Commander {
       case CuckooInfoType::kItems:
         *output = conn->HeaderOfMap(2);
         *output += redis::SimpleString("Number of items inserted");
-        *output += redis::Integer(info.n_items_inserted);
+        *output += redis::Integer(info.item_count);
         *output += redis::SimpleString("Number of items deleted");
         *output += redis::Integer(info.n_items_deleted);
         break;
@@ -281,7 +282,7 @@ class CommandCFInfo : public Commander {
         *output = redis::Integer(info.bucket_size);
         break;
       case CuckooInfoType::kExpansion:
-        *output = info.expansion == 0 ? conn->NilString() : redis::Integer(info.expansion);
+        *output = redis::Integer(info.expansion);
         break;
       case CuckooInfoType::kMaxIterations:
         *output = redis::Integer(info.max_iterations);

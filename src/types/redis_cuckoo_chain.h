@@ -38,14 +38,18 @@ const uint16_t kCFDefaultExpansion = 1;
 const uint16_t kCFMaxExpansion = 32768;
 
 struct CuckooFilterInfo {
-  uint64_t size;
-  uint64_t n_buckets;
-  uint16_t n_filters;
-  uint64_t n_items_inserted;
-  uint64_t n_items_deleted;
-  uint8_t bucket_size;
-  uint16_t expansion;
-  uint16_t max_iterations;
+  // Logical bucket storage across all sub-filters, in bytes.
+  uint64_t bucket_bytes = 0;
+  // Bucket count of the initial sub-filter. RedisBloom reports the same value as "Number of buckets".
+  uint64_t base_buckets = 0;
+  uint16_t n_filters = 0;
+  // Number of live items (inserts minus deletes).
+  uint64_t item_count = 0;
+  // Cumulative number of deleted items.
+  uint64_t n_items_deleted = 0;
+  uint8_t bucket_size = 0;
+  uint16_t expansion = 0;
+  uint16_t max_iterations = 0;
 };
 
 // Command tags recorded in WriteBatchLogData for cuckoo filter mutations.
@@ -82,6 +86,10 @@ class CuckooChain : public Database {
   rocksdb::Status getCuckooChainMetadata(engine::Context &ctx, const Slice &ns_key, CuckooChainMetadata *metadata);
 
   static rocksdb::Status validateMetadata(const CuckooChainMetadata &metadata);
+
+  // Calculates the total number of buckets across all sub-filters.
+  static rocksdb::Status calculateTotalBuckets(const CuckooChainMetadata &metadata, uint32_t base_buckets,
+                                               uint64_t *total_buckets);
 
   static rocksdb::Status tryInsertFingerprint(CuckooChainMetadata *metadata, CuckooPageCache &pages, uint64_t hash,
                                               uint8_t fingerprint, bool *inserted);

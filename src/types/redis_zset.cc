@@ -63,7 +63,7 @@ rocksdb::Status ZSet::Add(engine::Context &ctx, const Slice &user_key, ZAddFlags
       s = storage_->Get(ctx, ctx.GetReadOptions(), member_key, &old_score_bytes);
       if (!s.ok() && !s.IsNotFound()) return s;
       if (s.ok()) {
-        if (!s.IsNotFound() && flags.HasNX()) {
+        if (flags.HasNX()) {
           continue;
         }
         double old_score = DecodeDouble(old_score_bytes.data());
@@ -717,23 +717,23 @@ rocksdb::Status ZSet::InterCard(engine::Context &ctx, const std::vector<std::str
     if (!s.ok() || mscores.empty()) return s;
     mscores_list.emplace_back(std::move(mscores));
   }
-  std::sort(mscores_list.begin(), mscores_list.end(),
-            [](const MemberScores &v1, const MemberScores &v2) { return v1.size() < v2.size(); });
-
-  auto base_mscores = mscores_list[0];
-  std::map<std::string, size_t> member_counters;
+  const auto base_it =
+      std::min_element(mscores_list.cbegin(), mscores_list.cend(),
+                       [](const MemberScores &v1, const MemberScores &v2) { return v1.size() < v2.size(); });
+  const auto &base_mscores = *base_it;
   uint64_t cardinality = 0;
   for (const auto &base_ms : base_mscores) {
-    member_counters[base_ms.member] = 1;
-    for (size_t i = 1; i < mscores_list.size(); i++) {
-      for (const auto &ms : mscores_list[i]) {
+    size_t member_count = 1;
+    for (auto it = mscores_list.cbegin(); it != mscores_list.cend(); ++it) {
+      if (it == base_it) continue;
+      for (const auto &ms : *it) {
         if (base_ms.member == ms.member) {
-          member_counters[ms.member]++;
+          member_count++;
           break;
         }
       }
     }
-    if (member_counters[base_ms.member] == mscores_list.size()) {
+    if (member_count == mscores_list.size()) {
       cardinality++;
       if (limit > 0 && cardinality >= limit) {
         *inter_cnt = limit;

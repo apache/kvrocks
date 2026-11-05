@@ -225,6 +225,15 @@ func StartServerWithCLIOptions(
 	require.NotEmpty(t, b, "please set the binary path by `-binPath`")
 	cmd := exec.Command(b)
 
+	// findFreePort releases the port before Kvrocks binds it, so parallel tests can
+	// select the same port. SO_REUSEPORT lets both servers bind it, and clients may
+	// reach the wrong server. Serialize port selection and startup across test
+	// processes until the server is ready.
+	lock, err := os.OpenFile(filepath.Join(*workspace, "server-start.lock"), os.O_CREATE|os.O_RDWR, 0o600)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, lock.Close()) }()
+	require.NoError(t, syscall.Flock(int(lock.Fd()), syscall.LOCK_EX))
+
 	addr, err := findFreePort()
 	require.NoError(t, err)
 	if configs["bind"] == "" {

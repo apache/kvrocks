@@ -36,6 +36,7 @@ constexpr long double kCuckooFilterLoadFactor = 0.955L;
 constexpr uint64_t kCuckooFilterMaxSupportedBuckets = std::numeric_limits<uint32_t>::max() / 2 + 1ULL;
 constexpr uint64_t kCuckooFilterFingerprintModulus = 255;
 constexpr uint64_t kCuckooFilterAltHashMultiplier = 0x5bd1e995ULL;
+constexpr uint8_t kEmptyCuckooFingerprint = 0;
 
 // Cuckoo filter implementation from the paper:
 // "Cuckoo Filter: Practically Better Than Bloom" by Fan et al.
@@ -68,8 +69,8 @@ class CuckooFilterHelper {
       return rocksdb::Status::InvalidArgument("bucket_size must be larger than 0");
     }
 
-    auto max_supported_capacity =
-        static_cast<uint64_t>(kCuckooFilterMaxSupportedBuckets * bucket_size * kCuckooFilterLoadFactor);
+    auto max_supported_capacity = static_cast<uint64_t>(
+        static_cast<long double>(kCuckooFilterMaxSupportedBuckets * bucket_size) * kCuckooFilterLoadFactor);
     if (capacity > max_supported_capacity) {
       return rocksdb::Status::InvalidArgument("capacity is too large");
     }

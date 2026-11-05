@@ -378,7 +378,7 @@ rocksdb::Status Database::Scan(engine::Context &ctx, const std::string &cursor, 
 
   uint16_t slot_id = slot_start;
   while (true) {
-    for (; iter->Valid() && cnt < limit; iter->Next()) {
+    for (; iter->Valid() && (cnt < limit || user_key.empty()); iter->Next()) {
       if (!ns_prefix.empty() && !iter->key().starts_with(ns_prefix)) {
         break;
       }
@@ -606,7 +606,7 @@ rocksdb::Status SubKeyScanner::Scan(engine::Context &ctx, RedisType type, const 
       values->emplace_back(iter->value().ToString());
     }
     cnt++;
-    if (limit > 0 && cnt >= limit) {
+    if (limit > 0 && cnt >= limit && !keys->back().empty()) {
       break;
     }
   }

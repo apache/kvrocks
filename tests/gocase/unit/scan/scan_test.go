@@ -109,6 +109,7 @@ func TestScanEmptyKey(t *testing.T) {
 	require.NoError(t, rdb.Set(ctx, "", "empty", 0).Err())
 	require.NoError(t, rdb.Set(ctx, "foo", "bar", 0).Err())
 	require.Equal(t, []string{"", "foo"}, scanAll(t, rdb))
+	require.Equal(t, []string{"", "foo"}, scanAll(t, rdb, "count", 1))
 
 	require.NoError(t, rdb.SAdd(ctx, "sadd_key", "", "fab", "fiz", "foobar").Err())
 	keys, _, err := rdb.SScan(ctx, "sadd_key", 0, "*", 10000).Result()
@@ -116,6 +117,25 @@ func TestScanEmptyKey(t *testing.T) {
 	slices.Sort(keys)
 	keys = slices.Compact(keys)
 	require.Equal(t, []string{"", "fab", "fiz", "foobar"}, keys)
+
+	require.NoError(t, rdb.HSet(ctx, "hash_key", "", "v", "fab", "v").Err())
+	require.NoError(t, rdb.ZAdd(ctx, "zset_key", redis.Z{Score: 1, Member: ""}, redis.Z{Score: 2, Member: "fab"}).Err())
+	for _, cmd := range [][]string{{"SSCAN", "sadd_key"}, {"HSCAN", "hash_key"}, {"ZSCAN", "zset_key"}} {
+		var members []string
+		c := "0"
+		for i := 0; i < 10; i++ {
+			rs := rdb.Do(ctx, cmd[0], cmd[1], c, "COUNT", 1).Val().([]interface{})
+			c = rs[0].(string)
+			for _, m := range rs[1].([]interface{}) {
+				members = append(members, fmt.Sprint(m))
+			}
+			if c == "0" {
+				break
+			}
+		}
+		require.Equal(t, "0", c, cmd)
+		require.Contains(t, members, "", cmd)
+	}
 }
 
 func TestScanWithNumberCursor(t *testing.T) {

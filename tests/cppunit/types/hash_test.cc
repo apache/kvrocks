@@ -426,6 +426,13 @@ TEST_F(RedisHashFieldExpirationEncodingTest, StoreAndScanValuesWithModeOneEncodi
   ASSERT_EQ(field_values.size(), 1);
   EXPECT_EQ(field_values[0].field, "field-1");
   EXPECT_EQ(field_values[0].value, "value-1");
+
+  s = hash_->Set(*ctx_, key, "", "value-0", &added);
+  ASSERT_TRUE(s.ok());
+  s = hash_->Scan(*ctx_, key, "", 1, "", &fields, &values);
+  ASSERT_TRUE(s.ok());
+  ASSERT_EQ(fields, std::vector<std::string>({"", "field-1"}));
+  ASSERT_EQ(values, std::vector<std::string>({"value-0", "value-1"}));
 }
 
 TEST_F(RedisHashFieldExpirationEncodingTest, PersistentCountTracksPersistentFieldWrites) {

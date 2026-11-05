@@ -214,13 +214,13 @@ rocksdb::Status CuckooChain::Delete(engine::Context &ctx, const Slice &user_key,
 }
 
 rocksdb::Status CuckooChain::Count(engine::Context &ctx, const Slice &user_key, const Slice &item, uint64_t *count) {
+  *count = 0;
   std::string ns_key = AppendNamespacePrefix(user_key);
 
   CuckooChainMetadata metadata(false);
   auto s = getCuckooChainMetadata(ctx, ns_key, &metadata);
-
   if (s.IsNotFound()) {
-    return s;
+    return rocksdb::Status::OK();
   }
   if (!s.ok()) {
     return s;
@@ -234,7 +234,6 @@ rocksdb::Status CuckooChain::Count(engine::Context &ctx, const Slice &user_key, 
   uint64_t hash = CuckooFilterHelper::Hash(item.data(), item.size());
   uint8_t fingerprint = CuckooFilterHelper::GenerateFingerprint(hash);
 
-  *count = 0;
   CuckooPageCache pages(storage_, ctx, ns_key, storage_->IsSlotIdEncoded(), metadata.version, metadata.bucket_size,
                         metadata.page_size);
 

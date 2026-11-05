@@ -1156,15 +1156,125 @@ TEST_F(RedisCuckooFilterTest, ExistsWithRepeatedInsertions) {
   ASSERT_TRUE(exists) << "Item should exist after duplicate insertions";
 }
 
-TEST_F(RedisCuckooFilterTest, CountSingleCandidateBucket) {
-  reserveAndVerify(key_, 2, 4, 20, 0);
-  addAndVerify(key_, "duplicate", 2, 4, 20, 0, 1);
-  addAndVerify(key_, "duplicate", 2, 4, 20, 0, 2);
+TEST_F(RedisCuckooFilterTest, CountSumsBothCandidateBuckets) {
+  std::string item;
+  uint64_t hash = 0;
+  uint8_t fingerprint = 0;
+  uint32_t bucket1 = 0;
+  uint32_t bucket2 = 0;
+  uint32_t num_buckets = 0;
+  auto s = redis::CuckooFilterHelper::GetFilterNumBuckets(2, 0, 2, 0, &num_buckets);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  for (int i = 0; i < 100; ++i) {
+    item = "count_item_" + std::to_string(i);
+    hash = redis::CuckooFilterHelper::Hash(item);
+    fingerprint = redis::CuckooFilterHelper::GenerateFingerprint(hash);
+    bucket1 = static_cast<uint32_t>(hash % num_buckets);
+    bucket2 = static_cast<uint32_t>(redis::CuckooFilterHelper::GetAltHash(fingerprint, hash) % num_buckets);
+    if (bucket1 != bucket2 && fingerprint != 99) break;
+  }
+  ASSERT_GT(num_buckets, 1);
+  ASSERT_NE(bucket1, bucket2);
 
-  uint64_t count = 0;
-  auto s = cuckoo_->Count(*ctx_, key_, "duplicate", &count);
+  CuckooChainMetadata metadata(false);
+  metadata.version = 1;
+  metadata.size = 3;
+  metadata.base_capacity = 2;
+  metadata.bucket_size = 2;
+  metadata.max_iterations = 20;
+  metadata.expansion = 0;
+  metadata.n_filters = 1;
+  metadata.num_deleted_items = 0;
+  metadata.page_size = kCuckooFilterDefaultPageSize;
+  writeMetadata(key_, metadata);
+
+  placeFingerprint(key_, metadata, 0, num_buckets, bucket1, 0, fingerprint);
+  placeFingerprint(key_, metadata, 0, num_buckets, bucket1, 1, fingerprint);
+  placeFingerprint(key_, metadata, 0, num_buckets, bucket2, 0, fingerprint);
+  placeFingerprint(key_, metadata, 0, num_buckets, bucket2, 1, 99);
+
+  redis::CuckooPageCache pages(storage_.get(), *ctx_, db_->AppendNamespacePrefix(key_), storage_->IsSlotIdEncoded(),
+                               metadata.version, metadata.bucket_size, metadata.page_size);
+  redis::CuckooSubFilter sub_filter(pages, 0, num_buckets);
+  uint32_t count = 0;
+  s = sub_filter.Count(hash, fingerprint, &count);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  EXPECT_EQ(count, 3);
+}
+
+TEST_F(RedisCuckooFilterTest, CountSingleBucketDoesNotDoubleCount) {
+  const std::string item = "duplicate";
+  auto hash = redis::CuckooFilterHelper::Hash(item);
+  auto fingerprint = redis::CuckooFilterHelper::GenerateFingerprint(hash);
+
+  CuckooChainMetadata metadata(false);
+  metadata.version = 1;
+  metadata.size = 2;
+  metadata.base_capacity = 2;
+  metadata.bucket_size = 4;
+  metadata.max_iterations = 20;
+  metadata.expansion = 0;
+  metadata.n_filters = 1;
+  metadata.num_deleted_items = 0;
+  metadata.page_size = kCuckooFilterDefaultPageSize;
+  writeMetadata(key_, metadata);
+
+  uint32_t num_buckets = 0;
+  auto s = redis::CuckooFilterHelper::GetFilterNumBuckets(metadata.base_capacity, metadata.expansion,
+                                                          metadata.bucket_size, 0, &num_buckets);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  ASSERT_EQ(num_buckets, 1);
+
+  placeFingerprint(key_, metadata, 0, num_buckets, 0, 0, fingerprint);
+  placeFingerprint(key_, metadata, 0, num_buckets, 0, 1, fingerprint);
+
+  redis::CuckooPageCache pages(storage_.get(), *ctx_, db_->AppendNamespacePrefix(key_), storage_->IsSlotIdEncoded(),
+                               metadata.version, metadata.bucket_size, metadata.page_size);
+  redis::CuckooSubFilter sub_filter(pages, 0, num_buckets);
+  uint32_t count = 0;
+  s = sub_filter.Count(hash, fingerprint, &count);
   ASSERT_TRUE(s.ok()) << s.ToString();
   EXPECT_EQ(count, 2);
+}
+
+TEST_F(RedisCuckooFilterTest, CountSpansMultipleSubFilters) {
+  CuckooChainMetadata metadata;
+  metadata.size = 2;
+  metadata.base_capacity = 2;
+  metadata.bucket_size = 1;
+  metadata.max_iterations = 1;
+  metadata.expansion = 2;
+  metadata.n_filters = 3;
+  metadata.num_deleted_items = 0;
+  metadata.page_size = 1;
+  writeMetadata(key_, metadata);
+
+  const std::string item = "duplicate";
+  auto hash = redis::CuckooFilterHelper::Hash(item);
+  auto fingerprint = redis::CuckooFilterHelper::GenerateFingerprint(hash);
+
+  uint32_t num_buckets = 0;
+  auto s = redis::CuckooFilterHelper::GetFilterNumBuckets(metadata.base_capacity, metadata.expansion,
+                                                          metadata.bucket_size, 0, &num_buckets);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  auto oldest_bucket = static_cast<uint32_t>(hash % num_buckets);
+  placeFingerprint(key_, metadata, 0, num_buckets, oldest_bucket, 0, fingerprint);
+
+  s = redis::CuckooFilterHelper::GetFilterNumBuckets(metadata.base_capacity, metadata.expansion, metadata.bucket_size,
+                                                     2, &num_buckets);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  auto newest_bucket = static_cast<uint32_t>(hash % num_buckets);
+  placeFingerprint(key_, metadata, 2, num_buckets, newest_bucket, 0, fingerprint);
+
+  uint64_t count = 0;
+  s = cuckoo_->Count(*ctx_, key_, item, &count);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  EXPECT_EQ(count, 2);
+
+  uint64_t missing_count = 1;
+  s = cuckoo_->Count(*ctx_, "missing_count_key", item, &missing_count);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  EXPECT_EQ(missing_count, 0);
 }
 
 TEST_F(RedisCuckooFilterTest, DeleteMissingItemDoesNotMutateMetadata) {
@@ -1346,5 +1456,4 @@ TEST_F(RedisCuckooFilterTest, DeleteDoesNotCompactFilters) {
   std::string page;
   s = readPage(makePageKey(key_, metadata, 1, 0), &page);
   EXPECT_TRUE(s.ok()) << s.ToString();
-}
 }

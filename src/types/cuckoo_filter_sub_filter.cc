@@ -160,24 +160,27 @@ rocksdb::Status CuckooSubFilter::TryKickOutInsert(uint64_t hash, uint8_t fingerp
 }
 
 rocksdb::Status CuckooSubFilter::Count(uint64_t hash, uint8_t fingerprint, uint32_t *count) {
+  *count = 0;
   uint32_t bucket1_idx = getPrimaryBucketIndex(hash);
   uint32_t bucket2_idx = getSecondaryBucketIndex(hash, fingerprint);
 
   auto s = pages_.PrefetchBuckets(filter_index_, num_buckets_, bucket1_idx, bucket2_idx);
   if (!s.ok()) return s;
 
-  uint32_t c1 = 0, c2 = 0;
-  s = pages_.CountInBucket(filter_index_, num_buckets_, bucket1_idx, fingerprint, &c1);
+  uint32_t bucket1_count = 0;
+  s = pages_.CountFingerprintInBucket(filter_index_, num_buckets_, bucket1_idx, fingerprint, &bucket1_count);
   if (!s.ok()) return s;
+  *count = bucket1_count;
 
-  *count = c1;
-
-  if (bucket1_idx != bucket2_idx) {
-    s = pages_.CountInBucket(filter_index_, num_buckets_, bucket2_idx, fingerprint, &c2);
-    if (!s.ok()) return s;
-    *count += c2;
+  // Both hashes can map to the same bucket, in which case the bucket must only be counted once.
+  if (bucket1_idx == bucket2_idx) {
+    return rocksdb::Status::OK();
   }
 
+  uint32_t bucket2_count = 0;
+  s = pages_.CountFingerprintInBucket(filter_index_, num_buckets_, bucket2_idx, fingerprint, &bucket2_count);
+  if (!s.ok()) return s;
+  *count += bucket2_count;
   return rocksdb::Status::OK();
 }
 

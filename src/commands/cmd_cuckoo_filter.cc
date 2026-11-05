@@ -228,9 +228,8 @@ class CommandCFCount : public Commander {
     uint64_t count = 0;
     auto s = cuckoo_db.Count(ctx, args_[1], args_[2], &count);
 
-    if (s.IsNotFound()) {
-      *output = redis::Integer(0);
-      return Status::OK();
+    if (s.IsInvalidArgument() && s.ToString().find(kErrMsgWrongType) != std::string::npos) {
+      return {Status::RedisWrongType, "Operation against a key holding the wrong kind of value"};
     }
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};

@@ -22,6 +22,7 @@ package bloom
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/apache/kvrocks/tests/gocase/util"
@@ -325,6 +326,36 @@ func TestCuckooFilter(t *testing.T) {
 		require.Equal(t, int64(5), rdb.Do(ctx, "cf.count", key, "same_item").Val())
 	})
 
+	t.Run("Count duplicates across sub-filters and after delete", func(t *testing.T) {
+		key := "test_cf_count_multi_filter"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		// Small capacity with expansion enabled so duplicates span several sub-filters.
+		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "2", "BUCKETSIZE", "1", "MAXITERATIONS", "1", "EXPANSION", "2").Err())
+		for i := 0; i < 20; i++ {
+			require.Equal(t, int64(1), rdb.Do(ctx, "cf.add", key, "same_item").Val())
+		}
+		require.Equal(t, int64(20), rdb.Do(ctx, "cf.count", key, "same_item").Val())
+
+		for i := 0; i < 7; i++ {
+			require.Equal(t, int64(1), rdb.Do(ctx, "cf.del", key, "same_item").Val())
+		}
+		require.Equal(t, int64(13), rdb.Do(ctx, "cf.count", key, "same_item").Val())
+
+		for i := 0; i < 13; i++ {
+			require.Equal(t, int64(1), rdb.Do(ctx, "cf.del", key, "same_item").Val())
+		}
+		require.Equal(t, int64(0), rdb.Do(ctx, "cf.count", key, "same_item").Val())
+	})
+
+	t.Run("Count empty string item", func(t *testing.T) {
+		key := "test_cf_count_empty_item"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "100").Err())
+		require.Equal(t, int64(1), rdb.Do(ctx, "cf.add", key, "").Val())
+		require.Equal(t, int64(1), rdb.Do(ctx, "cf.count", key, "").Val())
+		require.Equal(t, int64(0), rdb.Do(ctx, "cf.count", key, "item").Val())
+	})
+
 	t.Run("Count non-existent item", func(t *testing.T) {
 		key := "test_cf_count_not_exist_item"
 		require.NoError(t, rdb.Del(ctx, key).Err())
@@ -337,7 +368,9 @@ func TestCuckooFilter(t *testing.T) {
 		key := "test_cf_count_wrong_type"
 		require.NoError(t, rdb.Del(ctx, key).Err())
 		require.NoError(t, rdb.Set(ctx, key, "value", 0).Err())
-		require.ErrorContains(t, rdb.Do(ctx, "cf.count", key, "item").Err(), "WRONGTYPE")
+		err := rdb.Do(ctx, "cf.count", key, "item").Err()
+		require.ErrorContains(t, err, "WRONGTYPE")
+		require.True(t, strings.HasPrefix(err.Error(), "WRONGTYPE"), "unexpected error prefix: %v", err)
 	})
 
 	t.Run("Count wrong number of arguments", func(t *testing.T) {
@@ -383,4 +416,7 @@ func TestCuckooFilterRESP3(t *testing.T) {
 	c.MustRead(t, "*2")
 	c.MustRead(t, "#t")
 	c.MustRead(t, "#f")
+
+	require.NoError(t, c.WriteArgs("cf.count", key, "alpha"))
+	c.MustRead(t, ":1")
 }

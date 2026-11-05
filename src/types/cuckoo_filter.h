@@ -116,7 +116,7 @@ class CuckooFilterHelper {
   // Returns false if overflow would occur.
   static bool CalculateFilterCapacity(uint64_t base_capacity, uint16_t expansion, uint16_t filter_index,
                                       uint64_t *filter_capacity) {
-    // Preserve the original semantics for disabled/equal expansion: 0^index is only non-zero at index 0.
+    // Preserve the original behavior for disabled expansion (0): only index 0 has the base capacity.
     if (expansion == 0) {
       *filter_capacity = filter_index == 0 ? base_capacity : 0;
       return true;

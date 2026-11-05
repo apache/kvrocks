@@ -223,6 +223,7 @@ rocksdb::Status CuckooChain::Count(engine::Context &ctx, const Slice &user_key, 
   CuckooChainMetadata metadata(false);
   auto s = getCuckooChainMetadata(ctx, ns_key, &metadata);
   if (s.IsNotFound()) {
+    // CF.COUNT treats a missing or empty filter as count zero.
     return rocksdb::Status::OK();
   }
   if (!s.ok()) {

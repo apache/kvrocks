@@ -338,11 +338,9 @@ TEST_F(RedisCuckooFilterTest, CalculateFilterCapacity) {
   };
 
   const std::vector<TestCase> test_cases = {
-      {1000, 2, 0, 1000, true},
-      {1000, 2, 5, 32000, true},
-      {1000, 1, 500, 1000, true},
-      {1000, 0, 500, 1000, true},
-      {std::numeric_limits<uint64_t>::max() / 2 + 1, 2, 1, 0, false},
+      {1000, 2, 0, 1000, true},   {1000, 2, 5, 32000, true},
+      {1000, 1, 500, 1000, true}, {1000, 0, 0, 1000, true},
+      {1000, 0, 1, 0, true},      {std::numeric_limits<uint64_t>::max() / 2 + 1, 2, 1, 0, false},
   };
 
   for (const auto &test_case : test_cases) {
@@ -1221,7 +1219,7 @@ TEST_F(RedisCuckooFilterTest, CountSumsBothCandidateBuckets) {
 
   CuckooChainMetadata metadata(false);
   metadata.version = 1;
-  metadata.size = 3;
+  metadata.size = 4;
   metadata.base_capacity = 2;
   metadata.bucket_size = 2;
   metadata.max_iterations = 20;

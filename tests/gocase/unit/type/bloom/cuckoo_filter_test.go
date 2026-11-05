@@ -307,21 +307,21 @@ func TestCuckooFilter(t *testing.T) {
 		require.Equal(t, int64(1), result.Val())
 	})
 
-	t.Run("Count no exists key returns zero", func(t *testing.T) {
-		key := "no_exist_key_count"
+	t.Run("Count missing key returns zero", func(t *testing.T) {
+		key := "test_cuckoo_filter_count_missing"
 		require.NoError(t, rdb.Del(ctx, key).Err())
 		require.Equal(t, int64(0), rdb.Do(ctx, "cf.count", key, "item").Val())
 	})
 
 	t.Run("Count empty filter", func(t *testing.T) {
-		key := "test_cf_count_empty"
+		key := "test_cuckoo_filter_count_empty"
 		require.NoError(t, rdb.Del(ctx, key).Err())
 		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "100").Err())
 		require.Equal(t, int64(0), rdb.Do(ctx, "cf.count", key, "item").Val())
 	})
 
 	t.Run("Count after add", func(t *testing.T) {
-		key := "test_cf_count_after_add"
+		key := "test_cuckoo_filter_count_after_add"
 		require.NoError(t, rdb.Del(ctx, key).Err())
 		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "100").Err())
 		require.NoError(t, rdb.Do(ctx, "cf.add", key, "my_item").Err())
@@ -329,7 +329,7 @@ func TestCuckooFilter(t *testing.T) {
 	})
 
 	t.Run("Count duplicate items", func(t *testing.T) {
-		key := "test_cf_count_dup"
+		key := "test_cuckoo_filter_count_dup"
 		require.NoError(t, rdb.Del(ctx, key).Err())
 		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "100").Err())
 		for i := 0; i < 5; i++ {
@@ -339,7 +339,7 @@ func TestCuckooFilter(t *testing.T) {
 	})
 
 	t.Run("Count duplicates across sub-filters and after delete", func(t *testing.T) {
-		key := "test_cf_count_multi_filter"
+		key := "test_cuckoo_filter_count_multi_filter"
 		require.NoError(t, rdb.Del(ctx, key).Err())
 		// Small capacity with expansion enabled so duplicates span several sub-filters.
 		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "2", "BUCKETSIZE", "1", "MAXITERATIONS", "1", "EXPANSION", "2").Err())
@@ -360,7 +360,7 @@ func TestCuckooFilter(t *testing.T) {
 	})
 
 	t.Run("Count empty string item", func(t *testing.T) {
-		key := "test_cf_count_empty_item"
+		key := "test_cuckoo_filter_count_empty_item"
 		require.NoError(t, rdb.Del(ctx, key).Err())
 		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "100").Err())
 		require.Equal(t, int64(1), rdb.Do(ctx, "cf.add", key, "").Val())
@@ -369,7 +369,7 @@ func TestCuckooFilter(t *testing.T) {
 	})
 
 	t.Run("Count non-existent item", func(t *testing.T) {
-		key := "test_cf_count_not_exist_item"
+		key := "test_cuckoo_filter_count_not_exist_item"
 		require.NoError(t, rdb.Del(ctx, key).Err())
 		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "100").Err())
 		require.NoError(t, rdb.Do(ctx, "cf.add", key, "item1").Err())
@@ -377,7 +377,7 @@ func TestCuckooFilter(t *testing.T) {
 	})
 
 	t.Run("Count wrong type key", func(t *testing.T) {
-		key := "test_cf_count_wrong_type"
+		key := "test_cuckoo_filter_count_wrong_type"
 		require.NoError(t, rdb.Del(ctx, key).Err())
 		require.NoError(t, rdb.Set(ctx, key, "value", 0).Err())
 		requireWrongType(t, rdb.Do(ctx, "cf.count", key, "item").Err())

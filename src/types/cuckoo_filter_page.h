@@ -72,6 +72,7 @@ class CuckooPageCache {
  private:
   struct PageEntry {
     std::string data;
+    bool exists = false;
     bool is_dirty = false;
   };
 

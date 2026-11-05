@@ -156,6 +156,27 @@ rocksdb::Status LoadFieldState(engine::Storage *storage, engine::Context &ctx, c
   return DecodeFieldState(metadata, Slice(raw_value), now, state);
 }
 
+rocksdb::Status LoadFieldStatesByEncodedKeys(engine::Storage *storage, engine::Context &ctx,
+                                             const HashMetadata &metadata, const std::vector<Slice> &keys, uint64_t now,
+                                             std::vector<HashFieldState> *states) {
+  states->clear();
+  states->resize(keys.size());
+  if (keys.empty()) return rocksdb::Status::OK();
+
+  std::vector<rocksdb::PinnableSlice> raw_values(keys.size());
+  std::vector<rocksdb::Status> statuses(keys.size());
+  storage->MultiGet(ctx, ctx.DefaultMultiGetOptions(), storage->GetDB()->DefaultColumnFamily(), keys.size(),
+                    keys.data(), raw_values.data(), statuses.data());
+
+  for (size_t i = 0; i < keys.size(); ++i) {
+    if (statuses[i].IsNotFound()) continue;
+    if (!statuses[i].ok()) return statuses[i];
+    auto s = DecodeFieldState(metadata, Slice(raw_values[i]), now, &(*states)[i]);
+    if (!s.ok()) return s;
+  }
+  return rocksdb::Status::OK();
+}
+
 bool HExpireConditionPasses(HashFieldExpireCondition condition, const HashFieldState &state, uint64_t expire_at) {
   switch (state.kind) {
     case HashFieldStateKind::kMissing:
@@ -297,16 +318,12 @@ rocksdb::Status LoadFieldStates(engine::Storage *storage, engine::Context &ctx, 
   keys.reserve(encoded_keys.size());
   for (const auto &key : encoded_keys) keys.emplace_back(key);
 
-  std::vector<rocksdb::PinnableSlice> raw_values(keys.size());
-  std::vector<rocksdb::Status> statuses(keys.size());
-  storage->MultiGet(ctx, ctx.DefaultMultiGetOptions(), storage->GetDB()->DefaultColumnFamily(), keys.size(),
-                    keys.data(), raw_values.data(), statuses.data());
+  std::vector<HashFieldState> field_states;
+  auto s = LoadFieldStatesByEncodedKeys(storage, ctx, metadata, keys, now, &field_states);
+  if (!s.ok()) return s;
 
   for (size_t i = 0; i < unique_fields.size(); ++i) {
-    if (statuses[i].IsNotFound()) continue;
-    if (!statuses[i].ok()) return statuses[i];
-    auto s = DecodeFieldState(metadata, Slice(raw_values[i]), now, &states->at(unique_fields[i]));
-    if (!s.ok()) return s;
+    states->at(unique_fields[i]) = std::move(field_states[i]);
   }
   return rocksdb::Status::OK();
 }
@@ -981,21 +998,13 @@ rocksdb::Status Hash::Delete(engine::Context &ctx, const Slice &user_key, const 
     encoded_keys.emplace_back(InternalKey(ns_key, field, metadata.version, storage_->IsSlotIdEncoded()).Encode());
     keys.emplace_back(encoded_keys.back());
   }
-  if (keys.empty()) return rocksdb::Status::OK();
-
-  std::vector<rocksdb::PinnableSlice> raw_values(keys.size());
-  std::vector<rocksdb::Status> statuses(keys.size());
-  storage_->MultiGet(ctx, ctx.DefaultMultiGetOptions(), storage_->GetDB()->DefaultColumnFamily(), keys.size(),
-                     keys.data(), raw_values.data(), statuses.data());
+  std::vector<HashFieldState> states;
+  s = LoadFieldStatesByEncodedKeys(storage_, ctx, metadata, keys, now, &states);
+  if (!s.ok()) return s;
 
   for (size_t i = 0; i < keys.size(); ++i) {
-    if (statuses[i].IsNotFound()) continue;
-    if (!statuses[i].ok()) return statuses[i];
     const auto &sub_key = keys[i];
-    HashFieldState state;
-    s = DecodeFieldState(metadata, Slice(raw_values[i]), now, &state);
-    if (!s.ok()) return s;
-    switch (state.kind) {
+    switch (states[i].kind) {
       case HashFieldStateKind::kMissing:
         break;
       case HashFieldStateKind::kPersistent:

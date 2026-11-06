@@ -721,6 +721,9 @@ Status SlotMigrator::migrateIncrementalDataByRawKV(uint64_t end_seq, BatchSender
     if (wal_iter.NextSequenceNumber() > end_seq + 1) {
       break;
     }
+    if (!wal_iter.HasMutationInBatch()) {
+      continue;
+    }
     auto item = wal_iter.Item();
     switch (item.type) {
       case engine::WALItem::Type::kTypeLogData: {
@@ -730,7 +733,7 @@ Status SlotMigrator::migrateIncrementalDataByRawKV(uint64_t end_seq, BatchSender
       case engine::WALItem::Type::kTypePut: {
         if (item.column_family_id > kMaxColumnFamilyID) {
           INFO("[migrate] Invalid put column family id: {}", item.column_family_id);
-          continue;
+          break;
         }
         GET_OR_RET(batch_sender->Put(storage_->GetCFHandle(static_cast<ColumnFamilyID>(item.column_family_id)),
                                      item.key, item.value));
@@ -739,7 +742,7 @@ Status SlotMigrator::migrateIncrementalDataByRawKV(uint64_t end_seq, BatchSender
       case engine::WALItem::Type::kTypeDelete: {
         if (item.column_family_id > kMaxColumnFamilyID) {
           INFO("[migrate] Invalid delete column family id: {}", item.column_family_id);
-          continue;
+          break;
         }
         GET_OR_RET(
             batch_sender->Delete(storage_->GetCFHandle(static_cast<ColumnFamilyID>(item.column_family_id)), item.key));
@@ -751,7 +754,7 @@ Status SlotMigrator::migrateIncrementalDataByRawKV(uint64_t end_seq, BatchSender
         // dropped before they reach here.
         if (item.column_family_id > kMaxColumnFamilyID) {
           INFO("[migrate] Invalid delete-range column family id: {}", item.column_family_id);
-          continue;
+          break;
         }
         GET_OR_RET(batch_sender->DeleteRange(storage_->GetCFHandle(static_cast<ColumnFamilyID>(item.column_family_id)),
                                              item.key, item.value));
@@ -760,7 +763,9 @@ Status SlotMigrator::migrateIncrementalDataByRawKV(uint64_t end_seq, BatchSender
       default:
         break;
     }
-    if (batch_sender->IsFull()) {
+    // RESP extraction depends on the source WAL batch boundaries. Splitting or merging batches
+    // can lose the command context carried by LogData.
+    if (wal_iter.IsLastItemInBatch()) {
       GET_OR_RET(sendMigrationBatch(batch_sender));
     }
   }

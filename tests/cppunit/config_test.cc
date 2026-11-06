@@ -30,6 +30,20 @@
 #include "config/config_util.h"
 #include "server/server.h"
 
+namespace {
+
+size_t CountSubstring(const std::string &text, const std::string &substring) {
+  size_t count = 0;
+  size_t pos = 0;
+  while ((pos = text.find(substring, pos)) != std::string::npos) {
+    count++;
+    pos += substring.size();
+  }
+  return count;
+}
+
+}  // namespace
+
 TEST(Config, GetAndSet) {
   const char *path = "test.conf";
   Config config;
@@ -146,6 +160,92 @@ TEST(Config, GetAndSet) {
     s = config.Set(nullptr, iter.first, iter.second);
     ASSERT_FALSE(s.IsOK());
   }
+}
+
+TEST(Config, WarnForLegacyBlockCacheSettingsFromConfigFile) {
+  const char *path = "test_legacy_block_cache.conf";
+  std::ofstream output_file(path, std::ios::out);
+  output_file << "rocksdb.metadata_block_cache_size 100\n";
+  output_file << "rocksdb.metadata_block_cache_size 101\n";
+  output_file << "rocksdb.subkey_block_cache_size 200\n";
+  output_file << "rocksdb.subkey_block_cache_size 201\n";
+  output_file.close();
+
+  CLIOptions options(path);
+  options.cli_options = {
+      {"rocksdb.metadata_block_cache_size", "102"},
+      {"rocksdb.subkey_block_cache_size", "202"},
+  };
+
+  testing::internal::CaptureStdout();
+  Config config;
+  auto status = config.Load(options);
+  auto second_status = config.Load(options);
+  auto output = testing::internal::GetCapturedStdout();
+  unlink(path);
+
+  ASSERT_TRUE(status.IsOK()) << status.Msg();
+  ASSERT_TRUE(second_status.IsOK()) << second_status.Msg();
+  EXPECT_EQ(config.rocks_db.metadata_block_cache_size, 102);
+  EXPECT_EQ(config.rocks_db.subkey_block_cache_size, 202);
+
+  const std::string metadata_warning =
+      "WARNING: 'rocksdb.metadata_block_cache_size' at line 1 is deprecated but still works for now. "
+      "Use 'rocksdb.block_cache_size' instead.";
+  const std::string subkey_warning =
+      "WARNING: 'rocksdb.subkey_block_cache_size' at line 3 is deprecated but still works for now. "
+      "Use 'rocksdb.block_cache_size' instead.";
+  EXPECT_NE(output.find(metadata_warning), std::string::npos);
+  EXPECT_NE(output.find(subkey_warning), std::string::npos);
+  EXPECT_EQ(CountSubstring(output, "WARNING: 'rocksdb.metadata_block_cache_size'"), 1);
+  EXPECT_EQ(CountSubstring(output, "WARNING: 'rocksdb.subkey_block_cache_size'"), 1);
+}
+
+TEST(Config, WarnForLegacyBlockCacheSettingsFromCLI) {
+  CLIOptions options;
+  options.cli_options = {
+      {"rocksdb.metadata_block_cache_size", "300"},
+      {"rocksdb.metadata_block_cache_size", "301"},
+      {"rocksdb.subkey_block_cache_size", "400"},
+      {"rocksdb.subkey_block_cache_size", "401"},
+  };
+
+  testing::internal::CaptureStdout();
+  Config config;
+  auto status = config.Load(options);
+  auto output = testing::internal::GetCapturedStdout();
+
+  ASSERT_TRUE(status.IsOK()) << status.Msg();
+  EXPECT_EQ(config.rocks_db.metadata_block_cache_size, 301);
+  EXPECT_EQ(config.rocks_db.subkey_block_cache_size, 401);
+
+  const std::string metadata_warning =
+      "WARNING: 'rocksdb.metadata_block_cache_size' at line -1 is deprecated but still works for now. "
+      "Use 'rocksdb.block_cache_size' instead.";
+  const std::string subkey_warning =
+      "WARNING: 'rocksdb.subkey_block_cache_size' at line -1 is deprecated but still works for now. "
+      "Use 'rocksdb.block_cache_size' instead.";
+  EXPECT_NE(output.find(metadata_warning), std::string::npos);
+  EXPECT_NE(output.find(subkey_warning), std::string::npos);
+  EXPECT_EQ(CountSubstring(output, "WARNING: 'rocksdb.metadata_block_cache_size'"), 1);
+  EXPECT_EQ(CountSubstring(output, "WARNING: 'rocksdb.subkey_block_cache_size'"), 1);
+}
+
+TEST(Config, NoLegacyBlockCacheWarningWithoutExplicitSettings) {
+  const char *path = "test_current_block_cache.conf";
+  std::ofstream output_file(path, std::ios::out);
+  output_file << "rocksdb.block_cache_size 4096\n";
+  output_file.close();
+
+  testing::internal::CaptureStdout();
+  Config config;
+  auto status = config.Load(CLIOptions(path));
+  auto output = testing::internal::GetCapturedStdout();
+  unlink(path);
+
+  ASSERT_TRUE(status.IsOK()) << status.Msg();
+  EXPECT_EQ(output.find("rocksdb.metadata_block_cache_size"), std::string::npos);
+  EXPECT_EQ(output.find("rocksdb.subkey_block_cache_size"), std::string::npos);
 }
 
 TEST(Config, GetRenameCommand) {

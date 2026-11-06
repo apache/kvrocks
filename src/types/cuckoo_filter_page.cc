@@ -205,29 +205,40 @@ rocksdb::Status CuckooPageCache::RestoreBucketSlot(const SlotMutation &mutation)
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status CuckooPageCache::ScanPageBytes(uint16_t filter_index, uint32_t num_buckets, uint32_t page_index,
-                                               uint32_t page_count, std::string *data) {
-  if (num_buckets == 0 || bucket_size_ == 0) {
+rocksdb::Status CuckooPageCache::ScanPageBytes(const std::vector<DumpPageRange> &ranges, uint32_t first_page_index,
+                                               std::string *data) {
+  if (ranges.empty() || bucket_size_ == 0) {
     return rocksdb::Status::InvalidArgument("invalid cuckoo filter page range");
   }
 
-  const auto buckets_per_page = GetBucketsPerPage(page_size_, bucket_size_);
-  const auto total_pages = (num_buckets - 1) / buckets_per_page + 1;
-  if (page_index > total_pages || page_count > total_pages - page_index) {
-    return rocksdb::Status::InvalidArgument("invalid cuckoo filter page range");
-  }
   data->clear();
-  CuckooDumpPayload::Builder builder(page_index, data);
-  data->reserve(static_cast<size_t>(page_count) * page_size_);
+  CuckooDumpPayload::Builder builder(first_page_index, data);
   std::vector<PageRead> reads;
-  reads.reserve(page_count);
-  for (uint32_t i = 0; i < page_count; ++i) {
-    const auto current_page_index = page_index + i;
-    const auto bucket_index = current_page_index * buckets_per_page;
-    BucketLocation location;
-    auto s = resolveBucketLocation(filter_index, num_buckets, bucket_index, &location);
-    if (!s.ok()) return s;
-    reads.push_back({.location = std::move(location), .page_index = current_page_index});
+  size_t total_page_count = 0;
+  const auto buckets_per_page = GetBucketsPerPage(page_size_, bucket_size_);
+  for (size_t range_index = 0; range_index < ranges.size(); ++range_index) {
+    const auto &range = ranges[range_index];
+    if (range.num_buckets == 0) return rocksdb::Status::InvalidArgument("invalid cuckoo filter page range");
+    const auto total_pages = (range.num_buckets - 1) / buckets_per_page + 1;
+    if (range.page_index > total_pages || range.page_count > total_pages - range.page_index) {
+      return rocksdb::Status::InvalidArgument("invalid cuckoo filter page range");
+    }
+    total_page_count += range.page_count;
+  }
+  data->reserve(total_page_count * page_size_);
+  reads.reserve(total_page_count);
+  uint32_t page_index = first_page_index;
+  for (size_t range_index = 0; range_index < ranges.size(); ++range_index) {
+    const auto &range = ranges[range_index];
+    for (uint32_t i = 0; i < range.page_count; ++i) {
+      const auto current_page_index = range.page_index + i;
+      const auto bucket_index = current_page_index * buckets_per_page;
+      BucketLocation location;
+      auto s = resolveBucketLocation(range.filter_index, range.num_buckets, bucket_index, &location);
+      if (!s.ok()) return s;
+      reads.push_back({.location = std::move(location), .page_index = page_index});
+      ++page_index;
+    }
   }
 
   for (size_t batch_start = 0; batch_start < reads.size(); batch_start += kMaxMultiGetPages) {

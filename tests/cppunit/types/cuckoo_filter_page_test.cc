@@ -262,7 +262,7 @@ TEST_F(RedisCuckooPageCacheTest, ScanPageBytesReadsAcrossPagesAndFillsMissingPag
                                metadata.bucket_size, metadata.page_size);
 
   std::string data;
-  auto s = pages.ScanPageBytes(0, 12, 0, 3, &data);
+  auto s = pages.ScanPageBytes({{0, 12, 0, 3}}, 0, &data);
   ASSERT_TRUE(s.ok()) << s.ToString();
   ASSERT_EQ(data.size(), 20U);
   EXPECT_EQ(data.substr(0, 4), std::string({10, 11, 12, 13}));
@@ -280,12 +280,31 @@ TEST_F(RedisCuckooPageCacheTest, ScanPageBytesReadsExistingPages) {
                                metadata.bucket_size, metadata.page_size);
 
   std::string data;
-  auto s = pages.ScanPageBytes(0, 8, 0, 2, &data);
+  auto s = pages.ScanPageBytes({{0, 8, 0, 2}}, 0, &data);
   ASSERT_TRUE(s.ok()) << s.ToString();
   ASSERT_EQ(data.size(), 16U);
   EXPECT_EQ(data.substr(0, 8), std::string({1, 2, 3, 4, 5, 6, 7, 8}));
   EXPECT_EQ(DecodeFixed32(data.data() + 8), 0U);
   EXPECT_EQ(DecodeFixed32(data.data() + 12), 0U);
+}
+
+TEST_F(RedisCuckooPageCacheTest, ScanPageBytesReadsAcrossSubFilters) {
+  auto metadata = makeMetadata(1, 1, 4);
+  writePage(makePageKey(metadata, 0, 0), std::string({1, 2, 3, 4}));
+  writePage(makePageKey(metadata, 1, 0), std::string({5, 6, 7, 8}));
+
+  redis::CuckooPageCache pages(storage_.get(), *ctx_, ns_key_, storage_->IsSlotIdEncoded(), metadata.version,
+                               metadata.bucket_size, metadata.page_size);
+  std::string data;
+  auto s = pages.ScanPageBytes({{0, 8, 0, 2}, {1, 8, 0, 2}}, 10, &data);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+
+  redis::CuckooDumpPayload payload;
+  s = redis::CuckooDumpPayload::Builder::Decode(data, &payload);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  EXPECT_EQ(payload.page_index, 10U);
+  EXPECT_EQ(payload.page_bytes.ToString(), std::string({1, 2, 3, 4, 5, 6, 7, 8}));
+  EXPECT_EQ(payload.skipped_page_indexes, std::vector<uint32_t>({1, 3}));
 }
 
 TEST_F(RedisCuckooPageCacheTest, ScanPageBytesRejectsCorruptedPageSize) {
@@ -295,7 +314,7 @@ TEST_F(RedisCuckooPageCacheTest, ScanPageBytesRejectsCorruptedPageSize) {
                                metadata.bucket_size, metadata.page_size);
 
   std::string data;
-  auto s = pages.ScanPageBytes(0, 4, 0, 1, &data);
+  auto s = pages.ScanPageBytes({{0, 4, 0, 1}}, 0, &data);
   EXPECT_TRUE(s.IsCorruption()) << s.ToString();
 }
 
@@ -305,7 +324,7 @@ TEST_F(RedisCuckooPageCacheTest, ScanPageBytesRejectsInvalidRange) {
                                metadata.bucket_size, metadata.page_size);
 
   std::string data;
-  auto s = pages.ScanPageBytes(0, 2, 3, 2, &data);
+  auto s = pages.ScanPageBytes({{0, 2, 3, 2}}, 3, &data);
   EXPECT_TRUE(s.IsInvalidArgument()) << s.ToString();
 }
 
@@ -315,7 +334,7 @@ TEST_F(RedisCuckooPageCacheTest, ScanPageBytesBatchesLargePageRanges) {
                                metadata.bucket_size, metadata.page_size);
 
   std::string data;
-  auto s = pages.ScanPageBytes(0, 8193, 0, 8193, &data);
+  auto s = pages.ScanPageBytes({{0, 8193, 0, 8193}}, 0, &data);
   ASSERT_TRUE(s.ok()) << s.ToString();
   ASSERT_EQ(data.size(), 8193U * sizeof(uint32_t) + 2 * sizeof(uint32_t));
   EXPECT_EQ(DecodeFixed32(data.data() + data.size() - 2 * sizeof(uint32_t)), 8193U);

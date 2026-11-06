@@ -314,6 +314,7 @@ func TestCuckooFilter(t *testing.T) {
 		require.ErrorContains(t, rdb.Do(ctx, "cf.scandump", "missing", "0").Err(), "NotFound")
 		require.ErrorContains(t, rdb.Do(ctx, "cf.scandump", "key", "invalid").Err(), "Invalid position")
 		require.ErrorContains(t, rdb.Do(ctx, "cf.scandump", "key", "9223372036854775808").Err(), "Invalid position")
+		require.ErrorContains(t, rdb.Do(ctx, "cf.scandump", "key", "4294967297").Err(), "Invalid position")
 	})
 
 	t.Run("CF.SCANDUMP empty filter", func(t *testing.T) {

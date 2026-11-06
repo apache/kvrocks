@@ -57,6 +57,13 @@ struct CuckooDumpPayload {
 
 class CuckooPageCache {
  public:
+  struct DumpPageRange {
+    uint16_t filter_index = 0;
+    uint32_t num_buckets = 0;
+    uint32_t page_index = 0;
+    uint32_t page_count = 0;
+  };
+
   struct SlotMutation {
     uint8_t OldFingerprint() const { return old_fingerprint; }
 
@@ -84,8 +91,7 @@ class CuckooPageCache {
   rocksdb::Status SetBucketSlotWithUndo(uint16_t filter_index, uint32_t num_buckets, uint32_t bucket_index,
                                         uint32_t slot_idx, uint8_t fingerprint, SlotMutation *mutation);
   rocksdb::Status RestoreBucketSlot(const SlotMutation &mutation);
-  rocksdb::Status ScanPageBytes(uint16_t filter_index, uint32_t num_buckets, uint32_t page_index, uint32_t page_count,
-                                std::string *data);
+  rocksdb::Status ScanPageBytes(const std::vector<DumpPageRange> &ranges, uint32_t first_page_index, std::string *data);
   rocksdb::Status WriteBackDirtyPages(rocksdb::WriteBatchBase *batch);
 
   void DiscardCleanPages();

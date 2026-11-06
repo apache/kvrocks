@@ -1532,23 +1532,22 @@ TEST_F(RedisCuckooFilterTest, ScanDumpExpansionMatchesAllPages) {
     ASSERT_TRUE(s.ok()) << s.ToString();
     if (iterator != 0) {
       ASSERT_TRUE(has_data);
-      const auto chunk_start_page = chunk_start_iterator;
+      const auto chunk_start_page = chunk_start_iterator - 1;
       const auto chunk_page_count = iterator - chunk_start_iterator;
-      uint64_t local_page = chunk_start_page - 1;
+      uint64_t local_page = chunk_start_page;
       size_t filter_index = 0;
       while (local_page >= filter_page_counts[filter_index]) {
         local_page -= filter_page_counts[filter_index++];
       }
-      const auto chunk_start_local_page = local_page;
       redis::CuckooDumpPayload payload;
       s = redis::CuckooDumpPayload::Builder::Decode(chunk, &payload);
       ASSERT_TRUE(s.ok()) << s.ToString();
-      ASSERT_EQ(payload.page_index, chunk_start_local_page);
+      ASSERT_EQ(payload.page_index, chunk_start_page);
       const auto page_bytes_size = payload.page_bytes.size();
       size_t payload_offset = 0;
-      uint64_t global_page = chunk_start_page - 1;
+      uint64_t global_page = chunk_start_page;
       for (uint64_t i = 0; i < chunk_page_count; ++i, ++local_page, ++global_page) {
-        const auto relative_page = static_cast<uint32_t>(local_page - payload.page_index);
+        const auto relative_page = static_cast<uint32_t>(global_page - payload.page_index);
         const bool is_skipped = std::find(payload.skipped_page_indexes.begin(), payload.skipped_page_indexes.end(),
                                           relative_page) != payload.skipped_page_indexes.end();
         if (is_skipped) {

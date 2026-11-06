@@ -441,18 +441,20 @@ rocksdb::Status CuckooChain::ScanDump(engine::Context &ctx, const Slice &user_ke
     return rocksdb::Status::OK();
   }
 
-  uint64_t page_offset = iterator - 1;
+  const auto first_page_index = static_cast<uint32_t>(iterator - 1);
+  const auto buckets_per_page = std::max<uint32_t>(1, metadata.page_size / metadata.bucket_size);
+
+  uint32_t page_index = first_page_index;
   uint16_t filter_index = 0;
   uint32_t num_buckets = 0;
-  uint64_t page_count = 0;
+  uint32_t page_count = 0;
   for (; filter_index < metadata.n_filters; ++filter_index) {
     s = CuckooFilterHelper::GetFilterNumBuckets(metadata.base_capacity, metadata.expansion, metadata.bucket_size,
                                                 filter_index, &num_buckets);
     if (!s.ok()) return s;
-    const auto buckets_per_page = std::max<uint32_t>(1, metadata.page_size / metadata.bucket_size);
     page_count = (num_buckets - 1) / buckets_per_page + 1;
-    if (page_offset < page_count) break;
-    page_offset -= page_count;
+    if (page_index < page_count) break;
+    page_index -= page_count;
   }
   if (filter_index == metadata.n_filters) {
     return rocksdb::Status::OK();
@@ -461,14 +463,29 @@ rocksdb::Status CuckooChain::ScanDump(engine::Context &ctx, const Slice &user_ke
   if (metadata.page_size > kCuckooFilterMaxScanDumpSize - 2 * sizeof(uint32_t)) {
     return rocksdb::Status::InvalidArgument("cuckoo filter page size exceeds scan dump limit");
   }
-  const auto page_payload_size = std::max<size_t>(metadata.page_size, sizeof(uint32_t));
-  const auto max_pages = (kCuckooFilterMaxScanDumpSize - sizeof(uint32_t) * 2) / page_payload_size;
-  const auto pages_to_read = static_cast<uint32_t>(std::min<uint64_t>(page_count - page_offset, max_pages));
+
+  const uint32_t page_payload_size = std::max<uint32_t>(metadata.page_size, sizeof(uint32_t));
+  const uint32_t max_pages = (kCuckooFilterMaxScanDumpSize - sizeof(uint32_t) * 2) / page_payload_size;
+  std::vector<CuckooPageCache::DumpPageRange> ranges;
+  uint32_t pages_to_read = 0;
+  while (filter_index < metadata.n_filters && pages_to_read < max_pages) {
+    uint32_t current_num_buckets = 0;
+    s = CuckooFilterHelper::GetFilterNumBuckets(metadata.base_capacity, metadata.expansion, metadata.bucket_size,
+                                                filter_index, &current_num_buckets);
+    if (!s.ok()) return s;
+    const uint32_t current_page_count = (current_num_buckets - 1) / buckets_per_page + 1;
+    const uint32_t available_pages = current_page_count - page_index;
+    const uint32_t range_page_count = std::min<uint32_t>(available_pages, max_pages - pages_to_read);
+    ranges.push_back({filter_index, current_num_buckets, page_index, range_page_count});
+    pages_to_read += range_page_count;
+    ++filter_index;
+    page_index = 0;
+  }
   if (pages_to_read == 0) return rocksdb::Status::Corruption("invalid cuckoo filter page range");
 
   CuckooPageCache pages(storage_, ctx, ns_key, storage_->IsSlotIdEncoded(), metadata.version, metadata.bucket_size,
                         metadata.page_size);
-  s = pages.ScanPageBytes(filter_index, num_buckets, static_cast<uint32_t>(page_offset), pages_to_read, data);
+  s = pages.ScanPageBytes(ranges, first_page_index, data);
   if (!s.ok()) return s;
   *next_iterator = iterator + pages_to_read;
   *has_data = true;

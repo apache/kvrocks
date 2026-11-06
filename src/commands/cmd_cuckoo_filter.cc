@@ -18,6 +18,8 @@
  *
  */
 
+#include <limits>
+
 #include "command_parser.h"
 #include "commander.h"
 #include "error_constants.h"
@@ -220,7 +222,7 @@ class CommandCFScanDump : public Commander {
       return {Status::RedisParseErr, errWrongNumOfArguments};
     }
     auto iterator = ParseInt<int64_t>(args[2], 10);
-    if (!iterator || *iterator < 0) {
+    if (!iterator || *iterator < 0 || *iterator - 1 > std::numeric_limits<uint32_t>::max()) {
       return {Status::RedisParseErr, "Invalid position"};
     }
     iterator_ = static_cast<uint64_t>(*iterator);

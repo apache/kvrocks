@@ -1263,7 +1263,7 @@ rocksdb::Status Hash::Scan(engine::Context &ctx, const Slice &user_key, const st
       values->emplace_back(std::move(state.value));
     }
     live_count++;
-    if (limit > 0 && live_count >= limit) {
+    if (limit > 0 && live_count >= limit && !fields->back().empty()) {
       break;
     }
   }

@@ -414,6 +414,9 @@ class Server {
   void cleanupWaitConnection(redis::Connection *conn);
 
   std::atomic<bool> stop_ = false;
+  std::mutex stop_mu_;
+  std::condition_variable stop_cv_;
+  bool stop_complete_ = false;
   std::atomic<bool> is_loading_ = false;
   int64_t start_time_secs_;
   std::mutex slaveof_mu_;

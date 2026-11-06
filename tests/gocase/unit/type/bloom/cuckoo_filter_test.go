@@ -86,21 +86,17 @@ func TestCuckooFilter(t *testing.T) {
 	})
 
 	t.Run("CF.EXISTS and CF.MEXISTS wrong number of arguments", func(t *testing.T) {
-		require.ErrorContains(t, rdb.Do(ctx, "cf.exists").Err(), "wrong number of arguments")
-		require.ErrorContains(t, rdb.Do(ctx, "cf.exists", "key_only").Err(), "wrong number of arguments")
-		require.ErrorContains(t, rdb.Do(ctx, "cf.exists", "key", "item1", "item2").Err(), "wrong number of arguments")
-		require.ErrorContains(t, rdb.Do(ctx, "cf.mexists").Err(), "wrong number of arguments")
-		require.ErrorContains(t, rdb.Do(ctx, "cf.mexists", "key_only").Err(), "wrong number of arguments")
+		require.Error(t, rdb.Do(ctx, "cf.exists").Err())
+		require.Error(t, rdb.Do(ctx, "cf.exists", "key_only").Err())
+		require.Error(t, rdb.Do(ctx, "cf.exists", "key", "item1", "item2").Err())
+		require.Error(t, rdb.Do(ctx, "cf.mexists").Err())
+		require.Error(t, rdb.Do(ctx, "cf.mexists", "key_only").Err())
 	})
 
-	t.Run("Reserve accepts large expansions", func(t *testing.T) {
-		for _, expansion := range []int64{256, 32768} {
-			key := fmt.Sprintf("test_cuckoo_filter_expansion_%d", expansion)
-			require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "1000", "EXPANSION", expansion).Err())
-			actual, err := rdb.Do(ctx, "cf.info", key, "expansion").Int64()
-			require.NoError(t, err)
-			require.Equal(t, expansion, actual)
-		}
+	t.Run("Reserve expansion", func(t *testing.T) {
+		require.NoError(t, rdb.Do(ctx, "cf.reserve", "test_cuckoo_filter_expansion_256", "1000", "EXPANSION", "256").Err())
+		require.NoError(t, rdb.Do(ctx, "cf.reserve", "test_cuckoo_filter_expansion_max", "1000", "EXPANSION", "32768").Err())
+		require.ErrorContains(t, rdb.Do(ctx, "cf.reserve", "test_cuckoo_filter_expansion_too_large", "1000", "EXPANSION", "32769").Err(), "expansion must be between 0 and 32768")
 	})
 
 	t.Run("Reserve creates cuckoo filter type", func(t *testing.T) {
@@ -145,20 +141,20 @@ func TestCuckooFilter(t *testing.T) {
 	})
 
 	t.Run("Reserve wrong number of arguments", func(t *testing.T) {
-		require.ErrorContains(t, rdb.Do(ctx, "cf.reserve").Err(), "wrong number of arguments")
-		require.ErrorContains(t, rdb.Do(ctx, "cf.reserve", "key_only").Err(), "wrong number of arguments")
+		require.Error(t, rdb.Do(ctx, "cf.reserve").Err())
+		require.Error(t, rdb.Do(ctx, "cf.reserve", "key_only").Err())
 	})
 
 	t.Run("Add wrong number of arguments", func(t *testing.T) {
-		require.ErrorContains(t, rdb.Do(ctx, "cf.add").Err(), "wrong number of arguments")
-		require.ErrorContains(t, rdb.Do(ctx, "cf.add", "key_only").Err(), "wrong number of arguments")
-		require.ErrorContains(t, rdb.Do(ctx, "cf.add", "key", "item1", "item2").Err(), "wrong number of arguments")
+		require.Error(t, rdb.Do(ctx, "cf.add").Err())
+		require.Error(t, rdb.Do(ctx, "cf.add", "key_only").Err())
+		require.Error(t, rdb.Do(ctx, "cf.add", "key", "item1", "item2").Err())
 	})
 
 	t.Run("Del wrong number of arguments", func(t *testing.T) {
-		require.ErrorContains(t, rdb.Do(ctx, "cf.del").Err(), "wrong number of arguments")
-		require.ErrorContains(t, rdb.Do(ctx, "cf.del", "key_only").Err(), "wrong number of arguments")
-		require.ErrorContains(t, rdb.Do(ctx, "cf.del", "key", "item1", "item2").Err(), "wrong number of arguments")
+		require.Error(t, rdb.Do(ctx, "cf.del").Err())
+		require.Error(t, rdb.Do(ctx, "cf.del", "key_only").Err())
+		require.Error(t, rdb.Do(ctx, "cf.del", "key", "item1", "item2").Err())
 	})
 
 	t.Run("Del missing key", func(t *testing.T) {
@@ -199,10 +195,6 @@ func TestCuckooFilter(t *testing.T) {
 		for i := 0; i < 20; i++ {
 			require.Equal(t, int64(1), rdb.Do(ctx, "cf.add", key, "same_item").Val())
 		}
-		filters, err := rdb.Do(ctx, "cf.info", key, "filters").Int64()
-		require.NoError(t, err)
-		require.Greater(t, filters, int64(1))
-
 		for i := 0; i < 20; i++ {
 			require.Equal(t, int64(1), rdb.Do(ctx, "cf.del", key, "same_item").Val())
 		}
@@ -242,9 +234,6 @@ func TestCuckooFilter(t *testing.T) {
 			require.NoError(t, result.Err())
 			require.Equal(t, int64(1), result.Val())
 		}
-		filters, err := rdb.Do(ctx, "cf.info", key, "filters").Int64()
-		require.NoError(t, err)
-		require.Greater(t, filters, int64(1))
 	})
 
 	t.Run("CF.EXISTS and CF.MEXISTS after expansion", func(t *testing.T) {

@@ -159,6 +159,17 @@ struct CommandParser {
   }
 
   template <typename T = double>
+  StatusOr<T> TakeNonNegativeFloat(std::string_view negative_error) {
+    if (!Good()) return {Status::RedisParseErr, "no more item to parse"};
+
+    auto res = GET_OR_RET(ParseFloat<T>(RawPeek()));
+    if (res < 0) return {Status::RedisParseErr, std::string(negative_error)};
+
+    RawNext();
+    return res;
+  }
+
+  template <typename T = double>
   StatusOr<T> TakeFloat() {
     if (!Good()) return {Status::RedisParseErr, "no more item to parse"};
 

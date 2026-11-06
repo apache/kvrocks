@@ -51,3 +51,11 @@ TEST_F(StringReplyTest, BulkString) {
 
   ASSERT_EQ(result.length(), 13 * 10 + 14 * 90 + 15 * 900 + 17 * 9000 + 18 * 90000 + 9);
 }
+
+TEST(StringReply, AppendBulkString) {
+  const std::string value{"a\0b", 3};
+  std::string result = "prefix";
+  redis::AppendBulkString(&result, value);
+
+  EXPECT_EQ(result, "prefix$3\r\n" + value + "\r\n");
+}

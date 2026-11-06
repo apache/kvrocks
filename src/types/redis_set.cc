@@ -20,11 +20,15 @@
 
 #include "redis_set.h"
 
+#include <array>
 #include <map>
 #include <memory>
 #include <optional>
+#include <unordered_set>
 
 #include "db_util.h"
+#include "hyperloglog.h"
+#include "redis_hyperloglog.h"
 #include "sample_helper.h"
 
 namespace redis {
@@ -355,6 +359,72 @@ rocksdb::Status Set::Union(engine::Context &ctx, const std::vector<Slice> &keys,
   }
   for (const auto &iter : union_members) {
     members->emplace_back(iter.first);
+  }
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status Set::UnionCard(engine::Context &ctx, const std::vector<Slice> &keys, bool approx, uint64_t limit,
+                               uint64_t *cardinality) {
+  *cardinality = 0;
+  std::vector<std::pair<std::string, SetMetadata>> sets;
+  std::unordered_set<std::string_view> seen_keys;
+  // Validate every key before scanning so LIMIT cannot hide a WRONGTYPE error.
+  for (const auto &key : keys) {
+    if (!seen_keys.insert(key.ToStringView()).second) continue;
+    auto ns_key = AppendNamespacePrefix(key);
+    SetMetadata metadata(false);
+    auto s = GetMetadata(ctx, ns_key, &metadata);
+    if (s.IsNotFound()) continue;
+    if (!s.ok()) return s;
+    sets.emplace_back(std::move(ns_key), metadata);
+  }
+
+  std::unordered_set<std::string> members;
+  std::vector<std::array<uint8_t, kHyperLogLogSegmentBytes>> registers(approx ? kHyperLogLogSegmentCount : 0);
+  std::vector<nonstd::span<const uint8_t>> register_spans;
+  register_spans.reserve(registers.size());
+  for (const auto &segment : registers) {
+    register_spans.emplace_back(segment.data(), segment.size());
+  }
+  uint64_t until_check = limit;
+  for (const auto &[ns_key, metadata] : sets) {
+    auto prefix = InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode();
+    auto next_prefix = InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode();
+    auto read_options = ctx.DefaultScanOptions();
+    Slice upper_bound(next_prefix);
+    read_options.iterate_upper_bound = &upper_bound;
+    auto iter = util::UniqueIterator(ctx, read_options);
+    for (iter->Seek(prefix); iter->Valid() && iter->key().starts_with(prefix); iter->Next()) {
+      InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
+      const auto &member = ikey.GetSubKey();
+      if (!approx) {
+        if (members.insert(member.ToString()).second && ++*cardinality == limit) {
+          return rocksdb::Status::OK();
+        }
+        continue;
+      }
+
+      auto result = ExtractDenseHllResult(HyperLogLog::HllHash(member.ToStringView()));
+      auto *segment = registers[result.register_index / kHyperLogLogSegmentRegisters].data();
+      auto index = result.register_index % kHyperLogLogSegmentRegisters;
+      if (result.hll_trailing_zero > HllDenseGetRegister(segment, index)) {
+        HllDenseSetRegister(segment, index, result.hll_trailing_zero);
+      }
+      // Counting scans all HLL registers; batch checks as in Redis's SUNIONCARD.
+      if (limit != 0 && --until_check == 0) {
+        auto estimate = HllDenseEstimate(register_spans);
+        if (estimate >= limit) {
+          *cardinality = limit;
+          return rocksdb::Status::OK();
+        }
+        until_check = std::max<uint64_t>(limit - estimate, 1024);
+      }
+    }
+    if (!iter->status().ok()) return iter->status();
+  }
+  if (approx) {
+    *cardinality = HllDenseEstimate(register_spans);
+    if (limit != 0) *cardinality = std::min(*cardinality, limit);
   }
   return rocksdb::Status::OK();
 }

@@ -1130,3 +1130,142 @@ func TestHashWithAsyncIODisabled(t *testing.T) {
 		})
 	})
 }
+
+func TestHashLastFieldDeletionTTL(t *testing.T) {
+	runWithHashConfigs(t, nil, func(t *testing.T, configs util.KvrocksServerConfigs) {
+		srv := util.StartServer(t, configs)
+		defer srv.Close()
+
+		ctx := context.Background()
+
+		rdb := srv.NewClient()
+		defer func() {
+			require.NoError(t, rdb.Close())
+		}()
+
+		// An empty hash is logically absent, so TTL and PTTL have to agree with EXISTS.
+		t.Run("deleting the only field", func(t *testing.T) {
+			key := "ttl-after-last-hdel"
+
+			require.NoError(t, rdb.HSet(ctx, key, "field", "value").Err())
+
+			ttl, err := rdb.Do(ctx, "TTL", key).Int64()
+			require.NoError(t, err)
+			require.Equal(t, int64(-1), ttl)
+
+			deleted, err := rdb.HDel(ctx, key, "field").Result()
+			require.NoError(t, err)
+			require.Equal(t, int64(1), deleted)
+
+			exists, err := rdb.Exists(ctx, key).Result()
+			require.NoError(t, err)
+			require.Equal(t, int64(0), exists)
+
+			ttl, err = rdb.Do(ctx, "TTL", key).Int64()
+			require.NoError(t, err)
+			require.Equal(t, int64(-2), ttl)
+
+			pttl, err := rdb.Do(ctx, "PTTL", key).Int64()
+			require.NoError(t, err)
+			require.Equal(t, int64(-2), pttl)
+		})
+
+		t.Run("deleting one of two fields keeps the key", func(t *testing.T) {
+			key := "ttl-partial-hdel"
+
+			require.NoError(t, rdb.HSet(ctx, key, "field1", "value1", "field2", "value2").Err())
+
+			deleted, err := rdb.HDel(ctx, key, "field1").Result()
+			require.NoError(t, err)
+			require.Equal(t, int64(1), deleted)
+
+			exists, err := rdb.Exists(ctx, key).Result()
+			require.NoError(t, err)
+			require.Equal(t, int64(1), exists)
+
+			hlen, err := rdb.HLen(ctx, key).Result()
+			require.NoError(t, err)
+			require.Equal(t, int64(1), hlen)
+
+			ttl, err := rdb.Do(ctx, "TTL", key).Int64()
+			require.NoError(t, err)
+			require.Equal(t, int64(-1), ttl)
+		})
+
+		t.Run("key that never existed", func(t *testing.T) {
+			key := "ttl-missing-hash"
+
+			ttl, err := rdb.Do(ctx, "TTL", key).Int64()
+			require.NoError(t, err)
+			require.Equal(t, int64(-2), ttl)
+
+			pttl, err := rdb.Do(ctx, "PTTL", key).Int64()
+			require.NoError(t, err)
+			require.Equal(t, int64(-2), pttl)
+		})
+
+		t.Run("key with an expiration keeps a positive TTL", func(t *testing.T) {
+			key := "ttl-live-hash"
+
+			require.NoError(t, rdb.HSet(ctx, key, "field", "value").Err())
+
+			expired, err := rdb.Do(ctx, "EXPIRE", key, "60").Int64()
+			require.NoError(t, err)
+			require.Equal(t, int64(1), expired)
+
+			exists, err := rdb.Exists(ctx, key).Result()
+			require.NoError(t, err)
+			require.Equal(t, int64(1), exists)
+
+			ttl, err := rdb.Do(ctx, "TTL", key).Int64()
+			require.NoError(t, err)
+			require.Greater(t, ttl, int64(0))
+			require.LessOrEqual(t, ttl, int64(60))
+
+			pttl, err := rdb.Do(ctx, "PTTL", key).Int64()
+			require.NoError(t, err)
+			require.Greater(t, pttl, int64(0))
+			require.LessOrEqual(t, pttl, int64(60*1000))
+		})
+
+		t.Run("deleting the last field of a key with an expiration", func(t *testing.T) {
+			key := "ttl-last-hdel-with-expire"
+
+			require.NoError(t, rdb.HSet(ctx, key, "field", "value").Err())
+
+			expired, err := rdb.Do(ctx, "EXPIRE", key, "60").Int64()
+			require.NoError(t, err)
+			require.Equal(t, int64(1), expired)
+
+			deleted, err := rdb.HDel(ctx, key, "field").Result()
+			require.NoError(t, err)
+			require.Equal(t, int64(1), deleted)
+
+			exists, err := rdb.Exists(ctx, key).Result()
+			require.NoError(t, err)
+			require.Equal(t, int64(0), exists)
+
+			ttl, err := rdb.Do(ctx, "TTL", key).Int64()
+			require.NoError(t, err)
+			require.Equal(t, int64(-2), ttl)
+
+			pttl, err := rdb.Do(ctx, "PTTL", key).Int64()
+			require.NoError(t, err)
+			require.Equal(t, int64(-2), pttl)
+		})
+
+		t.Run("non-hash key without an expiration", func(t *testing.T) {
+			key := "ttl-string-key"
+
+			require.NoError(t, rdb.Do(ctx, "SET", key, "value").Err())
+
+			exists, err := rdb.Exists(ctx, key).Result()
+			require.NoError(t, err)
+			require.Equal(t, int64(1), exists)
+
+			ttl, err := rdb.Do(ctx, "TTL", key).Int64()
+			require.NoError(t, err)
+			require.Equal(t, int64(-1), ttl)
+		})
+	})
+}

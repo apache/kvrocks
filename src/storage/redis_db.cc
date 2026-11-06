@@ -244,6 +244,11 @@ rocksdb::Status Database::TTL(engine::Context &ctx, const Slice &user_key, int64
   Metadata metadata(kRedisNone, false);
   s = metadata.Decode(value);
   if (!s.ok()) return s;
+  if (metadata.Expired()) {
+    // The key is logically absent (e.g. an empty hash left behind after its last field was
+    // deleted), so keep *ttl as -2 instead of reporting a value for a key that no longer exists.
+    return rocksdb::Status::OK();
+  }
   *ttl = metadata.TTL();
 
   return rocksdb::Status::OK();

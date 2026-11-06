@@ -189,6 +189,85 @@ class CommandCFMExists : public Commander {
   std::vector<std::string> items_;
 };
 
+class CommandCFInsert : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    // CF.INSERT key [CAPACITY capacity] [NOCREATE] ITEMS item [item ...]
+    if (args.size() < 4) {
+      return {Status::RedisParseErr, errWrongNumOfArguments};
+    }
+
+    insert_options_ = CuckooFilterInsertOptions{};
+    has_items_ = false;
+    items_.clear();
+
+    CommandParser parser(args, 2);
+    while (parser.Good()) {
+      if (parser.EatEqICase("CAPACITY")) {
+        auto parse_capacity = parser.TakeInt<uint64_t>();
+        if (!parse_capacity.IsOK()) {
+          return {Status::RedisParseErr, "invalid capacity"};
+        }
+        insert_options_.capacity = parse_capacity.GetValue();
+        if (insert_options_.capacity == 0) {
+          return {Status::RedisParseErr, "capacity must be larger than 0"};
+        }
+      } else if (parser.EatEqICase("NOCREATE")) {
+        insert_options_.auto_create = false;
+      } else if (parser.EatEqICase("ITEMS")) {
+        has_items_ = true;
+        break;
+      } else {
+        return {Status::RedisParseErr, errInvalidSyntax};
+      }
+    }
+
+    if (!has_items_) {
+      return {Status::RedisParseErr, errInvalidSyntax};
+    }
+
+    while (parser.Good()) {
+      items_.emplace_back(GET_OR_RET(parser.TakeStr()));
+    }
+
+    if (items_.empty()) {
+      return {Status::RedisParseErr, "num of items should be greater than 0"};
+    }
+
+    return Commander::Parse(args);
+  }
+
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    redis::CuckooChain cuckoo_db(srv->storage, conn->GetNamespace());
+    std::vector<CuckooFilterInsertResult> rets;
+
+    auto s = cuckoo_db.Insert(ctx, args_[1], items_, insert_options_, rets);
+
+    if (!s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+
+    *output = redis::MultiLen(items_.size());
+    for (const auto &ret : rets) {
+      switch (ret) {
+        case CuckooFilterInsertResult::kOk:
+          *output += conn->Bool(true);
+          break;
+        case CuckooFilterInsertResult::kFull:
+          *output += conn->GetProtocolVersion() == RESP::v3 ? conn->Bool(false) : redis::Integer(-1);
+          break;
+      }
+    }
+
+    return Status::OK();
+  }
+
+ private:
+  CuckooFilterInsertOptions insert_options_;
+  bool has_items_ = false;
+  std::vector<std::string> items_;
+};
+
 class CommandCFDel : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
@@ -217,6 +296,7 @@ REDIS_REGISTER_COMMANDS(CuckooFilter, MakeCmdAttr<CommandCFReserve>("cf.reserve"
                         MakeCmdAttr<CommandCFAdd>("cf.add", 3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandCFDel>("cf.del", 3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandCFExists>("cf.exists", 3, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandCFMExists>("cf.mexists", -3, "read-only", 1, 1, 1))
+                        MakeCmdAttr<CommandCFMExists>("cf.mexists", -3, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandCFInsert>("cf.insert", -4, "write", 1, 1, 1))
 
 }  // namespace redis

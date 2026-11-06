@@ -23,8 +23,10 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/apache/kvrocks/tests/gocase/util"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 )
 
@@ -295,6 +297,181 @@ func TestCuckooFilter(t *testing.T) {
 	})
 }
 
+func TestCuckooFilterInsert(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{})
+	defer srv.Close()
+	ctx := context.Background()
+	rdb := srv.NewClientWithOption(&redis.Options{Protocol: 2})
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	t.Run("Insert wrong number of arguments", func(t *testing.T) {
+		require.Error(t, rdb.Do(ctx, "cf.insert").Err())
+		require.Error(t, rdb.Do(ctx, "cf.insert", "key_only").Err())
+		require.Error(t, rdb.Do(ctx, "cf.insert", "key_only", "ITEMS").Err())
+		require.Error(t, rdb.Do(ctx, "cf.insert", "key_only", "item1").Err())
+	})
+
+	t.Run("Insert missing ITEMS keyword returns syntax error", func(t *testing.T) {
+		key := "test_cf_insert_no_items_kw"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.ErrorContains(t, rdb.Do(ctx, "cf.insert", key, "NOCREATE", "item1").Err(), "syntax error")
+	})
+
+	t.Run("Insert auto-creates filter", func(t *testing.T) {
+		key := "test_cf_insert_autocreate"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		result := rdb.Do(ctx, "cf.insert", key, "ITEMS", "item1", "item2", "item3")
+		require.NoError(t, result.Err())
+		require.Equal(t, []interface{}{int64(1), int64(1), int64(1)}, result.Val())
+		require.Equal(t, "MBbloomCF", rdb.Type(ctx, key).Val())
+	})
+
+	t.Run("Insert NOCREATE on non-existent key returns error", func(t *testing.T) {
+		key := "test_cf_insert_nocreate_missing"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.ErrorContains(t, rdb.Do(ctx, "cf.insert", key, "NOCREATE", "ITEMS", "item1").Err(), "ERR NotFound:")
+	})
+
+	t.Run("Insert NOCREATE on existing filter succeeds", func(t *testing.T) {
+		key := "test_cf_insert_nocreate_existing"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "1000").Err())
+		result := rdb.Do(ctx, "cf.insert", key, "NOCREATE", "ITEMS", "item1", "item2")
+		require.NoError(t, result.Err())
+		require.Equal(t, []interface{}{int64(1), int64(1)}, result.Val())
+	})
+
+	t.Run("Insert invalid CAPACITY returns error", func(t *testing.T) {
+		key := "test_cf_insert_bad_capacity"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.ErrorContains(t, rdb.Do(ctx, "cf.insert", key, "CAPACITY", "abc", "ITEMS", "item1").Err(), "invalid capacity")
+		require.ErrorContains(t, rdb.Do(ctx, "cf.insert", key, "CAPACITY", "0", "ITEMS", "item1").Err(), "capacity must be larger than 0")
+		require.ErrorContains(t, rdb.Do(ctx, "cf.insert", key, "CAPACITY", "1", "ITEMS", "item1").Err(), "capacity must be at least 2")
+		require.ErrorContains(t, rdb.Do(ctx, "cf.insert", key, "NOCREATE", "CAPACITY", "1", "ITEMS", "item1").Err(), "capacity must be at least 2")
+
+		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "1000").Err())
+		require.ErrorContains(t, rdb.Do(ctx, "cf.insert", key, "CAPACITY", "1", "ITEMS", "item1").Err(), "capacity must be at least 2")
+		require.ErrorContains(t, rdb.Do(ctx, "cf.insert", key, "CAPACITY", "18446744073709551615", "ITEMS", "item1").Err(), "capacity is too large")
+		require.Equal(t, int64(0), rdb.Do(ctx, "cf.exists", key, "item1").Val())
+	})
+
+	t.Run("Insert CAPACITY ignored when filter already exists", func(t *testing.T) {
+		key := "test_cf_insert_capacity_ignored"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "1000").Err())
+		result := rdb.Do(ctx, "cf.insert", key, "CAPACITY", "9999", "ITEMS", "item1")
+		require.NoError(t, result.Err())
+		require.Equal(t, []interface{}{int64(1)}, result.Val())
+		// The existing filter remains reserved; its metadata is checked by the C++ tests.
+		require.ErrorContains(t, rdb.Do(ctx, "cf.reserve", key, "1000").Err(), "already exists")
+	})
+
+	t.Run("Insert multiple items returns per-item results", func(t *testing.T) {
+		key := "test_cf_insert_multi"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "1000").Err())
+		result := rdb.Do(ctx, "cf.insert", key, "ITEMS", "alpha", "beta", "gamma")
+		require.NoError(t, result.Err())
+		require.Equal(t, []interface{}{int64(1), int64(1), int64(1)}, result.Val())
+	})
+
+	t.Run("Insert duplicate items all succeed (CF.INSERT allows duplicates)", func(t *testing.T) {
+		key := "test_cf_insert_duplicates"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "1000").Err())
+		result := rdb.Do(ctx, "cf.insert", key, "ITEMS", "dup", "dup", "dup")
+		require.NoError(t, result.Err())
+		require.Equal(t, []interface{}{int64(1), int64(1), int64(1)}, result.Val())
+	})
+
+	t.Run("Insert into non-scaling full filter", func(t *testing.T) {
+		key := "test_cf_insert_full_nonscaling"
+		// expansion=0 disables scaling; small capacity fills quickly
+		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "4", "BUCKETSIZE", "1", "MAXITERATIONS", "1", "EXPANSION", "0").Err())
+		full := false
+		for i := 0; i < 100; i++ {
+			result := rdb.Do(ctx, "cf.add", key, fmt.Sprintf("full_item_%d", i))
+			if result.Err() != nil {
+				require.ErrorContains(t, result.Err(), "filter is full")
+				full = true
+			}
+		}
+		require.True(t, full, "Non-scaling filter should eventually become full")
+		result := rdb.Do(ctx, "cf.insert", key, "ITEMS", "full_item_101", "full_item_102")
+		require.NoError(t, result.Err()) // command succeeds at the protocol level
+		vals := result.Val().([]interface{})
+		require.Equal(t, 2, len(vals))
+		for _, v := range vals {
+			// RESP2 reports each full insertion as -1.
+			require.Equal(t, int64(-1), v)
+		}
+	})
+
+	t.Run("Insert empty string item", func(t *testing.T) {
+		key := "test_cf_insert_empty_item"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		result := rdb.Do(ctx, "cf.insert", key, "ITEMS", "")
+		require.NoError(t, result.Err())
+		require.Equal(t, []interface{}{int64(1)}, result.Val())
+	})
+
+	t.Run("Insert unknown option returns syntax error", func(t *testing.T) {
+		key := "test_cf_insert_unknown_opt"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.ErrorContains(t, rdb.Do(ctx, "cf.insert", key, "UNKNOWNOPT", "ITEMS", "item1").Err(), "syntax error")
+	})
+
+	t.Run("Insert rejects malformed options without creating a key", func(t *testing.T) {
+		cases := []struct {
+			args    []interface{}
+			message string
+		}{
+			{[]interface{}{"CAPACITY", "10"}, "syntax error"},
+			{[]interface{}{"NOCREATE", "ITEMS"}, "num of items should be greater than 0"},
+			{[]interface{}{"CAPACITY", "-1", "ITEMS", "item"}, "invalid capacity"},
+			{[]interface{}{"CAPACITY", "18446744073709551616", "ITEMS", "item"}, "invalid capacity"},
+			{[]interface{}{"CAPACITY", "18446744073709551615", "ITEMS", "item"}, "capacity is too large"},
+		}
+		for i, test := range cases {
+			key := fmt.Sprintf("insert_invalid_%d", i)
+			args := append([]interface{}{"cf.insert", key}, test.args...)
+			require.ErrorContains(t, rdb.Do(ctx, args...).Err(), test.message)
+			exists, err := rdb.Exists(ctx, key).Result()
+			require.NoError(t, err)
+			require.Equal(t, int64(0), exists)
+		}
+	})
+
+	t.Run("Insert preserves wrong-type values", func(t *testing.T) {
+		key := "insert_wrongtype"
+		require.NoError(t, rdb.Set(ctx, key, "value", 0).Err())
+		require.ErrorContains(t, rdb.Do(ctx, "cf.insert", key, "ITEMS", "item").Err(), "WRONGTYPE")
+		require.ErrorContains(t, rdb.Do(ctx, "cf.insert", key, "NOCREATE", "ITEMS", "item").Err(), "WRONGTYPE")
+		value, err := rdb.Get(ctx, key).Result()
+		require.NoError(t, err)
+		require.Equal(t, "value", value)
+	})
+
+	t.Run("Insert preserves TTL and treats option names after ITEMS as data", func(t *testing.T) {
+		key := "insert_ttl"
+		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "1000").Err())
+		require.NoError(t, rdb.PExpire(ctx, key, time.Minute).Err())
+		items := []interface{}{"CAPACITY", "NOCREATE", "ITEMS", "", "binary\x00item"}
+		args := append([]interface{}{"cf.insert", key, "nOcReAtE", "cApAcItY", "9999", "iTeMs"}, items...)
+		result, err := rdb.Do(ctx, args...).Result()
+		require.NoError(t, err)
+		require.Equal(t, []interface{}{int64(1), int64(1), int64(1), int64(1), int64(1)}, result)
+		ttl, err := rdb.PTTL(ctx, key).Result()
+		require.NoError(t, err)
+		require.Positive(t, ttl)
+		require.LessOrEqual(t, ttl, time.Minute)
+		args = append([]interface{}{"cf.mexists", key}, items...)
+		result, err = rdb.Do(ctx, args...).Result()
+		require.NoError(t, err)
+		require.Equal(t, []interface{}{int64(1), int64(1), int64(1), int64(1), int64(1)}, result)
+	})
+}
+
 func TestCuckooFilterRESP3(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{
 		"resp3-enabled": "yes",
@@ -331,4 +508,101 @@ func TestCuckooFilterRESP3(t *testing.T) {
 	c.MustRead(t, "*2")
 	c.MustRead(t, "#t")
 	c.MustRead(t, "#f")
+}
+
+func TestCuckooFilterInsertRESP3(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{"resp3-enabled": "yes"})
+	defer srv.Close()
+	ctx := context.Background()
+	rdb := srv.NewClientWithOption(&redis.Options{Protocol: 3})
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	result, err := rdb.Do(ctx, "cf.insert", "insert_resp3", "ITEMS", "alpha", "alpha", "beta").Result()
+	require.NoError(t, err)
+	require.Equal(t, []interface{}{true, true, true}, result)
+
+	require.NoError(t, rdb.Do(ctx, "cf.reserve", "insert_resp3_full", "2", "BUCKETSIZE", "1", "EXPANSION", "0").Err())
+	result, err = rdb.Do(ctx, "cf.insert", "insert_resp3_full", "ITEMS", "duplicate", "duplicate", "duplicate").Result()
+	require.NoError(t, err)
+	require.Equal(t, []interface{}{true, true, false}, result)
+}
+
+func TestCuckooFilterInsertPersistence(t *testing.T) {
+	for _, txnContext := range []string{"yes", "no"} {
+		func() {
+			t.Logf("txn-context-enabled=%s", txnContext)
+			srv := util.StartServer(t, map[string]string{"txn-context-enabled": txnContext})
+			defer srv.Close()
+			ctx := context.Background()
+			rdb := srv.NewClientWithOption(&redis.Options{Protocol: 2})
+			defer func() { require.NoError(t, rdb.Close()) }()
+			const key = "insert_persist"
+			require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "2", "BUCKETSIZE", "1", "EXPANSION", "2").Err())
+			args := []interface{}{"cf.insert", key, "ITEMS"}
+			items := make([]interface{}, 50)
+			expected := make([]interface{}, len(items))
+			for i := range items {
+				items[i] = fmt.Sprintf("item_%d", i)
+				expected[i] = int64(1)
+			}
+			args = append(args, items...)
+			result, err := rdb.Do(ctx, args...).Result()
+			require.NoError(t, err)
+			require.Equal(t, expected, result)
+			srv.Restart()
+			args = append([]interface{}{"cf.mexists", key}, items...)
+			result, err = rdb.Do(ctx, args...).Result()
+			require.NoError(t, err)
+			require.Equal(t, expected, result)
+		}()
+	}
+}
+
+func TestCuckooFilterInsertReplication(t *testing.T) {
+	master := util.StartServer(t, map[string]string{})
+	defer master.Close()
+	replica := util.StartServer(t, map[string]string{})
+	defer replica.Close()
+	ctx := context.Background()
+	primary := master.NewClientWithOption(&redis.Options{Protocol: 2})
+	defer func() { require.NoError(t, primary.Close()) }()
+	secondary := replica.NewClientWithOption(&redis.Options{Protocol: 2})
+	defer func() { require.NoError(t, secondary.Close()) }()
+	util.SlaveOf(t, secondary, master)
+	util.WaitForSync(t, secondary)
+
+	require.NoError(t, primary.Do(ctx, "cf.reserve", "replicated_full", "2", "BUCKETSIZE", "1", "EXPANSION", "0").Err())
+	result, err := primary.Do(ctx, "cf.insert", "replicated_full", "ITEMS", "duplicate", "duplicate", "duplicate").Result()
+	require.NoError(t, err)
+	require.Equal(t, []interface{}{int64(1), int64(1), int64(-1)}, result)
+	require.NoError(t, primary.Do(ctx, "cf.reserve", "replicated_expanded", "2", "BUCKETSIZE", "1", "EXPANSION", "2").Err())
+	items := make([]interface{}, 50)
+	expected := make([]interface{}, len(items))
+	for i := range items {
+		items[i] = fmt.Sprintf("item_%d", i)
+		expected[i] = int64(1)
+	}
+	args := append([]interface{}{"cf.insert", "replicated_expanded", "ITEMS"}, items...)
+	result, err = primary.Do(ctx, args...).Result()
+	require.NoError(t, err)
+	require.Equal(t, expected, result)
+	util.WaitForOffsetSync(t, primary, secondary, 5*time.Second)
+	args = append([]interface{}{"cf.mexists", "replicated_expanded"}, items...)
+	result, err = secondary.Do(ctx, args...).Result()
+	require.NoError(t, err)
+	require.Equal(t, expected, result)
+
+	for i, expectedDelete := range []int64{1, 1, 0} {
+		result, err = primary.Do(ctx, "cf.del", "replicated_full", "duplicate").Result()
+		require.NoError(t, err)
+		require.Equal(t, expectedDelete, result)
+		util.WaitForOffsetSync(t, primary, secondary, 5*time.Second)
+		exists, err := secondary.Do(ctx, "cf.exists", "replicated_full", "duplicate").Result()
+		require.NoError(t, err)
+		var expectedExists int64
+		if i == 0 {
+			expectedExists = 1
+		}
+		require.Equal(t, expectedExists, exists)
+	}
 }

@@ -573,6 +573,28 @@ class CommandSort : public Commander {
     return Status::OK();
   }
 
+  static std::vector<CommandKeyRange> Range(const std::vector<std::string> &args) {
+    int store_key = 0;
+
+    for (size_t i = 2; i < args.size(); i++) {
+      // For the case when a user specifies multiple "store" options, the last
+      // one will be the destination key, the behavior is kept the same as in Parse.
+      if (util::EqualICase(args[i], "store") && i + 1 < args.size()) {
+        store_key = static_cast<int>(i) + 1;
+        i++;
+      } else if (util::EqualICase(args[i], "by") || util::EqualICase(args[i], "get")) {
+        i++;
+      } else if (util::EqualICase(args[i], "limit")) {
+        i += 2;
+      }
+    }
+
+    if (store_key > 0) {
+      return {{1, 1, 1}, {store_key, store_key, 1}};
+    }
+    return {{1, 1, 1}};
+  }
+
  private:
   SortArgument sort_argument_;
 };
@@ -654,7 +676,7 @@ REDIS_REGISTER_COMMANDS(Key, MakeCmdAttr<CommandTTL>("ttl", 2, "read-only", 1, 1
                         MakeCmdAttr<CommandRename>("rename", 3, "write", 1, 2, 1),
                         MakeCmdAttr<CommandRenameNX>("renamenx", 3, "write", 1, 2, 1),
                         MakeCmdAttr<CommandCopy>("copy", -3, "write", 1, 2, 1),
-                        MakeCmdAttr<CommandSort<false>>("sort", -2, "write slow", 1, 1, 1),
+                        MakeCmdAttr<CommandSort<false>>("sort", -2, "write slow", CommandSort<false>::Range),
                         MakeCmdAttr<CommandSort<true>>("sort_ro", -2, "read-only slow", 1, 1, 1),
                         MakeCmdAttr<CommandKMetadata>("kmetadata", 2, "read-only", 1, 1, 1))
 

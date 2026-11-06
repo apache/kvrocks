@@ -142,6 +142,7 @@ class SlotMigrator : public redis::Database {
 
   std::atomic<bool> stop_migration_ = false;  // if is true migration will be stopped but the thread won't be destroyed
   const rocksdb::Snapshot *slot_snapshot_ = nullptr;
+  std::unique_ptr<engine::SlotRangeCompactionGuard> compaction_guard_;
   uint64_t wal_begin_seq_ = 0;
 
   std::mutex blocking_mutex_;

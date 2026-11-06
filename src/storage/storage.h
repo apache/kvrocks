@@ -28,10 +28,14 @@
 #include <rocksdb/utilities/backup_engine.h>
 #include <rocksdb/utilities/write_batch_with_index.h>
 
+#include <array>
 #include <atomic>
 #include <cinttypes>
+#include <condition_variable>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
+#include <map>
 #include <memory>
 #include <shared_mutex>
 #include <string>
@@ -39,6 +43,7 @@
 #include <utility>
 #include <vector>
 
+#include "cluster/cluster_defs.h"
 #include "common/keyspace_events.h"
 #include "common/port.h"
 #include "config/config.h"
@@ -214,6 +219,7 @@ class ColumnFamilyConfigs {
 };
 
 struct Context;
+class SlotRangeCompactionGuard;
 
 class Storage {
  public:
@@ -223,6 +229,12 @@ class Storage {
   void SetWriteOptions(const Config::RocksDB::WriteOptions &config);
   Status Open(DBOpenMode mode = kDBOpenModeDefault);
   void CloseDB();
+  // Suppress compaction-filter deletion until the returned guard is destroyed.
+  // Before taking a source snapshot, also wait for earlier compactions to finish.
+  std::unique_ptr<SlotRangeCompactionGuard> ProtectSlotRange(const SlotRange &slot_range);
+  bool IsSlotCompactionProtected(uint16_t slot) const;
+  void OnCompactionBegin(uint64_t thread_id, int job_id);
+  void OnCompactionCompleted(uint64_t thread_id, int job_id);
   void TrySkipBlockCacheDeallocationOnClose();
   bool IsEmptyDB();
   void EmptyDB();
@@ -370,6 +382,18 @@ class Storage {
   std::string GetReplIdFromDbEngine();
 
  private:
+  friend class SlotRangeCompactionGuard;
+  Status waitForCompactions(uint64_t epoch, uint64_t generation, const std::function<bool()> &cancelled);
+  void unprotectSlotRange(const SlotRange &slot_range, uint64_t generation);
+
+  std::array<std::atomic<uint16_t>, kClusterSlots> protected_slots_{};
+  std::mutex compaction_mu_;
+  std::condition_variable compaction_cv_;
+  std::map<std::pair<uint64_t, int>, uint64_t> active_compactions_;
+  uint64_t compaction_epoch_ = 0;
+  uint64_t compaction_generation_ = 0;
+  bool compaction_tracking_stopped_ = false;
+
   std::unique_ptr<rocksdb::DB> db_ = nullptr;
   std::string replid_;
   // The system clock time when the backup was created.
@@ -413,6 +437,28 @@ class Storage {
   Status applyWriteBatch(const rocksdb::WriteOptions &options, rocksdb::WriteBatch *batch);
   rocksdb::Status ingestSST(rocksdb::ColumnFamilyHandle *cf_handle, const rocksdb::IngestExternalFileOptions &options,
                             const std::vector<std::string> &sst_file_names);
+};
+
+class SlotRangeCompactionGuard {
+ public:
+  SlotRangeCompactionGuard(const SlotRangeCompactionGuard &) = delete;
+  SlotRangeCompactionGuard &operator=(const SlotRangeCompactionGuard &) = delete;
+  ~SlotRangeCompactionGuard();
+
+  // Wait for pre-existing compactions to install their output before taking a
+  // migration snapshot. Compactions started after registration already see the
+  // protected slots and do not delay this barrier.
+  Status WaitForCompactions(const std::function<bool()> &cancelled = {});
+
+ private:
+  friend class Storage;
+  SlotRangeCompactionGuard(Storage *storage, SlotRange slot_range, uint64_t epoch, uint64_t generation)
+      : storage_(storage), slot_range_(slot_range), epoch_(epoch), generation_(generation) {}
+
+  Storage *storage_;
+  SlotRange slot_range_;
+  uint64_t epoch_;
+  uint64_t generation_;
 };
 
 /// Context passes fixed snapshot and batch between APIs

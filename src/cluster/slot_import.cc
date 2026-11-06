@@ -20,6 +20,8 @@
 
 #include "slot_import.h"
 
+#include "scope_exit.h"
+
 SlotImport::SlotImport(Server *srv)
     : Database(srv->storage, kDefaultNamespace), srv_(srv), import_slot_range_(-1, -1), import_status_(kImportNone) {
   std::lock_guard<std::mutex> guard(mutex_);
@@ -46,6 +48,10 @@ Status SlotImport::Start(const SlotRange &slot_range) {
     return {Status::NotOK, fmt::format("clear keys of slot(s) error: {}", s.ToString())};
   }
 
+  // Snapshot batches may carry an old TTL until the corresponding WAL arrives.
+  // No imported records can arrive before Start returns, so existing compactions
+  // do not need to be drained here.
+  compaction_guard_ = srv_->storage->ProtectSlotRange(slot_range);
   import_status_ = kImportStart;
   import_slot_range_ = slot_range;
   return Status::OK();
@@ -64,6 +70,7 @@ Status SlotImport::Success(const SlotRange &slot_range) {
   }
 
   import_status_ = kImportSuccess;
+  compaction_guard_.reset();
   return Status::OK();
 }
 
@@ -74,6 +81,11 @@ Status SlotImport::Fail(const SlotRange &slot_range) {
                                        slot_range.String())};
   }
 
+  auto cleanup = MakeScopeExit([this] {
+    import_status_ = kImportFailed;
+    compaction_guard_.reset();
+  });
+
   // Clean imported slot data
   engine::Context ctx(srv_->storage);
   auto s = ClearKeysOfSlotRange(ctx, namespace_, slot_range);
@@ -81,7 +93,6 @@ Status SlotImport::Fail(const SlotRange &slot_range) {
     return {Status::NotOK, fmt::format("clear keys of slot(s) error: {}", s.ToString())};
   }
 
-  import_status_ = kImportFailed;
   return Status::OK();
 }
 
@@ -89,6 +100,11 @@ Status SlotImport::StopForLinkError() {
   std::lock_guard<std::mutex> guard(mutex_);
   // We don't need to do anything if the importer is not started yet.
   if (import_status_ != kImportStart) return Status::OK();
+
+  auto cleanup = MakeScopeExit([this] {
+    import_status_ = kImportFailed;
+    compaction_guard_.reset();
+  });
 
   // Maybe server has failovered
   // Situation:
@@ -108,7 +124,6 @@ Status SlotImport::StopForLinkError() {
     }
   }
 
-  import_status_ = kImportFailed;
   return Status::OK();
 }
 

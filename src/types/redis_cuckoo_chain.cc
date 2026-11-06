@@ -176,7 +176,7 @@ rocksdb::Status CuckooChain::Delete(engine::Context &ctx, const Slice &user_key,
 
   CuckooChainMetadata metadata(false);
   auto s = getCuckooChainMetadata(ctx, ns_key, &metadata);
-  if (s.IsNotFound()) return rocksdb::Status::NotFound("Not found");
+  if (s.IsNotFound()) return rocksdb::Status::OK();
   if (!s.ok()) return s;
 
   s = validateMetadata(metadata);

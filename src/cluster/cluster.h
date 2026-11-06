@@ -90,6 +90,7 @@ class Cluster {
   Status MigrateSlotRange(const SlotRange &slot_range, const std::string &dst_node_id,
                           SyncMigrateContext *blocking_ctx = nullptr);
   Status ImportSlotRange(redis::Connection *conn, const SlotRange &slot_range, int state);
+  Status Failover(bool takeover);
   std::string GetMyId() const { return myid_; }
   Status DumpClusterNodes(const std::string &file);
   Status LoadClusterNodes(const std::string &file_path);

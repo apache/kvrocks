@@ -120,7 +120,11 @@ func TestScanEmptyKey(t *testing.T) {
 
 	require.NoError(t, rdb.HSet(ctx, "hash_key", "", "v", "fab", "v").Err())
 	require.NoError(t, rdb.ZAdd(ctx, "zset_key", redis.Z{Score: 1, Member: ""}, redis.Z{Score: 2, Member: "fab"}).Err())
-	for _, cmd := range [][]string{{"SSCAN", "sadd_key"}, {"HSCAN", "hash_key"}, {"ZSCAN", "zset_key"}} {
+	require.NoError(t, rdb.SAdd(ctx, "empty_sadd_key", "").Err())
+	require.NoError(t, rdb.HSet(ctx, "empty_hash_key", "", "v").Err())
+	require.NoError(t, rdb.ZAdd(ctx, "empty_zset_key", redis.Z{Score: 1, Member: ""}).Err())
+	for _, cmd := range [][]string{{"SSCAN", "sadd_key"}, {"HSCAN", "hash_key"}, {"ZSCAN", "zset_key"},
+		{"SSCAN", "empty_sadd_key"}, {"HSCAN", "empty_hash_key"}, {"ZSCAN", "empty_zset_key"}} {
 		var members []string
 		c := "0"
 		for i := 0; i < 10; i++ {

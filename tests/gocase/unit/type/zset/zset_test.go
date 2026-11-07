@@ -2019,3 +2019,63 @@ var testZSet = func(t *testing.T, configs util.KvrocksServerConfigs) {
 
 	stressTests(t, rdb, ctx, "skiplist")
 }
+
+// A blocked client that is woken but loses the member to another client must be woken by the next ZADD.
+// With one worker, the woken client runs only after the transaction that woke it, so it always loses.
+func TestBlockedZSetPopRewokenAfterLosingMember(t *testing.T) {
+	ctx := context.Background()
+
+	readBZPop := func(t *testing.T, rd *util.TCPClient) {
+		rd.MustReadStrings(t, []string{"bzset", "y", "2"})
+	}
+	cases := []struct {
+		name  string
+		block []string
+		reply func(t *testing.T, rd *util.TCPClient)
+	}{
+		{"BZPOPMIN", []string{"bzpopmin", "bzset", "0"}, readBZPop},
+		{"BZPOPMAX", []string{"bzpopmax", "bzset", "0"}, readBZPop},
+		{"BZMPOP", []string{"bzmpop", "0", "1", "bzset", "min"}, func(t *testing.T, rd *util.TCPClient) {
+			rd.MustRead(t, "*2")
+			rd.MustReadBulkString(t, "bzset")
+			line, err := rd.ReadLine()
+			require.NoError(t, err)
+			if line == "*1" {
+				rd.MustRead(t, "*2")
+			} else {
+				require.Equal(t, "*2", line)
+			}
+			rd.MustReadBulkString(t, "y")
+			rd.MustReadBulkString(t, "2")
+		}},
+	}
+
+	for _, c := range cases {
+		srv := util.StartServer(t, map[string]string{"workers": "1"})
+		t.Run(c.name+" after the member is popped in the same transaction", func(t *testing.T) {
+			defer srv.Close()
+			rdb := srv.NewClient()
+			defer func() { require.NoError(t, rdb.Close()) }()
+			rd := srv.NewTCPClient()
+			defer func() { require.NoError(t, rd.Close()) }()
+
+			require.NoError(t, rd.WriteArgs(c.block...))
+			require.Eventually(t, func() bool {
+				return util.FindInfoEntry(rdb, "blocked_clients") == "1"
+			}, 5*time.Second, 10*time.Millisecond)
+
+			pipe := rdb.TxPipeline()
+			pipe.ZAdd(ctx, "bzset", redis.Z{Score: 1, Member: "x"})
+			pipe.ZPopMin(ctx, "bzset")
+			_, err := pipe.Exec(ctx)
+			require.NoError(t, err)
+			require.Equal(t, "PONG", rdb.Ping(ctx).Val())
+
+			require.EqualValues(t, 1, rdb.ZAdd(ctx, "bzset", redis.Z{Score: 2, Member: "y"}).Val())
+			require.Eventually(t, func() bool {
+				return rdb.ZCard(ctx, "bzset").Val() == 0
+			}, 2*time.Second, 10*time.Millisecond, "the blocked client was not woken by ZADD after it lost the race")
+			c.reply(t, rd)
+		})
+	}
+}

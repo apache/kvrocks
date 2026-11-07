@@ -63,6 +63,9 @@ class CuckooChain : public Database {
   // Deletes one matching fingerprint from the cuckoo filter.
   rocksdb::Status Delete(engine::Context &ctx, const Slice &user_key, const Slice &item, bool *deleted);
 
+  rocksdb::Status ScanDump(engine::Context &ctx, const Slice &user_key, uint64_t iterator, uint64_t *next_iterator,
+                           std::string *data, bool *has_data);
+
  private:
   // Loads metadata for a cuckoo filter key.
   rocksdb::Status getCuckooChainMetadata(engine::Context &ctx, const Slice &ns_key, CuckooChainMetadata *metadata);

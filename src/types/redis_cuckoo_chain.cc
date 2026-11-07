@@ -20,12 +20,42 @@
 
 #include "redis_cuckoo_chain.h"
 
+#include "common/encoding.h"
 #include "cuckoo_filter.h"
 #include "cuckoo_filter_page.h"
 #include "cuckoo_filter_sub_filter.h"
 #include "logging.h"
 
 namespace redis {
+
+namespace {
+
+void EncodeDumpHeader(const CuckooChainMetadata &metadata, std::string *output) {
+  PutFixed64(output, metadata.size);
+  PutFixed64(output, metadata.num_deleted_items);
+  PutFixed16(output, metadata.n_filters);
+  PutFixed8(output, metadata.bucket_size);
+  PutFixed16(output, metadata.max_iterations);
+  PutFixed16(output, metadata.expansion);
+  PutFixed64(output, metadata.base_capacity);
+  PutFixed32(output, metadata.page_size);
+}
+
+rocksdb::Status DecodeDumpHeader(rocksdb::Slice input, CuckooChainMetadata *metadata) {
+  constexpr size_t kDumpHeaderSize = sizeof(uint64_t) * 3 + sizeof(uint32_t) + sizeof(uint16_t) * 3 + sizeof(uint8_t);
+  if (input.size() != kDumpHeaderSize) {
+    return rocksdb::Status::InvalidArgument("invalid cuckoo filter dump header size");
+  }
+  if (!GetFixed64(&input, &metadata->size) || !GetFixed64(&input, &metadata->num_deleted_items) ||
+      !GetFixed16(&input, &metadata->n_filters) || !GetFixed8(&input, &metadata->bucket_size) ||
+      !GetFixed16(&input, &metadata->max_iterations) || !GetFixed16(&input, &metadata->expansion) ||
+      !GetFixed64(&input, &metadata->base_capacity) || !GetFixed32(&input, &metadata->page_size) || !input.empty()) {
+    return rocksdb::Status::InvalidArgument("invalid cuckoo filter dump header");
+  }
+  return rocksdb::Status::OK();
+}
+
+}  // namespace
 
 rocksdb::Status CuckooChain::getCuckooChainMetadata(engine::Context &ctx, const Slice &ns_key,
                                                     CuckooChainMetadata *metadata) {
@@ -389,6 +419,76 @@ rocksdb::Status CuckooChain::MExists(engine::Context &ctx, const Slice &user_key
     pages.DiscardCleanPages();
   }
 
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status CuckooChain::ScanDump(engine::Context &ctx, const Slice &user_key, uint64_t iterator,
+                                      uint64_t *next_iterator, std::string *data, bool *has_data) {
+  std::string ns_key = AppendNamespacePrefix(user_key);
+  CuckooChainMetadata metadata(false);
+  auto s = getCuckooChainMetadata(ctx, ns_key, &metadata);
+  if (!s.ok()) return s;
+  s = validateMetadata(metadata);
+  if (!s.ok()) return s;
+
+  *next_iterator = 0;
+  *has_data = false;
+  data->clear();
+  if (iterator == 0) {
+    EncodeDumpHeader(metadata, data);
+    *next_iterator = 1;
+    *has_data = true;
+    return rocksdb::Status::OK();
+  }
+
+  const auto first_page_index = static_cast<uint32_t>(iterator - 1);
+  const auto buckets_per_page = std::max<uint32_t>(1, metadata.page_size / metadata.bucket_size);
+
+  uint32_t page_index = first_page_index;
+  uint16_t filter_index = 0;
+  uint32_t num_buckets = 0;
+  uint32_t page_count = 0;
+  for (; filter_index < metadata.n_filters; ++filter_index) {
+    s = CuckooFilterHelper::GetFilterNumBuckets(metadata.base_capacity, metadata.expansion, metadata.bucket_size,
+                                                filter_index, &num_buckets);
+    if (!s.ok()) return s;
+    page_count = (num_buckets - 1) / buckets_per_page + 1;
+    if (page_index < page_count) break;
+    page_index -= page_count;
+  }
+  if (filter_index == metadata.n_filters) {
+    return rocksdb::Status::OK();
+  }
+
+  if (metadata.page_size > kCuckooFilterMaxScanDumpSize - 2 * sizeof(uint32_t)) {
+    return rocksdb::Status::InvalidArgument("cuckoo filter page size exceeds scan dump limit");
+  }
+
+  const uint32_t page_payload_size = std::max<uint32_t>(metadata.page_size, sizeof(uint32_t));
+  const uint32_t max_pages = (kCuckooFilterMaxScanDumpSize - sizeof(uint32_t) * 2) / page_payload_size;
+  std::vector<CuckooPageCache::DumpPageRange> ranges;
+  uint32_t pages_to_read = 0;
+  while (filter_index < metadata.n_filters && pages_to_read < max_pages) {
+    uint32_t current_num_buckets = 0;
+    s = CuckooFilterHelper::GetFilterNumBuckets(metadata.base_capacity, metadata.expansion, metadata.bucket_size,
+                                                filter_index, &current_num_buckets);
+    if (!s.ok()) return s;
+    const uint32_t current_page_count = (current_num_buckets - 1) / buckets_per_page + 1;
+    const uint32_t available_pages = current_page_count - page_index;
+    const uint32_t range_page_count = std::min<uint32_t>(available_pages, max_pages - pages_to_read);
+    ranges.push_back({filter_index, current_num_buckets, page_index, range_page_count});
+    pages_to_read += range_page_count;
+    ++filter_index;
+    page_index = 0;
+  }
+  if (pages_to_read == 0) return rocksdb::Status::Corruption("invalid cuckoo filter page range");
+
+  CuckooPageCache pages(storage_, ctx, ns_key, storage_->IsSlotIdEncoded(), metadata.version, metadata.bucket_size,
+                        metadata.page_size);
+  s = pages.ScanPageBytes(ranges, first_page_index, data);
+  if (!s.ok()) return s;
+  *next_iterator = iterator + pages_to_read;
+  *has_data = true;
   return rocksdb::Status::OK();
 }
 

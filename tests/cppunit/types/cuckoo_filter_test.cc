@@ -1336,3 +1336,258 @@ TEST_F(RedisCuckooFilterTest, DeleteDoesNotCompactFilters) {
   s = readPage(makePageKey(key_, metadata, 1, 0), &page);
   EXPECT_TRUE(s.ok()) << s.ToString();
 }
+
+TEST_F(RedisCuckooFilterTest, ScanDumpEmptyFilterReturnsHeader) {
+  reserveAndVerify(key_, 100, 2, 20, 2);
+  uint64_t next_iterator = 0;
+  std::string data;
+  bool has_data = false;
+  auto s = cuckoo_->ScanDump(*ctx_, key_, 0, &next_iterator, &data, &has_data);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  EXPECT_EQ(next_iterator, 1);
+  ASSERT_EQ(data.size(), 35);
+  EXPECT_EQ(DecodeFixed64(data.data()), 0U);
+  EXPECT_EQ(DecodeFixed64(data.data() + 8), 0U);
+  EXPECT_EQ(DecodeFixed16(data.data() + 16), 1U);
+  EXPECT_EQ(static_cast<uint8_t>(data[18]), 2U);
+  EXPECT_EQ(DecodeFixed16(data.data() + 19), 20U);
+  EXPECT_EQ(DecodeFixed16(data.data() + 21), 2U);
+  EXPECT_EQ(DecodeFixed64(data.data() + 23), 100U);
+  EXPECT_EQ(DecodeFixed32(data.data() + 31), kCuckooFilterDefaultPageSize);
+  EXPECT_TRUE(has_data);
+
+  s = cuckoo_->ScanDump(*ctx_, key_, next_iterator, &next_iterator, &data, &has_data);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  ASSERT_EQ(next_iterator, 2U);
+  EXPECT_EQ(data.size(), 12U);
+  EXPECT_EQ(DecodeFixed32(data.data()), 0U);
+  EXPECT_EQ(DecodeFixed32(data.data() + 4), 1U);
+  EXPECT_EQ(DecodeFixed32(data.data() + 8), 0U);
+  EXPECT_TRUE(has_data);
+
+  s = cuckoo_->ScanDump(*ctx_, key_, next_iterator, &next_iterator, &data, &has_data);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  EXPECT_EQ(next_iterator, 0);
+  EXPECT_TRUE(data.empty());
+  EXPECT_FALSE(has_data);
+}
+
+TEST_F(RedisCuckooFilterTest, ScanDumpReturnsHeaderAndInsertedData) {
+  reserveAndVerify(key_, 100, 2, 20, 1);
+  bool added = false;
+  auto s = cuckoo_->Add(*ctx_, key_, "scandump-item", &added);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  ASSERT_TRUE(added);
+
+  uint64_t next_iterator = 0;
+  std::string header;
+  bool has_data = false;
+  s = cuckoo_->ScanDump(*ctx_, key_, 0, &next_iterator, &header, &has_data);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  ASSERT_TRUE(has_data);
+  EXPECT_EQ(next_iterator, 1);
+  EXPECT_EQ(header.size(), 35);
+  EXPECT_EQ(DecodeFixed32(header.data() + 31), kCuckooFilterDefaultPageSize);
+
+  std::string data;
+  s = cuckoo_->ScanDump(*ctx_, key_, next_iterator, &next_iterator, &data, &has_data);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  ASSERT_TRUE(has_data);
+  ASSERT_GE(data.size(), 2 * sizeof(uint32_t));
+  ASSERT_EQ(DecodeFixed32(data.data() + data.size() - 2 * sizeof(uint32_t)), 0U);
+  EXPECT_NE(data.find_first_not_of('\0'), std::string::npos);
+  auto hash = redis::CuckooFilterHelper::Hash("scandump-item");
+  auto fingerprint = redis::CuckooFilterHelper::GenerateFingerprint(hash);
+  EXPECT_NE(data.find(static_cast<char>(fingerprint)), std::string::npos);
+}
+
+TEST_F(RedisCuckooFilterTest, ScanDumpUsesRedisBloomChunkBoundaries) {
+  constexpr uint64_t capacity = 16 * 1024 * 1024;
+  constexpr uint8_t bucket_size = 5;
+  constexpr uint32_t page_size = 2 * 1024 * 1024;
+  reserveAndVerify(key_, capacity, bucket_size, 20, 1, page_size);
+
+  bool added = false;
+  auto s = cuckoo_->Add(*ctx_, key_, "chunk-boundary-item", &added);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  ASSERT_TRUE(added);
+
+  auto metadata = getMetadata(key_);
+  uint32_t num_buckets = 0;
+  s = redis::CuckooFilterHelper::GetFilterNumBuckets(metadata.base_capacity, metadata.expansion, metadata.bucket_size,
+                                                     0, &num_buckets);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  auto filter_size = static_cast<uint64_t>(num_buckets) * metadata.bucket_size;
+  ASSERT_GT(filter_size, redis::kCuckooFilterMaxScanDumpSize);
+  const auto buckets_per_page = page_size / bucket_size;
+  const auto page_count = (num_buckets - 1) / buckets_per_page + 1;
+  const auto max_pages = (redis::kCuckooFilterMaxScanDumpSize - 2 * sizeof(uint32_t)) / page_size;
+  ASSERT_EQ(max_pages, 7U);
+  ASSERT_GT(page_count, max_pages);
+
+  uint64_t next_iterator = 0;
+  std::string data;
+  bool has_data = false;
+  s = cuckoo_->ScanDump(*ctx_, key_, 0, &next_iterator, &data, &has_data);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  EXPECT_EQ(next_iterator, 1);
+  EXPECT_EQ(data.size(), 35);
+  EXPECT_EQ(DecodeFixed32(data.data() + 31), page_size);
+  EXPECT_TRUE(has_data);
+
+  s = cuckoo_->ScanDump(*ctx_, key_, next_iterator, &next_iterator, &data, &has_data);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  EXPECT_EQ(next_iterator, 1 + max_pages);
+  EXPECT_LE(data.size(), redis::kCuckooFilterMaxScanDumpSize);
+  EXPECT_TRUE(has_data);
+  const auto first_skip_count = DecodeFixed32(data.data() + data.size() - 2 * sizeof(uint32_t));
+  ASSERT_EQ(first_skip_count, max_pages - 1);
+  const auto first_page_bytes_size = data.size() - 2 * sizeof(uint32_t) - first_skip_count * sizeof(uint32_t);
+  auto first_data_chunk = data.substr(0, first_page_bytes_size);
+
+  s = cuckoo_->ScanDump(*ctx_, key_, next_iterator, &next_iterator, &data, &has_data);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  EXPECT_EQ(next_iterator, 1 + page_count);
+  EXPECT_LE(data.size(), redis::kCuckooFilterMaxScanDumpSize);
+  EXPECT_TRUE(has_data);
+  const auto second_skip_count = DecodeFixed32(data.data() + data.size() - 2 * sizeof(uint32_t));
+  ASSERT_EQ(second_skip_count, page_count - max_pages);
+  const auto second_page_bytes_size = data.size() - 2 * sizeof(uint32_t) - second_skip_count * sizeof(uint32_t);
+  first_data_chunk.append(data, 0, second_page_bytes_size);
+  EXPECT_NE(first_data_chunk.find_first_not_of('\0'), std::string::npos);
+  auto hash = redis::CuckooFilterHelper::Hash("chunk-boundary-item");
+  auto fingerprint = redis::CuckooFilterHelper::GenerateFingerprint(hash);
+  EXPECT_NE(first_data_chunk.find(static_cast<char>(fingerprint)), std::string::npos);
+
+  s = cuckoo_->ScanDump(*ctx_, key_, next_iterator, &next_iterator, &data, &has_data);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  EXPECT_EQ(next_iterator, 0);
+  EXPECT_TRUE(data.empty());
+  EXPECT_FALSE(has_data);
+}
+
+TEST_F(RedisCuckooFilterTest, ScanDumpExpansionMatchesAllPages) {
+  CuckooChainMetadata metadata(false);
+  metadata.size = 1;
+  metadata.base_capacity = 100;
+  metadata.bucket_size = 2;
+  metadata.max_iterations = 20;
+  metadata.expansion = 2;
+  metadata.n_filters = 2;
+  metadata.num_deleted_items = 0;
+  metadata.page_size = 8;
+  writeMetadata(key_, metadata);
+
+  std::string expected;
+  std::vector<uint32_t> filter_page_counts;
+  std::vector<size_t> page_lengths;
+  for (uint16_t filter_index = 0; filter_index < metadata.n_filters; ++filter_index) {
+    uint32_t num_buckets = 0;
+    auto s = redis::CuckooFilterHelper::GetFilterNumBuckets(metadata.base_capacity, metadata.expansion,
+                                                            metadata.bucket_size, filter_index, &num_buckets);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    const auto buckets_per_page = metadata.page_size / metadata.bucket_size;
+    const auto page_count = (num_buckets + buckets_per_page - 1) / buckets_per_page;
+    ASSERT_GT(page_count, 2U);
+    filter_page_counts.push_back(page_count);
+
+    for (uint32_t page_index = 0; page_index < page_count; ++page_index) {
+      const auto first_bucket = page_index * buckets_per_page;
+      const auto page_bucket_count = std::min(buckets_per_page, num_buckets - first_bucket);
+      const auto page_length = page_bucket_count * metadata.bucket_size;
+      page_lengths.push_back(page_length);
+      const bool missing_middle_page = filter_index == 0 && page_index == 1;
+      if (missing_middle_page) {
+        expected.append(page_length, 0);
+        continue;
+      }
+
+      std::string page(page_length, 0);
+      for (size_t i = 0; i < page.size(); ++i) {
+        page[i] = static_cast<char>(filter_index * 40 + page_index + i + 1);
+      }
+      writePage(makePageKey(key_, metadata, filter_index, page_index), page);
+      std::string stored_page;
+      s = readPage(makePageKey(key_, metadata, filter_index, page_index), &stored_page);
+      ASSERT_TRUE(s.ok()) << s.ToString();
+      expected += stored_page;
+    }
+  }
+
+  uint64_t iterator = 0;
+  std::string header;
+  bool has_data = false;
+  auto s = cuckoo_->ScanDump(*ctx_, key_, iterator, &iterator, &header, &has_data);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  ASSERT_TRUE(has_data);
+  ASSERT_EQ(header.size(), 35);
+  EXPECT_EQ(DecodeFixed32(header.data() + 31), metadata.page_size);
+  ASSERT_EQ(iterator, 1);
+
+  std::string dump;
+  while (iterator != 0) {
+    std::string chunk;
+    const auto chunk_start_iterator = iterator;
+    s = cuckoo_->ScanDump(*ctx_, key_, chunk_start_iterator, &iterator, &chunk, &has_data);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    if (iterator != 0) {
+      ASSERT_TRUE(has_data);
+      const auto chunk_start_page = chunk_start_iterator - 1;
+      const auto chunk_page_count = iterator - chunk_start_iterator;
+      uint64_t local_page = chunk_start_page;
+      size_t filter_index = 0;
+      while (local_page >= filter_page_counts[filter_index]) {
+        local_page -= filter_page_counts[filter_index++];
+      }
+      redis::CuckooDumpPayload payload;
+      s = redis::CuckooDumpPayload::Builder::Decode(chunk, &payload);
+      ASSERT_TRUE(s.ok()) << s.ToString();
+      ASSERT_EQ(payload.page_index, chunk_start_page);
+      const auto page_bytes_size = payload.page_bytes.size();
+      size_t payload_offset = 0;
+      uint64_t global_page = chunk_start_page;
+      for (uint64_t i = 0; i < chunk_page_count; ++i, ++local_page, ++global_page) {
+        const auto relative_page = static_cast<uint32_t>(global_page - payload.page_index);
+        const bool is_skipped = std::find(payload.skipped_page_indexes.begin(), payload.skipped_page_indexes.end(),
+                                          relative_page) != payload.skipped_page_indexes.end();
+        if (is_skipped) {
+          dump.append(page_lengths[global_page], 0);
+        } else {
+          dump.append(payload.page_bytes.data() + payload_offset, page_lengths[global_page]);
+          payload_offset += page_lengths[global_page];
+        }
+        if (local_page + 1 == filter_page_counts[filter_index] && i + 1 < chunk_page_count) {
+          ++filter_index;
+          local_page = 0;
+        }
+      }
+      ASSERT_EQ(payload_offset, page_bytes_size);
+    } else {
+      EXPECT_FALSE(has_data);
+      EXPECT_TRUE(chunk.empty());
+    }
+  }
+  EXPECT_EQ(dump, expected);
+}
+
+TEST_F(RedisCuckooFilterTest, ScanDumpUsesPageIterator) {
+  reserveAndVerify(key_, 100, 2, 20, 1);
+  bool added = false;
+  auto s = cuckoo_->Add(*ctx_, key_, "item", &added);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  ASSERT_TRUE(added);
+
+  uint64_t next_iterator = 0;
+  std::string full_data;
+  bool has_data = false;
+  s = cuckoo_->ScanDump(*ctx_, key_, 1, &next_iterator, &full_data, &has_data);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  ASSERT_TRUE(has_data);
+
+  std::string end_data;
+  s = cuckoo_->ScanDump(*ctx_, key_, next_iterator, &next_iterator, &end_data, &has_data);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  EXPECT_FALSE(has_data);
+  EXPECT_TRUE(end_data.empty());
+  EXPECT_EQ(next_iterator, 0);
+}

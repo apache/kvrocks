@@ -1680,3 +1680,93 @@ func TestPotentialDataRaceInBlockingCommand(t *testing.T) {
 	cancelFn()
 	wg.Wait()
 }
+
+// A blocked client that is woken but loses the element to another client must be woken by the next push.
+// With one worker, the woken client runs only after the transaction or pipeline that woke it, so it always loses.
+func TestBlockedClientRewokenAfterLosingElement(t *testing.T) {
+	ctx := context.Background()
+
+	cases := []struct {
+		name  string
+		block []string
+		reply func(t *testing.T, rd *util.TCPClient)
+	}{
+		{"BLPOP", []string{"blpop", "blist", "0"}, func(t *testing.T, rd *util.TCPClient) {
+			rd.MustReadStrings(t, []string{"blist", "y"})
+		}},
+		{"BRPOP", []string{"brpop", "blist", "0"}, func(t *testing.T, rd *util.TCPClient) {
+			rd.MustReadStrings(t, []string{"blist", "y"})
+		}},
+		{"BLPOP on several keys", []string{"blpop", "other", "blist", "0"}, func(t *testing.T, rd *util.TCPClient) {
+			rd.MustReadStrings(t, []string{"blist", "y"})
+		}},
+		{"BLMOVE", []string{"blmove", "blist", "target", "left", "right", "0"}, func(t *testing.T, rd *util.TCPClient) {
+			rd.MustReadBulkString(t, "y")
+		}},
+		{"BLMPOP", []string{"blmpop", "0", "1", "blist", "left"}, func(t *testing.T, rd *util.TCPClient) {
+			rd.MustReadStringsWithKey(t, "blist", []string{"y"})
+		}},
+	}
+
+	start := func(sub *testing.T) (*util.KvrocksServer, *redis.Client) {
+		srv := util.StartServer(t, map[string]string{"workers": "1"})
+		sub.Cleanup(srv.Close)
+		rdb := srv.NewClient()
+		sub.Cleanup(func() { require.NoError(sub, rdb.Close()) })
+		return srv, rdb
+	}
+
+	waitBlocked := func(t *testing.T, rdb *redis.Client, n int) {
+		require.Eventually(t, func() bool {
+			cnt, _ := strconv.Atoi(util.FindInfoEntry(rdb, "blocked_clients"))
+			return cnt >= n
+		}, 5*time.Second, 10*time.Millisecond)
+	}
+
+	pushAndCheck := func(t *testing.T, rdb *redis.Client, rd *util.TCPClient, reply func(t *testing.T, rd *util.TCPClient)) {
+		require.Equal(t, "PONG", rdb.Ping(ctx).Val())
+		require.EqualValues(t, 1, rdb.RPush(ctx, "blist", "y").Val())
+		require.Eventually(t, func() bool {
+			return rdb.LLen(ctx, "blist").Val() == 0
+		}, 2*time.Second, 10*time.Millisecond, "the blocked client was not woken by the push after it lost the race")
+		reply(t, rd)
+	}
+
+	for _, c := range cases {
+		t.Run(c.name+" after the element is popped in the same transaction", func(t *testing.T) {
+			srv, rdb := start(t)
+			rd := srv.NewTCPClient()
+			defer func() { require.NoError(t, rd.Close()) }()
+
+			require.NoError(t, rd.WriteArgs(c.block...))
+			waitBlocked(t, rdb, 1)
+
+			pipe := rdb.TxPipeline()
+			pipe.RPush(ctx, "blist", "x")
+			pipe.LPop(ctx, "blist")
+			cmds, err := pipe.Exec(ctx)
+			require.NoError(t, err)
+			require.Equal(t, "x", cmds[1].(*redis.StringCmd).Val())
+
+			pushAndCheck(t, rdb, rd, c.reply)
+		})
+
+		t.Run(c.name+" after the element is popped by a pipelined command", func(t *testing.T) {
+			srv, rdb := start(t)
+			rd := srv.NewTCPClient()
+			defer func() { require.NoError(t, rd.Close()) }()
+			producer := srv.NewTCPClient()
+			defer func() { require.NoError(t, producer.Close()) }()
+
+			require.NoError(t, rd.WriteArgs(c.block...))
+			waitBlocked(t, rdb, 1)
+
+			require.NoError(t, producer.Write("*3\r\n$5\r\nRPUSH\r\n$5\r\nblist\r\n$1\r\nx\r\n"+
+				"*2\r\n$4\r\nLPOP\r\n$5\r\nblist\r\n"))
+			producer.MustRead(t, ":1")
+			producer.MustReadBulkString(t, "x")
+
+			pushAndCheck(t, rdb, rd, c.reply)
+		})
+	}
+}

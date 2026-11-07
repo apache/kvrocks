@@ -20,6 +20,8 @@
 
 #include "redis_cuckoo_chain.h"
 
+#include <limits>
+
 #include "cuckoo_filter.h"
 #include "cuckoo_filter_page.h"
 #include "cuckoo_filter_sub_filter.h"
@@ -35,6 +37,9 @@ rocksdb::Status CuckooChain::getCuckooChainMetadata(engine::Context &ctx, const 
 rocksdb::Status CuckooChain::validateMetadata(const CuckooChainMetadata &metadata) {
   if (metadata.n_filters == 0) {
     return rocksdb::Status::Corruption("invalid metadata: n_filters is 0");
+  }
+  if (metadata.expansion == 0 && metadata.n_filters > 1) {
+    return rocksdb::Status::Corruption("invalid metadata: non-scaling filter has multiple filters");
   }
   if (metadata.base_capacity == 0) {
     return rocksdb::Status::Corruption("invalid metadata: base_capacity is 0");
@@ -167,6 +172,66 @@ rocksdb::Status CuckooChain::Add(engine::Context &ctx, const Slice &user_key, co
   if (!s.ok()) return s;
 
   *added = true;
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status CuckooChain::calculateTotalBuckets(const CuckooChainMetadata &metadata, uint32_t base_buckets,
+                                                   uint64_t *total_buckets) {
+  *total_buckets = base_buckets;
+
+  if (metadata.expansion == 1) {
+    // Equal-sized expansion: every sub-filter has the same bucket count as the initial one.
+    *total_buckets *= metadata.n_filters;
+    return rocksdb::Status::OK();
+  }
+
+  uint64_t capacity = metadata.base_capacity;
+  for (uint16_t filter_idx = 1; filter_idx < metadata.n_filters; ++filter_idx) {
+    if (metadata.expansion != 0 && capacity > std::numeric_limits<uint64_t>::max() / metadata.expansion) {
+      return rocksdb::Status::Corruption("invalid metadata: filter capacity is too large");
+    }
+    capacity *= metadata.expansion;
+
+    uint32_t num_buckets = 0;
+    auto s = CuckooFilterHelper::CalculateRequiredBuckets(capacity, metadata.bucket_size, &num_buckets);
+    if (!s.ok()) {
+      return rocksdb::Status::Corruption("invalid metadata: filter capacity is too large");
+    }
+    *total_buckets += num_buckets;
+  }
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status CuckooChain::Info(engine::Context &ctx, const Slice &user_key, CuckooFilterInfo *info) {
+  std::string ns_key = AppendNamespacePrefix(user_key);
+  CuckooChainMetadata metadata(false);
+  auto s = getCuckooChainMetadata(ctx, ns_key, &metadata);
+  if (!s.ok()) {
+    return s;
+  }
+
+  s = validateMetadata(metadata);
+  if (!s.ok()) {
+    return s;
+  }
+
+  uint32_t base_buckets = 0;
+  s = CuckooFilterHelper::GetFilterNumBuckets(metadata.base_capacity, metadata.expansion, metadata.bucket_size, 0,
+                                              &base_buckets);
+  if (!s.ok()) return s;
+
+  uint64_t total_buckets = 0;
+  s = calculateTotalBuckets(metadata, base_buckets, &total_buckets);
+  if (!s.ok()) return s;
+
+  info->base_buckets = base_buckets;
+  info->bucket_bytes = metadata.bucket_size * total_buckets;
+  info->n_filters = metadata.n_filters;
+  info->item_count = metadata.size;
+  info->n_items_deleted = metadata.num_deleted_items;
+  info->bucket_size = metadata.bucket_size;
+  info->expansion = metadata.expansion;
+  info->max_iterations = metadata.max_iterations;
   return rocksdb::Status::OK();
 }
 

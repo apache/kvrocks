@@ -466,6 +466,53 @@ TEST_F(RedisCuckooFilterTest, ReservePersistsPageSize) {
   reserveAndVerify(key_, 1000, 4, 500, 2, page_size);
 }
 
+TEST_F(RedisCuckooFilterTest, InfoReportsEqualSizedExpandedFilters) {
+  reserveAndVerify(key_, 2, 1, 1, 1);
+
+  // Fill the initial filter until the chain expands to a second filter.
+  for (int i = 0; i < 100; ++i) {
+    bool added = false;
+    auto s = cuckoo_->Add(*ctx_, key_, "item_" + std::to_string(i), &added);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    ASSERT_TRUE(added);
+  }
+
+  auto metadata = getMetadata(key_);
+  ASSERT_GT(metadata.n_filters, 1);
+
+  uint32_t base_buckets = 0;
+  ASSERT_TRUE(
+      redis::CuckooFilterHelper::CalculateRequiredBuckets(metadata.base_capacity, metadata.bucket_size, &base_buckets)
+          .ok());
+  redis::CuckooFilterInfo info;
+  auto s = cuckoo_->Info(*ctx_, key_, &info);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  EXPECT_EQ(info.base_buckets, base_buckets);
+  EXPECT_EQ(info.n_filters, metadata.n_filters);
+  EXPECT_EQ(info.bucket_bytes, static_cast<uint64_t>(base_buckets) * metadata.bucket_size * metadata.n_filters);
+}
+
+TEST_F(RedisCuckooFilterTest, InfoRejectsNonScalingMultipleFilters) {
+  reserveAndVerify(key_, 4, 2, 20, 0);
+  auto metadata = getMetadata(key_);
+  metadata.n_filters = 2;
+  writeMetadata(key_, metadata);
+
+  redis::CuckooFilterInfo info;
+  EXPECT_TRUE(cuckoo_->Info(*ctx_, key_, &info).IsCorruption());
+}
+
+TEST_F(RedisCuckooFilterTest, InfoRejectsExpandedCapacityOverflow) {
+  reserveAndVerify(key_, 4, 2, 20, 2);
+  auto metadata = getMetadata(key_);
+  // The expansion chain exceeds the maximum supported capacity well before this many filters.
+  metadata.n_filters = 32;
+  writeMetadata(key_, metadata);
+
+  redis::CuckooFilterInfo info;
+  EXPECT_TRUE(cuckoo_->Info(*ctx_, key_, &info).IsCorruption());
+}
+
 TEST_F(RedisCuckooFilterTest, AddBasic) {
   reserveAndVerify(key_, 1000, 4, 500, 2);
   addAndVerify(key_, "item1", 1000, 4, 500, 2, 1);

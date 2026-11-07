@@ -22,7 +22,9 @@ package bloom
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/apache/kvrocks/tests/gocase/util"
 	"github.com/stretchr/testify/require"
@@ -270,6 +272,13 @@ func TestCuckooFilter(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, key).Err())
 		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "5000", "BUCKETSIZE", "8", "MAXITERATIONS", "100", "EXPANSION", "4").Err())
 		require.Equal(t, "MBbloomCF", rdb.Type(ctx, key).Val())
+		result, err := rdb.Do(ctx, "cf.info", key).Result()
+		require.NoError(t, err)
+		require.IsType(t, map[interface{}]interface{}{}, result)
+		info := result.(map[interface{}]interface{})
+		require.Equal(t, int64(8), info["Bucket size"])
+		require.Equal(t, int64(100), info["Max iterations"])
+		require.Equal(t, int64(4), info["Expansion rate"])
 	})
 
 	t.Run("Add empty string item", func(t *testing.T) {
@@ -292,6 +301,193 @@ func TestCuckooFilter(t *testing.T) {
 		result := rdb.Do(ctx, "cf.add", key, string(largeItem))
 		require.NoError(t, result.Err())
 		require.Equal(t, int64(1), result.Val())
+	})
+
+	t.Run("Info of no exists key", func(t *testing.T) {
+		key := "no_exist_key"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.ErrorContains(t, rdb.Do(ctx, "cf.info", key).Err(), "Not found")
+	})
+
+	t.Run("Info wrong number of arguments", func(t *testing.T) {
+		require.ErrorContains(t, rdb.Do(ctx, "cf.info").Err(), "wrong number of arguments")
+		require.ErrorContains(t, rdb.Do(ctx, "cf.info", "key", "size", "extra").Err(), "wrong number of arguments")
+	})
+
+	t.Run("Info empty filter", func(t *testing.T) {
+		key := "test_cf_info_empty"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "1024").Err())
+
+		all, err := rdb.Do(ctx, "cf.info", key).Result()
+		require.NoError(t, err)
+		require.Equal(t, map[interface{}]interface{}{
+			"Size":                     int64(2048),
+			"Number of buckets":        int64(1024),
+			"Number of filters":        int64(1),
+			"Number of items inserted": int64(0),
+			"Number of items deleted":  int64(0),
+			"Bucket size":              int64(2),
+			"Expansion rate":           int64(1),
+			"Max iterations":           int64(20),
+		}, all)
+	})
+
+	t.Run("Info full output for non-scaling filter", func(t *testing.T) {
+		key := "test_cf_info_non_scaling_full"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "1000", "EXPANSION", "0").Err())
+
+		all, err := rdb.Do(ctx, "cf.info", key).Result()
+		require.NoError(t, err)
+		info := all.(map[interface{}]interface{})
+		require.Equal(t, int64(2048), info["Size"])
+		require.Equal(t, int64(1024), info["Number of buckets"])
+		require.Equal(t, int64(1), info["Number of filters"])
+		expansion, ok := info["Expansion rate"]
+		require.True(t, ok)
+		require.Equal(t, int64(0), expansion)
+	})
+
+	t.Run("Info wrong type key", func(t *testing.T) {
+		key := "test_cf_info_wrong_type"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Set(ctx, key, "value", 0).Err())
+		require.ErrorContains(t, rdb.Do(ctx, "cf.info", key).Err(), "WRONGTYPE")
+	})
+
+	t.Run("Info invalid argument", func(t *testing.T) {
+		key := "test_cf_info_invalid_arg"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "1000").Err())
+		require.ErrorContains(t, rdb.Do(ctx, "cf.info", key, "invalid").Err(), "Invalid info argument")
+	})
+
+	t.Run("Info items after add", func(t *testing.T) {
+		key := "test_cf_info_items_add"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "1000").Err())
+		for count := int64(0); count <= 2; count++ {
+			if count > 0 {
+				require.NoError(t, rdb.Do(ctx, "cf.add", key, fmt.Sprintf("item%d", count)).Err())
+			}
+			items, err := rdb.Do(ctx, "cf.info", key, "items").Result()
+			require.NoError(t, err)
+			require.Equal(t, map[interface{}]interface{}{
+				"Number of items inserted": count,
+				"Number of items deleted":  int64(0),
+			}, items)
+		}
+	})
+
+	t.Run("Info items after deletion", func(t *testing.T) {
+		key := "test_cf_info_items_delete"
+		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "1000").Err())
+		for i := 0; i < 3; i++ {
+			require.Equal(t, int64(1), rdb.Do(ctx, "cf.add", key, "item").Val())
+		}
+		require.Equal(t, int64(1), rdb.Do(ctx, "cf.del", key, "item").Val())
+		items, err := rdb.Do(ctx, "cf.info", key, "items").Result()
+		require.NoError(t, err)
+		require.Equal(t, map[interface{}]interface{}{
+			"Number of items inserted": int64(2),
+			"Number of items deleted":  int64(1),
+		}, items)
+	})
+
+	t.Run("Info filter deleted by negative TTL", func(t *testing.T) {
+		key := "test_cf_info_deleted_by_ttl"
+		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "1000").Err())
+		require.Equal(t, int64(1), rdb.Do(ctx, "pexpire", key, "-1000").Val())
+		require.ErrorContains(t, rdb.Do(ctx, "cf.info", key).Err(), "Not found")
+	})
+
+	t.Run("Info naturally expired filter", func(t *testing.T) {
+		key := "test_cf_info_naturally_expired"
+		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "1000").Err())
+		require.NoError(t, rdb.Do(ctx, "cf.info", key).Err())
+		expire := rdb.PExpire(ctx, key, time.Second)
+		require.NoError(t, expire.Err())
+		require.True(t, expire.Val())
+		require.Eventually(t, func() bool {
+			err := rdb.Do(ctx, "cf.info", key).Err()
+			return err != nil && strings.Contains(err.Error(), "Not found")
+		}, 5*time.Second, 10*time.Millisecond)
+	})
+
+	t.Run("Info duplicate items increments", func(t *testing.T) {
+		key := "test_cf_info_items_dup"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "1000").Err())
+		for i := 0; i < 3; i++ {
+			require.NoError(t, rdb.Do(ctx, "cf.add", key, "dup_item").Err())
+		}
+		items, err := rdb.Do(ctx, "cf.info", key, "items").Result()
+		require.NoError(t, err)
+		require.Equal(t, map[interface{}]interface{}{
+			"Number of items inserted": int64(3),
+			"Number of items deleted":  int64(0),
+		}, items)
+	})
+
+	t.Run("Info filters after expansion", func(t *testing.T) {
+		key := "test_cf_info_expansion"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "4", "BUCKETSIZE", "1", "MAXITERATIONS", "1", "EXPANSION", "2").Err())
+		require.Equal(t, int64(1), rdb.Do(ctx, "cf.info", key, "filters").Val())
+		require.Equal(t, int64(8), rdb.Do(ctx, "cf.info", key, "buckets").Val())
+		require.Equal(t, int64(8), rdb.Do(ctx, "cf.info", key, "size").Val())
+		for i := 0; i < 10; i++ {
+			require.NoError(t, rdb.Do(ctx, "cf.add", key, fmt.Sprintf("expand_%d", i)).Err())
+		}
+		filters, err := rdb.Do(ctx, "cf.info", key, "filters").Int64()
+		require.NoError(t, err)
+		require.Greater(t, filters, int64(1))
+		require.Equal(t, int64(8), rdb.Do(ctx, "cf.info", key, "buckets").Val())
+		require.Equal(t, int64(8)*((int64(1)<<filters)-1), rdb.Do(ctx, "cf.info", key, "size").Val())
+		result, err := rdb.Do(ctx, "cf.info", key).Result()
+		require.NoError(t, err)
+		require.IsType(t, map[interface{}]interface{}{}, result)
+		all := result.(map[interface{}]interface{})
+		require.Equal(t, int64(8), all["Number of buckets"])
+		require.Equal(t, filters, all["Number of filters"])
+		require.Equal(t, int64(8)*((int64(1)<<filters)-1), all["Size"])
+	})
+
+	t.Run("Info equal-sized expanded filters", func(t *testing.T) {
+		key := "test_cf_info_expansion_one"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "2", "BUCKETSIZE", "1", "MAXITERATIONS", "1", "EXPANSION", "1").Err())
+
+		for i := 0; i < 100; i++ {
+			require.NoError(t, rdb.Do(ctx, "cf.add", key, fmt.Sprintf("equal_%d", i)).Err())
+		}
+
+		filters, err := rdb.Do(ctx, "cf.info", key, "filters").Int64()
+		require.NoError(t, err)
+		require.Greater(t, filters, int64(1))
+		require.Equal(t, int64(4), rdb.Do(ctx, "cf.info", key, "buckets").Val())
+		require.Equal(t, int64(4)*filters, rdb.Do(ctx, "cf.info", key, "size").Val())
+	})
+
+	t.Run("Info individual fields", func(t *testing.T) {
+		key := "test_cf_info_fields"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "500", "BUCKETSIZE", "4", "MAXITERATIONS", "20", "EXPANSION", "0").Err())
+		require.Equal(t, int64(1024), rdb.Do(ctx, "cf.info", key, "size").Val())
+		require.Equal(t, int64(256), rdb.Do(ctx, "cf.info", key, "buckets").Val())
+		require.Equal(t, int64(1), rdb.Do(ctx, "cf.info", key, "filters").Val())
+		items, err := rdb.Do(ctx, "cf.info", key, "items").Result()
+		require.NoError(t, err)
+		require.Equal(t, map[interface{}]interface{}{
+			"Number of items inserted": int64(0),
+			"Number of items deleted":  int64(0),
+		}, items)
+		require.Equal(t, int64(4), rdb.Do(ctx, "cf.info", key, "bucket_size").Val())
+		expansion, err := rdb.Do(ctx, "cf.info", key, "expansion").Result()
+		require.NoError(t, err)
+		require.Equal(t, int64(0), expansion)
+		require.Equal(t, int64(20), rdb.Do(ctx, "cf.info", key, "max_iterations").Val())
 	})
 }
 

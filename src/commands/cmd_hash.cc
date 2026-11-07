@@ -664,13 +664,15 @@ class CommandHMSet : public Commander {
 class CommandHSetExpire : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    ttl_ = GET_OR_RET(ParseInt<uint64_t>(args[2], 10));
+    auto ttl = GET_OR_RET(ParseInt<uint64_t>(args[2], 10));
     // Reject TTLs whose expire time in milliseconds would overflow, otherwise it wraps
     // into the past and the whole hash is expired immediately.
     constexpr auto max_expire_ms = static_cast<uint64_t>(std::numeric_limits<int64_t>::max());
-    if (ttl_ > (max_expire_ms - util::GetTimeStampMS()) / 1000) {
+    auto now_ms = util::GetTimeStampMS();
+    if (ttl > (max_expire_ms - now_ms) / 1000) {
       return {Status::RedisParseErr, errInvalidExpireTime};
     }
+    expire_at_ms_ = ttl * 1000 + now_ms;
     if ((args.size() - 3) % 2 != 0) {
       return {Status::RedisParseErr, "Invalid number of arguments: field-value pairs must be complete"};
     }
@@ -684,7 +686,7 @@ class CommandHSetExpire : public Commander {
     uint64_t ret = 0;
     redis::Hash hash_db(srv->storage, conn->GetNamespace());
 
-    auto s = hash_db.MSet(ctx, args_[1], field_values_, false, &ret, ttl_ * 1000 + util::GetTimeStampMS());
+    auto s = hash_db.MSet(ctx, args_[1], field_values_, false, &ret, expire_at_ms_);
     if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
@@ -694,7 +696,7 @@ class CommandHSetExpire : public Commander {
 
  private:
   std::vector<FieldValue> field_values_;
-  uint64_t ttl_ = 0;
+  uint64_t expire_at_ms_ = 0;
 };
 
 class CommandHKeys : public Commander {

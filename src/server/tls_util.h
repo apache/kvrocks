@@ -25,9 +25,11 @@
 #include <openssl/ssl.h>
 
 #include <memory>
+#include <string>
 
 #include "config/config.h"
 #include "event_util.h"
+#include "status.h"
 
 void InitSSL();
 
@@ -42,6 +44,8 @@ struct UniqueSSLContext : std::unique_ptr<SSL_CTX, StaticSSLCTXFree> {
 };
 
 UniqueSSLContext CreateSSLContext(const Config *config, const SSL_METHOD *method = SSLv23_method());
+
+Status SetTLSServerName(SSL *ssl, const std::string &host);
 
 using StaticSSLFree = StaticFunction<decltype(SSL_free), SSL_free>;
 

@@ -23,6 +23,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"net"
 	"testing"
 	"time"
 
@@ -192,4 +193,49 @@ func TestTLSReplica(t *testing.T) {
 		require.Equal(t, rc2.Get(ctx, "b").Val(), "2")
 		require.Equal(t, rc2.Get(ctx, "c").Val(), "3")
 	})
+}
+
+func TestTLSReplicaSNI(t *testing.T) {
+	if !util.TLSEnable() {
+		t.Skip("TLS tests run only if tls enabled.")
+	}
+
+	tlsConfig, err := util.DefaultTLSConfig()
+	require.NoError(t, err)
+
+	serverNames := make(chan string, 1)
+	serverTLSConfig := tlsConfig.Clone()
+	serverTLSConfig.ServerName = ""
+	serverTLSConfig.GetConfigForClient = func(hello *tls.ClientHelloInfo) (*tls.Config, error) {
+		serverNames <- hello.ServerName
+		return nil, nil
+	}
+	listener, err := tls.Listen("tcp", ":0", serverTLSConfig)
+	require.NoError(t, err)
+	defer listener.Close()
+	go func() {
+		conn, err := listener.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		_ = conn.(*tls.Conn).Handshake()
+	}()
+
+	replica := util.StartTLSServer(t, map[string]string{
+		"tls-replication": "yes",
+	})
+	defer replica.Close()
+
+	replicaClient := replica.NewClientWithOption(&redis.Options{TLSConfig: tlsConfig, Addr: replica.TLSAddr()})
+	defer func() { require.NoError(t, replicaClient.Close()) }()
+	const replicationHost = "localhost"
+	require.NoError(t, replicaClient.Do(context.Background(), "slaveof", replicationHost, listener.Addr().(*net.TCPAddr).Port).Err())
+
+	select {
+	case serverName := <-serverNames:
+		require.Equal(t, replicationHost, serverName)
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for TLS ClientHello")
+	}
 }

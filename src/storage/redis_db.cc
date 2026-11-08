@@ -378,6 +378,8 @@ rocksdb::Status Database::Scan(engine::Context &ctx, const std::string &cursor, 
 
   uint16_t slot_id = slot_start;
   while (true) {
+    // An empty key can't be used as a cursor, since an empty cursor means scanning from the beginning.
+    // So a page doesn't end with an empty key, and may return limit + 1 keys.
     for (; iter->Valid() && (cnt < limit || user_key.empty()); iter->Next()) {
       if (!ns_prefix.empty() && !iter->key().starts_with(ns_prefix)) {
         break;
@@ -606,6 +608,7 @@ rocksdb::Status SubKeyScanner::Scan(engine::Context &ctx, RedisType type, const 
       values->emplace_back(iter->value().ToString());
     }
     cnt++;
+    // A page doesn't end with an empty subkey, and may return limit + 1 subkeys, see Database::Scan.
     if (limit > 0 && cnt >= limit && !keys->back().empty()) {
       break;
     }

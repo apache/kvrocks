@@ -36,6 +36,9 @@ rocksdb::Status CuckooChain::validateMetadata(const CuckooChainMetadata &metadat
   if (metadata.n_filters == 0) {
     return rocksdb::Status::Corruption("invalid metadata: n_filters is 0");
   }
+  if (metadata.expansion == 0 && metadata.n_filters > 1) {
+    return rocksdb::Status::Corruption("invalid metadata: non-scaling filter has multiple filters");
+  }
   if (metadata.base_capacity == 0) {
     return rocksdb::Status::Corruption("invalid metadata: base_capacity is 0");
   }
@@ -210,6 +213,51 @@ rocksdb::Status CuckooChain::Delete(engine::Context &ctx, const Slice &user_key,
     return commitPagesAndMetadata(ctx, user_key, ns_key, &metadata, pages, kCFLogDataDel);
   }
 
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status CuckooChain::Count(engine::Context &ctx, const Slice &user_key, const Slice &item, uint64_t *count) {
+  *count = 0;
+  std::string ns_key = AppendNamespacePrefix(user_key);
+
+  CuckooChainMetadata metadata(false);
+  auto s = getCuckooChainMetadata(ctx, ns_key, &metadata);
+  if (s.IsNotFound()) {
+    // CF.COUNT treats a missing or empty filter as count zero.
+    return rocksdb::Status::OK();
+  }
+  if (!s.ok()) {
+    return s;
+  }
+
+  s = validateMetadata(metadata);
+  if (!s.ok()) {
+    return s;
+  }
+
+  uint64_t hash = CuckooFilterHelper::Hash(item.data(), item.size());
+  uint8_t fingerprint = CuckooFilterHelper::GenerateFingerprint(hash);
+
+  CuckooPageCache pages(storage_, ctx, ns_key, storage_->IsSlotIdEncoded(), metadata.version, metadata.bucket_size,
+                        metadata.page_size);
+
+  for (uint16_t filter_idx = 0; filter_idx < metadata.n_filters; filter_idx++) {
+    uint32_t num_buckets = 0;
+    s = CuckooFilterHelper::GetFilterNumBuckets(metadata.base_capacity, metadata.expansion, metadata.bucket_size,
+                                                filter_idx, &num_buckets);
+    if (!s.ok()) {
+      return s;
+    }
+
+    CuckooSubFilter sub_filter(pages, filter_idx, num_buckets);
+    uint32_t sub_count = 0;
+    s = sub_filter.Count(hash, fingerprint, &sub_count);
+    if (!s.ok()) {
+      return s;
+    }
+    *count += static_cast<uint64_t>(sub_count);
+    pages.DiscardCleanPages();
+  }
   return rocksdb::Status::OK();
 }
 

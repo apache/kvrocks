@@ -1512,6 +1512,23 @@ func testList(t *testing.T, configs util.KvrocksServerConfigs) {
 			require.EqualValues(t, 0, rdb.Exists(ctx, key2).Val())
 		})
 	}
+
+	t.Run("LMPOP and BLMPOP reject invalid arguments", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "lmpop-list").Err())
+		require.NoError(t, rdb.RPush(ctx, "lmpop-list", "a", "b").Err())
+
+		for _, args := range [][]interface{}{
+			{"lmpop", "0", "lmpop-list", "left"},
+			{"lmpop", "1", "lmpop-list", "left", "count", "0"},
+			{"blmpop", "0.01", "0", "lmpop-list", "left"},
+			{"blmpop", "0.01", "1", "lmpop-list", "left", "count", "0"},
+		} {
+			require.ErrorContains(t, rdb.Do(ctx, args...).Err(), "out of numeric range", args)
+		}
+		require.ErrorContains(t, rdb.Do(ctx, "blmpop", "-1", "1", "lmpop-list", "left").Err(), "timeout is negative")
+
+		require.EqualValues(t, 2, rdb.LLen(ctx, "lmpop-list").Val())
+	})
 }
 
 type kMetadataResponse struct {

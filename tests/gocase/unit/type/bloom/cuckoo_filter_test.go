@@ -23,11 +23,18 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/apache/kvrocks/tests/gocase/util"
 	"github.com/stretchr/testify/require"
 )
+
+func requireWrongType(t *testing.T, err error) {
+	t.Helper()
+	require.ErrorContains(t, err, "WRONGTYPE")
+	require.True(t, strings.HasPrefix(err.Error(), "WRONGTYPE"), "unexpected error prefix: %v", err)
+}
 
 func TestCuckooFilter(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{})
@@ -47,7 +54,7 @@ func TestCuckooFilter(t *testing.T) {
 	t.Run("Wrong type", func(t *testing.T) {
 		key := "test_cuckoo_filter_wrong_type"
 		require.NoError(t, rdb.Set(ctx, key, "value", 0).Err())
-		require.ErrorContains(t, rdb.Do(ctx, "cf.add", key, "item").Err(), "WRONGTYPE")
+		requireWrongType(t, rdb.Do(ctx, "cf.add", key, "item").Err())
 	})
 
 	t.Run("CF.EXISTS missing key returns false", func(t *testing.T) {
@@ -75,13 +82,13 @@ func TestCuckooFilter(t *testing.T) {
 	t.Run("CF.EXISTS wrong type returns WRONGTYPE", func(t *testing.T) {
 		key := "test_cuckoo_filter_exists_wrong_type"
 		require.NoError(t, rdb.Set(ctx, key, "value", 0).Err())
-		require.ErrorContains(t, rdb.Do(ctx, "cf.exists", key, "item").Err(), "WRONGTYPE")
+		requireWrongType(t, rdb.Do(ctx, "cf.exists", key, "item").Err())
 	})
 
 	t.Run("CF.MEXISTS wrong type returns WRONGTYPE", func(t *testing.T) {
 		key := "test_cuckoo_filter_mexists_wrong_type"
 		require.NoError(t, rdb.Set(ctx, key, "value", 0).Err())
-		require.ErrorContains(t, rdb.Do(ctx, "cf.mexists", key, "item1", "item2").Err(), "WRONGTYPE")
+		requireWrongType(t, rdb.Do(ctx, "cf.mexists", key, "item1", "item2").Err())
 	})
 
 	t.Run("CF.EXISTS and CF.MEXISTS wrong number of arguments", func(t *testing.T) {
@@ -132,6 +139,12 @@ func TestCuckooFilter(t *testing.T) {
 		require.ErrorContains(t, rdb.Do(ctx, "cf.reserve", "cf_bad_syntax", "1000", "UNKNOWNOPT").Err(), "syntax error")
 	})
 
+	t.Run("Reserve wrong type", func(t *testing.T) {
+		key := "test_cuckoo_filter_reserve_wrong_type"
+		require.NoError(t, rdb.Set(ctx, key, "value", 0).Err())
+		requireWrongType(t, rdb.Do(ctx, "cf.reserve", key, "100").Err())
+	})
+
 	t.Run("Reserve duplicate key", func(t *testing.T) {
 		key := "test_cuckoo_filter_reserve_dup"
 		require.NoError(t, rdb.Del(ctx, key).Err())
@@ -159,13 +172,13 @@ func TestCuckooFilter(t *testing.T) {
 	t.Run("Del missing key", func(t *testing.T) {
 		key := "test_cuckoo_filter_del_missing"
 		require.NoError(t, rdb.Del(ctx, key).Err())
-		require.ErrorContains(t, rdb.Do(ctx, "cf.del", key, "item").Err(), "Not found")
+		require.Equal(t, int64(0), rdb.Do(ctx, "cf.del", key, "item").Val())
 	})
 
 	t.Run("Del wrong type", func(t *testing.T) {
 		key := "test_cuckoo_filter_del_wrong_type"
 		require.NoError(t, rdb.Set(ctx, key, "value", 0).Err())
-		require.ErrorContains(t, rdb.Do(ctx, "cf.del", key, "item").Err(), "WRONGTYPE")
+		requireWrongType(t, rdb.Do(ctx, "cf.del", key, "item").Err())
 	})
 
 	t.Run("Del basic", func(t *testing.T) {
@@ -293,6 +306,88 @@ func TestCuckooFilter(t *testing.T) {
 		result := rdb.Do(ctx, "cf.add", key, string(largeItem))
 		require.NoError(t, result.Err())
 		require.Equal(t, int64(1), result.Val())
+	})
+
+	t.Run("Count missing key returns zero", func(t *testing.T) {
+		key := "test_cuckoo_filter_count_missing"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.Equal(t, int64(0), rdb.Do(ctx, "cf.count", key, "item").Val())
+	})
+
+	t.Run("Count empty filter", func(t *testing.T) {
+		key := "test_cuckoo_filter_count_empty"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "100").Err())
+		require.Equal(t, int64(0), rdb.Do(ctx, "cf.count", key, "item").Val())
+	})
+
+	t.Run("Count after add", func(t *testing.T) {
+		key := "test_cuckoo_filter_count_after_add"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "100").Err())
+		require.NoError(t, rdb.Do(ctx, "cf.add", key, "my_item").Err())
+		require.Equal(t, int64(1), rdb.Do(ctx, "cf.count", key, "my_item").Val())
+	})
+
+	t.Run("Count duplicate items", func(t *testing.T) {
+		key := "test_cuckoo_filter_count_dup"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "100").Err())
+		for i := 0; i < 5; i++ {
+			require.NoError(t, rdb.Do(ctx, "cf.add", key, "same_item").Err())
+		}
+		require.Equal(t, int64(5), rdb.Do(ctx, "cf.count", key, "same_item").Val())
+	})
+
+	t.Run("Count duplicates across sub-filters and after delete", func(t *testing.T) {
+		key := "test_cuckoo_filter_count_multi_filter"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		// Small capacity with expansion enabled so duplicates span several sub-filters.
+		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "2", "BUCKETSIZE", "1", "MAXITERATIONS", "1", "EXPANSION", "2").Err())
+		for i := 0; i < 20; i++ {
+			require.Equal(t, int64(1), rdb.Do(ctx, "cf.add", key, "same_item").Val())
+		}
+		require.Equal(t, int64(20), rdb.Do(ctx, "cf.count", key, "same_item").Val())
+
+		for i := 0; i < 7; i++ {
+			require.Equal(t, int64(1), rdb.Do(ctx, "cf.del", key, "same_item").Val())
+		}
+		require.Equal(t, int64(13), rdb.Do(ctx, "cf.count", key, "same_item").Val())
+
+		for i := 0; i < 13; i++ {
+			require.Equal(t, int64(1), rdb.Do(ctx, "cf.del", key, "same_item").Val())
+		}
+		require.Equal(t, int64(0), rdb.Do(ctx, "cf.count", key, "same_item").Val())
+	})
+
+	t.Run("Count empty string item", func(t *testing.T) {
+		key := "test_cuckoo_filter_count_empty_item"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "100").Err())
+		require.Equal(t, int64(1), rdb.Do(ctx, "cf.add", key, "").Val())
+		require.Equal(t, int64(1), rdb.Do(ctx, "cf.count", key, "").Val())
+		require.Equal(t, int64(0), rdb.Do(ctx, "cf.count", key, "item").Val())
+	})
+
+	t.Run("Count non-existent item", func(t *testing.T) {
+		key := "test_cuckoo_filter_count_not_exist_item"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "100").Err())
+		require.NoError(t, rdb.Do(ctx, "cf.add", key, "item1").Err())
+		require.Equal(t, int64(0), rdb.Do(ctx, "cf.count", key, "item2").Val())
+	})
+
+	t.Run("Count wrong type key", func(t *testing.T) {
+		key := "test_cuckoo_filter_count_wrong_type"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Set(ctx, key, "value", 0).Err())
+		requireWrongType(t, rdb.Do(ctx, "cf.count", key, "item").Err())
+	})
+
+	t.Run("Count wrong number of arguments", func(t *testing.T) {
+		require.Error(t, rdb.Do(ctx, "cf.count").Err())
+		require.Error(t, rdb.Do(ctx, "cf.count", "key_only").Err())
+		require.Error(t, rdb.Do(ctx, "cf.count", "key", "item1", "item2").Err())
 	})
 
 	decodeDumpChunk := func(chunk string) (uint32, []byte, []uint32) {

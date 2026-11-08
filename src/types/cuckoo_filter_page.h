@@ -97,6 +97,10 @@ class CuckooPageCache {
   void DiscardCleanPages();
   void DiscardCachedPages();
 
+  // Counts how many slots in the bucket contain the given fingerprint.
+  rocksdb::Status CountFingerprintInBucket(uint16_t filter_index, uint32_t num_buckets, uint32_t bucket_index,
+                                           uint8_t fingerprint, uint32_t *count);
+
  private:
   struct PageEntry {
     std::string data;

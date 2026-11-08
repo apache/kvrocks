@@ -199,6 +199,8 @@ struct JsonValue {
                                        });
     } catch (const jsoncons::jsonpath::jsonpath_error &e) {
       return {Status::NotOK, e.what()};
+    } catch (const jsoncons::ser_error &e) {
+      return {Status::NotOK, e.what()};
     }
 
     std::reverse(results.begin(), results.end());

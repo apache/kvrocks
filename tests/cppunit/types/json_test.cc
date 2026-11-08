@@ -683,6 +683,10 @@ TEST_F(RedisJsonTest, StrAppend) {
   for (int i = 0; i < 3; ++i) {
     ASSERT_EQ(results[i], result1[i]);
   }
+
+  results.clear();
+  ASSERT_FALSE(json_->StrAppend(*ctx_, key_, "$.a", "be", &results).ok());
+  ASSERT_FALSE(json_->StrAppend(*ctx_, key_, "$.a", "", &results).ok());
 }
 
 TEST_F(RedisJsonTest, StrLen) {

@@ -528,6 +528,27 @@ var streamTests = func(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.EqualValues(t, 1, rdb.XDel(ctx, "somestream", "2-0", "2-0", "2-0").Val())
 		require.EqualValues(t, 0, rdb.XLen(ctx, "somestream").Val())
 	})
+	t.Run("XDEL of an entry and then the first or last entry next to it", func(t *testing.T) {
+		for _, ids := range [][]string{{"2-0", "1-0"}, {"2-0", "3-0"}} {
+			require.NoError(t, rdb.Del(ctx, "somestream").Err())
+			for _, id := range []string{"1-0", "2-0", "3-0"} {
+				require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "somestream", ID: id, Values: []string{"foo", "bar"}}).Err())
+			}
+			require.EqualValues(t, 2, rdb.XDel(ctx, "somestream", ids...).Val())
+			remaining := rdb.XRange(ctx, "somestream", "-", "+").Val()
+			require.Len(t, remaining, 1)
+
+			info, err := rdb.XInfoStream(ctx, "somestream").Result()
+			require.NoError(t, err)
+			require.EqualValues(t, 1, info.Length)
+			require.Equal(t, remaining[0].ID, info.FirstEntry.ID)
+			require.Equal(t, remaining[0].ID, info.LastEntry.ID)
+
+			// Trimming below the remaining entry must keep it.
+			require.EqualValues(t, 0, rdb.XTrimMinID(ctx, "somestream", remaining[0].ID).Val())
+			require.Len(t, rdb.XRange(ctx, "somestream", "-", "+").Val(), 1)
+		}
+	})
 
 	// Here the idea is to check the consistency of the stream data structure as we remove all the elements down to zero elements.
 	t.Run("XDEL fuzz test", func(t *testing.T) {

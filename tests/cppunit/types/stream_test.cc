@@ -1449,6 +1449,59 @@ TEST_F(RedisStreamTest, DeleteMultipleEntries) {
   CheckStreamEntryValues(entries[1].values, values4);
 }
 
+TEST_F(RedisStreamTest, DeleteFirstEntryAfterItsSuccessor) {
+  redis::StreamAddOptions add_options;
+  std::vector<std::string> values = {"key", "val"};
+  redis::StreamEntryID id;
+  for (const auto &next_id : {"1-0", "2-0", "3-0"}) {
+    add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy(next_id);
+    auto s = stream_->Add(*ctx_, name_, add_options, values, &id);
+    EXPECT_TRUE(s.ok());
+  }
+
+  std::vector<redis::StreamEntryID> ids = {redis::StreamEntryID{2, 0}, redis::StreamEntryID{1, 0}};
+  uint64_t deleted = 0;
+  auto s = stream_->DeleteEntries(*ctx_, name_, ids, &deleted);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(deleted, 2);
+
+  redis::StreamInfo info;
+  s = stream_->GetStreamInfo(*ctx_, name_, false, 0, &info);
+  EXPECT_TRUE(s.ok()) << s.ToString();
+  EXPECT_EQ(info.size, 1);
+  EXPECT_EQ(info.recorded_first_entry_id.ToString(), (redis::StreamEntryID{3, 0}).ToString());
+  ASSERT_NE(info.first_entry, nullptr);
+  EXPECT_EQ(info.first_entry->key, (redis::StreamEntryID{3, 0}).ToString());
+  ASSERT_NE(info.last_entry, nullptr);
+  EXPECT_EQ(info.last_entry->key, (redis::StreamEntryID{3, 0}).ToString());
+}
+
+TEST_F(RedisStreamTest, DeleteLastEntryAfterItsPredecessor) {
+  redis::StreamAddOptions add_options;
+  std::vector<std::string> values = {"key", "val"};
+  redis::StreamEntryID id;
+  for (const auto &next_id : {"1-0", "2-0", "3-0"}) {
+    add_options.next_id_strategy = *ParseNextStreamEntryIDStrategy(next_id);
+    auto s = stream_->Add(*ctx_, name_, add_options, values, &id);
+    EXPECT_TRUE(s.ok());
+  }
+
+  std::vector<redis::StreamEntryID> ids = {redis::StreamEntryID{2, 0}, redis::StreamEntryID{3, 0}};
+  uint64_t deleted = 0;
+  auto s = stream_->DeleteEntries(*ctx_, name_, ids, &deleted);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(deleted, 2);
+
+  redis::StreamInfo info;
+  s = stream_->GetStreamInfo(*ctx_, name_, false, 0, &info);
+  EXPECT_TRUE(s.ok()) << s.ToString();
+  EXPECT_EQ(info.size, 1);
+  ASSERT_NE(info.first_entry, nullptr);
+  EXPECT_EQ(info.first_entry->key, (redis::StreamEntryID{1, 0}).ToString());
+  ASSERT_NE(info.last_entry, nullptr);
+  EXPECT_EQ(info.last_entry->key, (redis::StreamEntryID{1, 0}).ToString());
+}
+
 TEST_F(RedisStreamTest, LenOnNonExistingStream) {
   uint64_t length = 0;
   auto s = stream_->Len(*ctx_, name_, redis::StreamLenOptions{}, &length);

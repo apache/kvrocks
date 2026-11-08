@@ -1050,9 +1050,14 @@ rocksdb::Status Stream::DeleteEntries(engine::Context &ctx, const Slice &stream_
         break;
       }
 
+      // The deletions are only written at the end, so the iterator still sees the entries this call has already
+      // deleted. They are all in seen_ids, and must be skipped when moving the first or last entry.
       if (id == metadata.first_entry_id) {
         iter->Seek(entry_key);
         iter->Next();
+        while (iter->Valid() && seen_ids.count(entryIDFromInternalKey(iter->key())) > 0) {
+          iter->Next();
+        }
         if (iter->Valid()) {
           metadata.first_entry_id = entryIDFromInternalKey(iter->key());
           metadata.recorded_first_entry_id = metadata.first_entry_id;
@@ -1065,6 +1070,9 @@ rocksdb::Status Stream::DeleteEntries(engine::Context &ctx, const Slice &stream_
       if (id == metadata.last_entry_id) {
         iter->Seek(entry_key);
         iter->Prev();
+        while (iter->Valid() && seen_ids.count(entryIDFromInternalKey(iter->key())) > 0) {
+          iter->Prev();
+        }
         if (iter->Valid()) {
           metadata.last_entry_id = entryIDFromInternalKey(iter->key());
         } else {

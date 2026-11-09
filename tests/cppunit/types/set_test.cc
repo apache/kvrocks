@@ -83,6 +83,12 @@ TEST_F(RedisSetTest, Members) {
   for (size_t i = 0; i < fields_.size(); i++) {
     EXPECT_EQ(fields_[i], members[i]);
   }
+  s = set_->Add(*ctx_, key_, {""}, &ret);
+  EXPECT_TRUE(s.ok() && ret == 1);
+  members.clear();
+  s = set_->Scan(*ctx_, key_, "", 1, "", &members);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(members, std::vector<std::string>({"", fields_[0].ToString()}));
   s = set_->Remove(*ctx_, key_, fields_, &ret);
   EXPECT_TRUE(s.ok() && fields_.size() == ret);
 }

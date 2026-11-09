@@ -1310,7 +1310,8 @@ rocksdb::Status Hash::Scan(engine::Context &ctx, const Slice &user_key, const st
       values->emplace_back(std::move(state.value));
     }
     live_count++;
-    if (limit > 0 && live_count >= limit) {
+    // A page doesn't end with an empty field, and may return limit + 1 fields, see Database::Scan.
+    if (limit > 0 && live_count >= limit && !fields->back().empty()) {
       break;
     }
   }

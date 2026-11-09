@@ -313,15 +313,57 @@ TEST_F(RedisHashTest, MSetAndDeleteRepeated) {
   s = hash_->Size(*ctx_, key_, &ret);
   EXPECT_TRUE(s.ok() && ret == static_cast<uint64_t>(fvs.size() - 1));
 
-  std::vector<rocksdb::Slice> fields_to_delete{"f1", "f2", "f2"};
+  std::vector<rocksdb::Slice> fields_to_delete{"missing", "f1", "f2", "f2", "missing", "f1"};
   s = hash_->Delete(*ctx_, key_, fields_to_delete, &ret);
-  EXPECT_TRUE(s.ok() && ret == static_cast<uint64_t>(fields_to_delete.size() - 1));
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  EXPECT_EQ(ret, 2);
+  s = hash_->Delete(*ctx_, key_, fields_to_delete, &ret);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  EXPECT_EQ(ret, 0);
   s = hash_->Size(*ctx_, key_, &ret);
   EXPECT_TRUE(s.ok() && ret == 1);
   s = hash_->Get(*ctx_, key_, "f3", &got);
   EXPECT_EQ("v3", got);
 
   s = hash_->Del(*ctx_, key_);
+}
+
+TEST_F(RedisHashTest, DeleteAcrossBatches) {
+  std::vector<std::string> fields;
+  fields.reserve(100);
+  for (size_t i = 0; i < 100; ++i) fields.emplace_back("field-" + std::to_string(i));
+  const std::string value(64 * 1024, 'v');
+  std::vector<FieldValue> values;
+  values.reserve(fields.size() + 1);
+  for (const auto &field : fields) values.emplace_back(field, value);
+  values.emplace_back("keeper", "kept");
+  uint64_t ret = 0;
+  auto s = hash_->MSet(*ctx_, key_, values, false, &ret);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  ASSERT_EQ(ret, 101);
+
+  s = hash_->Delete(*ctx_, key_, {}, &ret);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  EXPECT_EQ(ret, 0);
+
+  std::vector<Slice> fields_to_delete;
+  fields_to_delete.reserve(2 * fields.size() + 1);
+  for (const auto &field : fields) fields_to_delete.emplace_back(field);
+  for (const auto &field : fields) fields_to_delete.emplace_back(field);
+  fields_to_delete.emplace_back("missing");
+  s = hash_->Delete(*ctx_, key_, fields_to_delete, &ret);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  EXPECT_EQ(ret, 100);
+  s = hash_->Delete(*ctx_, key_, fields_to_delete, &ret);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  EXPECT_EQ(ret, 0);
+
+  std::vector<FieldValue> remaining;
+  s = hash_->GetAll(*ctx_, key_, &remaining);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  ASSERT_EQ(remaining.size(), 1);
+  EXPECT_EQ(remaining[0].field, "keeper");
+  EXPECT_EQ(remaining[0].value, "kept");
 }
 
 TEST_F(RedisHashTest, MSetSingleFieldAndNX) {
@@ -929,7 +971,17 @@ TEST_F(RedisHashFieldExpirationEncodingTest, DeleteHandlesPersistentLiveExpiredM
   s = putHashMetadata(key.ToString(), metadata);
   ASSERT_TRUE(s.ok()) << s.ToString();
 
-  s = hash_->Delete(*ctx_, key, {"persistent", "live", "expired", "missing", "persistent"}, &ret);
+  std::vector<std::string> requested_fields;
+  requested_fields.reserve(3 * (1 + 32));
+  for (const auto *field : {"persistent", "live", "expired"}) {
+    requested_fields.emplace_back(field);
+    for (size_t i = 0; i < 32; ++i) requested_fields.emplace_back("missing-" + std::to_string(requested_fields.size()));
+  }
+  std::vector<Slice> fields_to_delete;
+  fields_to_delete.reserve(requested_fields.size() + 4);
+  for (const auto &field : requested_fields) fields_to_delete.emplace_back(field);
+  fields_to_delete.insert(fields_to_delete.end(), {"persistent", "live", "expired", "missing"});
+  s = hash_->Delete(*ctx_, key, fields_to_delete, &ret);
   ASSERT_TRUE(s.ok()) << s.ToString();
   EXPECT_EQ(ret, 2);
   metadata = hashMetadata(key.ToString());
@@ -944,6 +996,44 @@ TEST_F(RedisHashFieldExpirationEncodingTest, DeleteHandlesPersistentLiveExpiredM
   ASSERT_EQ(fields.size(), 1);
   EXPECT_EQ(fields[0].field, "keeper");
   EXPECT_EQ(fields[0].value, "4");
+}
+
+TEST_F(RedisHashFieldExpirationEncodingTest, DeleteDoesNotWriteWhenLaterBatchCannotBeDecoded) {
+  const Slice key = "hfe-delete-invalid-later-batch";
+  std::vector<std::string> fields;
+  fields.reserve(65);
+  for (size_t i = 0; i < 65; ++i) fields.emplace_back("field-" + std::to_string(i));
+  std::vector<FieldValue> values;
+  values.reserve(fields.size());
+  for (const auto &field : fields) values.emplace_back(field, "value");
+  uint64_t ret = 0;
+  auto s = hash_->MSet(*ctx_, key, values, false, &ret);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  ASSERT_EQ(ret, 65);
+  auto before = hashMetadata(key.ToString());
+
+  auto batch = storage_->GetWriteBatchBase();
+  s = batch->Put(hashSubKey(key.ToString(), fields.back(), before), "bad");
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  s = storage_->Write(*ctx_, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
+  ASSERT_TRUE(s.ok()) << s.ToString();
+
+  std::vector<Slice> fields_to_delete;
+  fields_to_delete.reserve(fields.size());
+  for (const auto &field : fields) fields_to_delete.emplace_back(field);
+  s = hash_->Delete(*ctx_, key, fields_to_delete, &ret);
+  ASSERT_TRUE(s.IsInvalidArgument()) << s.ToString();
+  for (size_t i = 0; i + 1 < fields.size(); ++i) {
+    std::string value;
+    s = hash_->Get(*ctx_, key, fields[i], &value);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    EXPECT_EQ(value, "value");
+  }
+  auto after = hashMetadata(key.ToString());
+  EXPECT_EQ(after.size, before.size);
+  EXPECT_EQ(after.persist, before.persist);
+  EXPECT_EQ(after.lower, before.lower);
+  EXPECT_EQ(after.upper, before.upper);
 }
 
 TEST_F(RedisHashFieldExpirationEncodingTest, MSetHandlesPersistentLiveExpiredAndGhostFields) {

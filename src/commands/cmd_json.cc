@@ -175,8 +175,6 @@ class CommandJsonArrInsert : public Commander {
     redis::Json json(srv->storage, conn->GetNamespace());
 
     Optionals<uint64_t> results;
-    auto parse_result = ParseInt<int>(args_[3], 10);
-
     auto s = json.ArrInsert(ctx, args_[1], args_[2], index_, {args_.begin() + 4, args_.end()}, &results);
     if (s.IsNotFound()) {
       *output = conn->NilString();

@@ -463,3 +463,44 @@ TEST_F(RedisCuckooPageCacheTest, PageKeyUsesMetadataVersion) {
   ASSERT_EQ(page.size(), 8);
   EXPECT_EQ(static_cast<uint8_t>(page[0]), 22);
 }
+
+TEST_F(RedisCuckooPageCacheTest, CountFingerprintInBucketCountsMatchingSlots) {
+  auto metadata = makeMetadata(4);
+  auto page_key = makePageKey(metadata, 0, 0);
+  writePage(page_key, std::string{11, 11, 22, 0, 11, 33, 11, 0});
+  redis::CuckooPageCache pages(storage_.get(), *ctx_, ns_key_, storage_->IsSlotIdEncoded(), metadata.version,
+                               metadata.bucket_size, metadata.page_size);
+
+  uint32_t count = 0;
+  auto s = pages.CountFingerprintInBucket(0, 2, 0, 11, &count);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  EXPECT_EQ(count, 2);
+
+  s = pages.CountFingerprintInBucket(0, 2, 1, 11, &count);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  EXPECT_EQ(count, 2);
+
+  s = pages.CountFingerprintInBucket(0, 2, 1, 44, &count);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  EXPECT_EQ(count, 0);
+
+  auto batch = storage_->GetWriteBatchBase();
+  s = pages.WriteBackDirtyPages(batch.Get());
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  EXPECT_EQ(batch->GetWriteBatch()->Count(), 0);
+}
+
+TEST_F(RedisCuckooPageCacheTest, CountFingerprintInMissingBucketReturnsZero) {
+  auto metadata = makeMetadata(4);
+  redis::CuckooPageCache pages(storage_.get(), *ctx_, ns_key_, storage_->IsSlotIdEncoded(), metadata.version,
+                               metadata.bucket_size, metadata.page_size);
+
+  uint32_t count = 1;
+  auto s = pages.CountFingerprintInBucket(0, 2, 0, 11, &count);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  EXPECT_EQ(count, 0);
+
+  std::string page;
+  s = readPage(makePageKey(metadata, 0, 0), &page);
+  EXPECT_TRUE(s.IsNotFound()) << s.ToString();
+}

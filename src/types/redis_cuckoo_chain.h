@@ -37,9 +37,20 @@ const uint16_t kCFDefaultMaxIterations = 20;
 const uint16_t kCFDefaultExpansion = 1;
 const uint16_t kCFMaxExpansion = 32768;
 
+enum class CuckooFilterInsertResult {
+  kOk,
+  kFull,
+};
+
+struct CuckooFilterInsertOptions {
+  uint64_t capacity = kCFDefaultCapacity;
+  bool auto_create = true;
+};
+
 // Command tags recorded in WriteBatchLogData for cuckoo filter mutations.
 constexpr const char *kCFLogDataReserve = "reserve";
 constexpr const char *kCFLogDataAdd = "add";
+constexpr const char *kCFLogDataInsert = "insert";
 constexpr const char *kCFLogDataDel = "del";
 
 class CuckooChain : public Database {
@@ -54,6 +65,9 @@ class CuckooChain : public Database {
   // Duplicate items are allowed, so added is true whenever insertion succeeds.
   rocksdb::Status Add(engine::Context &ctx, const Slice &user_key, const Slice &item, bool *added);
 
+  // Counts how many times an item may be present in the cuckoo filter. Returns 0 when the filter does not exist.
+  rocksdb::Status Count(engine::Context &ctx, const Slice &user_key, const Slice &item, uint64_t *count);
+
   // Returns true if the item might exist, and false if it definitely does not.
   rocksdb::Status Exists(engine::Context &ctx, const Slice &user_key, const Slice &item, bool *exists);
 
@@ -63,6 +77,10 @@ class CuckooChain : public Database {
   // Deletes one matching fingerprint from the cuckoo filter.
   rocksdb::Status Delete(engine::Context &ctx, const Slice &user_key, const Slice &item, bool *deleted);
 
+  // Stages all items and commits successful insertions once. Full filters produce per-item failures.
+  rocksdb::Status Insert(engine::Context &ctx, const Slice &user_key, const std::vector<std::string> &items,
+                         const CuckooFilterInsertOptions &options, std::vector<CuckooFilterInsertResult> &rets);
+
  private:
   // Loads metadata for a cuckoo filter key.
   rocksdb::Status getCuckooChainMetadata(engine::Context &ctx, const Slice &ns_key, CuckooChainMetadata *metadata);
@@ -70,13 +88,14 @@ class CuckooChain : public Database {
   static rocksdb::Status validateMetadata(const CuckooChainMetadata &metadata);
 
   static rocksdb::Status tryInsertFingerprint(CuckooChainMetadata *metadata, CuckooPageCache &pages, uint64_t hash,
-                                              uint8_t fingerprint, bool *inserted);
+                                              uint8_t fingerprint, bool *inserted, bool error_on_limit = true);
   static rocksdb::Status tryCuckooInsert(const CuckooChainMetadata *metadata, CuckooPageCache &pages, uint64_t hash,
                                          uint8_t fingerprint, bool *inserted);
   static rocksdb::Status tryCuckooKickOut(const CuckooChainMetadata *metadata, CuckooPageCache &pages, uint64_t hash,
                                           uint8_t fingerprint, bool *inserted);
   static rocksdb::Status expandAndInsertCuckooChain(CuckooChainMetadata *metadata, CuckooPageCache &pages,
-                                                    uint64_t hash, uint8_t fingerprint, bool *inserted);
+                                                    uint64_t hash, uint8_t fingerprint, bool *inserted,
+                                                    bool error_on_limit);
   rocksdb::Status commitPagesAndMetadata(engine::Context &ctx, const Slice &user_key, const std::string &ns_key,
                                          const CuckooChainMetadata *metadata, CuckooPageCache &pages,
                                          const std::string &command);

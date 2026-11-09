@@ -559,7 +559,10 @@ func TestCuckooFilterInsert(t *testing.T) {
 		ttl, err := rdb.PTTL(ctx, key).Result()
 		require.NoError(t, err)
 		require.Positive(t, ttl)
-		require.LessOrEqual(t, ttl, time.Minute)
+		// The legacy metadata encoding stores the expiration in seconds and rounds
+		// to the nearest second, so the remaining time can exceed the requested one
+		// by up to half a second.
+		require.LessOrEqual(t, ttl, time.Minute+time.Second)
 		args = append([]interface{}{"cf.mexists", key}, items...)
 		result, err = rdb.Do(ctx, args...).Result()
 		require.NoError(t, err)

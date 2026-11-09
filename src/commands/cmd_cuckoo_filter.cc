@@ -326,13 +326,13 @@ class CommandCFCount : public Commander {
   }
 };
 
-// Register the CF.RESERVE, CF.ADD, CF.DEL, CF.EXISTS, CF.MEXISTS, and CF.COUNT commands
+// Register the CF.RESERVE, CF.ADD, CF.DEL, CF.EXISTS, CF.MEXISTS, CF.INSERT, and CF.COUNT commands
 REDIS_REGISTER_COMMANDS(CuckooFilter, MakeCmdAttr<CommandCFReserve>("cf.reserve", -3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandCFAdd>("cf.add", 3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandCFDel>("cf.del", 3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandCFExists>("cf.exists", 3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandCFMExists>("cf.mexists", -3, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandCFInsert>("cf.insert", -4, "write", 1, 1, 1)),
+                        MakeCmdAttr<CommandCFInsert>("cf.insert", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandCFCount>("cf.count", 3, "read-only", 1, 1, 1))
 
 }  // namespace redis

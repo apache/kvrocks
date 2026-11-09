@@ -753,6 +753,105 @@ func TestCuckooFilterInsert(t *testing.T) {
 	})
 }
 
+func TestCuckooFilterInsertNX(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{})
+	defer srv.Close()
+	ctx := context.Background()
+	rdb := srv.NewClientWithOption(&redis.Options{Protocol: 2})
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	t.Run("Auto-create and skip repeated items", func(t *testing.T) {
+		const key = "insertnx_duplicates"
+		result, err := rdb.Do(ctx, "cf.insertnx", key, "CAPACITY", "64", "ITEMS", "alpha", "alpha", "beta", "alpha").Result()
+		require.NoError(t, err)
+		require.Equal(t, []interface{}{int64(1), int64(0), int64(1), int64(0)}, result)
+		result, err = rdb.Do(ctx, "cf.insertnx", key, "ITEMS", "beta", "alpha", "beta").Result()
+		require.NoError(t, err)
+		require.Equal(t, []interface{}{int64(0), int64(0), int64(0)}, result)
+		count, err := rdb.Do(ctx, "cf.count", key, "alpha").Int64()
+		require.NoError(t, err)
+		require.Equal(t, int64(1), count)
+		require.Equal(t, int64(1), rdb.Do(ctx, "cf.del", key, "alpha").Val())
+		count, err = rdb.Do(ctx, "cf.count", key, "alpha").Int64()
+		require.NoError(t, err)
+		require.Zero(t, count)
+	})
+
+	t.Run("NOCREATE", func(t *testing.T) {
+		const key = "insertnx_nocreate"
+		require.ErrorContains(t, rdb.Do(ctx, "cf.insertnx", key, "NOCREATE", "ITEMS", "alpha").Err(), "NotFound")
+		require.Equal(t, int64(0), rdb.Exists(ctx, key).Val())
+		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "64").Err())
+		result, err := rdb.Do(ctx, "cf.insertnx", key, "NOCREATE", "ITEMS", "alpha", "alpha").Result()
+		require.NoError(t, err)
+		require.Equal(t, []interface{}{int64(1), int64(0)}, result)
+	})
+
+	t.Run("Reject malformed options without creating a key", func(t *testing.T) {
+		cases := [][]interface{}{
+			{},
+			{"ITEMS"},
+			{"CAPACITY", "10"},
+			{"CAPACITY", "invalid", "ITEMS", "alpha"},
+			{"CAPACITY", "0", "ITEMS", "alpha"},
+			{"CAPACITY", "1", "ITEMS", "alpha"},
+			{"CAPACITY", "-1", "ITEMS", "alpha"},
+			{"CAPACITY", "18446744073709551616", "ITEMS", "alpha"},
+			{"UNKNOWN", "ITEMS", "alpha"},
+			{"NOCREATE", "ITEMS"},
+		}
+		require.Error(t, rdb.Do(ctx, "cf.insertnx").Err())
+		for i, args := range cases {
+			key := fmt.Sprintf("insertnx_invalid_%d", i)
+			command := append([]interface{}{"cf.insertnx", key}, args...)
+			require.Error(t, rdb.Do(ctx, command...).Err(), "%v", command)
+			require.Equal(t, int64(0), rdb.Exists(ctx, key).Val())
+		}
+	})
+
+	t.Run("Preserve TTL and accept binary items and option names as data", func(t *testing.T) {
+		const key = "insertnx_ttl"
+		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "1000").Err())
+		require.NoError(t, rdb.PExpire(ctx, key, time.Minute).Err())
+		items := []interface{}{"CAPACITY", "NOCREATE", "ITEMS", "", "binary\x00item"}
+		args := append([]interface{}{"cf.insertnx", key, "nOcReAtE", "iTeMs"}, items...)
+		result, err := rdb.Do(ctx, args...).Result()
+		require.NoError(t, err)
+		require.Equal(t, []interface{}{int64(1), int64(1), int64(1), int64(1), int64(1)}, result)
+		result, err = rdb.Do(ctx, args...).Result()
+		require.NoError(t, err)
+		require.Equal(t, []interface{}{int64(0), int64(0), int64(0), int64(0), int64(0)}, result)
+		ttl, err := rdb.PTTL(ctx, key).Result()
+		require.NoError(t, err)
+		require.Positive(t, ttl)
+		require.LessOrEqual(t, ttl, time.Minute+time.Second)
+	})
+
+	t.Run("Distinguish existing items from a full filter", func(t *testing.T) {
+		const key = "insertnx_full"
+		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "2", "BUCKETSIZE", "1", "EXPANSION", "0").Err())
+		args := []interface{}{"cf.insert", key, "ITEMS"}
+		for i := 0; i < 100; i++ {
+			args = append(args, fmt.Sprintf("full_%d", i))
+		}
+		require.NoError(t, rdb.Do(ctx, args...).Err())
+		absent := ""
+		for i := 0; i < 100; i++ {
+			candidate := fmt.Sprintf("absent_%d", i)
+			exists, err := rdb.Do(ctx, "cf.exists", key, candidate).Bool()
+			require.NoError(t, err)
+			if !exists {
+				absent = candidate
+				break
+			}
+		}
+		require.NotEmpty(t, absent)
+		result, err := rdb.Do(ctx, "cf.insertnx", key, "ITEMS", "full_0", absent, "full_0").Result()
+		require.NoError(t, err)
+		require.Equal(t, []interface{}{int64(0), int64(-1), int64(0)}, result)
+	})
+}
+
 func TestCuckooFilterRESP3(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{
 		"resp3-enabled": "yes",

@@ -287,6 +287,16 @@ rocksdb::Status CuckooChain::Insert(engine::Context &ctx, const Slice &user_key,
     uint64_t hash = CuckooFilterHelper::Hash(item.data(), item.size());
     uint8_t fingerprint = CuckooFilterHelper::GenerateFingerprint(hash);
 
+    if (insert_options.check_items_exists) {
+      std::vector<bool> exists;
+      s = MExists(std::vector<std::string>{item}, metadata, pages, &exists);
+      if (!s.ok()) return s;
+      if (exists[0]) {
+        ret[i] = CuckooFilterInsertResult::kExists;
+        continue;
+      }
+    }
+
     bool inserted = false;
     s = tryInsertFingerprint(&metadata, pages, hash, fingerprint, &inserted, /*error_on_limit=*/false);
     if (!s.ok()) return s;
@@ -528,7 +538,6 @@ rocksdb::Status CuckooChain::MExists(engine::Context &ctx, const Slice &user_key
                                      std::vector<bool> *exists) {
   exists->assign(items.size(), false);
   std::string ns_key = AppendNamespacePrefix(user_key);
-
   CuckooChainMetadata metadata(false);
   auto s = getCuckooChainMetadata(ctx, ns_key, &metadata);
   if (s.IsNotFound()) return rocksdb::Status::OK();
@@ -537,6 +546,14 @@ rocksdb::Status CuckooChain::MExists(engine::Context &ctx, const Slice &user_key
   s = validateMetadata(metadata);
   if (!s.ok()) return s;
 
+  CuckooPageCache pages(storage_, ctx, ns_key, storage_->IsSlotIdEncoded(), metadata.version, metadata.bucket_size,
+                        metadata.page_size);
+  return MExists(items, metadata, pages, exists);
+}
+
+rocksdb::Status CuckooChain::MExists(const std::vector<std::string> &items, const CuckooChainMetadata &metadata,
+                                     CuckooPageCache &pages, std::vector<bool> *exists) {
+  exists->assign(items.size(), false);
   std::vector<uint64_t> hashes(items.size());
   std::vector<uint8_t> fingerprints(items.size());
   for (size_t i = 0; i < items.size(); ++i) {
@@ -546,13 +563,11 @@ rocksdb::Status CuckooChain::MExists(engine::Context &ctx, const Slice &user_key
   }
 
   size_t found_count = 0;
-  CuckooPageCache pages(storage_, ctx, ns_key, storage_->IsSlotIdEncoded(), metadata.version, metadata.bucket_size,
-                        metadata.page_size);
   for (int filter_idx = static_cast<int>(metadata.n_filters) - 1; filter_idx >= 0; --filter_idx) {
     auto current_filter_idx = static_cast<uint16_t>(filter_idx);
     uint32_t num_buckets = 0;
-    s = CuckooFilterHelper::GetFilterNumBuckets(metadata.base_capacity, metadata.expansion, metadata.bucket_size,
-                                                current_filter_idx, &num_buckets);
+    auto s = CuckooFilterHelper::GetFilterNumBuckets(metadata.base_capacity, metadata.expansion, metadata.bucket_size,
+                                                     current_filter_idx, &num_buckets);
     if (!s.ok()) return s;
 
     CuckooSubFilter sub_filter(pages, current_filter_idx, num_buckets);

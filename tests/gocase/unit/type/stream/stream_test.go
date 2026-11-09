@@ -118,22 +118,6 @@ var streamTests = func(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.ErrorContains(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "mystream", ID: "*", Values: []string{"c", "d"}}).Err(), "ERR")
 	})
 
-	t.Run("XADD rejects IDs beyond the maximum stream ID", func(t *testing.T) {
-		ids := []string{
-			"18446744073709551615-0",
-			"18446744073709551615-18446744073709551615",
-			"18446744073709551615-*",
-		}
-
-		for i, id := range ids {
-			stream := fmt.Sprintf("overflow-%d", i)
-			err := rdb.XAdd(ctx, &redis.XAddArgs{Stream: stream, ID: id, Values: []string{"a", "b"}}).Err()
-			require.ErrorContains(t, err, "ERR")
-			require.EqualValues(t, 0, rdb.XLen(ctx, stream).Val())
-			require.Empty(t, rdb.XRange(ctx, stream, "-", "+").Val())
-		}
-	})
-
 	t.Run("XADD auto-generated sequence is incremented for last ID", func(t *testing.T) {
 		require.NoError(t, rdb.Del(ctx, "mystream").Err())
 		x1 := rdb.XAdd(ctx, &redis.XAddArgs{Stream: "mystream", ID: "123-456", Values: []string{"item", "1", "value", "a"}}).Val()
@@ -160,6 +144,16 @@ var streamTests = func(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.NoError(t, rdb.Del(ctx, "mystream").Err())
 		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "mystream", ID: "1-18446744073709551615", Values: []string{"a", "b"}}).Err())
 		require.ErrorContains(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "mystream", ID: "1-*", Values: []string{"c", "d"}}).Err(), "ERR")
+	})
+
+	t.Run("XADD rejects IDs above the maximum entry ID", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "mystream").Err())
+		for _, id := range []string{"18446744073709551615-0", "18446744073709551615-18446744073709551615", "18446744073709551615-*"} {
+			require.ErrorContains(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "mystream", ID: id, Values: []string{"a", "b"}}).Err(),
+				"The stream has exhausted the last possible ID")
+		}
+		require.EqualValues(t, int64(0), rdb.XLen(ctx, "mystream").Val())
+		require.Empty(t, rdb.XRange(ctx, "mystream", "-", "+").Val())
 	})
 
 	t.Run("XADD 0-* should succeed", func(t *testing.T) {

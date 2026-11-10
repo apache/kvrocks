@@ -23,6 +23,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"math/rand"
 	"strconv"
 	"strings"
@@ -69,6 +70,21 @@ func testLTRIM(t *testing.T, configs util.KvrocksServerConfigs) {
 
 	key := "myList"
 	startLen := int64(32)
+
+	t.Run("LTRIM with maximum start index", func(t *testing.T) {
+		require.NoError(t, rdb.RPush(ctx, key, "a").Err())
+		require.True(t, rdb.Expire(ctx, key, time.Hour).Val())
+		trimCtx, cancel := context.WithTimeout(ctx, time.Second)
+		defer cancel()
+		require.NoError(t, rdb.LTrim(trimCtx, key, math.MaxInt32, math.MaxInt32).Err())
+		require.EqualValues(t, 0, rdb.LLen(ctx, key).Val())
+		require.EqualValues(t, 0, rdb.Exists(ctx, key).Val())
+		ttl, err := rdb.Do(ctx, "TTL", key).Int64()
+		require.NoError(t, err)
+		require.EqualValues(t, -2, ttl)
+		require.EqualValues(t, 1, rdb.RPush(ctx, key, "b").Val())
+		require.Equal(t, []string{"b"}, rdb.LRange(ctx, key, 0, -1).Val())
+	})
 
 	for typ, value := range largeValue {
 		t.Run(fmt.Sprintf("LTRIM stress testing - %s", typ), func(t *testing.T) {

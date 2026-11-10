@@ -1201,12 +1201,11 @@ Status Storage::TryPurgeCheckpoint(int fetch_file_threads) {
       return Status::OK();
     }
 
-    // TODO(shooterit): support to config the alive time of checkpoint
     int64_t create_time_secs = checkpoint_info_.create_time_secs;
     int64_t access_time_secs = checkpoint_info_.access_time_secs;
     int64_t now_secs = util::GetTimeStamp<std::chrono::seconds>();
-    bool should_purge =
-        (fetch_file_threads == 0 && now_secs - access_time_secs > 30) || (now_secs - create_time_secs > 24 * 60 * 60);
+    bool should_purge = (fetch_file_threads == 0 && now_secs - access_time_secs > config_->checkpoint_idle_time_secs) ||
+                        (now_secs - create_time_secs > config_->checkpoint_alive_time_secs);
     if (!should_purge) {
       return Status::OK();
     }

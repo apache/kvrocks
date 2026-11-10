@@ -528,6 +528,39 @@ var streamTests = func(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.EqualValues(t, 1, rdb.XDel(ctx, "somestream", "2-0", "2-0", "2-0").Val())
 		require.EqualValues(t, 0, rdb.XLen(ctx, "somestream").Val())
 	})
+	t.Run("XDEL keeps first and last entry metadata on surviving entries", func(t *testing.T) {
+		tests := []struct {
+			name            string
+			ids             []string
+			survivor        string
+			maxDeletedEntry string
+		}{
+			{name: "first entry", ids: []string{"2-0", "1-0"}, survivor: "3-0", maxDeletedEntry: "2-0"},
+			{name: "last entry", ids: []string{"2-0", "3-0"}, survivor: "1-0", maxDeletedEntry: "3-0"},
+		}
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				require.NoError(t, rdb.Del(ctx, "somestream").Err())
+				for _, id := range []string{"1-0", "2-0", "3-0"} {
+					require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "somestream", ID: id, Values: []string{"foo", "bar"}}).Err())
+				}
+				require.EqualValues(t, 2, rdb.XDel(ctx, "somestream", test.ids...).Val())
+
+				info, err := rdb.XInfoStream(ctx, "somestream").Result()
+				require.NoError(t, err)
+				require.EqualValues(t, 1, info.Length)
+				require.Equal(t, test.survivor, info.FirstEntry.ID)
+				require.Equal(t, test.survivor, info.LastEntry.ID)
+				require.Equal(t, test.survivor, info.RecordedFirstEntryID)
+				require.Equal(t, test.maxDeletedEntry, info.MaxDeletedEntryID)
+
+				require.EqualValues(t, 0, rdb.XTrimMinID(ctx, "somestream", test.survivor).Val())
+				entries := rdb.XRange(ctx, "somestream", "-", "+").Val()
+				require.Len(t, entries, 1)
+				require.Equal(t, test.survivor, entries[0].ID)
+			})
+		}
+	})
 
 	// Here the idea is to check the consistency of the stream data structure as we remove all the elements down to zero elements.
 	t.Run("XDEL fuzz test", func(t *testing.T) {

@@ -134,6 +134,13 @@ func TestCommand(t *testing.T) {
 		require.Equal(t, "key2", vs[1])
 	})
 
+	t.Run("COMMAND GETKEYS ZRANGESTORE", func(t *testing.T) {
+		r := rdb.Do(ctx, "COMMAND", "GETKEYS", "ZRANGESTORE", "dst", "src", "0", "-1")
+		vs, err := r.Slice()
+		require.NoError(t, err)
+		require.Equal(t, []interface{}{"dst", "src"}, vs)
+	})
+
 	t.Run("COMMAND GETKEYS ZINTER", func(t *testing.T) {
 		r := rdb.Do(ctx, "COMMAND", "GETKEYS", "ZINTER", "2", "key1", "key2")
 		vs, err := r.Slice()

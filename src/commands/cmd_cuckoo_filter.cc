@@ -201,6 +201,191 @@ class CommandCFMExists : public Commander {
   std::vector<std::string> items_;
 };
 
+class CommandCFInsert : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    // CF.INSERT key [CAPACITY capacity] [NOCREATE] ITEMS item [item ...]
+    if (args.size() < 4) {
+      return {Status::RedisParseErr, errWrongNumOfArguments};
+    }
+
+    insert_options_ = CuckooFilterInsertOptions{};
+    has_items_ = false;
+    items_.clear();
+
+    CommandParser parser(args, 2);
+    while (parser.Good()) {
+      if (parser.EatEqICase("CAPACITY")) {
+        auto parse_capacity = parser.TakeInt<uint64_t>();
+        if (!parse_capacity.IsOK()) {
+          return {Status::RedisParseErr, "invalid capacity"};
+        }
+        insert_options_.capacity = parse_capacity.GetValue();
+        if (insert_options_.capacity == 0) {
+          return {Status::RedisParseErr, "capacity must be larger than 0"};
+        }
+      } else if (parser.EatEqICase("NOCREATE")) {
+        insert_options_.auto_create = false;
+      } else if (parser.EatEqICase("ITEMS")) {
+        has_items_ = true;
+        break;
+      } else {
+        return {Status::RedisParseErr, errInvalidSyntax};
+      }
+    }
+
+    if (!has_items_) {
+      return {Status::RedisParseErr, errInvalidSyntax};
+    }
+
+    while (parser.Good()) {
+      items_.emplace_back(GET_OR_RET(parser.TakeStr()));
+    }
+
+    if (items_.empty()) {
+      return {Status::RedisParseErr, "num of items should be greater than 0"};
+    }
+
+    return Commander::Parse(args);
+  }
+
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    redis::CuckooChain cuckoo_db(srv->storage, conn->GetNamespace());
+    std::vector<CuckooFilterInsertResult> rets;
+
+    auto s = cuckoo_db.Insert(ctx, args_[1], items_, insert_options_, rets);
+
+    if (!s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+
+    *output = redis::MultiLen(items_.size());
+    for (const auto &ret : rets) {
+      switch (ret) {
+        case CuckooFilterInsertResult::kOk:
+          *output += conn->Bool(true);
+          break;
+        case CuckooFilterInsertResult::kFull:
+          *output += conn->GetProtocolVersion() == RESP::v3 ? conn->Bool(false) : redis::Integer(-1);
+          break;
+      }
+    }
+
+    return Status::OK();
+  }
+
+ private:
+  CuckooFilterInsertOptions insert_options_;
+  bool has_items_ = false;
+  std::vector<std::string> items_;
+};
+
+class CommandCFInfo : public Commander {
+ private:
+  enum class CuckooInfoType {
+    kAll,
+    kSize,
+    kBuckets,
+    kFilters,
+    kItems,
+    kBucketSize,
+    kExpansion,
+    kMaxIterations,
+  };
+
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    // CF.INFO key [field]
+    if (args.size() > 3) {
+      return {Status::RedisParseErr, errWrongNumOfArguments};
+    }
+    CommandParser parser(args, 2);
+    if (parser.Good()) {
+      if (parser.EatEqICase("size")) {
+        type_ = CuckooInfoType::kSize;
+      } else if (parser.EatEqICase("buckets")) {
+        type_ = CuckooInfoType::kBuckets;
+      } else if (parser.EatEqICase("filters")) {
+        type_ = CuckooInfoType::kFilters;
+      } else if (parser.EatEqICase("items")) {
+        type_ = CuckooInfoType::kItems;
+      } else if (parser.EatEqICase("bucket_size")) {
+        type_ = CuckooInfoType::kBucketSize;
+      } else if (parser.EatEqICase("expansion")) {
+        type_ = CuckooInfoType::kExpansion;
+      } else if (parser.EatEqICase("max_iterations")) {
+        type_ = CuckooInfoType::kMaxIterations;
+      } else {
+        return {Status::RedisParseErr, "Invalid info argument"};
+      }
+    }
+    return Commander::Parse(args);
+  }
+
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    redis::CuckooChain cuckoo_db(srv->storage, conn->GetNamespace());
+    redis::CuckooFilterInfo info;
+    auto s = cuckoo_db.Info(ctx, args_[1], &info);
+
+    if (s.IsNotFound()) {
+      return {Status::RedisExecErr, "Not found"};
+    }
+    if (!s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+    switch (type_) {
+      case CuckooInfoType::kAll:
+        *output = conn->HeaderOfMap(8);
+        *output += redis::SimpleString("Size");
+        *output += redis::Integer(info.bucket_bytes);
+        *output += redis::SimpleString("Number of buckets");
+        *output += redis::Integer(info.base_buckets);
+        *output += redis::SimpleString("Number of filters");
+        *output += redis::Integer(info.n_filters);
+        *output += redis::SimpleString("Number of items inserted");
+        *output += redis::Integer(info.item_count);
+        *output += redis::SimpleString("Number of items deleted");
+        *output += redis::Integer(info.n_items_deleted);
+        *output += redis::SimpleString("Bucket size");
+        *output += redis::Integer(info.bucket_size);
+        *output += redis::SimpleString("Expansion rate");
+        *output += redis::Integer(info.expansion);
+        *output += redis::SimpleString("Max iterations");
+        *output += redis::Integer(info.max_iterations);
+        break;
+      case CuckooInfoType::kSize:
+        *output = redis::Integer(info.bucket_bytes);
+        break;
+      case CuckooInfoType::kBuckets:
+        *output = redis::Integer(info.base_buckets);
+        break;
+      case CuckooInfoType::kFilters:
+        *output = redis::Integer(info.n_filters);
+        break;
+      case CuckooInfoType::kItems:
+        *output = conn->HeaderOfMap(2);
+        *output += redis::SimpleString("Number of items inserted");
+        *output += redis::Integer(info.item_count);
+        *output += redis::SimpleString("Number of items deleted");
+        *output += redis::Integer(info.n_items_deleted);
+        break;
+      case CuckooInfoType::kBucketSize:
+        *output = redis::Integer(info.bucket_size);
+        break;
+      case CuckooInfoType::kExpansion:
+        *output = redis::Integer(info.expansion);
+        break;
+      case CuckooInfoType::kMaxIterations:
+        *output = redis::Integer(info.max_iterations);
+        break;
+    }
+    return Status::OK();
+  }
+
+ private:
+  CuckooInfoType type_ = CuckooInfoType::kAll;
+};
+
 class CommandCFDel : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
@@ -283,13 +468,15 @@ class CommandCFCount : public Commander {
   }
 };
 
-// Register the CF.RESERVE, CF.ADD, CF.DEL, CF.EXISTS, CF.MEXISTS, and CF.COUNT commands
+// Register the CF.RESERVE, CF.ADD, CF.DEL, CF.EXISTS, CF.MEXISTS, CF.INSERT, CF.COUNT, and CF.INFO commands
 REDIS_REGISTER_COMMANDS(CuckooFilter, MakeCmdAttr<CommandCFReserve>("cf.reserve", -3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandCFAdd>("cf.add", 3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandCFDel>("cf.del", 3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandCFExists>("cf.exists", 3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandCFMExists>("cf.mexists", -3, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandCFInsert>("cf.insert", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandCFCount>("cf.count", 3, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandCFInfo>("cf.info", -2, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandCFScanDump>("cf.scandump", 3, "read-only", 1, 1, 1))
 
 }  // namespace redis

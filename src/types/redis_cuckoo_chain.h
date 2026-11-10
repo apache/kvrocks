@@ -37,9 +37,35 @@ const uint16_t kCFDefaultMaxIterations = 20;
 const uint16_t kCFDefaultExpansion = 1;
 const uint16_t kCFMaxExpansion = 32768;
 
+struct CuckooFilterInfo {
+  // Logical bucket storage across all sub-filters, in bytes.
+  uint64_t bucket_bytes = 0;
+  // Bucket count of the initial sub-filter. RedisBloom reports the same value as "Number of buckets".
+  uint64_t base_buckets = 0;
+  uint16_t n_filters = 0;
+  // Number of live items (inserts minus deletes).
+  uint64_t item_count = 0;
+  // Cumulative number of deleted items.
+  uint64_t n_items_deleted = 0;
+  uint8_t bucket_size = 0;
+  uint16_t expansion = 0;
+  uint16_t max_iterations = 0;
+};
+
+enum class CuckooFilterInsertResult {
+  kOk,
+  kFull,
+};
+
+struct CuckooFilterInsertOptions {
+  uint64_t capacity = kCFDefaultCapacity;
+  bool auto_create = true;
+};
+
 // Command tags recorded in WriteBatchLogData for cuckoo filter mutations.
 constexpr const char *kCFLogDataReserve = "reserve";
 constexpr const char *kCFLogDataAdd = "add";
+constexpr const char *kCFLogDataInsert = "insert";
 constexpr const char *kCFLogDataDel = "del";
 
 class CuckooChain : public Database {
@@ -66,6 +92,13 @@ class CuckooChain : public Database {
   // Deletes one matching fingerprint from the cuckoo filter.
   rocksdb::Status Delete(engine::Context &ctx, const Slice &user_key, const Slice &item, bool *deleted);
 
+  // Retrieves information about the cuckoo filter associated with the given key.
+  rocksdb::Status Info(engine::Context &ctx, const Slice &user_key, CuckooFilterInfo *info);
+
+  // Stages all items and commits successful insertions once. Full filters produce per-item failures.
+  rocksdb::Status Insert(engine::Context &ctx, const Slice &user_key, const std::vector<std::string> &items,
+                         const CuckooFilterInsertOptions &options, std::vector<CuckooFilterInsertResult> &rets);
+
   rocksdb::Status ScanDump(engine::Context &ctx, const Slice &user_key, uint64_t iterator, uint64_t *next_iterator,
                            std::string *data, bool *has_data);
 
@@ -75,14 +108,19 @@ class CuckooChain : public Database {
 
   static rocksdb::Status validateMetadata(const CuckooChainMetadata &metadata);
 
+  // Calculates the total number of buckets across all sub-filters.
+  static rocksdb::Status calculateTotalBuckets(const CuckooChainMetadata &metadata, uint32_t base_buckets,
+                                               uint64_t *total_buckets);
+
   static rocksdb::Status tryInsertFingerprint(CuckooChainMetadata *metadata, CuckooPageCache &pages, uint64_t hash,
-                                              uint8_t fingerprint, bool *inserted);
+                                              uint8_t fingerprint, bool *inserted, bool error_on_limit = true);
   static rocksdb::Status tryCuckooInsert(const CuckooChainMetadata *metadata, CuckooPageCache &pages, uint64_t hash,
                                          uint8_t fingerprint, bool *inserted);
   static rocksdb::Status tryCuckooKickOut(const CuckooChainMetadata *metadata, CuckooPageCache &pages, uint64_t hash,
                                           uint8_t fingerprint, bool *inserted);
   static rocksdb::Status expandAndInsertCuckooChain(CuckooChainMetadata *metadata, CuckooPageCache &pages,
-                                                    uint64_t hash, uint8_t fingerprint, bool *inserted);
+                                                    uint64_t hash, uint8_t fingerprint, bool *inserted,
+                                                    bool error_on_limit);
   rocksdb::Status commitPagesAndMetadata(engine::Context &ctx, const Slice &user_key, const std::string &ns_key,
                                          const CuckooChainMetadata *metadata, CuckooPageCache &pages,
                                          const std::string &command);

@@ -756,6 +756,16 @@ var setTests = func(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.EqualValues(t, []string{"3", "4"}, cmd.Val())
 	})
 
+	t.Run("SMOVE to destination containing the member", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "smove-src", "smove-dst").Err())
+		require.NoError(t, rdb.SAdd(ctx, "smove-src", "x").Err())
+		require.NoError(t, rdb.SAdd(ctx, "smove-dst", "x").Err())
+
+		require.True(t, rdb.SMove(ctx, "smove-src", "smove-dst", "x").Val())
+		require.False(t, rdb.SIsMember(ctx, "smove-src", "x").Val())
+		require.True(t, rdb.SIsMember(ctx, "smove-dst", "x").Val())
+	})
+
 	t.Run("SMOVE non existing key", func(t *testing.T) {
 		SetupMove()
 		require.EqualValues(t, false, rdb.SMove(ctx, "myset1", "myset2", "foo").Val())

@@ -123,7 +123,7 @@ class CuckooChain : public Database {
   rocksdb::Status commitPagesAndMetadata(engine::Context &ctx, const Slice &user_key, const std::string &ns_key,
                                          const CuckooChainMetadata *metadata, CuckooPageCache &pages,
                                          const std::string &command);
-  rocksdb::Status MExists(const std::vector<std::string> &items, const CuckooChainMetadata &metadata,
+  rocksdb::Status mExists(const std::vector<std::string> &items, const CuckooChainMetadata &metadata,
                           CuckooPageCache &pages, std::vector<bool> *exists);
 };
 

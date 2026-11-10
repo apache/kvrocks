@@ -289,7 +289,7 @@ rocksdb::Status CuckooChain::Insert(engine::Context &ctx, const Slice &user_key,
 
     if (insert_options.check_items_exists) {
       std::vector<bool> exists;
-      s = MExists(std::vector<std::string>{item}, metadata, pages, &exists);
+      s = mExists(std::vector<std::string>{item}, metadata, pages, &exists);
       if (!s.ok()) return s;
       if (exists[0]) {
         ret[i] = CuckooFilterInsertResult::kExists;
@@ -548,10 +548,10 @@ rocksdb::Status CuckooChain::MExists(engine::Context &ctx, const Slice &user_key
 
   CuckooPageCache pages(storage_, ctx, ns_key, storage_->IsSlotIdEncoded(), metadata.version, metadata.bucket_size,
                         metadata.page_size);
-  return MExists(items, metadata, pages, exists);
+  return mExists(items, metadata, pages, exists);
 }
 
-rocksdb::Status CuckooChain::MExists(const std::vector<std::string> &items, const CuckooChainMetadata &metadata,
+rocksdb::Status CuckooChain::mExists(const std::vector<std::string> &items, const CuckooChainMetadata &metadata,
                                      CuckooPageCache &pages, std::vector<bool> *exists) {
   exists->assign(items.size(), false);
   std::vector<uint64_t> hashes(items.size());

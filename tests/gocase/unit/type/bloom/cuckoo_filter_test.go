@@ -757,7 +757,7 @@ func TestCuckooFilterInsertNX(t *testing.T) {
 	srv := util.StartServer(t, map[string]string{})
 	defer srv.Close()
 	ctx := context.Background()
-	rdb := srv.NewClientWithOption(&redis.Options{Protocol: 2})
+	rdb := srv.NewClient()
 	defer func() { require.NoError(t, rdb.Close()) }()
 
 	t.Run("Auto-create and skip repeated items", func(t *testing.T) {
@@ -785,6 +785,15 @@ func TestCuckooFilterInsertNX(t *testing.T) {
 		result, err := rdb.Do(ctx, "cf.insertnx", key, "NOCREATE", "ITEMS", "alpha", "alpha").Result()
 		require.NoError(t, err)
 		require.Equal(t, []interface{}{int64(1), int64(0)}, result)
+	})
+
+	t.Run("Wrong type error preserves prefix and value", func(t *testing.T) {
+		const key = "insertnx_wrong_type"
+		require.NoError(t, rdb.Set(ctx, key, "value", 0).Err())
+		requireWrongType(t, rdb.Do(ctx, "cf.insertnx", key, "ITEMS", "alpha").Err())
+		value, err := rdb.Get(ctx, key).Result()
+		require.NoError(t, err)
+		require.Equal(t, "value", value)
 	})
 
 	t.Run("Reject malformed options without creating a key", func(t *testing.T) {

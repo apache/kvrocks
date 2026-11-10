@@ -254,7 +254,7 @@ class CommandCFInsert : public Commander {
     auto s = cuckoo_db.Insert(ctx, args_[1], items_, insert_options_, rets);
 
     if (!s.ok()) {
-      return {Status::RedisExecErr, s.ToString()};
+      return CuckooFilterCommandStatus(s);
     }
 
     *output = redis::MultiLen(items_.size());
@@ -335,20 +335,20 @@ class CommandCFInsertNx : public Commander {
     auto s = cuckoo_db.Insert(ctx, args_[1], items_, insert_options_, rets);
 
     if (!s.ok()) {
-      return {Status::RedisExecErr, s.ToString()};
+      return CuckooFilterCommandStatus(s);
     }
 
     *output = redis::MultiLen(items_.size());
     for (const auto &ret : rets) {
       switch (ret) {
         case CuckooFilterInsertResult::kOk:
-          *output += conn->Bool(true);
+          *output += redis::Integer(1);
           break;
         case CuckooFilterInsertResult::kFull:
-          *output += conn->GetProtocolVersion() == RESP::v3 ? conn->Bool(false) : redis::Integer(-1);
+          *output += redis::Integer(-1);
           break;
         case CuckooFilterInsertResult::kExists:
-          *output += conn->Bool(false);
+          *output += redis::Integer(0);
           break;
       }
     }

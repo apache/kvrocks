@@ -1021,6 +1021,15 @@ func testList(t *testing.T, configs util.KvrocksServerConfigs) {
 			require.Equal(t, []int64{7, 6}, rdb.LPosCount(ctx, "mylist", "c", 2, redis.LPosArgs{Rank: -1}).Val())
 		})
 
+		// LPosCount also accepts bulk strings like "2", so check the raw reply to make sure
+		// LPOS with COUNT replies with integers, as Redis does.
+		t.Run("LPOS COUNT replies with integers", func(t *testing.T) {
+			require.Equal(t, []interface{}{int64(2)}, rdb.Do(ctx, "LPOS", "mylist", "c", "COUNT", 1).Val())
+			require.Equal(t, []interface{}{int64(2), int64(6), int64(7)}, rdb.Do(ctx, "LPOS", "mylist", "c", "COUNT", 0).Val())
+			require.Equal(t, []interface{}{int64(7), int64(6)}, rdb.Do(ctx, "LPOS", "mylist", "c", "RANK", -1, "COUNT", 2).Val())
+			require.Equal(t, []interface{}{}, rdb.Do(ctx, "LPOS", "mylist", "x", "COUNT", 0).Val())
+		})
+
 		t.Run("LPOS non existing key", func(t *testing.T) {
 			require.Empty(t, rdb.LPosCount(ctx, "mylistxxx", "c", 0, redis.LPosArgs{Rank: 2}).Val())
 		})

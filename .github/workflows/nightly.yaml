@@ -48,22 +48,22 @@ jobs:
 
       - name: Docker meta
         id: meta
-        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           images: apache/kvrocks
 
       - name: Login to Docker Hub
         if: ${{ github.event_name != 'pull_request' }}
-        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Build and push by digest
         id: build
@@ -105,18 +105,18 @@ jobs:
           merge-multiple: true
 
       - name: Login to Docker Hub
-        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Docker meta (for unstable)
         id: meta
         if: ${{ github.ref_name == 'unstable' }}
-        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           images: apache/kvrocks
           flavor: latest=false
@@ -127,7 +127,7 @@ jobs:
       - name: Docker meta (for tags)
         id: meta_tag
         if: ${{ github.ref_name != 'unstable' }}
-        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           images: apache/kvrocks
           flavor: latest=false

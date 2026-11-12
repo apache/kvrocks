@@ -183,6 +183,10 @@ func testJSON(t *testing.T, configs util.KvrocksServerConfigs) {
 		result2 = append(result2, int64(5), int64(7), interface{}(nil))
 		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"a":"foo", "nested": {"a": "hello"}, "nested2": {"a": 31}}`).Err())
 		require.Equal(t, rdb.Do(ctx, "JSON.STRAPPEND", "a", "$..a", "\"be\"").Val(), result2)
+
+		require.Error(t, rdb.Do(ctx, "JSON.STRAPPEND", "a", "$.a", "be").Err())
+		require.Error(t, rdb.Do(ctx, "JSON.STRAPPEND", "a", "$.a", "").Err())
+		require.Equal(t, rdb.Do(ctx, "JSON.GET", "a", "$.a").Val(), `["foobe"]`)
 	})
 
 	t.Run("JSON.STRLEN basics", func(t *testing.T) {

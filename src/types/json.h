@@ -197,7 +197,7 @@ struct JsonValue {
                                            results.emplace_back(std::nullopt);
                                          }
                                        });
-    } catch (const jsoncons::jsonpath::jsonpath_error &e) {
+    } catch (const std::exception &e) {
       return {Status::NotOK, e.what()};
     }
 

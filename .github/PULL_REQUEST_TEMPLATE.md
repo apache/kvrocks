@@ -35,7 +35,7 @@ discussion, or mailing list thread. Minor fixes do not require a separate issue.
 
 ## AI assistance
 
-<!-- State "None" if no AI tools were used. Otherwise, name the LLM tools used and briefly describe
+<!-- State "None" if no AI tools were used. Otherwise, name the LLM models and tools used and briefly describe
 how they helped (e.g., analysis, design, code, tests, or documentation). Highlight any parts
 that need extra review. See:
 https://kvrocks.apache.org/community/contributing#guidelines-for-ai-assisted-contributions

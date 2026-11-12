@@ -259,7 +259,7 @@ rocksdb::Status Json::Merge(engine::Context &ctx, const std::string &user_key, c
 
   auto res = json_val.Merge(path, merge_value);
 
-  if (!res.IsOK()) return s;
+  if (!res.IsOK()) return rocksdb::Status::InvalidArgument(res.Msg());
 
   result = static_cast<bool>(res.GetValue());
   if (!res) {

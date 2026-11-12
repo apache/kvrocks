@@ -268,7 +268,6 @@ rocksdb::Status Set::Move(engine::Context &ctx, const Slice &src, const Slice &d
     return s;
   }
   s = Add(ctx, dst, members, &ret);
-  *flag = (ret != 0);
   return s;
 }
 
@@ -303,6 +302,31 @@ rocksdb::Status Set::Diff(engine::Context &ctx, const std::vector<Slice> &keys, 
   for (const auto &member : source_members) {
     if (exclude_members.find(member) == exclude_members.end()) {
       members->push_back(member);
+    }
+  }
+  return rocksdb::Status::OK();
+}
+
+rocksdb::Status Set::DiffCard(engine::Context &ctx, const std::vector<Slice> &keys, uint64_t limit,
+                              uint64_t *cardinality) {
+  *cardinality = 0;
+  std::vector<std::string> source_members;
+  auto s = Members(ctx, keys[0], &source_members);
+  if (!s.ok()) return s;
+
+  std::map<std::string, bool> exclude_members;
+  std::vector<std::string> target_members;
+  for (size_t i = 1; i < keys.size(); i++) {
+    s = Members(ctx, keys[i], &target_members);
+    if (!s.ok()) return s;
+    for (const auto &member : target_members) {
+      exclude_members[member] = true;
+    }
+  }
+  for (const auto &member : source_members) {
+    if (exclude_members.find(member) == exclude_members.end()) {
+      *cardinality += 1;
+      if (*cardinality == limit) break;
     }
   }
   return rocksdb::Status::OK();

@@ -36,6 +36,7 @@ constexpr long double kCuckooFilterLoadFactor = 0.955L;
 constexpr uint64_t kCuckooFilterMaxSupportedBuckets = std::numeric_limits<uint32_t>::max() / 2 + 1ULL;
 constexpr uint64_t kCuckooFilterFingerprintModulus = 255;
 constexpr uint64_t kCuckooFilterAltHashMultiplier = 0x5bd1e995ULL;
+constexpr uint8_t kEmptyCuckooFingerprint = 0;
 
 // Cuckoo filter implementation from the paper:
 // "Cuckoo Filter: Practically Better Than Bloom" by Fan et al.
@@ -115,10 +116,29 @@ class CuckooFilterHelper {
   // Returns false if overflow would occur.
   static bool CalculateFilterCapacity(uint64_t base_capacity, uint16_t expansion, uint16_t filter_index,
                                       uint64_t *filter_capacity) {
+    // Preserve the original behavior for disabled expansion (0): only index 0 has the base capacity.
+    if (expansion == 0) {
+      *filter_capacity = filter_index == 0 ? base_capacity : 0;
+      return true;
+    }
+    if (expansion == 1) {
+      *filter_capacity = base_capacity;
+      return true;
+    }
+
+    // Exponentiation by squaring keeps this O(log filter_index) instead of O(filter_index) for every lookup.
     uint64_t capacity = base_capacity;
-    for (uint16_t i = 0; i < filter_index; ++i) {
-      if (expansion != 0 && capacity > std::numeric_limits<uint64_t>::max() / expansion) return false;
-      capacity *= expansion;
+    uint64_t factor = expansion;
+    uint16_t power = filter_index;
+    while (power > 0) {
+      if ((power & 1U) != 0) {
+        if (capacity > std::numeric_limits<uint64_t>::max() / factor) return false;
+        capacity *= factor;
+      }
+      power >>= 1;
+      if (power == 0) break;
+      if (factor > std::numeric_limits<uint64_t>::max() / factor) return false;
+      factor *= factor;
     }
     *filter_capacity = capacity;
     return true;

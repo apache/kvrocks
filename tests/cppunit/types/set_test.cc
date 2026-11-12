@@ -79,6 +79,12 @@ TEST_F(RedisSetTest, Members) {
   for (size_t i = 0; i < fields_.size(); i++) {
     EXPECT_EQ(fields_[i], members[i]);
   }
+  s = set_->Add(*ctx_, key_, {""}, &ret);
+  EXPECT_TRUE(s.ok() && ret == 1);
+  members.clear();
+  s = set_->Scan(*ctx_, key_, "", 1, "", &members);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(members, std::vector<std::string>({"", fields_[0].ToString()}));
   s = set_->Remove(*ctx_, key_, fields_, &ret);
   EXPECT_TRUE(s.ok() && fields_.size() == ret);
 }
@@ -166,6 +172,24 @@ TEST_F(RedisSetTest, Diff) {
   std::vector<std::string> members;
   set_->Diff(*ctx_, {k1, k2, k3}, &members);
   EXPECT_EQ(2, members.size());
+  s = set_->Del(*ctx_, k1);
+  s = set_->Del(*ctx_, k2);
+  s = set_->Del(*ctx_, k3);
+}
+
+TEST_F(RedisSetTest, DiffCard) {
+  uint64_t ret = 0;
+  std::string k1 = "key1", k2 = "key2", k3 = "key3";
+  rocksdb::Status s = set_->Add(*ctx_, k1, {"a", "b", "c", "d"}, &ret);
+  EXPECT_EQ(ret, 4);
+  set_->Add(*ctx_, k2, {"c"}, &ret);
+  EXPECT_EQ(ret, 1);
+  set_->Add(*ctx_, k3, {"a", "c", "e"}, &ret);
+  EXPECT_EQ(ret, 3);
+  set_->DiffCard(*ctx_, {k1, k2, k3}, 0, &ret);
+  EXPECT_EQ(ret, 2);
+  set_->DiffCard(*ctx_, {k1, k2, k3}, 1, &ret);
+  EXPECT_EQ(ret, 1);
   s = set_->Del(*ctx_, k1);
   s = set_->Del(*ctx_, k2);
   s = set_->Del(*ctx_, k3);

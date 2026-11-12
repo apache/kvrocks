@@ -160,6 +160,13 @@ rocksdb::Status CuckooPageCache::RestoreBucketSlot(const SlotMutation &mutation)
 rocksdb::Status CuckooPageCache::WriteBackDirtyPages(rocksdb::WriteBatchBase *batch) {
   for (const auto &entry : pages_) {
     if (!entry.second.is_dirty) continue;
+    if (std::all_of(entry.second.data.begin(), entry.second.data.end(), [](char value) { return value == 0; })) {
+      if (entry.second.exists) {
+        auto s = batch->Delete(entry.first);
+        if (!s.ok()) return s;
+      }
+      continue;
+    }
     auto s = batch->Put(entry.first, entry.second.data);
     if (!s.ok()) return s;
   }
@@ -218,6 +225,7 @@ rocksdb::Status CuckooPageCache::loadPage(const BucketLocation &location, PageEn
   PageEntry page_entry;
   auto s = storage_->Get(ctx_, ctx_.GetReadOptions(), location.page_key, &page_entry.data);
   if (!s.ok() && !s.IsNotFound()) return s;
+  page_entry.exists = s.ok();
   s = normalizePage(s, location.expected_page_size, &page_entry);
   if (!s.ok()) return s;
 
@@ -244,7 +252,10 @@ rocksdb::Status CuckooPageCache::loadPages(const std::vector<BucketLocation> &lo
 
   for (size_t i = 0; i < locations.size(); ++i) {
     PageEntry page_entry;
-    if (statuses[i].ok()) page_entry.data.assign(values[i].data(), values[i].size());
+    if (statuses[i].ok()) {
+      page_entry.data.assign(values[i].data(), values[i].size());
+      page_entry.exists = true;
+    }
     auto s = normalizePage(statuses[i], locations[i].expected_page_size, &page_entry);
     if (!s.ok()) return s;
     pages_.emplace(locations[i].page_key, std::move(page_entry));
@@ -283,6 +294,22 @@ uint8_t CuckooPageCache::getBucketRefSlot(const BucketRef &bucket, uint32_t slot
 void CuckooPageCache::setBucketRefSlot(const BucketRef &bucket, uint32_t slot_idx, uint8_t fingerprint) {
   bucket.page->data[bucket.offset + slot_idx] = static_cast<char>(fingerprint);
   bucket.page->is_dirty = true;
+}
+
+rocksdb::Status CuckooPageCache::CountFingerprintInBucket(uint16_t filter_index, uint32_t num_buckets,
+                                                          uint32_t bucket_index, uint8_t fingerprint, uint32_t *count) {
+  *count = 0;
+  BucketRef bucket;
+  auto s = ensureBucketLoaded(filter_index, num_buckets, bucket_index, &bucket);
+  if (!s.ok()) return s;
+
+  for (size_t i = 0; i < bucket.size; ++i) {
+    size_t offset = bucket.offset + i;
+    if (static_cast<uint8_t>(bucket.page->data[offset]) == fingerprint) {
+      *count += 1;
+    }
+  }
+  return rocksdb::Status::OK();
 }
 
 }  // namespace redis

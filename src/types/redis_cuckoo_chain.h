@@ -55,11 +55,13 @@ struct CuckooFilterInfo {
 enum class CuckooFilterInsertResult {
   kOk,
   kFull,
+  kExists,
 };
 
 struct CuckooFilterInsertOptions {
   uint64_t capacity = kCFDefaultCapacity;
   bool auto_create = true;
+  bool check_items_exists = false;
 };
 
 // Command tags recorded in WriteBatchLogData for cuckoo filter mutations.
@@ -121,6 +123,8 @@ class CuckooChain : public Database {
   rocksdb::Status commitPagesAndMetadata(engine::Context &ctx, const Slice &user_key, const std::string &ns_key,
                                          const CuckooChainMetadata *metadata, CuckooPageCache &pages,
                                          const std::string &command);
+  rocksdb::Status mExists(const std::vector<std::string> &items, const CuckooChainMetadata &metadata,
+                          CuckooPageCache &pages, std::vector<bool> *exists);
 };
 
 }  // namespace redis

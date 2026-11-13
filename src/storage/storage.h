@@ -369,6 +369,9 @@ class Storage {
   std::string GetReplIdFromWalBySeq(rocksdb::SequenceNumber seq);
   std::string GetReplIdFromDbEngine();
 
+  bool IsScanning() const { return db_scanning_; }
+  void SetDBScanning(bool is_scanning) { db_scanning_ = is_scanning; }
+
  private:
   std::unique_ptr<rocksdb::DB> db_ = nullptr;
   std::string replid_;
@@ -389,6 +392,7 @@ class Storage {
 
   std::shared_mutex db_rw_lock_;
   bool db_closing_ = true;
+  bool db_scanning_ = false;
 
   std::atomic<bool> db_in_retryable_io_error_{false};
 

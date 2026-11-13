@@ -22,6 +22,7 @@
 
 #include <gtest/gtest.h>
 
+#include <limits>
 #include <memory>
 #include <string>
 
@@ -91,6 +92,68 @@ class RedisCuckooPageCacheTest : public TestBase {
   std::unique_ptr<redis::Database> db_;
   std::string ns_key_;
 };
+
+TEST(CuckooDumpPayloadTest, BuilderUsesRelativeSkippedPageIndexes) {
+  std::string data = "prefix";
+  redis::CuckooDumpPayload::Builder builder(5, &data);
+  builder.AppendPage(rocksdb::Slice("page"));
+  ASSERT_TRUE(builder.AppendSkippedPageIndex(7).ok());
+  EXPECT_TRUE(builder.AppendSkippedPageIndex(static_cast<size_t>(std::numeric_limits<uint32_t>::max()) + 6)
+                  .IsInvalidArgument());
+  builder.Encode();
+
+  redis::CuckooDumpPayload decoded;
+  ASSERT_TRUE(redis::CuckooDumpPayload::Builder::Decode(data, &decoded).ok());
+  EXPECT_EQ(decoded.page_bytes.ToString(), "prefixpage");
+  EXPECT_EQ(decoded.page_index, 5U);
+  ASSERT_EQ(decoded.skipped_page_indexes, std::vector<uint32_t>({2U}));
+}
+
+TEST(CuckooDumpPayloadTest, EmptyPayloadContainsMetadata) {
+  std::string data;
+  redis::CuckooDumpPayload::Builder builder(42, &data);
+  builder.Encode();
+
+  ASSERT_EQ(data.size(), 2 * sizeof(uint32_t));
+  redis::CuckooDumpPayload decoded;
+  ASSERT_TRUE(redis::CuckooDumpPayload::Builder::Decode(data, &decoded).ok());
+  EXPECT_TRUE(decoded.page_bytes.empty());
+  EXPECT_TRUE(decoded.skipped_page_indexes.empty());
+  EXPECT_EQ(decoded.page_index, 42U);
+}
+
+TEST(CuckooDumpPayloadTest, BuilderEncodesMultiplePagesAndRelativeIndexes) {
+  std::string data;
+  redis::CuckooDumpPayload::Builder builder(100, &data);
+  builder.AppendPage(rocksdb::Slice("page-1page-2"));
+  ASSERT_TRUE(builder.AppendSkippedPageIndex(101).ok());
+  ASSERT_TRUE(builder.AppendSkippedPageIndex(105).ok());
+  builder.Encode();
+
+  redis::CuckooDumpPayload decoded;
+  ASSERT_TRUE(redis::CuckooDumpPayload::Builder::Decode(data, &decoded).ok());
+  EXPECT_EQ(decoded.page_bytes.ToString(), "page-1page-2");
+  EXPECT_EQ(decoded.page_index, 100U);
+  ASSERT_EQ(decoded.skipped_page_indexes, std::vector<uint32_t>({1U, 5U}));
+}
+
+TEST(CuckooDumpPayloadTest, AppendSkippedPageIndexAcceptsUint32Boundary) {
+  std::string data;
+  redis::CuckooDumpPayload::Builder builder(5, &data);
+  ASSERT_TRUE(builder.AppendSkippedPageIndex(static_cast<size_t>(std::numeric_limits<uint32_t>::max()) + 5).ok());
+  EXPECT_TRUE(builder.AppendSkippedPageIndex(static_cast<size_t>(std::numeric_limits<uint32_t>::max()) + 6)
+                  .IsInvalidArgument());
+}
+
+TEST(CuckooDumpPayloadTest, DecodeRejectsTruncatedAndInvalidPayloads) {
+  redis::CuckooDumpPayload decoded;
+  EXPECT_TRUE(redis::CuckooDumpPayload::Builder::Decode(rocksdb::Slice("short"), &decoded).IsCorruption());
+
+  std::string invalid;
+  PutFixed32(&invalid, 1);  // One skipped index, but no index bytes are present.
+  PutFixed32(&invalid, 0);
+  EXPECT_TRUE(redis::CuckooDumpPayload::Builder::Decode(invalid, &decoded).IsCorruption());
+}
 
 TEST_F(RedisCuckooPageCacheTest, TryInsertWritesSmallPage) {
   auto metadata = makeMetadata(4);
@@ -188,6 +251,96 @@ TEST_F(RedisCuckooPageCacheTest, PrefetchBucketsOnDifferentPagesLoadsBothPages) 
   s = pages.GetBucketSlot(0, 1025, 512, 0, &fingerprint);
   ASSERT_TRUE(s.ok()) << s.ToString();
   EXPECT_EQ(fingerprint, 55);
+}
+
+TEST_F(RedisCuckooPageCacheTest, ScanPageBytesReadsAcrossPagesAndFillsMissingPages) {
+  auto metadata = makeMetadata(1, 1, 4);
+  auto page_key = makePageKey(metadata, 0, 1);
+  writePage(page_key,
+            std::string{static_cast<char>(10), static_cast<char>(11), static_cast<char>(12), static_cast<char>(13)});
+  redis::CuckooPageCache pages(storage_.get(), *ctx_, ns_key_, storage_->IsSlotIdEncoded(), metadata.version,
+                               metadata.bucket_size, metadata.page_size);
+
+  std::string data;
+  auto s = pages.ScanPageBytes({{0, 12, 0, 3}}, 0, &data);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  ASSERT_EQ(data.size(), 20U);
+  EXPECT_EQ(data.substr(0, 4), std::string({10, 11, 12, 13}));
+  EXPECT_EQ(DecodeFixed32(data.data() + 4), 0U);
+  EXPECT_EQ(DecodeFixed32(data.data() + 8), 2U);
+  EXPECT_EQ(DecodeFixed32(data.data() + 12), 2U);
+  EXPECT_EQ(DecodeFixed32(data.data() + 16), 0U);
+}
+
+TEST_F(RedisCuckooPageCacheTest, ScanPageBytesReadsExistingPages) {
+  auto metadata = makeMetadata(1, 1, 4);
+  writePage(makePageKey(metadata, 0, 0), std::string({1, 2, 3, 4}));
+  writePage(makePageKey(metadata, 0, 1), std::string({5, 6, 7, 8}));
+  redis::CuckooPageCache pages(storage_.get(), *ctx_, ns_key_, storage_->IsSlotIdEncoded(), metadata.version,
+                               metadata.bucket_size, metadata.page_size);
+
+  std::string data;
+  auto s = pages.ScanPageBytes({{0, 8, 0, 2}}, 0, &data);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  ASSERT_EQ(data.size(), 16U);
+  EXPECT_EQ(data.substr(0, 8), std::string({1, 2, 3, 4, 5, 6, 7, 8}));
+  EXPECT_EQ(DecodeFixed32(data.data() + 8), 0U);
+  EXPECT_EQ(DecodeFixed32(data.data() + 12), 0U);
+}
+
+TEST_F(RedisCuckooPageCacheTest, ScanPageBytesReadsAcrossSubFilters) {
+  auto metadata = makeMetadata(1, 1, 4);
+  writePage(makePageKey(metadata, 0, 0), std::string({1, 2, 3, 4}));
+  writePage(makePageKey(metadata, 1, 0), std::string({5, 6, 7, 8}));
+
+  redis::CuckooPageCache pages(storage_.get(), *ctx_, ns_key_, storage_->IsSlotIdEncoded(), metadata.version,
+                               metadata.bucket_size, metadata.page_size);
+  std::string data;
+  auto s = pages.ScanPageBytes({{0, 8, 0, 2}, {1, 8, 0, 2}}, 10, &data);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+
+  redis::CuckooDumpPayload payload;
+  s = redis::CuckooDumpPayload::Builder::Decode(data, &payload);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  EXPECT_EQ(payload.page_index, 10U);
+  EXPECT_EQ(payload.page_bytes.ToString(), std::string({1, 2, 3, 4, 5, 6, 7, 8}));
+  EXPECT_EQ(payload.skipped_page_indexes, std::vector<uint32_t>({1, 3}));
+}
+
+TEST_F(RedisCuckooPageCacheTest, ScanPageBytesRejectsCorruptedPageSize) {
+  auto metadata = makeMetadata(1, 1, 4);
+  writePage(makePageKey(metadata, 0, 0), std::string({1, 2, 3}));
+  redis::CuckooPageCache pages(storage_.get(), *ctx_, ns_key_, storage_->IsSlotIdEncoded(), metadata.version,
+                               metadata.bucket_size, metadata.page_size);
+
+  std::string data;
+  auto s = pages.ScanPageBytes({{0, 4, 0, 1}}, 0, &data);
+  EXPECT_TRUE(s.IsCorruption()) << s.ToString();
+}
+
+TEST_F(RedisCuckooPageCacheTest, ScanPageBytesRejectsInvalidRange) {
+  auto metadata = makeMetadata(2, 1, 4);
+  redis::CuckooPageCache pages(storage_.get(), *ctx_, ns_key_, storage_->IsSlotIdEncoded(), metadata.version,
+                               metadata.bucket_size, metadata.page_size);
+
+  std::string data;
+  auto s = pages.ScanPageBytes({{0, 2, 3, 2}}, 3, &data);
+  EXPECT_TRUE(s.IsInvalidArgument()) << s.ToString();
+}
+
+TEST_F(RedisCuckooPageCacheTest, ScanPageBytesBatchesLargePageRanges) {
+  auto metadata = makeMetadata(1, 1, 1);
+  redis::CuckooPageCache pages(storage_.get(), *ctx_, ns_key_, storage_->IsSlotIdEncoded(), metadata.version,
+                               metadata.bucket_size, metadata.page_size);
+
+  std::string data;
+  auto s = pages.ScanPageBytes({{0, 8193, 0, 8193}}, 0, &data);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  ASSERT_EQ(data.size(), 8193U * sizeof(uint32_t) + 2 * sizeof(uint32_t));
+  EXPECT_EQ(DecodeFixed32(data.data() + data.size() - 2 * sizeof(uint32_t)), 8193U);
+  EXPECT_EQ(DecodeFixed32(data.data() + data.size() - sizeof(uint32_t)), 0U);
+  EXPECT_EQ(DecodeFixed32(data.data()), 0U);
+  EXPECT_EQ(DecodeFixed32(data.data() + (8193U - 1) * sizeof(uint32_t)), 8192U);
 }
 
 TEST_F(RedisCuckooPageCacheTest, NonDefaultPageSizeControlsBucketMapping) {

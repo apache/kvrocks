@@ -18,6 +18,8 @@
  *
  */
 
+#include <limits>
+
 #include "command_parser.h"
 #include "commander.h"
 #include "error_constants.h"
@@ -408,6 +410,40 @@ class CommandCFDel : public Commander {
   }
 };
 
+class CommandCFScanDump : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    if (args.size() != 3) {
+      return {Status::RedisParseErr, errWrongNumOfArguments};
+    }
+    auto iterator = ParseInt<int64_t>(args[2], 10);
+    if (!iterator || *iterator < 0 || *iterator - 1 > std::numeric_limits<uint32_t>::max()) {
+      return {Status::RedisParseErr, "Invalid position"};
+    }
+    iterator_ = static_cast<uint64_t>(*iterator);
+    return Commander::Parse(args);
+  }
+
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    redis::CuckooChain cuckoo_db(srv->storage, conn->GetNamespace());
+    uint64_t next_iterator = 0;
+    std::string data;
+    bool has_data = false;
+    auto s = cuckoo_db.ScanDump(ctx, args_[1], iterator_, &next_iterator, &data, &has_data);
+    if (!s.ok()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+
+    *output = redis::MultiLen(2);
+    *output += redis::Integer(next_iterator);
+    *output += has_data ? redis::BulkString(data) : conn->NilString();
+    return Status::OK();
+  }
+
+ private:
+  uint64_t iterator_ = 0;
+};
+
 class CommandCFCount : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
@@ -440,6 +476,7 @@ REDIS_REGISTER_COMMANDS(CuckooFilter, MakeCmdAttr<CommandCFReserve>("cf.reserve"
                         MakeCmdAttr<CommandCFMExists>("cf.mexists", -3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandCFInsert>("cf.insert", -4, "write", 1, 1, 1),
                         MakeCmdAttr<CommandCFCount>("cf.count", 3, "read-only", 1, 1, 1),
-                        MakeCmdAttr<CommandCFInfo>("cf.info", -2, "read-only", 1, 1, 1))
+                        MakeCmdAttr<CommandCFInfo>("cf.info", -2, "read-only", 1, 1, 1),
+                        MakeCmdAttr<CommandCFScanDump>("cf.scandump", 3, "read-only", 1, 1, 1))
 
 }  // namespace redis

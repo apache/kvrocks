@@ -77,7 +77,7 @@ struct TSAggregator {
   // Calculates the end timestamp of the aligned bucket that contains the given timestamp.
   uint64_t CalculateAlignedBucketRight(uint64_t ts) const;
 
-  // Splits the given samples into buckets.
+  // Splits the given samples into buckets. Empty buckets are not included.
   std::vector<nonstd::span<const TSSample>> SplitSamplesToBuckets(nonstd::span<const TSSample> samples) const;
 
   // Returns the samples earlier than `less_than` in the bucket that contains `ts`.

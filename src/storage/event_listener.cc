@@ -88,6 +88,7 @@ bool IsDiskQuotaExceeded(const rocksdb::Status &bg_error) {
 }
 
 void EventListener::OnCompactionBegin([[maybe_unused]] rocksdb::DB *db, const rocksdb::CompactionJobInfo &ci) {
+  storage_->OnCompactionBegin(ci.thread_id, ci.job_id);
   INFO(
       "[event_listener/compaction_begin] column family: {}, job_id: {}, compaction reason: {}, output compression "
       "type: {}, base input level(files): {}({}), output level(files): {}({}), input bytes: {}, output bytes: {}, "
@@ -99,6 +100,9 @@ void EventListener::OnCompactionBegin([[maybe_unused]] rocksdb::DB *db, const ro
 }
 
 void EventListener::OnCompactionCompleted([[maybe_unused]] rocksdb::DB *db, const rocksdb::CompactionJobInfo &ci) {
+  // A filter can be destroyed before its output is installed. Track the entire
+  // job so migration cannot take a snapshot while old filter decisions are pending.
+  storage_->OnCompactionCompleted(ci.thread_id, ci.job_id);
   INFO(
       "[event_listener/compaction_completed] column family: {}, job_id: {}, compaction reason: {}, output compression "
       "type: {}, base input level(files): {}({}), output level(files): {}({}), input bytes: {}, output bytes: {}, "

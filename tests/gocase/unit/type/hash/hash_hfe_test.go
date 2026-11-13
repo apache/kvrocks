@@ -730,7 +730,8 @@ func TestHashFieldExpirationTTLReadCommandRounding(t *testing.T) {
 	runWithFieldExpirationHash(t, func(t *testing.T, rdb *redis.Client, ctx context.Context) {
 		key := "hfe-ttl-read-rounding"
 		require.Equal(t, int64(1), rdb.HSet(ctx, key, "field", "1").Val())
-		expireAtMs := time.Now().Add(60*time.Second + 123*time.Millisecond).UnixMilli()
+		baseMs := time.Now().UnixMilli()
+		expireAtMs := baseMs + (60*time.Second + 123*time.Millisecond).Milliseconds()
 		if expireAtMs%1000 == 0 {
 			expireAtMs++
 		}
@@ -744,7 +745,7 @@ func TestHashFieldExpirationTTLReadCommandRounding(t *testing.T) {
 		require.LessOrEqual(t, httl, int64(61))
 		hpttl := rdb.Do(ctx, "hpttl", key, "FIELDS", 1, "field").Val().([]interface{})[0].(int64)
 		require.Greater(t, hpttl, int64(0))
-		require.LessOrEqual(t, hpttl, (60*time.Second + 123*time.Millisecond).Milliseconds())
+		require.LessOrEqual(t, hpttl, expireAtMs-baseMs)
 	})
 }
 

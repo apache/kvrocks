@@ -951,9 +951,19 @@ Status Config::parseConfigFromPair(const std::pair<std::string, std::string> &in
   auto iter = fields_.find(field_key);
   if (iter != fields_.end()) {
     auto &field = iter->second;
+    bool should_warn_legacy_block_cache_setting =
+        field->line_number == 0 &&
+        (field_key == "rocksdb.metadata_block_cache_size" || field_key == "rocksdb.subkey_block_cache_size");
     field->line_number = line_number;
     auto s = field->Set(input.second);
     if (!s.IsOK()) return s.Prefixed(fmt::format("failed to set value of field '{}'", field_key));
+    if (should_warn_legacy_block_cache_setting) {
+      std::cout << fmt::format(
+                       "WARNING: '{}' at line {} is deprecated but still works for now. "
+                       "Use 'rocksdb.block_cache_size' instead.",
+                       field_key, line_number)
+                << std::endl;
+    }
   } else if (deprecated_fields_.find(field_key) != deprecated_fields_.end()) {
     std::cout << fmt::format("WARNING: '{}' at line {} is deprecated and does not take effect.", field_key, line_number)
               << std::endl;

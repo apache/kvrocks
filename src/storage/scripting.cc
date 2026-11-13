@@ -228,10 +228,86 @@ int RedisLogCommand(lua_State *lua) {
   return 0;
 }
 
+// Converts redis.register_function{function_name=..., callback=..., flags=..., description=...}
+// to the positional form (name, callback[, flags]) on the stack, and returns the number of arguments.
+static int ReadRegisterFunctionNamedArgs(lua_State *lua) {
+  if (!lua_istable(lua, 1)) {
+    lua_pushstring(lua,
+                   "calling redis.register_function with a single argument is only applicable to Lua table "
+                   "(representing named arguments).");
+    return lua_error(lua);
+  }
+
+  // stack: table, name, callback, flags
+  constexpr int name_idx = 2, callback_idx = 3, flags_idx = 4;
+  lua_settop(lua, flags_idx);
+
+  lua_pushnil(lua);
+  while (lua_next(lua, 1)) {
+    // stack: ..., key, value
+    if (lua_type(lua, -2) != LUA_TSTRING) {
+      lua_pushstring(lua, "named argument key given to redis.register_function is not a string");
+      return lua_error(lua);
+    }
+    std::string_view key = lua_tostring(lua, -2);
+    int target_idx = 0;
+    if (util::EqualICase(key, "function_name")) {
+      if (lua_type(lua, -1) != LUA_TSTRING) {
+        lua_pushstring(lua, "function_name argument given to redis.register_function must be a string");
+        return lua_error(lua);
+      }
+      target_idx = name_idx;
+    } else if (util::EqualICase(key, "callback")) {
+      if (!lua_isfunction(lua, -1)) {
+        lua_pushstring(lua, "callback argument given to redis.register_function must be a function");
+        return lua_error(lua);
+      }
+      target_idx = callback_idx;
+    } else if (util::EqualICase(key, "flags")) {
+      if (!lua_istable(lua, -1)) {
+        lua_pushstring(lua, "flags argument to redis.register_function must be a table representing function flags");
+        return lua_error(lua);
+      }
+      target_idx = flags_idx;
+    } else if (util::EqualICase(key, "description")) {
+      if (lua_type(lua, -1) != LUA_TSTRING) {
+        lua_pushstring(lua, "description argument given to redis.register_function must be a string");
+        return lua_error(lua);
+      }
+    } else {
+      lua_pushstring(lua, "unknown argument given to redis.register_function");
+      return lua_error(lua);
+    }
+    if (target_idx) {
+      lua_replace(lua, target_idx);
+    } else {
+      lua_pop(lua, 1);
+    }
+  }
+
+  if (lua_isnil(lua, name_idx)) {
+    lua_pushstring(lua, "redis.register_function must get a function name argument");
+    return lua_error(lua);
+  }
+  if (lua_isnil(lua, callback_idx)) {
+    lua_pushstring(lua, "redis.register_function must get a callback argument");
+    return lua_error(lua);
+  }
+
+  lua_remove(lua, 1);
+  if (lua_isnil(lua, -1)) {
+    lua_pop(lua, 1);
+    return 2;
+  }
+  return 3;
+}
+
 int RedisRegisterFunction(lua_State *lua) {
   int argc = lua_gettop(lua);
 
-  if (argc < 2 || argc > 3) {
+  if (argc == 1) {
+    argc = ReadRegisterFunctionNamedArgs(lua);
+  } else if (argc < 2 || argc > 3) {
     lua_pushstring(lua, "wrong number of arguments to redis.register_function().");
     return lua_error(lua);
   }

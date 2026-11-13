@@ -111,17 +111,15 @@ endif()
 #   Note: GCC does not support the 'function' flag.
 if(ENABLE_UBSAN)
     if(CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=undefined -fno-sanitize=alignment,vptr,function,float-divide-by-zero")
-        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=undefined -fno-sanitize=alignment,vptr,function,float-divide-by-zero")
-    elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL "5.1")
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=undefined -fno-sanitize=alignment,vptr")
-        set(CMAKE_C_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=undefined -fno-sanitize=alignment,vptr")
+        set(UBSAN_FLAGS -fsanitize=undefined
+            -fno-sanitize=alignment,vptr,function,float-divide-by-zero)
+    elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU"
+           AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL "5.1")
+        set(UBSAN_FLAGS -fsanitize=undefined -fno-sanitize=alignment,vptr)
     else()
         message(FATAL_ERROR "Cannot use UBSAN without clang or gcc >= 5.1")
     endif()
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=undefined")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-sanitize-recover=all")
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fno-sanitize-recover=all")
+    set(UBSAN_FLAGS ${UBSAN_FLAGS} -fno-sanitize-recover=all)
 endif()
 if(ENABLE_TSAN)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=thread")
@@ -326,3 +324,15 @@ add_executable(unittest ${TESTS_SRCS})
 target_include_directories(unittest PRIVATE tests/cppunit utils)
 
 target_link_libraries(unittest PRIVATE kvrocks_objs kvrocks2redis_objs gtest_main gmock ${EXTERNAL_LIBS})
+
+# Instrument only kvrocks' own code: vendored dependencies are pulled in via
+# FetchContent (add_subdirectory), so they would inherit any global
+# CMAKE_CXX_FLAGS. Instrumenting them makes UBSAN unusable, e.g. rocksdb's
+# PerfStepTimer trips -fsanitize=null on every Seek.
+if(ENABLE_UBSAN)
+    target_compile_options(kvrocks_objs PUBLIC ${UBSAN_FLAGS})
+    target_compile_options(kvrocks2redis_objs PUBLIC ${UBSAN_FLAGS})
+    foreach(target_name kvrocks kvrocks2redis unittest)
+        target_link_options(${target_name} PRIVATE -fsanitize=undefined)
+    endforeach()
+endif()

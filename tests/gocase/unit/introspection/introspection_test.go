@@ -349,3 +349,67 @@ func TestMultiServerIntrospection(t *testing.T) {
 		}, 5*time.Second, 100*time.Millisecond)
 	})
 }
+
+func TestPollUpdatesDetail(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{})
+	defer srv.Close()
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	// Test invalid FORMAT option
+	require.Error(t, rdb.Do(ctx, "pollupdates", "0", "FORMAT", "INVALID").Err())
+
+	require.NoError(t, rdb.MSet(ctx, "wal-key-1", "value-1", "wal-key-2", "value-2").Err())
+	latest, err := strconv.ParseInt(util.FindInfoEntry(rdb, "master_repl_offset", "replication"), 10, 64)
+	require.NoError(t, err)
+	require.Positive(t, latest)
+
+	// Use POLLUPDATES with FORMAT DETAIL to inspect the batch
+	result, err := rdb.Do(ctx, "pollupdates", latest-1, "MAX", "1", "FORMAT", "DETAIL").Result()
+	require.NoError(t, err)
+	resultStr := fmt.Sprintf("%v", result)
+	require.Contains(t, resultStr, "user_key=wal-key-1")
+	require.Contains(t, resultStr, "user_value=value-2")
+	require.Contains(t, resultStr, "start_seq")
+	require.Contains(t, resultStr, "end_seq")
+	require.Contains(t, resultStr, "records")
+
+	// Summary mode (without DETAIL) should not contain decoded values
+	resultSummary, err := rdb.Do(ctx, "pollupdates", latest-1, "MAX", "1", "FORMAT", "RAW").Result()
+	require.NoError(t, err)
+	require.NotContains(t, fmt.Sprintf("%v", resultSummary), "user_value=")
+}
+
+func TestPollUpdatesDetailPropagate(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{})
+	defer srv.Close()
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+	source := "return 42"
+	sha, err := rdb.ScriptLoad(ctx, source).Result()
+	require.NoError(t, err)
+	latest := util.FindInfoEntry(rdb, "master_repl_offset", "replication")
+	require.Positive(t, len(latest))
+
+	// Use the sequence before the script load to poll for updates
+	seq, _ := strconv.ParseInt(latest, 10, 64)
+	result, err := rdb.Do(ctx, "pollupdates", seq-1, "MAX", "1", "FORMAT", "DETAIL").Result()
+	require.NoError(t, err)
+	output := fmt.Sprintf("%v", result)
+	require.Contains(t, output, "cf=propagate")
+	require.Contains(t, output, "propagate_type=lua_script")
+	require.Contains(t, output, "sha="+sha)
+	require.Contains(t, output, "source="+source)
+
+	require.NoError(t, rdb.ScriptFlush(ctx).Err())
+	latest = util.FindInfoEntry(rdb, "master_repl_offset", "replication")
+	seq, _ = strconv.ParseInt(latest, 10, 64)
+	result, err = rdb.Do(ctx, "pollupdates", seq-1, "MAX", "1", "FORMAT", "DETAIL").Result()
+	require.NoError(t, err)
+	output = strings.ToLower(fmt.Sprintf("%v", result))
+	require.Contains(t, output, "propagate_type=command")
+	require.Contains(t, output, "command_arg_0=script")
+	require.Contains(t, output, "command_arg_1=flush")
+}

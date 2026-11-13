@@ -20,9 +20,11 @@
 
 #pragma once
 
+#include <limits>
 #include <optional>
 
 #include "commands/command_parser.h"
+#include "commands/error_constants.h"
 #include "parse_util.h"
 #include "status.h"
 #include "time_util.h"
@@ -32,14 +34,28 @@ constexpr auto TTL_RANGE = NumericRange<T>{1, std::numeric_limits<T>::max()};
 
 template <typename T>
 StatusOr<std::optional<uint64_t>> ParseExpireFlags(CommandParser<T> &parser, std::string_view &curr_flag) {
+  uint64_t now_ms = util::GetTimeStampMS();
   if (parser.EatEqICaseFlag("EX", curr_flag)) {
-    return GET_OR_RET(parser.template TakeInt<int64_t>(TTL_RANGE<int64_t>)) * 1000 + util::GetTimeStampMS();
+    auto v = GET_OR_RET(parser.template TakeInt<int64_t>(TTL_RANGE<int64_t>));
+    if (v > (std::numeric_limits<int64_t>::max() - static_cast<int64_t>(now_ms)) / 1000) {
+      return {Status::RedisParseErr, redis::errInvalidExpireTime};
+    }
+    return static_cast<uint64_t>(v) * 1000 + now_ms;
   } else if (parser.EatEqICaseFlag("EXAT", curr_flag)) {
-    return GET_OR_RET(parser.template TakeInt<int64_t>(TTL_RANGE<int64_t>)) * 1000;
+    auto v = GET_OR_RET(parser.template TakeInt<int64_t>(TTL_RANGE<int64_t>));
+    if (v > std::numeric_limits<int64_t>::max() / 1000) {
+      return {Status::RedisParseErr, redis::errInvalidExpireTime};
+    }
+    return static_cast<uint64_t>(v) * 1000;
   } else if (parser.EatEqICaseFlag("PX", curr_flag)) {
-    return GET_OR_RET(parser.template TakeInt<int64_t>(TTL_RANGE<int64_t>)) + util::GetTimeStampMS();
+    auto v = GET_OR_RET(parser.template TakeInt<int64_t>(TTL_RANGE<int64_t>));
+    if (v > std::numeric_limits<int64_t>::max() - static_cast<int64_t>(now_ms)) {
+      return {Status::RedisParseErr, redis::errInvalidExpireTime};
+    }
+    return static_cast<uint64_t>(v) + now_ms;
   } else if (parser.EatEqICaseFlag("PXAT", curr_flag)) {
-    return GET_OR_RET(parser.template TakeInt<int64_t>(TTL_RANGE<int64_t>));
+    auto v = GET_OR_RET(parser.template TakeInt<int64_t>(TTL_RANGE<int64_t>));
+    return static_cast<uint64_t>(v);
   } else {
     return std::nullopt;
   }

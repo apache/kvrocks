@@ -90,6 +90,8 @@ TEST(Config, GetAndSet) {
       {"rocksdb.sst_file_delete_rate_bytes_per_sec", "0"},
       {"max-replication-lag", "50000000"},
       {"replication-send-timeout-ms", "60000"},
+      {"checkpoint-alive-time-secs", "3600"},
+      {"checkpoint-idle-time-secs", "10"},
   };
   std::vector<std::string> values;
   for (const auto &iter : mutable_cases) {

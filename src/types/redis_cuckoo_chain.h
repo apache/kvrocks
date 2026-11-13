@@ -65,6 +65,7 @@ struct CuckooFilterInsertOptions {
 // Command tags recorded in WriteBatchLogData for cuckoo filter mutations.
 constexpr const char *kCFLogDataReserve = "reserve";
 constexpr const char *kCFLogDataAdd = "add";
+constexpr const char *kCFLogDataAddNx = "addnx";
 constexpr const char *kCFLogDataInsert = "insert";
 constexpr const char *kCFLogDataDel = "del";
 
@@ -79,6 +80,10 @@ class CuckooChain : public Database {
   // Adds one item to the cuckoo filter.
   // Duplicate items are allowed, so added is true whenever insertion succeeds.
   rocksdb::Status Add(engine::Context &ctx, const Slice &user_key, const Slice &item, bool *added);
+
+  // Adds one item only if its fingerprint isn't already present in any sub-filter.
+  // *added is false when a matching fingerprint exists (possibly a false positive); nothing is written then.
+  rocksdb::Status AddNx(engine::Context &ctx, const Slice &user_key, const Slice &item, bool *added);
 
   // Counts how many times an item may be present in the cuckoo filter. Returns 0 when the filter does not exist.
   rocksdb::Status Count(engine::Context &ctx, const Slice &user_key, const Slice &item, uint64_t *count);

@@ -141,6 +141,29 @@ class CommandCFAdd : public Commander {
   }
 };
 
+class CommandCFAddNx : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    // CF.ADDNX key item
+    if (args.size() != 3) {
+      return {Status::RedisParseErr, errWrongNumOfArguments};
+    }
+    return Commander::Parse(args);
+  }
+
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    redis::CuckooChain cuckoo_db(srv->storage, conn->GetNamespace());
+    bool added = false;
+    auto s = cuckoo_db.AddNx(ctx, args_[1], args_[2], &added);
+    if (!s.ok()) {
+      return CuckooFilterCommandStatus(s);
+    }
+
+    *output = conn->Bool(added);
+    return Status::OK();
+  }
+};
+
 class CommandCFExists : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
@@ -432,9 +455,10 @@ class CommandCFCount : public Commander {
   }
 };
 
-// Register the CF.RESERVE, CF.ADD, CF.DEL, CF.EXISTS, CF.MEXISTS, CF.INSERT, CF.COUNT, and CF.INFO commands
+// Register the CF.RESERVE, CF.ADD, CF.ADDNX, CF.DEL, CF.EXISTS, CF.MEXISTS, CF.INSERT, CF.COUNT, and CF.INFO commands
 REDIS_REGISTER_COMMANDS(CuckooFilter, MakeCmdAttr<CommandCFReserve>("cf.reserve", -3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandCFAdd>("cf.add", 3, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandCFAddNx>("cf.addnx", 3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandCFDel>("cf.del", 3, "write", 1, 1, 1),
                         MakeCmdAttr<CommandCFExists>("cf.exists", 3, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandCFMExists>("cf.mexists", -3, "read-only", 1, 1, 1),

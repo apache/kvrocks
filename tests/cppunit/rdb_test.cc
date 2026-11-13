@@ -20,7 +20,6 @@
 #include "storage/rdb/rdb.h"
 
 #include <cmath>
-#include <filesystem>
 #include <map>
 #include <memory>
 #include <string>
@@ -47,8 +46,6 @@ class RDBTest : public TestBase {
   explicit RDBTest() : ns_(kDefaultNamespace) {}
   ~RDBTest() override = default;
   void SetUp() override { crc64_init(); }
-
-  void TearDown() override { ASSERT_TRUE(clearDBDir(config_.db_dir)); }
 
   void loadRdb(const std::string &path) {
     auto stream_ptr = std::make_unique<RdbFileStream>(path);
@@ -130,16 +127,6 @@ class RDBTest : public TestBase {
 
   std::string ns_;
   std::string tmp_rdb_;
-
- private:
-  static bool clearDBDir(const std::string &path) {
-    try {
-      std::filesystem::remove_all(path);
-    } catch (std::filesystem::filesystem_error &e) {
-      return false;
-    }
-    return true;
-  }
 };
 
 void RDBTest::encodingDataCheck() {

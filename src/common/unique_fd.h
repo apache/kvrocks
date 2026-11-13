@@ -36,28 +36,23 @@ struct UniqueFD {
   }
 
   UniqueFD(const UniqueFD&) = delete;
-  UniqueFD(UniqueFD&& f) : fd_(f.fd_) { f.fd_ = NullFD; }
+  UniqueFD(UniqueFD&& f) noexcept : fd_(f.Release()) {}
 
   UniqueFD& operator=(const UniqueFD&) = delete;
-  UniqueFD& operator=(UniqueFD&& f) {
-    fd_ = f.fd_;
-    f.fd_ = NullFD;
+  UniqueFD& operator=(UniqueFD&& f) noexcept {
+    if (this != &f) Reset(f.Release());
     return *this;
   }
 
-  int Release() {
-    int fd = fd_;
-    fd_ = NullFD;
-    return fd;
-  }
+  int Release() noexcept { return std::exchange(fd_, NullFD); }
 
-  void Reset(int fd = NullFD) {
-    int old_fd = fd_;
-    fd_ = fd;
+  void Reset(int fd = NullFD) noexcept {
+    if (fd == fd_) return;
+    const int old_fd = std::exchange(fd_, fd);
     if (old_fd != NullFD) close(old_fd);
   }
 
-  void Close() { Reset(); }
+  void Close() noexcept { Reset(); }
 
   void Swap(UniqueFD& other) { std::swap(fd_, other.fd_); }
 

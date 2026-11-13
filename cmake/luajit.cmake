@@ -36,12 +36,12 @@ if ((${CMAKE_SYSTEM_NAME} MATCHES "Darwin") AND (NOT CMAKE_OSX_DEPLOYMENT_TARGET
 endif ()
 
 if ((${CMAKE_SYSTEM_NAME} MATCHES "Darwin") AND (NOT CMAKE_OSX_DEPLOYMENT_TARGET))
-  message(FATAL_ERROR "The CMake option `CMAKE_OSX_DEPLOYMENT_TARGET` need to be specified, e.g. `-DCMAKE_OSX_DEPLOYMENT_TARGET=10.3`")
+  message(FATAL_ERROR "The CMake option `CMAKE_OSX_DEPLOYMENT_TARGET` need to be specified, e.g. `-DCMAKE_OSX_DEPLOYMENT_TARGET=14.0`")
 endif ()
 
 FetchContent_DeclareGitHubWithMirror(luajit
-        RocksLabs/LuaJIT 02dfcc34e93e57ac96e566d123c66ee01e650299
-        MD5=f1dd7a1bbf120b5a3daee71d896f5d08)
+        RocksLabs/LuaJIT 1968b356c2ecbe729e3998e063b9813732644966
+        MD5=99a02433a099b13ce07c8192d5706e0d)
 
 FetchContent_GetProperties(luajit)
 if (NOT lua_POPULATED)

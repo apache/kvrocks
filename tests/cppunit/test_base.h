@@ -24,9 +24,20 @@
 
 #include <filesystem>
 #include <fstream>
+#include <string>
 
+#include "common/scope_exit.h"
 #include "storage/redis_db.h"
 #include "types/redis_hash.h"
+
+// Declare before storage so the database is closed before removing its directory.
+inline auto MakeDBDirCleanup(const std::string &path) {
+  return MakeScopeExit([path] {
+    std::error_code ec;
+    std::filesystem::remove_all(path, ec);
+    ASSERT_FALSE(ec) << "Failed to remove database directory " << path << ": " << ec.message();
+  });
+}
 
 class TestFixture {  // NOLINT
  public:

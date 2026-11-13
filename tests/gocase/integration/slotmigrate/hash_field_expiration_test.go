@@ -117,7 +117,7 @@ func TestSlotMigrateHashFieldExpiration(t *testing.T) {
 				require.NoError(t, sourceClient.Do(ctx, "hsetex", key+"_new", "PXAT", expireAt,
 					"FIELDS", 2, "field", "created-during-migration", "short-lived", "temporary").Err())
 				// The new key can only arrive through WAL; leave time for the rate-limited snapshot transfer.
-				fieldExpireAt = time.Now().Add(8 * time.Second).UnixMilli()
+				fieldExpireAt = time.Now().Add(8 * time.Minute).UnixMilli()
 				require.NoError(t, sourceClient.Do(ctx, "hpexpireat", key+"_new", fieldExpireAt, "FIELDS", 1, "short-lived").Err())
 				expiringKey, expiringField, expiringValue = key+"_new", "short-lived", "temporary"
 				values["live"] = "15"
@@ -125,7 +125,7 @@ func TestSlotMigrateHashFieldExpiration(t *testing.T) {
 				delete(values, "deleted")
 				expires = []interface{}{expireAt + 60000, expireAt, int64(-1), int64(-1), int64(-2), int64(-2)}
 			} else {
-				fieldExpireAt = time.Now().Add(3 * time.Second).UnixMilli()
+				fieldExpireAt = time.Now().Add(3 * time.Minute).UnixMilli()
 				require.NoError(t, sourceClient.Do(ctx, "hpexpireat", key, fieldExpireAt, "FIELDS", 1, "live").Err())
 				expires[1] = fieldExpireAt
 			}
@@ -187,6 +187,12 @@ func TestSlotMigrateHashFieldExpiration(t *testing.T) {
 			fieldExpires, err = destinationClient.Do(ctx, "hpexpiretime", expiringKey, "FIELDS", 1, expiringField).Result()
 			require.NoError(t, err)
 			require.Equal(t, []interface{}{fieldExpireAt}, fieldExpires)
+			// Shorten the deadline only after verifying that migration preserved it.
+			fieldExpireAt = time.Now().Add(time.Second).UnixMilli()
+			expireResult, err := destinationClient.Do(ctx, "hpexpireat", expiringKey, fieldExpireAt,
+				"FIELDS", 1, expiringField).Int64Slice()
+			require.NoError(t, err)
+			require.Equal(t, []int64{1}, expireResult)
 			require.Eventually(t, func() bool {
 				return errors.Is(destinationClient.HGet(ctx, expiringKey, expiringField).Err(), redis.Nil)
 			}, 10*time.Second, 10*time.Millisecond)

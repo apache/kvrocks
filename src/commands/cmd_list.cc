@@ -164,7 +164,7 @@ class CommandLMPop : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     CommandParser parser(args, 1);
 
-    auto num_keys = GET_OR_RET(parser.TakeInt<uint32_t>());
+    auto num_keys = GET_OR_RET(parser.TakePositiveInt<uint32_t>());
     keys_.clear();
     keys_.reserve(num_keys);
     for (uint32_t i = 0; i < num_keys; ++i) {
@@ -182,7 +182,7 @@ class CommandLMPop : public Commander {
 
     while (parser.Good()) {
       if (parser.EatEqICase("count") && count_ == static_cast<uint32_t>(-1)) {
-        count_ = GET_OR_RET(parser.TakeInt<uint32_t>());
+        count_ = GET_OR_RET(parser.TakePositiveInt<uint32_t>());
       } else {
         return parser.InvalidSyntax();
       }
@@ -361,9 +361,12 @@ class CommandBLMPop : public BlockingCommander {
     CommandParser parser(args, 1);
 
     auto timeout = GET_OR_RET(parser.TakeFloat());
+    if (timeout < 0) {
+      return {Status::RedisParseErr, errTimeoutIsNegative};
+    }
     timeout_ = static_cast<int64_t>(timeout * 1000 * 1000);
 
-    auto num_keys = GET_OR_RET(parser.TakeInt<uint32_t>());
+    auto num_keys = GET_OR_RET(parser.TakePositiveInt<uint32_t>());
     keys_.clear();
     keys_.reserve(num_keys);
     for (uint32_t i = 0; i < num_keys; ++i) {
@@ -381,7 +384,7 @@ class CommandBLMPop : public BlockingCommander {
 
     while (parser.Good()) {
       if (parser.EatEqICase("count") && count_ == static_cast<uint32_t>(-1)) {
-        count_ = GET_OR_RET(parser.TakeInt<uint32_t>());
+        count_ = GET_OR_RET(parser.TakePositiveInt<uint32_t>());
       } else {
         return parser.InvalidSyntax();
       }
@@ -880,12 +883,10 @@ class CommandLPos : public Commander {
     }
     // Otherwise we return an array.
     else {
-      std::vector<std::string> values;
-      values.reserve(indexes.size());
+      *output = redis::MultiLen(indexes.size());
       for (const auto &index : indexes) {
-        values.emplace_back(std::to_string(index));
+        output->append(redis::Integer(index));
       }
-      *output = ArrayOfBulkStrings(values);
     }
     return Status::OK();
   }

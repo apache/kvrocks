@@ -183,6 +183,10 @@ func testJSON(t *testing.T, configs util.KvrocksServerConfigs) {
 		result2 = append(result2, int64(5), int64(7), interface{}(nil))
 		require.NoError(t, rdb.Do(ctx, "JSON.SET", "a", "$", `{"a":"foo", "nested": {"a": "hello"}, "nested2": {"a": 31}}`).Err())
 		require.Equal(t, rdb.Do(ctx, "JSON.STRAPPEND", "a", "$..a", "\"be\"").Val(), result2)
+
+		require.Error(t, rdb.Do(ctx, "JSON.STRAPPEND", "a", "$.a", "be").Err())
+		require.Error(t, rdb.Do(ctx, "JSON.STRAPPEND", "a", "$.a", "").Err())
+		require.Equal(t, rdb.Do(ctx, "JSON.GET", "a", "$.a").Val(), `["foobe"]`)
 	})
 
 	t.Run("JSON.STRLEN basics", func(t *testing.T) {
@@ -217,6 +221,23 @@ func testJSON(t *testing.T, configs util.KvrocksServerConfigs) {
 		EqualJSON(t, `{"f1":{"a":1},"f2":{"a":2}}`, rdb.Do(ctx, "JSON.GET", "key").Val())
 		require.NoError(t, rdb.Do(ctx, "JSON.MERGE", "key", "$", `{"f1": null, "f2":{"a":3, "b":4}, "f3":[2,4,6]}`).Err())
 		EqualJSON(t, `{"f2":{"a":3,"b":4},"f3":[2,4,6]}`, rdb.Do(ctx, "JSON.GET", "key").Val())
+	})
+
+	t.Run("MERGE returns error on invalid inputs", func(t *testing.T) {
+		// Setup: create a key with valid JSON
+		require.NoError(t, rdb.Do(ctx, "JSON.SET", "merge-err-key", "$", `{"a":1, "b":{"c":2}}`).Err())
+
+		// Invalid JSON as merge value should return an error, not silently succeed
+		require.ErrorContains(t, rdb.Do(ctx, "JSON.MERGE", "merge-err-key", "$.a", `not_valid_json`).Err(), "Invalid")
+
+		// Invalid jsonpath should also return an error
+		require.ErrorContains(t, rdb.Do(ctx, "JSON.MERGE", "merge-err-key", `[invalid`, `1`).Err(), "Expected")
+
+		// Verify the original value is unchanged after failed merges
+		EqualJSON(t, `{"a":1,"b":{"c":2}}`, rdb.Do(ctx, "JSON.GET", "merge-err-key").Val())
+
+		// Invalid JSON on non-existent key should also return an error
+		require.ErrorContains(t, rdb.Do(ctx, "JSON.MERGE", "non-existent-key", "$", `{broken`).Err(), "Invalid")
 	})
 
 	t.Run("Clear JSON values", func(t *testing.T) {

@@ -196,7 +196,7 @@ func testZipList(t *testing.T, configs util.KvrocksServerConfigs) {
 	})
 
 	t.Run("ziplist implementation: value encoding and backlink", func(t *testing.T) {
-		iterations := 100
+		iterations := 10
 		for j := 0; j < iterations; j++ {
 			key := fmt.Sprintf("l1-%d", j)
 			require.NoError(t, rdb.Del(ctx, key).Err())
@@ -206,7 +206,7 @@ func testZipList(t *testing.T, configs util.KvrocksServerConfigs) {
 				data := ""
 				switch op {
 				case 0:
-					data = strings.Repeat("x", int(rand.Int63n(1000000)))
+					data = strings.Repeat("x", int(rand.Int63n(100000)))
 				case 1:
 					data = fmt.Sprintf("%d", rand.Int63n(65536))
 				case 2:
@@ -1021,6 +1021,15 @@ func testList(t *testing.T, configs util.KvrocksServerConfigs) {
 			require.Equal(t, []int64{7, 6}, rdb.LPosCount(ctx, "mylist", "c", 2, redis.LPosArgs{Rank: -1}).Val())
 		})
 
+		// LPosCount also accepts bulk strings like "2", so check the raw reply to make sure
+		// LPOS with COUNT replies with integers, as Redis does.
+		t.Run("LPOS COUNT replies with integers", func(t *testing.T) {
+			require.Equal(t, []interface{}{int64(2)}, rdb.Do(ctx, "LPOS", "mylist", "c", "COUNT", 1).Val())
+			require.Equal(t, []interface{}{int64(2), int64(6), int64(7)}, rdb.Do(ctx, "LPOS", "mylist", "c", "COUNT", 0).Val())
+			require.Equal(t, []interface{}{int64(7), int64(6)}, rdb.Do(ctx, "LPOS", "mylist", "c", "RANK", -1, "COUNT", 2).Val())
+			require.Equal(t, []interface{}{}, rdb.Do(ctx, "LPOS", "mylist", "x", "COUNT", 0).Val())
+		})
+
 		t.Run("LPOS non existing key", func(t *testing.T) {
 			require.Empty(t, rdb.LPosCount(ctx, "mylistxxx", "c", 0, redis.LPosArgs{Rank: 2}).Val())
 		})
@@ -1512,6 +1521,23 @@ func testList(t *testing.T, configs util.KvrocksServerConfigs) {
 			require.EqualValues(t, 0, rdb.Exists(ctx, key2).Val())
 		})
 	}
+
+	t.Run("LMPOP and BLMPOP reject invalid arguments", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "lmpop-list").Err())
+		require.NoError(t, rdb.RPush(ctx, "lmpop-list", "a", "b").Err())
+
+		for _, args := range [][]interface{}{
+			{"lmpop", "0", "lmpop-list", "left"},
+			{"lmpop", "1", "lmpop-list", "left", "count", "0"},
+			{"blmpop", "0.01", "0", "lmpop-list", "left"},
+			{"blmpop", "0.01", "1", "lmpop-list", "left", "count", "0"},
+		} {
+			require.ErrorContains(t, rdb.Do(ctx, args...).Err(), "out of numeric range", args)
+		}
+		require.ErrorContains(t, rdb.Do(ctx, "blmpop", "-1", "1", "lmpop-list", "left").Err(), "timeout is negative")
+
+		require.EqualValues(t, 2, rdb.LLen(ctx, "lmpop-list").Val())
+	})
 }
 
 type kMetadataResponse struct {

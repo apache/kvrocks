@@ -244,6 +244,21 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, enabledRES
 		require.ErrorContains(t, rdb.Do(ctx, "zunionstore", "out", "3.3", "myzet").Err(), "value is not an integer or out of range")
 	})
 
+	t.Run("ZUNIONSTORE/ZINTERSTORE/ZDIFFSTORE - numkeys must be positive", func(t *testing.T) {
+		rdb.Del(ctx, "out")
+		rdb.Del(ctx, "myzet")
+		rdb.ZAdd(ctx, "myzet", redis.Z{Score: 1, Member: "a"})
+
+		for _, cmd := range []string{"zunionstore", "zinterstore", "zdiffstore"} {
+			for _, numkeys := range []string{"0", "-1"} {
+				require.ErrorContains(t, rdb.Do(ctx, cmd, "out", numkeys, "myzet").Err(), "value is out of range, must be positive")
+			}
+		}
+
+		require.EqualValues(t, int64(1), rdb.ZCard(ctx, "myzet").Val())
+		require.EqualValues(t, int64(0), rdb.ZCard(ctx, "out").Val())
+	})
+
 	t.Run("ZUNIONSTORE - invalid weights will raise error", func(t *testing.T) {
 		rdb.Del(ctx, "out")
 		rdb.Del(ctx, "myzet")
@@ -1293,6 +1308,27 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, enabledRES
 
 		require.Error(t, rdb.ZInterCard(ctx, -1, "zseta", "zsetb").Err())
 
+	})
+
+	t.Run(fmt.Sprintf("ZINTERCARD with non-first smallest input - %s", encoding), func(t *testing.T) {
+		createZset(rdb, ctx, "zset_large", []redis.Z{
+			{Score: 1, Member: "a"},
+			{Score: 2, Member: "b"},
+			{Score: 3, Member: "c"},
+			{Score: 4, Member: "d"},
+		})
+		createZset(rdb, ctx, "zset_small", []redis.Z{
+			{Score: 1, Member: "a"},
+			{Score: 2, Member: "b"},
+		})
+		createZset(rdb, ctx, "zset_medium", []redis.Z{
+			{Score: 1, Member: "a"},
+			{Score: 2, Member: "b"},
+			{Score: 3, Member: "e"},
+		})
+
+		require.Equal(t, int64(2), rdb.ZInterCard(ctx, 0, "zset_large", "zset_small", "zset_medium").Val())
+		require.Equal(t, int64(1), rdb.ZInterCard(ctx, 1, "zset_large", "zset_small", "zset_medium").Val())
 	})
 
 	t.Run(fmt.Sprintf("ZMSCORE - %s", encoding), func(t *testing.T) {

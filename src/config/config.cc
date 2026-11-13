@@ -239,6 +239,8 @@ Config::Config() {
       {"purge-backup-on-fullsync", false, new YesNoField(&purge_backup_on_fullsync, false)},
       {"rename-command", true, new MultiStringField(&rename_command_, std::vector<std::string>{})},
       {"fullsync-recv-file-delay", false, new IntField(&fullsync_recv_file_delay, 0, 0, INT_MAX)},
+      {"checkpoint-alive-time-secs", false, new IntField(&checkpoint_alive_time_secs, 24 * 60 * 60, 1, INT_MAX)},
+      {"checkpoint-idle-time-secs", false, new IntField(&checkpoint_idle_time_secs, 30, 1, INT_MAX)},
       {"cluster-enabled", true, new YesNoField(&cluster_enabled, false)},
       {"migrate-sequence-gap", false, new IntField(&sequence_gap, 10000, 1, INT_MAX)},
       {"migrate-batch-size-kb", false, new IntField(&migrate_batch_size_kb, 16, 1, INT_MAX)},

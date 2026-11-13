@@ -156,6 +156,9 @@ Server::~Server() {
 //     - feed-replica-data-info: generate checkpoint and send files list when full sync
 //     - feed-replica-file: send SST files when slaves ask for full sync
 Status Server::Start() {
+  // Workers can accept SHUTDOWN before the remaining background threads are started.
+  std::lock_guard<std::mutex> guard(stop_mu_);
+  if (stop_) return {Status::NotOK, "Cannot start a stopped server"};
   auto s = namespace_.LoadAndRewrite();
   if (!s.IsOK()) {
     return s;
@@ -250,6 +253,8 @@ Status Server::Start() {
 }
 
 void Server::Stop() {
+  std::lock_guard<std::mutex> guard(stop_mu_);
+  if (stop_complete_) return;
   stop_ = true;
 
   slaveof_mu_.lock();
@@ -261,20 +266,28 @@ void Server::Stop() {
   }
 
   task_runner_.Cancel();
+  stop_complete_ = true;
+  stop_cv_.notify_all();
 }
 
 void Server::Join() {
+  {
+    // A worker may exit as soon as Cancel wakes it, before the abort call returns.
+    std::unique_lock<std::mutex> guard(stop_mu_);
+    stop_cv_.wait(guard, [this] { return stop_complete_; });
+  }
   if (auto s = util::ThreadJoin(cron_thread_); !s) {
     WARN("Cron thread operation failed: {}", s.Msg());
   }
   if (auto s = util::ThreadJoin(compaction_checker_thread_); !s) {
     WARN("Compaction checker thread operation failed: {}", s.Msg());
   }
-  if (auto s = task_runner_.Join(); !s) {
-    WARN("{}", s.Msg());
-  }
   for (const auto &worker : worker_threads_) {
     worker->Join();
+  }
+  // Stop producers before clearing the task queue.
+  if (auto s = task_runner_.Join(); !s) {
+    WARN("{}", s.Msg());
   }
 }
 

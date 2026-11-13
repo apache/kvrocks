@@ -212,33 +212,42 @@ func testBloom(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.NoError(t, rdb.Del(ctx, key).Err())
 		require.NoError(t, rdb.Do(ctx, "bf.reserve", key, "0.0001", "30", "expansion", "2").Err())
 
-		// insert items
-		var insertNum int64 = 0
-		for insertNum < 30 {
-			buf := util.RandString(7, 8, util.Alpha)
-			Add := rdb.Do(ctx, "bf.madd", key, buf, buf+"xx", buf+"yy")
-			require.NoError(t, Add.Err())
-			insertNum = rdb.Do(ctx, "bf.card", key).Val().(int64)
+		var insertNum int64
+		var insertedValue string
+		fillTo := func(target int64, batchSize int) {
+			for attempts := 0; insertNum < target && attempts < 1000; attempts++ {
+				buf := util.RandString(7, 8, util.Alpha)
+				args := []interface{}{"bf.madd", key, buf, buf + "xx", buf + "yy"}
+				// False positives can leave fewer than three slots before the next expansion.
+				args = args[:2+min(batchSize, int(target-insertNum))]
+				results, err := rdb.Do(ctx, args...).Slice()
+				require.NoError(t, err)
+				require.Len(t, results, len(args)-2)
+				for i, result := range results {
+					require.Contains(t, []interface{}{int64(0), int64(1)}, result)
+					if result == int64(1) {
+						insertNum++
+						insertedValue = args[i+2].(string)
+					}
+				}
+			}
+			require.Equal(t, target, insertNum, "could not fill the filter within 1000 batches")
+			require.Equal(t, target, rdb.Do(ctx, "bf.card", key).Val())
 		}
+
+		fillTo(30, 3)
 		require.Equal(t, []interface{}{"Capacity", int64(30), "Size", int64(128), "Number of filters", int64(1), "Number of items inserted", int64(30), "Expansion rate", int64(2)}, rdb.Do(ctx, "bf.info", key).Val())
 
-		// bloom filter is full and scaling
-		require.NoError(t, rdb.Do(ctx, "bf.add", key, "xxx").Err())
+		// Retry false positives until an insertion triggers expansion.
+		fillTo(31, 1)
 		require.Equal(t, []interface{}{"Capacity", int64(90), "Size", int64(384), "Number of filters", int64(2), "Number of items inserted", int64(31), "Expansion rate", int64(2)}, rdb.Do(ctx, "bf.info", key).Val())
 
-		// insert items
-		for insertNum < 90 {
-			buf := util.RandString(7, 8, util.Alpha)
-			Add := rdb.Do(ctx, "bf.add", key, buf)
-			require.NoError(t, Add.Err())
-			insertNum = rdb.Do(ctx, "bf.card", key).Val().(int64)
-		}
+		fillTo(90, 1)
 		require.Equal(t, []interface{}{"Capacity", int64(90), "Size", int64(384), "Number of filters", int64(2), "Number of items inserted", int64(90), "Expansion rate", int64(2)}, rdb.Do(ctx, "bf.info", key).Val())
-		// add the existed value would not scaling
-		require.NoError(t, rdb.Do(ctx, "bf.madd", key, "xxx").Err())
+		// Adding a previously inserted value must not expand the filter.
+		require.Equal(t, []interface{}{int64(0)}, rdb.Do(ctx, "bf.madd", key, insertedValue).Val())
 		require.Equal(t, []interface{}{"Capacity", int64(90), "Size", int64(384), "Number of filters", int64(2), "Number of items inserted", int64(90), "Expansion rate", int64(2)}, rdb.Do(ctx, "bf.info", key).Val())
-		// bloom filter is full and scaling
-		require.NoError(t, rdb.Do(ctx, "bf.add", key, "xxxx").Err())
+		fillTo(91, 1)
 		require.Equal(t, []interface{}{"Capacity", int64(210), "Size", int64(896), "Number of filters", int64(3), "Number of items inserted", int64(91), "Expansion rate", int64(2)}, rdb.Do(ctx, "bf.info", key).Val())
 	})
 

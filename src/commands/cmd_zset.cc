@@ -1203,6 +1203,8 @@ class CommandZUnionStore : public Commander {
       return {Status::RedisParseErr, errValueNotInteger};
     }
 
+    if (*parse_result <= 0) return {Status::RedisParseErr, errValueMustBePositive};
+
     numkeys_ = *parse_result;
     if (numkeys_ > args.size() - 3) {
       return {Status::RedisParseErr, errInvalidSyntax};
@@ -1524,6 +1526,8 @@ class CommandZDiffStore : public Commander {
   Status Parse(const std::vector<std::string> &args) override {
     auto parse_result = ParseInt<int>(args[2], 10);
     if (!parse_result) return {Status::RedisParseErr, errValueNotInteger};
+
+    if (*parse_result <= 0) return {Status::RedisParseErr, errValueMustBePositive};
 
     numkeys_ = *parse_result;
     if (numkeys_ > args.size() - 3) return {Status::RedisParseErr, errInvalidSyntax};

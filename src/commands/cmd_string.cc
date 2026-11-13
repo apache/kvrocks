@@ -424,7 +424,7 @@ class CommandSetEX : public Commander {
 
     if (*parse_result <= 0) return {Status::RedisParseErr, errInvalidExpireTime};
 
-    expire_ = *parse_result * 1000 + util::GetTimeStampMS();
+    expire_ = GET_OR_RET(ToExpireAtMs(*parse_result, true, true));
 
     return Commander::Parse(args);
   }
@@ -455,7 +455,7 @@ class CommandPSetEX : public Commander {
 
     if (*ttl_ms <= 0) return {Status::RedisParseErr, errInvalidExpireTime};
 
-    expire_ = *ttl_ms + util::GetTimeStampMS();
+    expire_ = GET_OR_RET(ToExpireAtMs(*ttl_ms, false, true));
 
     return Commander::Parse(args);
   }

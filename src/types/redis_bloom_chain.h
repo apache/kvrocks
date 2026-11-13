@@ -74,6 +74,8 @@ class BloomChain : public Database {
   rocksdb::Status MExists(engine::Context &ctx, const Slice &user_key, const std::vector<std::string> &items,
                           std::vector<bool> *exists);
   rocksdb::Status Info(engine::Context &ctx, const Slice &user_key, BloomFilterInfo *info);
+  // Serializes the whole chain into a self-describing payload for DUMP.
+  rocksdb::Status Get(engine::Context &ctx, const Slice &user_key, std::string *value);
 
  private:
   rocksdb::Status getBloomChainMetadata(engine::Context &ctx, const Slice &ns_key, BloomChainMetadata *metadata);

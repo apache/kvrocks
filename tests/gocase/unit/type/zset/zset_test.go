@@ -1648,6 +1648,16 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, enabledRES
 		require.EqualValues(t, []redis.Z([]redis.Z{}), cmd.Val())
 	})
 
+	t.Run("ZDIFFSTORE rejects trailing arguments", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "zdiff-src", "zdiff-dst").Err())
+		require.NoError(t, rdb.ZAdd(ctx, "zdiff-src", redis.Z{Score: 1, Member: "a"}).Err())
+		require.NoError(t, rdb.ZAdd(ctx, "zdiff-dst", redis.Z{Score: 9, Member: "keep"}).Err())
+
+		err := rdb.Do(ctx, "ZDIFFSTORE", "zdiff-dst", "1", "zdiff-src", "GARBAGE").Err()
+		require.ErrorContains(t, err, "syntax error")
+		require.Equal(t, []redis.Z{{Score: 9, Member: "keep"}}, rdb.ZRangeWithScores(ctx, "zdiff-dst", 0, -1).Val())
+	})
+
 	t.Run("ZDIFFSTORE with three sets - ", func(t *testing.T) {
 		createZset(rdb, ctx, "zseta", []redis.Z{
 			{Score: 1, Member: "a"},

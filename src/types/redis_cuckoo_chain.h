@@ -114,6 +114,9 @@ class CuckooChain : public Database {
   static rocksdb::Status calculateTotalBuckets(const CuckooChainMetadata &metadata, uint32_t base_buckets,
                                                uint64_t *total_buckets);
 
+  rocksdb::Status addItem(engine::Context &ctx, const Slice &user_key, const Slice &item, bool check_exists,
+                          const std::string &log_cmd, bool *added);
+
   static rocksdb::Status tryInsertFingerprint(CuckooChainMetadata *metadata, CuckooPageCache &pages, uint64_t hash,
                                               uint8_t fingerprint, bool *inserted, bool error_on_limit = true);
   static rocksdb::Status tryCuckooInsert(const CuckooChainMetadata *metadata, CuckooPageCache &pages, uint64_t hash,

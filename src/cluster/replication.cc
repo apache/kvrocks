@@ -476,15 +476,30 @@ Status ReplicationThread::Start(std::function<bool()> &&pre_fullsync_cb, std::fu
   return Status::OK();
 }
 
-void ReplicationThread::Stop() {
+void ReplicationThread::Stop(StopMode mode) {
   if (stop_flag_) return;
 
-  stop_flag_ = true;  // Stopping procedure is asynchronous,
-                      // handled by timer
+  stop_requested_at_ = std::chrono::steady_clock::now();
+  stop_mode_ = mode;
+  stop_flag_ = true;
+  if (mode == StopMode::kWakeEventLoop) {
+    std::lock_guard<std::mutex> guard(stop_event_mu_);
+    if (stop_event_) event_active(stop_event_, EV_TIMEOUT, 0);
+  }
+  // The replication thread needs stop_event_mu_ during teardown, so never hold it across join.
   if (auto s = util::ThreadJoin(t_); !s) {
     WARN("Replication thread operation failed: {}", s.Msg());
   }
-  INFO("[replication] Stopped");
+  INFO("[replication] Stopped, mode={}, elapsed_us={}", mode == StopMode::kWakeEventLoop ? "wakeup" : "timer",
+       std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - stop_requested_at_)
+           .count());
+}
+
+void ReplicationThread::setStopEvent(event *ev) {
+  std::lock_guard<std::mutex> guard(stop_event_mu_);
+  stop_event_ = ev;
+  // Stop may precede event publication. Activation stays pending even before dispatch starts.
+  if (ev && stop_flag_ && stop_mode_ == StopMode::kWakeEventLoop) event_active(ev, EV_TIMEOUT, 0);
 }
 
 /*
@@ -506,10 +521,13 @@ void ReplicationThread::run() {
   auto timer = UniqueEvent(NewEvent(base_, -1, EV_PERSIST));
   timeval tmo{0, 100000};  // 100 ms
   evtimer_add(timer.get(), &tmo);
+  setStopEvent(timer.get());
 
   event_base_dispatch(base_);
+  setStopEvent(nullptr);
   timer.reset();
   event_base_free(base_);
+  base_ = nullptr;
 }
 
 ReplicationThread::CBState ReplicationThread::authWriteCB(bufferevent *bev) {
@@ -1163,10 +1181,15 @@ Status ReplicationThread::fetchFiles(int sock_fd, const std::string &dir, const 
 void ReplicationThread::TimerCB(int, int16_t) {
   // DLOG(INFO) << "[replication] timer";
   if (stop_flag_) {
-    INFO("[replication] Stop ev loop");
+    const auto observed_at = std::chrono::steady_clock::now();
+    INFO("[replication] Stop ev loop, mode={}, wait_us={}", stop_mode_ == StopMode::kWakeEventLoop ? "wakeup" : "timer",
+         std::chrono::duration_cast<std::chrono::microseconds>(observed_at - stop_requested_at_).count());
     event_base_loopbreak(base_);
     psync_steps_.Stop();
     fullsync_steps_.Stop();
+    DEBUG(
+        "[replication] Stop cleanup, elapsed_us={}",
+        std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - observed_at).count());
   }
 }
 

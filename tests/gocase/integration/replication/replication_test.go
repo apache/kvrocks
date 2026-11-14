@@ -91,6 +91,60 @@ func TestClusterReplication(t *testing.T) {
 	})
 }
 
+func TestRepeatedPromotionAndUpstreamChange(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	servers := make([]*util.KvrocksServer, 3)
+	clients := make([]*redis.Client, 3)
+	for i := range servers {
+		servers[i] = util.StartServer(t, map[string]string{})
+		defer servers[i].Close()
+		clients[i] = servers[i].NewClient()
+		defer func() { require.NoError(t, clients[i].Close()) }()
+	}
+	util.SlaveOf(t, clients[1], servers[0])
+	util.SlaveOf(t, clients[2], servers[0])
+	util.WaitForSync(t, clients[1])
+	util.WaitForSync(t, clients[2])
+	master := 0
+	var keys []string
+	var expected []interface{}
+	for round := 0; round < 10; round++ {
+		pipe := clients[master].Pipeline()
+		for i := 0; i < 128; i++ {
+			key := fmt.Sprintf("promotion:%d:%d", round, i)
+			value := fmt.Sprintf("value:%d:%d", round, i)
+			keys = append(keys, key)
+			expected = append(expected, value)
+			pipe.Set(ctx, key, value, 0)
+		}
+		_, err := pipe.Exec(ctx)
+		require.NoError(t, err)
+		target := 1 - master
+		util.WaitForOffsetSync(t, clients[master], clients[target], 5*time.Second)
+		require.NoError(t, clients[target].SlaveOf(ctx, "no", "one").Err())
+		require.Equal(t, "master", util.FindInfoEntry(clients[target], "role"))
+		// SLAVEOF rejects a former replica until its disconnected feed thread is reaped.
+		// Feed-side disconnect detection relies on periodic pings; allow for sanitizer overhead.
+		require.Eventually(t, func() bool {
+			return util.FindInfoEntry(clients[master], "connected_slaves") == "1"
+		}, 10*time.Second, 10*time.Millisecond)
+		util.SlaveOf(t, clients[master], servers[target])
+		// This replica replaces an existing replication thread on every switch.
+		util.SlaveOf(t, clients[2], servers[target])
+		for _, replica := range []int{master, 2} {
+			util.WaitForSync(t, clients[replica])
+			util.WaitForOffsetSync(t, clients[target], clients[replica], 5*time.Second)
+		}
+		for _, client := range clients {
+			values, err := client.MGet(ctx, keys...).Result()
+			require.NoError(t, err)
+			require.Equal(t, expected, values)
+		}
+		master = target
+	}
+}
+
 func TestReplicationWithHostname(t *testing.T) {
 	t.Parallel()
 	srvA := util.StartServer(t, map[string]string{})

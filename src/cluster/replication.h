@@ -26,6 +26,7 @@
 #include <chrono>
 #include <deque>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <thread>
 #include <tuple>
@@ -103,9 +104,12 @@ class FeedSlaveThread {
 
 class ReplicationThread : private EventCallbackBase<ReplicationThread> {
  public:
+  enum class StopMode { kWaitForTimer, kWakeEventLoop };
+
   explicit ReplicationThread(std::string host, uint32_t port, Server *srv);
   Status Start(std::function<bool()> &&pre_fullsync_cb, std::function<void()> &&post_fullsync_cb);
-  void Stop();
+  // Callers serialize Start/Stop through Server::slaveof_mu_. Wakeup is for ordinary threads only.
+  void Stop(StopMode mode = StopMode::kWaitForTimer);
   bool IsStopped() const { return stop_flag_; }
   ReplState State() { return repl_state_.load(std::memory_order_relaxed); }
   int64_t LastIOTimeSecs() const { return last_io_time_secs_.load(std::memory_order_relaxed); }
@@ -158,8 +162,15 @@ class ReplicationThread : private EventCallbackBase<ReplicationThread> {
   using CallbackType = CallbacksStateMachine::CallbackType;
 
  private:
+  friend class ReplicationThreadTest;
+
   std::thread t_;
   std::atomic<bool> stop_flag_ = false;
+  std::mutex stop_event_mu_;
+  event *stop_event_ = nullptr;
+  // Written before publishing stop_flag_; read only after observing that flag.
+  StopMode stop_mode_ = StopMode::kWaitForTimer;
+  std::chrono::steady_clock::time_point stop_requested_at_;
   std::string host_;
   uint32_t port_;
   Server *srv_ = nullptr;
@@ -197,6 +208,7 @@ class ReplicationThread : private EventCallbackBase<ReplicationThread> {
   CallbacksStateMachine fullsync_steps_;
 
   void run();
+  void setStopEvent(event *ev);
 
   CBState authWriteCB(bufferevent *bev);
   CBState authReadCB(bufferevent *bev);

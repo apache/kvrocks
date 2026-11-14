@@ -288,7 +288,7 @@ Status Server::AddMaster(const std::string &host, uint32_t port, bool force_reco
 
   // Master is changed
   if (!master_host_.empty()) {
-    if (replication_thread_) replication_thread_->Stop();
+    if (replication_thread_) replication_thread_->Stop(ReplicationThread::StopMode::kWakeEventLoop);
     replication_thread_ = nullptr;
   }
 
@@ -323,7 +323,7 @@ Status Server::RemoveMaster() {
     master_port_ = 0;
     config_->ClearMaster();
     if (replication_thread_) {
-      replication_thread_->Stop();
+      replication_thread_->Stop(ReplicationThread::StopMode::kWakeEventLoop);
       replication_thread_ = nullptr;
     }
     engine::Context ctx(storage);

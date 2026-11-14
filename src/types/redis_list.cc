@@ -661,6 +661,9 @@ rocksdb::Status List::Trim(engine::Context &ctx, const Slice &user_key, int star
     return storage_->Delete(ctx, storage_->DefaultWriteOptions(), metadata_cf_handle_, ns_key);
   }
   if (start < 0) start = 0;
+  if (static_cast<uint64_t>(start) >= metadata.size) {
+    return storage_->Delete(ctx, storage_->DefaultWriteOptions(), metadata_cf_handle_, ns_key);
+  }
 
   auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisList, std::vector<std::string>{std::to_string(kRedisCmdLTrim), std::to_string(start),

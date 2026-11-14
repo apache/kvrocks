@@ -97,39 +97,34 @@ std::vector<TSSample> AggregateSamplesByRangeOption(std::vector<TSSample> sample
     }
     return 0;
   };
+  auto get_empty_value = [&](double last_value) -> double {
+    switch (aggregator.type) {
+      case TSAggregatorType::SUM:
+      case TSAggregatorType::COUNT:
+        return 0;
+      case TSAggregatorType::LAST:
+        return last_value;
+      default:
+        return TSSample::NAN_VALUE;
+    }
+  };
+  auto is_full = [&] { return option.count_limit && res.size() >= option.count_limit; };
+
   res.reserve(spans.size());
-  uint64_t bucket_left = aggregator.CalculateAlignedBucketLeft(samples.front().ts);
-  for (size_t i = 0; i < spans.size(); i++) {
-    if (option.count_limit && res.size() >= option.count_limit) {
-      break;
-    }
-    TSSample sample;
-    if (i != 0) {
-      bucket_left = aggregator.CalculateAlignedBucketRight(bucket_left);
-    }
-    sample.ts = get_bucket_ts(bucket_left);
-    if (option.is_return_empty && spans[i].empty()) {
-      switch (aggregator.type) {
-        case TSAggregatorType::SUM:
-        case TSAggregatorType::COUNT:
-          sample.v = 0;
-          break;
-        case TSAggregatorType::LAST:
-          if (i == 0 || spans[i - 1].empty()) {
-            sample.v = TSSample::NAN_VALUE;
-          } else {
-            sample.v = spans[i].back().v;
-          }
-          break;
-        default:
-          sample.v = TSSample::NAN_VALUE;
+  // The empty buckets are generated only between the non-empty ones, and only up to count_limit.
+  uint64_t next_left = aggregator.CalculateAlignedBucketLeft(samples.front().ts);
+  double last_value = TSSample::NAN_VALUE;
+  for (const auto &span : spans) {
+    uint64_t bucket_left = aggregator.CalculateAlignedBucketLeft(span.front().ts);
+    if (option.is_return_empty) {
+      for (; next_left < bucket_left && !is_full(); next_left = aggregator.CalculateAlignedBucketRight(next_left)) {
+        res.push_back({get_bucket_ts(next_left), get_empty_value(last_value)});
       }
-    } else if (!spans[i].empty()) {
-      sample.v = aggregator.AggregateSamplesValue(spans[i]);
-    } else {
-      continue;
     }
-    res.emplace_back(sample);
+    if (is_full()) break;
+    res.push_back({get_bucket_ts(bucket_left), aggregator.AggregateSamplesValue(span)});
+    last_value = span.back().v;
+    next_left = aggregator.CalculateAlignedBucketRight(bucket_left);
   }
   return res;
 }
@@ -732,22 +727,12 @@ std::vector<nonstd::span<const TSSample>> TSAggregator::SplitSamplesToBuckets(
   if (type == TSAggregatorType::NONE || samples.empty()) {
     return spans;
   }
-  uint64_t start_bucket = CalculateAlignedBucketLeft(samples.front().ts);
-  uint64_t end_bucket = CalculateAlignedBucketLeft(samples.back().ts);
-  uint64_t bucket_count = (end_bucket - start_bucket) / bucket_duration + 1;
-
-  spans.reserve(bucket_count);
   auto it = samples.begin();
   const auto end = samples.end();
-  uint64_t bucket_left = start_bucket;
   while (it != end) {
-    uint64_t bucket_right = CalculateAlignedBucketRight(bucket_left);
-    auto lower = std::lower_bound(it, end, TSSample{bucket_left, 0.0});
-    auto upper = std::lower_bound(lower, end, TSSample{bucket_right, 0.0});
-    spans.emplace_back(lower, upper);
+    auto upper = std::lower_bound(it, end, TSSample{CalculateAlignedBucketRight(it->ts), 0.0});
+    spans.emplace_back(it, upper);
     it = upper;
-
-    bucket_left = bucket_right;
   }
   return spans;
 }

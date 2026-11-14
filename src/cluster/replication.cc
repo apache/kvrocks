@@ -1187,8 +1187,9 @@ void ReplicationThread::TimerCB(int, int16_t) {
     event_base_loopbreak(base_);
     psync_steps_.Stop();
     fullsync_steps_.Stop();
-    INFO("[replication] Stop cleanup, elapsed_us={}",
-         std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - observed_at).count());
+    DEBUG(
+        "[replication] Stop cleanup, elapsed_us={}",
+        std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - observed_at).count());
   }
 }
 

@@ -102,14 +102,31 @@ func TestRepeatedPromotionAndUpstreamChange(t *testing.T) {
 		clients[i] = servers[i].NewClient()
 		defer func() { require.NoError(t, clients[i].Close()) }()
 	}
+	master, target := 0, 1
+	currentRound := 0
+	phase := "initial replication"
+	defer func() {
+		if !t.Failed() {
+			return
+		}
+		t.Logf("promotion round=%d phase=%s master=%d target=%d", currentRound, phase, master, target)
+		for i, client := range clients {
+			diagnosticCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+			info, err := client.WithTimeout(time.Second).Info(diagnosticCtx, "replication").Result()
+			cancel()
+			t.Logf("node=%d address=%s INFO replication error=%v\n%s", i, servers[i].HostPort(), err, info)
+		}
+	}()
 	util.SlaveOf(t, clients[1], servers[0])
 	util.SlaveOf(t, clients[2], servers[0])
 	util.WaitForSync(t, clients[1])
 	util.WaitForSync(t, clients[2])
-	master := 0
 	var keys []string
 	var expected []interface{}
 	for round := 0; round < 10; round++ {
+		currentRound = round + 1
+		target = 1 - master
+		phase = "write to primary"
 		pipe := clients[master].Pipeline()
 		for i := 0; i < 128; i++ {
 			key := fmt.Sprintf("promotion:%d:%d", round, i)
@@ -120,23 +137,27 @@ func TestRepeatedPromotionAndUpstreamChange(t *testing.T) {
 		}
 		_, err := pipe.Exec(ctx)
 		require.NoError(t, err)
-		target := 1 - master
+		phase = "wait for promotion target to catch up"
 		util.WaitForOffsetSync(t, clients[master], clients[target], 5*time.Second)
+		phase = "promote target"
 		require.NoError(t, clients[target].SlaveOf(ctx, "no", "one").Err())
 		require.Equal(t, "master", util.FindInfoEntry(clients[target], "role"))
-		// SLAVEOF rejects a former replica until its disconnected feed thread is reaped.
-		// Feed-side disconnect detection relies on periodic pings; allow for sanitizer overhead.
-		require.Eventually(t, func() bool {
-			return util.FindInfoEntry(clients[master], "connected_slaves") == "1"
-		}, 10*time.Second, 10*time.Millisecond)
+		// Stop only the promoted node's old feed link instead of waiting for ping-driven disconnect detection.
+		phase = "stop promoted replica's previous feed link"
+		_, err = clients[master].ClientKillByFilter(ctx, "addr", servers[target].HostPort()).Result()
+		require.NoError(t, err)
+		phase = "reattach previous primary"
 		util.SlaveOf(t, clients[master], servers[target])
 		// This replica replaces an existing replication thread on every switch.
+		phase = "change third replica upstream"
 		util.SlaveOf(t, clients[2], servers[target])
 		for _, replica := range []int{master, 2} {
+			phase = fmt.Sprintf("synchronize replica %d", replica)
 			util.WaitForSync(t, clients[replica])
 			util.WaitForOffsetSync(t, clients[target], clients[replica], 5*time.Second)
 		}
-		for _, client := range clients {
+		for i, client := range clients {
+			phase = fmt.Sprintf("verify node %d", i)
 			values, err := client.MGet(ctx, keys...).Result()
 			require.NoError(t, err)
 			require.Equal(t, expected, values)

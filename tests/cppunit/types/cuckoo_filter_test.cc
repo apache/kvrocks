@@ -1933,6 +1933,31 @@ TEST_F(RedisCuckooFilterTest, AddNxDuplicateInNewestOfMultiFilterChain) {
   EXPECT_EQ(getMetadata(key_).size, 1);
 }
 
+TEST_F(RedisCuckooFilterTest, AddNxDetectsDuplicatesAfterExpansion) {
+  reserveAndVerify(key_, 4, 2, 20, 2);
+  std::vector<std::string> added_items;
+  for (int i = 0; i < 200 && getMetadata(key_).n_filters < 3; ++i) {
+    std::string item = "item_" + std::to_string(i);
+    bool added = false;
+    auto s = cuckoo_->AddNx(*ctx_, key_, item, &added);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    if (added) added_items.push_back(item);
+  }
+  auto metadata = getMetadata(key_);
+  ASSERT_GE(metadata.n_filters, 3);
+  ASSERT_EQ(metadata.size, added_items.size());
+
+  const auto sequence = storage_->GetDB()->GetLatestSequenceNumber();
+  for (const auto &item : added_items) {
+    bool added = true;
+    auto s = cuckoo_->AddNx(*ctx_, key_, item, &added);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    EXPECT_FALSE(added) << item;
+  }
+  EXPECT_EQ(storage_->GetDB()->GetLatestSequenceNumber(), sequence);
+  EXPECT_EQ(getMetadata(key_).size, added_items.size());
+}
+
 TEST_F(RedisCuckooFilterTest, AddNxFullNonScaling) {
   reserveAndVerify(key_, 2, 1, 1, 0);
   rocksdb::Status s;

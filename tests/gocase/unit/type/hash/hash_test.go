@@ -584,6 +584,10 @@ var testHash = func(t *testing.T, configs util.KvrocksServerConfigs) {
 		rdb.HMSet(ctx, "myhash", []string{"a", "1", "b", "2", "c", "3"})
 		require.Equal(t, int64(3), rdb.HDel(ctx, "myhash", "a", "b", "c", "d", "e").Val())
 		require.Equal(t, int64(0), rdb.Exists(ctx, "myhash").Val())
+		// TTL and PTTL must report -2 (key does not exist) once the last field is
+		// deleted, consistent with EXISTS, instead of -1 from the leftover metadata.
+		require.EqualValues(t, -2, rdb.TTL(ctx, "myhash").Val())
+		require.EqualValues(t, -2, rdb.PTTL(ctx, "myhash").Val())
 	})
 
 	t.Run("HEXISTS", func(t *testing.T) {

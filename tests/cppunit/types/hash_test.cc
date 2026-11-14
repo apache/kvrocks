@@ -271,6 +271,34 @@ TEST_F(RedisHashTest, GetAndSet) {
   s = hash_->Del(*ctx_, key_);
 }
 
+TEST_F(RedisHashTest, TTLReportsKeyGoneAfterDeletingLastField) {
+  uint64_t ret = 0;
+  auto s = hash_->Set(*ctx_, key_, fields_[0], values_[0], &ret);
+  EXPECT_TRUE(s.ok() && ret == 1);
+
+  redis::Database db(storage_.get(), "hash_ns");
+  int64_t ttl = 0;
+  // The hash holds a live field but has no key-level expire, so TTL is -1.
+  s = db.TTL(*ctx_, key_, &ttl);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(-1, ttl);
+
+  // Deleting the last field leaves an empty hash whose metadata is still stored.
+  // TTL must report -2 (key does not exist) to stay consistent with EXISTS,
+  // instead of -1 leaked from the leftover metadata.
+  s = hash_->Delete(*ctx_, key_, {fields_[0]}, &ret);
+  EXPECT_TRUE(s.ok() && ret == 1);
+
+  uint32_t exists = 0;
+  s = db.Exists(*ctx_, {Slice(key_)}, &exists);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(0u, exists);
+
+  s = db.TTL(*ctx_, key_, &ttl);
+  EXPECT_TRUE(s.ok());
+  EXPECT_EQ(-2, ttl);
+}
+
 TEST_F(RedisHashTest, MGetAndMSet) {
   uint64_t ret = 0;
   std::vector<FieldValue> fvs;

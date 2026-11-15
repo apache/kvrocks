@@ -158,6 +158,11 @@ class ReplicationThread : private EventCallbackBase<ReplicationThread> {
   using CallbackType = CallbacksStateMachine::CallbackType;
 
  private:
+  friend class ReplicationWriteBatchTest;
+
+  static StatusOr<bool> isStreamEntryVisible(engine::Storage *storage, rocksdb::DB *db,
+                                             const rocksdb::ReadOptions &options, const InternalKey &key);
+
   std::thread t_;
   std::atomic<bool> stop_flag_ = false;
   std::string host_;
@@ -230,6 +235,12 @@ class ReplicationThread : private EventCallbackBase<ReplicationThread> {
  */
 class WriteBatchHandler : public rocksdb::WriteBatch::Handler {
  public:
+  struct Update {
+    WriteBatchType type;
+    std::string key;
+    std::string value;
+  };
+
   rocksdb::Status PutCF(uint32_t column_family_id, const rocksdb::Slice &key, const rocksdb::Slice &value) override;
   rocksdb::Status DeleteCF([[maybe_unused]] uint32_t column_family_id,
                            [[maybe_unused]] const rocksdb::Slice &key) override {
@@ -240,11 +251,8 @@ class WriteBatchHandler : public rocksdb::WriteBatch::Handler {
                                 [[maybe_unused]] const rocksdb::Slice &end_key) override {
     return rocksdb::Status::OK();
   }
-  WriteBatchType Type() { return type_; }
-  std::string Key() const { return kv_.first; }
-  std::string Value() const { return kv_.second; }
+  const std::vector<Update> &GetUpdates() const { return updates_; }
 
  private:
-  std::pair<std::string, std::string> kv_;
-  WriteBatchType type_ = kBatchTypeNone;
+  std::vector<Update> updates_;
 };

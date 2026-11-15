@@ -1176,40 +1176,89 @@ Status ReplicationThread::parseWriteBatch(const rocksdb::WriteBatch &write_batch
   auto db_status = write_batch.Iterate(&write_batch_handler);
   if (!db_status.ok()) return {Status::NotOK, "failed to iterate over write batch: " + db_status.ToString()};
 
-  switch (write_batch_handler.Type()) {
-    case kBatchTypePublish:
-      srv_->PublishMessage(write_batch_handler.Key(), write_batch_handler.Value());
-      break;
-    case kBatchTypePropagate:
-      if (write_batch_handler.Key() == engine::kPropagateScriptCommand) {
-        std::vector<std::string> tokens = util::TokenizeRedisProtocol(write_batch_handler.Value());
-        if (!tokens.empty()) {
-          auto s = srv_->ExecPropagatedCommand(tokens);
+  rocksdb::DB *db = nullptr;
+  const rocksdb::Snapshot *snapshot = nullptr;
+  auto release_snapshot = MakeScopeExit([&] {
+    if (snapshot) db->ReleaseSnapshot(snapshot);
+  });
+
+  for (const auto &update : write_batch_handler.GetUpdates()) {
+    switch (update.type) {
+      case kBatchTypePublish:
+        srv_->PublishMessage(update.key, update.value);
+        break;
+      case kBatchTypePropagate:
+        if (update.key == engine::kPropagateScriptCommand) {
+          std::vector<std::string> tokens = util::TokenizeRedisProtocol(update.value);
+          if (!tokens.empty()) {
+            auto s = srv_->ExecPropagatedCommand(tokens);
+            if (!s.IsOK()) {
+              return s.Prefixed("failed to execute propagate command");
+            }
+          }
+        } else if (update.key == kNamespaceDBKey) {
+          auto s = srv_->GetNamespace()->LoadAndRewrite();
           if (!s.IsOK()) {
-            return s.Prefixed("failed to execute propagate command");
+            return s.Prefixed("failed to load namespaces");
           }
         }
-      } else if (write_batch_handler.Key() == kNamespaceDBKey) {
-        auto s = srv_->GetNamespace()->LoadAndRewrite();
-        if (!s.IsOK()) {
-          return s.Prefixed("failed to load namespaces");
+        break;
+      case kBatchTypeStream: {
+        InternalKey ikey(update.key, storage_->IsSlotIdEncoded());
+        Slice entry_id = ikey.GetSubKey();
+        if (entry_id.size() != 2 * sizeof(uint64_t)) break;
+
+        if (!snapshot) {
+          db = storage_->GetDB();
+          if (!db || !(snapshot = db->GetSnapshot())) {
+            return {Status::NotOK, "failed to acquire stream notification snapshot"};
+          }
         }
+        rocksdb::ReadOptions options;
+        options.snapshot = snapshot;
+        auto visible = isStreamEntryVisible(storage_, db, options, ikey);
+        if (!visible) return visible.ToStatus();
+        if (!*visible) break;
+
+        redis::StreamEntryID id;
+        GetFixed64(&entry_id, &id.ms);
+        GetFixed64(&entry_id, &id.seq);
+        srv_->OnEntryAddedToStream(ikey.GetNamespace().ToString(), ikey.GetKey().ToString(), id);
+        break;
       }
-      break;
-    case kBatchTypeStream: {
-      auto key = write_batch_handler.Key();
-      InternalKey ikey(key, storage_->IsSlotIdEncoded());
-      Slice entry_id = ikey.GetSubKey();
-      redis::StreamEntryID id;
-      GetFixed64(&entry_id, &id.ms);
-      GetFixed64(&entry_id, &id.seq);
-      srv_->OnEntryAddedToStream(ikey.GetNamespace().ToString(), ikey.GetKey().ToString(), id);
-      break;
+      case kBatchTypeNone:
+        break;
     }
-    case kBatchTypeNone:
-      break;
   }
   return Status::OK();
+}
+
+StatusOr<bool> ReplicationThread::isStreamEntryVisible(engine::Storage *storage, rocksdb::DB *db,
+                                                       const rocksdb::ReadOptions &options, const InternalKey &key) {
+  if (key.GetSubKey().size() != 2 * sizeof(uint64_t)) return false;
+  if (!options.snapshot) return {Status::NotOK, "stream notification requires a snapshot"};
+
+  // Read committed state directly: Storage::Get may consult the global EXEC write batch.
+  const auto ns_key = ComposeNamespaceKey(key.GetNamespace(), key.GetKey(), storage->IsSlotIdEncoded());
+  std::string bytes;
+  auto s = db->Get(options, storage->GetCFHandle(ColumnFamilyID::Metadata), ns_key, &bytes);
+  if (s.IsNotFound()) return false;
+  if (!s.ok()) return {Status::NotOK, "failed to read stream notification metadata: " + s.ToString()};
+
+  Metadata metadata(kRedisNone, false);
+  s = metadata.Decode(bytes);
+  if (!s.ok()) return {Status::NotOK, "failed to decode stream notification metadata: " + s.ToString()};
+  if (metadata.Type() != kRedisStream || metadata.size == 0 || metadata.Expired() ||
+      metadata.version != key.GetVersion()) {
+    return false;
+  }
+
+  // A Put can be followed by XDEL/trim in the same batch; old versions can also survive DEL.
+  rocksdb::PinnableSlice value;
+  s = db->Get(options, storage->GetCFHandle(ColumnFamilyID::Stream), key.Encode(), &value);
+  if (s.IsNotFound()) return false;
+  if (!s.ok()) return {Status::NotOK, "failed to read stream notification entry: " + s.ToString()};
+  return true;
 }
 
 bool ReplicationThread::isRestoringError(std::string_view err) {
@@ -1229,19 +1278,12 @@ bool ReplicationThread::isUnknownOption(std::string_view err) {
 
 rocksdb::Status WriteBatchHandler::PutCF(uint32_t column_family_id, const rocksdb::Slice &key,
                                          const rocksdb::Slice &value) {
-  type_ = kBatchTypeNone;
   if (column_family_id == static_cast<uint32_t>(ColumnFamilyID::PubSub)) {
-    type_ = kBatchTypePublish;
-    kv_ = std::make_pair(key.ToString(), value.ToString());
-    return rocksdb::Status::OK();
+    updates_.push_back({kBatchTypePublish, key.ToString(), value.ToString()});
   } else if (column_family_id == static_cast<uint32_t>(ColumnFamilyID::Propagate)) {
-    type_ = kBatchTypePropagate;
-    kv_ = std::make_pair(key.ToString(), value.ToString());
-    return rocksdb::Status::OK();
+    updates_.push_back({kBatchTypePropagate, key.ToString(), value.ToString()});
   } else if (column_family_id == static_cast<uint32_t>(ColumnFamilyID::Stream)) {
-    type_ = kBatchTypeStream;
-    kv_ = std::make_pair(key.ToString(), value.ToString());
-    return rocksdb::Status::OK();
+    updates_.push_back({kBatchTypeStream, key.ToString(), {}});
   }
   return rocksdb::Status::OK();
 }

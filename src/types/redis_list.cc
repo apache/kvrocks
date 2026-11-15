@@ -657,13 +657,10 @@ rocksdb::Status List::Trim(engine::Context &ctx, const Slice &user_key, int star
   if (stop < 0) stop = static_cast<int>(metadata.size) >= -1 * stop ? static_cast<int>(metadata.size) + stop : -1;
   // the result will be empty list when start > stop,
   // or start is larger than the end of list
-  if (start > stop) {
+  if (start > stop || start >= static_cast<int>(metadata.size)) {
     return storage_->Delete(ctx, storage_->DefaultWriteOptions(), metadata_cf_handle_, ns_key);
   }
   if (start < 0) start = 0;
-  if (static_cast<uint64_t>(start) >= metadata.size) {
-    return storage_->Delete(ctx, storage_->DefaultWriteOptions(), metadata_cf_handle_, ns_key);
-  }
 
   auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(kRedisList, std::vector<std::string>{std::to_string(kRedisCmdLTrim), std::to_string(start),

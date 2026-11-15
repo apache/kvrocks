@@ -494,6 +494,69 @@ func TestConfigPeriodicCompactionSecondsAndTTL(t *testing.T) {
 	t.Run("Get and Set rocksdb.ttl", testTemplate(t, "rocksdb.ttl"))
 }
 
+func TestConfigCheckpointPurgeTimeSecs(t *testing.T) {
+	t.Parallel()
+	srv := util.StartServer(t, map[string]string{})
+	defer srv.Close()
+
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	purgeTimeConfigs := map[string]string{
+		"checkpoint-alive-time-secs": "86400",
+		"checkpoint-idle-time-secs":  "30",
+	}
+
+	t.Run("Default values", func(t *testing.T) {
+		for parameter, expect := range purgeTimeConfigs {
+			result, err := rdb.ConfigGet(ctx, parameter).Result()
+			require.NoError(t, err)
+			require.EqualValues(t, expect, result[parameter])
+		}
+	})
+
+	t.Run("Get and set configured values", func(t *testing.T) {
+		for parameter := range purgeTimeConfigs {
+			for _, value := range []string{"1", "100", strconv.Itoa(math.MaxInt32)} {
+				require.NoError(t, rdb.ConfigSet(ctx, parameter, value).Err())
+				result, err := rdb.ConfigGet(ctx, parameter).Result()
+				require.NoError(t, err)
+				require.EqualValues(t, value, result[parameter])
+			}
+		}
+	})
+
+	t.Run("Reject invalid values", func(t *testing.T) {
+		for parameter := range purgeTimeConfigs {
+			// The lower bound is 1 second, so zero and negative numbers are out of range.
+			for _, value := range []string{"0", "-1"} {
+				util.ErrorRegexp(t, rdb.ConfigSet(ctx, parameter, value).Err(), ".*out of numeric range")
+			}
+			util.ErrorRegexp(t, rdb.ConfigSet(ctx, parameter, "abc").Err(), ".*not started as an integer")
+		}
+	})
+
+	t.Run("Values are kept after config rewrite and restart", func(t *testing.T) {
+		require.NoError(t, rdb.ConfigSet(ctx, "checkpoint-alive-time-secs", "3600").Err())
+		require.NoError(t, rdb.ConfigSet(ctx, "checkpoint-idle-time-secs", "10").Err())
+		require.NoError(t, rdb.ConfigRewrite(ctx).Err())
+
+		srv.Restart()
+
+		cli := srv.NewClient()
+		defer func() { require.NoError(t, cli.Close()) }()
+
+		result, err := cli.ConfigGet(ctx, "checkpoint-alive-time-secs").Result()
+		require.NoError(t, err)
+		require.EqualValues(t, "3600", result["checkpoint-alive-time-secs"])
+
+		result, err = cli.ConfigGet(ctx, "checkpoint-idle-time-secs").Result()
+		require.NoError(t, err)
+		require.EqualValues(t, "10", result["checkpoint-idle-time-secs"])
+	})
+}
+
 func TestConfigDailyOffpeakTimeUTC(t *testing.T) {
 	t.Parallel()
 	srv := util.StartServer(t, map[string]string{})

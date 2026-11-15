@@ -203,7 +203,7 @@ Status Server::Start() {
     worker->Start();
   }
 
-  if (auto s = task_runner_.Start(); !s) {
+  if (auto s = startTaskRunner(); !s) {
     WARN("Failed to start task runner: {}", s.Msg());
   }
   // setup server cron thread
@@ -251,6 +251,9 @@ Status Server::Start() {
 
 void Server::Stop() {
   stop_ = true;
+  // Stop is also called by the signal handler. Join waits for cron before
+  // clearing canceled tasks, including a publication already in progress.
+  block_cache_sampling_enabled_ = false;
 
   slaveof_mu_.lock();
   if (replication_thread_) replication_thread_->Stop();
@@ -300,10 +303,10 @@ Status Server::AddMaster(const std::string &host, uint32_t port, bool force_reco
   replication_thread_ = std::make_unique<ReplicationThread>(host, master_listen_port, this);
   auto s = replication_thread_->Start([this]() { return PrepareRestoreDB(); },
                                       [this]() {
-                                        this->is_loading_ = false;
-                                        if (auto s = task_runner_.Start(); !s) {
+                                        if (auto s = startTaskRunner(); !s) {
                                           WARN("Failed to start task runner: {}", s.Msg());
                                         }
+                                        this->is_loading_ = false;
                                       });
   if (s.IsOK()) {
     master_host_ = host;
@@ -921,6 +924,18 @@ void Server::cron() {
       continue;
     }
 
+    {
+      std::lock_guard lock(block_cache_sampling_mu_);
+      if (block_cache_sampling_enabled_ && !stop_ && !is_loading_) {
+        if (auto cache_stats = storage->GetBlockCacheStats()) {
+          if (auto task = cache_stats->MakeSamplingTask()) {
+            // A full queue drops the task and releases its sampling reservation.
+            (void)task_runner_.TryPublish(std::move(task));
+          }
+        }
+      }
+    }
+
     // check every 20s (use 20s instead of 60s so that cron will execute in critical condition)
     if (counter != 0 && counter % 200 == 0) {
       auto t = static_cast<time_t>(util::GetTimeStamp());
@@ -1103,12 +1118,17 @@ Server::InfoEntries Server::GetRocksDBInfo() {
   {
     // All column families share the same block cache, so it's good to count a single one.
     uint64_t block_cache_usage = 0;
-    uint64_t block_cache_pinned_usage = 0;
     auto subkey_cf_handle = storage->GetCFHandle(ColumnFamilyID::PrimarySubkey);
     db->GetIntProperty(subkey_cf_handle, rocksdb::DB::Properties::kBlockCacheUsage, &block_cache_usage);
     entries.emplace_back("block_cache_usage", block_cache_usage);
-    db->GetIntProperty(subkey_cf_handle, rocksdb::DB::Properties::kBlockCachePinnedUsage, &block_cache_pinned_usage);
-    entries.emplace_back("block_cache_pinned_usage[" + subkey_cf_handle->GetName() + "]", block_cache_pinned_usage);
+    if (auto cache_stats = storage->GetBlockCacheStats()) {
+      auto snapshot = cache_stats->GetSnapshot();
+      entries.emplace_back("block_cache_pinned_usage[" + subkey_cf_handle->GetName() + "]", snapshot.pinned_usage);
+      entries.emplace_back("block_cache_pinned_usage_sample_age_ms",
+                           std::chrono::duration_cast<std::chrono::milliseconds>(engine::BlockCacheStats::Clock::now() -
+                                                                                 snapshot.sampled_at)
+                               .count());
+    }
 
     // All column faimilies share the same property of the DB, so it's good to count a single one.
     db->GetIntProperty(subkey_cf_handle, rocksdb::DB::Properties::kNumSnapshots, &num_snapshots);
@@ -1612,6 +1632,19 @@ std::string Server::GetRocksDBStatsJson() const {
   return stats_json.to_string();
 }
 
+Status Server::startTaskRunner() {
+  // Stop joins the replication thread from the signal handler. Defer shutdown
+  // signals until this thread releases the gate that replication may need.
+  util::ScopedShutdownSignalBlocker signal_blocker;
+  if (signal_blocker.GetError() != 0) {
+    return {Status::NotOK, "failed to block shutdown signals before starting task runner"};
+  }
+  std::lock_guard lock(block_cache_sampling_mu_);
+  auto s = task_runner_.Start();
+  if (s.IsOK()) block_cache_sampling_enabled_ = true;
+  return s;
+}
+
 // This function is called by replication thread when finished fetching all files from its master.
 // Before restoring the db from backup or checkpoint, we should
 // guarantee other threads don't access DB and its column families, then close db.
@@ -1645,7 +1678,11 @@ bool Server::PrepareRestoreDB() {
 
   // Stop task runner
   INFO("[server] Stopping the task runner and clear task queue...");
-  task_runner_.Cancel();
+  {
+    std::lock_guard lock(block_cache_sampling_mu_);
+    block_cache_sampling_enabled_ = false;
+    task_runner_.Cancel();
+  }
   if (auto s = task_runner_.Join(); !s) {
     WARN("[server] {}", s.Msg());
   }

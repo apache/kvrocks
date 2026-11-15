@@ -33,12 +33,14 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <mutex>
 #include <shared_mutex>
 #include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
 
+#include "block_cache_stats.h"
 #include "common/keyspace_events.h"
 #include "common/port.h"
 #include "config/config.h"
@@ -287,6 +289,11 @@ class Storage {
                                         const rocksdb::IngestExternalFileOptions &ingest_options);
   void FlushBlockCache();
 
+  std::shared_ptr<BlockCacheStats> GetBlockCacheStats() const {
+    std::lock_guard lock(block_cache_stats_mu_);
+    return block_cache_stats_;
+  }
+
   rocksdb::DB *GetDB();
   bool IsClosing() const { return db_closing_; }
   std::string GetName() const { return config_->db_name; }
@@ -408,6 +415,13 @@ class Storage {
 
   // rocksdb used global block cache
   std::shared_ptr<rocksdb::Cache> shared_block_cache_;
+  mutable std::mutex block_cache_stats_mu_;
+  std::shared_ptr<BlockCacheStats> block_cache_stats_;
+
+  void setBlockCacheStats(std::shared_ptr<BlockCacheStats> stats) {
+    std::lock_guard lock(block_cache_stats_mu_);
+    block_cache_stats_ = std::move(stats);
+  }
 
   rocksdb::Status writeToDB(engine::Context &ctx, const rocksdb::WriteOptions &options, rocksdb::WriteBatch *updates);
   void recordKeyspaceStat(const rocksdb::ColumnFamilyHandle *column_family, const rocksdb::Status &s);

@@ -100,6 +100,7 @@ void Storage::TrySkipBlockCacheDeallocationOnClose() {
 
 void Storage::CloseDB() {
   auto guard = WriteLockGuard();
+  setBlockCacheStats(nullptr);
   if (!db_) return;
 
   db_closing_ = true;
@@ -288,6 +289,7 @@ Status Storage::CreateColumnFamilies(const rocksdb::Options &options) {
 
 Status Storage::Open(DBOpenMode mode) {
   auto guard = WriteLockGuard();
+  setBlockCacheStats(nullptr);
   db_closing_ = false;
 
   bool cache_index_and_filter_blocks = config_->rocks_db.cache_index_and_filter_blocks;
@@ -408,6 +410,8 @@ Status Storage::Open(DBOpenMode mode) {
     return {Status::DBOpenErr};
   }
   INFO("[storage] Success to load the data from disk: {} ms", duration);
+
+  setBlockCacheStats(std::make_shared<BlockCacheStats>(shared_block_cache_));
 
   return Status::OK();
 }

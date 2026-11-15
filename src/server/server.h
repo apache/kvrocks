@@ -480,6 +480,9 @@ class Server {
   std::thread cron_thread_;
   std::thread compaction_checker_thread_;
   TaskRunner task_runner_;
+  Status startTaskRunner();
+  std::mutex block_cache_sampling_mu_;
+  std::atomic<bool> block_cache_sampling_enabled_{false};
   std::vector<std::unique_ptr<WorkerThread>> worker_threads_;
   std::unique_ptr<ReplicationThread> replication_thread_;
   tbb::concurrent_queue<std::unique_ptr<WorkerThread>> recycle_worker_threads_;

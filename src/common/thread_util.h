@@ -30,6 +30,27 @@
 
 namespace util {
 
+class ScopedShutdownSignalBlocker {
+ public:
+  ScopedShutdownSignalBlocker() {
+    sigset_t signals{};
+    sigemptyset(&signals);
+    sigaddset(&signals, SIGTERM);
+    sigaddset(&signals, SIGINT);
+    error_ = pthread_sigmask(SIG_BLOCK, &signals, &previous_);
+  }
+  ~ScopedShutdownSignalBlocker() {
+    if (error_ == 0) pthread_sigmask(SIG_SETMASK, &previous_, nullptr);
+  }
+  ScopedShutdownSignalBlocker(const ScopedShutdownSignalBlocker &) = delete;
+  ScopedShutdownSignalBlocker &operator=(const ScopedShutdownSignalBlocker &) = delete;
+  int GetError() const { return error_; }
+
+ private:
+  sigset_t previous_{};
+  int error_;
+};
+
 void ThreadSetName(const char *name);
 
 double ThreadGetCPUTime(std::thread::native_handle_type thread_id);

@@ -31,6 +31,7 @@
 #include <vector>
 
 #include "test_base.h"
+#include "time_util.h"
 
 TEST(Storage, CreateBackup) {
   std::error_code ec;
@@ -256,6 +257,53 @@ TEST(Storage, TryPurgeCheckpoint) {
   s = engine::Storage::ReplDataManager::GetFullReplDataInfo(storage.get(), &files);
   ASSERT_TRUE(s.IsOK()) << s.Msg();
   EXPECT_TRUE(storage->ExistCheckpoint());
+}
+
+TEST(Storage, TryPurgeCheckpointRespectsConfiguredAliveTime) {
+  std::error_code ec;
+
+  const std::string test_dir = "test_purge_checkpoint_alive_time";
+  Config config;
+  config.db_dir = test_dir + "/db";
+  config.checkpoint_dir = test_dir + "/checkpoint";
+  config.slot_id_encoded = false;
+  config.checkpoint_alive_time_secs = 1;
+  config.checkpoint_idle_time_secs = 10000;
+
+  std::filesystem::remove_all(test_dir, ec);
+  ASSERT_FALSE(ec);
+  std::filesystem::create_directory(test_dir, ec);
+  ASSERT_FALSE(ec);
+
+  auto cleanup = MakeDBDirCleanup(test_dir);
+  auto storage = std::make_unique<engine::Storage>(&config);
+  auto s = storage->Open();
+  ASSERT_TRUE(s.IsOK()) << s.Msg();
+
+  auto ctx = engine::Context(storage.get());
+  rocksdb::WriteBatch batch;
+  batch.Put("k", "v");
+  ASSERT_TRUE(storage->Write(ctx, rocksdb::WriteOptions(), &batch).ok());
+
+  std::string files;
+  s = engine::Storage::ReplDataManager::GetFullReplDataInfo(storage.get(), &files);
+  ASSERT_TRUE(s.IsOK()) << s.Msg();
+
+  // The configured idle time is far away, so the checkpoint should not be purged
+  // even though no replica is fetching its files.
+  s = storage->TryPurgeCheckpoint(/*fetch_file_threads=*/0);
+  ASSERT_TRUE(s.IsOK()) << s.Msg();
+  EXPECT_TRUE(storage->ExistCheckpoint());
+
+  // Simulate that the checkpoint was created long before the configured alive time,
+  // it should be purged even if replicas are still fetching its files.
+  storage->SetCheckpointCreateTimeSecs(util::GetTimeStamp<std::chrono::seconds>() - 10);
+
+  s = storage->TryPurgeCheckpoint(/*fetch_file_threads=*/1);
+  ASSERT_TRUE(s.IsOK()) << s.Msg();
+  EXPECT_FALSE(storage->ExistCheckpoint());
+  EXPECT_EQ(storage->GetCheckpointCreateTimeSecs(), 0);
+  EXPECT_EQ(storage->GetCheckpointAccessTimeSecs(), 0);
 }
 
 TEST(Storage, ReplDataManagerFileExistsCRC) {

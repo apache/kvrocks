@@ -477,6 +477,16 @@ Status SockSendWithTimeout(int fd, const std::string &data, int timeout_ms) {
     return SockSend(fd, data);
   }
 
+  if (data.empty()) return Status::OK();
+
+  // A writable socket can still block when writing more than the available buffer space.
+  int orig_flags = fcntl(fd, F_GETFL);
+  if (orig_flags == -1) return Status::FromErrno("fcntl(F_GETFL)");
+
+  auto s = SockSetBlocking(fd, 0);
+  if (!s.IsOK()) return s;
+  auto restore_flags = MakeScopeExit([fd, orig_flags] { fcntl(fd, F_SETFL, orig_flags); });
+
   ssize_t n = 0;
   auto start = std::chrono::steady_clock::now();
 

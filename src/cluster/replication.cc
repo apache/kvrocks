@@ -347,6 +347,8 @@ LOOP_LABEL:
 void ReplicationThread::CallbacksStateMachine::Start() {
   struct bufferevent *bev = nullptr;
 
+  // Rebuild each handshake so AUTH callbacks from earlier connections cannot accumulate.
+  handlers_ = base_handlers_;
   if (handlers_.empty()) {
     return;
   }

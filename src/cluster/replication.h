@@ -135,7 +135,7 @@ class ReplicationThread : private EventCallbackBase<ReplicationThread> {
     using CallbackList = std::deque<CallbackType>;
 
     CallbacksStateMachine(ReplicationThread *repl, CallbackList &&handlers)
-        : repl_(repl), handlers_(std::move(handlers)) {}
+        : repl_(repl), base_handlers_(std::move(handlers)) {}
 
     void Start();
     void Stop();
@@ -147,6 +147,7 @@ class ReplicationThread : private EventCallbackBase<ReplicationThread> {
    private:
     bufferevent *bev_ = nullptr;
     ReplicationThread *repl_;
+    const CallbackList base_handlers_;
     CallbackList handlers_;
     CallbackList::size_type handler_idx_ = 0;
 

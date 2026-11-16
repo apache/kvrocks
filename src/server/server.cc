@@ -754,6 +754,7 @@ void Server::BlockOnWait(redis::Connection *conn, rocksdb::SequenceNumber target
 
   wait_contexts_.emplace(target_seq, WaitContext(conn, target_seq, num_replicas));
   IncrBlockedClientNum();
+  wait_generation_.fetch_add(1, std::memory_order_relaxed);
 }
 
 void Server::WakeupWaitConnections(rocksdb::SequenceNumber seq) {

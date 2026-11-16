@@ -254,6 +254,7 @@ class Server {
   // Return the largest wait_context.target_seq that can wakeup given the seq.
   // If no wait_context can wakeup, return 0.
   rocksdb::SequenceNumber LargestTargetSeqToWakeup(rocksdb::SequenceNumber seq);
+  uint64_t GetWaitGeneration() const { return wait_generation_.load(std::memory_order_relaxed); }
 
   size_t GetReplicaCount() {
     std::shared_lock<std::shared_mutex> guard(slave_threads_mu_);
@@ -474,6 +475,7 @@ class Server {
   };
   std::multimap<rocksdb::SequenceNumber, WaitContext> wait_contexts_;
   std::shared_mutex wait_contexts_mu_;
+  std::atomic<uint64_t> wait_generation_{0};
 
   // threads
   std::shared_mutex works_concurrency_rw_lock_;

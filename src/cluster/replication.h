@@ -26,6 +26,7 @@
 #include <chrono>
 #include <deque>
 #include <memory>
+#include <optional>
 #include <string>
 #include <thread>
 #include <tuple>
@@ -86,6 +87,8 @@ class FeedSlaveThread {
   redis::Request req_;
   std::atomic<rocksdb::SequenceNumber> ack_seq_ = 0;
   rocksdb::SequenceNumber last_getack_seq_ = 0;
+  std::optional<uint64_t> last_checked_wait_generation_;
+  rocksdb::SequenceNumber last_checked_wait_seq_ = 0;
   int64_t last_ack_time_secs_ = 0;
 
   // Configurable delay limits
@@ -95,13 +98,15 @@ class FeedSlaveThread {
   int send_timeout_ms_;
 
   void loop();
-  void checkLivenessIfNeed();
+  void checkLivenessIfNeed(rocksdb::SequenceNumber last_sent_seq);
   void readCallback(bufferevent *bev, void *ctx);
   static void staticReadCallback(bufferevent *bev, void *ctx);
   bool shouldSendGetAck(rocksdb::SequenceNumber seq);
 };
 
 class ReplicationThread : private EventCallbackBase<ReplicationThread> {
+  friend class ReplicationAckTest;
+
  public:
   explicit ReplicationThread(std::string host, uint32_t port, Server *srv);
   Status Start(std::function<bool()> &&pre_fullsync_cb, std::function<void()> &&post_fullsync_cb);

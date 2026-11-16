@@ -111,7 +111,24 @@ void FeedSlaveThread::Join() {
   }
 }
 
-void FeedSlaveThread::checkLivenessIfNeed() {
+void FeedSlaveThread::checkLivenessIfNeed(rocksdb::SequenceNumber last_sent_seq) {
+  // Sample before querying so a concurrent WAIT registration is checked on the next idle iteration.
+  auto wait_generation = srv_->GetWaitGeneration();
+  if (!last_checked_wait_generation_ || *last_checked_wait_generation_ != wait_generation ||
+      last_checked_wait_seq_ != last_sent_seq) {
+    last_checked_wait_generation_ = wait_generation;
+    last_checked_wait_seq_ = last_sent_seq;
+    if (shouldSendGetAck(last_sent_seq)) {
+      auto s = util::SockSendWithTimeout(conn_->GetFD(), redis::BulkString("_getack"), conn_->GetBufferEvent(),
+                                         send_timeout_ms_);
+      if (!s.IsOK()) {
+        ERROR("Failed to request acknowledgment from slave [{}]: {}", conn_->GetAddr(), s.Msg());
+        Stop();
+        return;
+      }
+    }
+  }
+
   if (++interval_ % 1000) return;
   const auto ping_command = redis::BulkString("ping");
   auto s = util::SockSend(conn_->GetFD(), ping_command, conn_->GetBufferEvent());
@@ -178,6 +195,8 @@ bool FeedSlaveThread::shouldSendGetAck(rocksdb::SequenceNumber seq) {
 }
 
 void FeedSlaveThread::loop() {
+  auto last_sent_seq = next_repl_seq_.load();
+  if (last_sent_seq > 0) --last_sent_seq;
   // is_first_repl_batch was used to fix that replication may be stuck in a dead loop
   // when some seqs might be lost in the middle of the WAL log, so forced to replicate
   // first batch here to work around this issue instead of waiting for enough batch size.
@@ -208,7 +227,7 @@ void FeedSlaveThread::loop() {
       if (!srv_->storage->WALHasNewData(curr_seq) || !srv_->storage->GetWALIter(curr_seq, &iter_).IsOK()) {
         iter_ = nullptr;
         usleep(yield_microseconds);
-        checkLivenessIfNeed();
+        checkLivenessIfNeed(last_sent_seq);
         continue;
       }
     }
@@ -250,6 +269,7 @@ void FeedSlaveThread::loop() {
         return;
       }
 
+      last_sent_seq = batch.sequence + batch.writeBatchPtr->Count() - 1;
       is_first_repl_batch = false;
       batches_bulk.clear();
       if (batches_bulk.capacity() > max_delay_bytes_ * 2) batches_bulk.shrink_to_fit();
@@ -260,7 +280,7 @@ void FeedSlaveThread::loop() {
 
     while (!IsStopped() && !srv_->storage->WALHasNewData(curr_seq)) {
       usleep(yield_microseconds);
-      checkLivenessIfNeed();
+      checkLivenessIfNeed(last_sent_seq);
     }
     iter_->Next();
   }
@@ -692,7 +712,7 @@ void ReplicationThread::sendReplConfAck(bufferevent *bev, bool force) {
 ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(bufferevent *bev) {
   repl_state_.store(kReplConnected, std::memory_order_relaxed);
   auto input = bufferevent_get_input(bev);
-  bool data_written = false;
+  bool ack_pending = false;
   bool force_ack = false;
   // Use replication-group-sync logic if enabled and rocksdb.write_options.sync is true
   rocksdb::WriteOptions write_opts = storage_->DefaultWriteOptions();
@@ -713,7 +733,7 @@ ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(bufferevent *
         // Read bulk length
         UniqueEvbufReadln line(input, EVBUFFER_EOL_CRLF_STRICT);
         if (!line) {
-          if (data_written) {
+          if (ack_pending || force_ack) {
             sendReplConfAck(bev, force_ack);
           }
           // We should reset the watermark to 0 to read the next RESP parts after reading a batch.
@@ -731,7 +751,7 @@ ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(bufferevent *
       case Incr_batch_data:
         // Read bulk data (batch data)
         if (incr_bulk_len_ + 2 > evbuffer_get_length(input)) {  // If data not enough
-          if (data_written) {
+          if (ack_pending || force_ack) {
             sendReplConfAck(bev, force_ack);
           }
           // set a watermark so the callback won't be called again until the data is enough
@@ -746,20 +766,13 @@ ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(bufferevent *
         incr_state_ = Incr_batch_size;
 
         if (bulk_string == "ping") {
-          // master would send the ping heartbeat packet to check whether the slave was alive or not,
-          // don't write ping to db here.
-          // We should not check data_written here because sendReplConfAck only send ack if it has been 1s from last ack
-          // when force_ack is false. As a result, if the last write did not trigger ack, the replication would not send
-          // ack forever and the info command on master would report incorrect lag.
-          sendReplConfAck(bev, force_ack);
-          // We should reset the watermark to 0 to read the next RESP parts after reading a batch.
-          bufferevent_setwatermark(bev, EV_READ, 0, 0);
-          return CBState::AGAIN;
+          // Heartbeats also acknowledge previously applied batches. Keep consuming buffered ACK requests.
+          ack_pending = true;
+          continue;
         }
 
         if (bulk_string == "_getack") {
-          // master would send the _getack command to the master to get acknowledgment
-          // don't write _getack to db here.
+          // The master requests an acknowledgment even when no batch was applied in this callback.
           force_ack = true;
           continue;
         }
@@ -772,7 +785,7 @@ ReplicationThread::CBState ReplicationThread::incrementBatchLoopCB(bufferevent *
                 util::StringToHex(batch.Data()));
           return CBState::RESTART;
         }
-        data_written = true;
+        ack_pending = true;
 
         s = parseWriteBatch(batch);
         if (!s.IsOK()) {

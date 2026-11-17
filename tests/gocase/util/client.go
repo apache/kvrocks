@@ -92,7 +92,6 @@ func SimpleTCPProxy(ctx context.Context, t testing.TB, to string, slowdown bool)
 			for {
 				select {
 				case <-ctx.Done():
-					t.Log("forwarding tcp stream stopped")
 					break COPY_LOOP
 				default:
 					if slowdown {
@@ -184,7 +183,6 @@ func PausableTCPProxy(ctx context.Context, t testing.TB, to string, pauseCh <-ch
 			for {
 				select {
 				case <-ctx.Done():
-					t.Log("forwarding tcp stream stopped")
 					break COPY_LOOP
 				default:
 					// When paused, only block reading from the master (to slave direction)

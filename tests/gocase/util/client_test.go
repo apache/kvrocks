@@ -21,15 +21,21 @@ package util
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
 
-func testConcurrentProxies(t *testing.T, newProxy func(ctx context.Context, t testing.TB, target string) uint64) {
+func testConcurrentProxies(
+	t *testing.T,
+	newProxy func(ctx context.Context, t testing.TB, target string) uint64,
+	extraCheck func(t *testing.T, ports []uint64),
+) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -78,17 +84,51 @@ func testConcurrentProxies(t *testing.T, newProxy func(ctx context.Context, t te
 
 		require.NoError(t, conn.Close())
 	}
+
+	if extraCheck != nil {
+		extraCheck(t, ports)
+	}
 }
 
 func TestSimpleTCPProxyConcurrent(t *testing.T) {
 	testConcurrentProxies(t, func(ctx context.Context, t testing.TB, target string) uint64 {
 		return SimpleTCPProxy(ctx, t, target, false)
-	})
+	}, nil)
 }
 
 func TestPausableTCPProxyConcurrent(t *testing.T) {
-	pauseCh := make(chan bool)
+	pauseChs := make([]chan bool, 0, 8)
 	testConcurrentProxies(t, func(ctx context.Context, t testing.TB, target string) uint64 {
+		pauseCh := make(chan bool)
+		pauseChs = append(pauseChs, pauseCh)
 		return PausableTCPProxy(ctx, t, target, pauseCh)
+	}, func(t *testing.T, ports []uint64) {
+		for i, port := range ports {
+			pauseChs[i] <- true
+
+			conn, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+			require.NoError(t, err)
+
+			payload := []byte(fmt.Sprintf("paused-%d", i))
+			_, err = conn.Write(payload)
+			require.NoError(t, err)
+
+			require.NoError(t, conn.SetReadDeadline(time.Now().Add(500*time.Millisecond)))
+			_, err = conn.Read(make([]byte, len(payload)))
+			var netErr net.Error
+			require.Error(t, err)
+			require.True(t, errors.As(err, &netErr) && netErr.Timeout(),
+				"expected the read to time out while the proxy is paused, got %v", err)
+
+			pauseChs[i] <- false
+			require.NoError(t, conn.SetReadDeadline(time.Now().Add(5*time.Second)))
+
+			echoed := make([]byte, len(payload))
+			_, err = io.ReadFull(conn, echoed)
+			require.NoError(t, err)
+			require.Equal(t, payload, echoed)
+
+			require.NoError(t, conn.Close())
+		}
 	})
 }

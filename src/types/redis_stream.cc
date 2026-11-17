@@ -23,6 +23,7 @@
 #include <rocksdb/status.h>
 
 #include <algorithm>
+#include <limits>
 #include <memory>
 #include <set>
 #include <utility>
@@ -379,7 +380,8 @@ rocksdb::Status Stream::DeletePelEntries(engine::Context &ctx, const Slice &stre
   }
   if (*acknowledged > 0) {
     StreamConsumerGroupMetadata group_metadata = decodeStreamConsumerGroupMetadataValue(get_group_value);
-    group_metadata.pending_number -= *acknowledged;
+    group_metadata.pending_number =
+        group_metadata.pending_number >= *acknowledged ? group_metadata.pending_number - *acknowledged : 0;
     std::string group_value = encodeStreamConsumerGroupMetadataValue(group_metadata);
     s = batch->Put(stream_cf_handle_, group_key, group_value);
     if (!s.ok()) return s;
@@ -393,7 +395,8 @@ rocksdb::Status Stream::DeletePelEntries(engine::Context &ctx, const Slice &stre
       }
       if (s.ok()) {
         auto consumer_metadata = decodeStreamConsumerMetadataValue(consumer_meta_original);
-        consumer_metadata.pending_number -= ack_count;
+        consumer_metadata.pending_number =
+            consumer_metadata.pending_number >= ack_count ? consumer_metadata.pending_number - ack_count : 0;
         s = batch->Put(stream_cf_handle_, consumer_meta_key, encodeStreamConsumerMetadataValue(consumer_metadata));
         if (!s.ok()) return s;
       }
@@ -492,7 +495,8 @@ rocksdb::Status Stream::ClaimPelEntries(engine::Context &ctx, const Slice &strea
         }
         StreamConsumerMetadata original_consumer_metadata =
             decodeStreamConsumerMetadataValue(get_original_consumer_value);
-        original_consumer_metadata.pending_number -= 1;
+        original_consumer_metadata.pending_number =
+            original_consumer_metadata.pending_number > 0 ? original_consumer_metadata.pending_number - 1 : 0;
         s = batch->Put(stream_cf_handle_, original_consumer_key,
                        encodeStreamConsumerMetadataValue(original_consumer_metadata));
         if (!s.ok()) return s;
@@ -951,7 +955,8 @@ rocksdb::Status Stream::DestroyConsumer(engine::Context &ctx, const Slice &strea
   if (!s.ok()) return s;
   StreamConsumerGroupMetadata group_metadata = decodeStreamConsumerGroupMetadataValue(get_group_value);
   group_metadata.consumer_number -= 1;
-  group_metadata.pending_number -= deleted_pel;
+  group_metadata.pending_number =
+      group_metadata.pending_number >= deleted_pel ? group_metadata.pending_number - deleted_pel : 0;
   s = batch->Put(stream_cf_handle_, group_key, encodeStreamConsumerGroupMetadataValue(group_metadata));
   if (!s.ok()) return s;
   return storage_->Write(ctx, storage_->DefaultWriteOptions(), batch->GetWriteBatch());
@@ -1360,23 +1365,22 @@ static int64_t StreamEstimateDistanceFromFirstEverEntry(const StreamMetadata &me
 }
 
 static void CheckLagValid(const StreamMetadata &stream_metadata, StreamConsumerGroupMetadata &group_metadata) {
-  bool valid = false;
+  auto compute_lag = [&stream_metadata](int64_t entries_read) {
+    if (entries_read < 0 || static_cast<uint64_t>(entries_read) > stream_metadata.entries_added) {
+      return uint64_t{0};
+    }
+    auto lag = stream_metadata.entries_added - static_cast<uint64_t>(entries_read);
+    return std::min<uint64_t>(lag, static_cast<uint64_t>(std::numeric_limits<int64_t>::max()));
+  };
+
   if (stream_metadata.entries_added == 0) {
     group_metadata.lag = 0;
-    valid = true;
   } else if (group_metadata.entries_read != -1 &&
              !StreamRangeHasTombstones(stream_metadata, group_metadata.last_delivered_id)) {
-    group_metadata.lag = stream_metadata.entries_added - group_metadata.entries_read;
-    valid = true;
+    group_metadata.lag = compute_lag(group_metadata.entries_read);
   } else {
     int64_t entries_read = StreamEstimateDistanceFromFirstEverEntry(stream_metadata, group_metadata.last_delivered_id);
-    if (entries_read != -1) {
-      group_metadata.lag = stream_metadata.entries_added - entries_read;
-      valid = true;
-    }
-  }
-  if (!valid) {
-    group_metadata.lag = UINT64_MAX;
+    group_metadata.lag = entries_read != -1 ? compute_lag(entries_read) : UINT64_MAX;
   }
 }
 

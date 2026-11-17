@@ -24,6 +24,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"math/rand"
 	"slices"
 	"strconv"
@@ -1308,6 +1309,29 @@ func TestStreamOffset(t *testing.T) {
 		require.Equal(t, consumer2, r1[1].Name)
 		r1 = rdb.XInfoConsumers(ctx, streamName, group2).Val()
 		require.Equal(t, consumer3, r1[0].Name)
+	})
+
+	t.Run("XINFO GROUPS lag stays within the signed 64-bit range, for issue #3579", func(t *testing.T) {
+		streamName := "test-stream-3579-lag"
+		groupName := "test-group-3579-lag"
+		require.NoError(t, rdb.Del(ctx, streamName).Err())
+		require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: streamName,
+			ID:     "1-0",
+			Values: []string{"data", "a"},
+		}).Err())
+		require.NoError(t, rdb.Do(ctx, "XSETID", streamName, "1-0", "ENTRIESADDED", "9223372036854775808").Err())
+		require.NoError(t, rdb.XGroupCreate(ctx, streamName, groupName, "0").Err())
+		require.NoError(t, rdb.Do(ctx, "XGROUP", "SETID", streamName, groupName, "0", "ENTRIESREAD", 0).Err())
+
+		r := rdb.XInfoGroups(ctx, streamName).Val()
+		require.Equal(t, int64(math.MaxInt64), r[0].Lag)
+
+		// An entries_read larger than entries_added must not wrap the lag.
+		require.NoError(t, rdb.Do(ctx, "XSETID", streamName, "1-0", "ENTRIESADDED", 1).Err())
+		require.NoError(t, rdb.Do(ctx, "XGROUP", "SETID", streamName, groupName, "0", "ENTRIESREAD", "9223372036854775807").Err())
+		r = rdb.XInfoGroups(ctx, streamName).Val()
+		require.Equal(t, int64(0), r[0].Lag)
 	})
 
 	t.Run("XINFO after delete pending message and related consumer, for issue #2350", func(t *testing.T) {

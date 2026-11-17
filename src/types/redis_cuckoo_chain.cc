@@ -618,6 +618,15 @@ rocksdb::Status CuckooChain::ScanDump(engine::Context &ctx, const Slice &user_ke
 
   *next_iterator = 0;
   *has_data = false;
+
+  if (metadata.size == 0) {
+    return rocksdb::Status::OK();
+  }
+
+  if (metadata.page_size > kCuckooFilterMaxScanDumpSize - 2 * sizeof(uint32_t)) {
+    return rocksdb::Status::InvalidArgument("cuckoo filter page size exceeds scan dump limit");
+  }
+
   data->clear();
   if (iterator == 0) {
     EncodeDumpHeader(metadata, data);
@@ -626,8 +635,8 @@ rocksdb::Status CuckooChain::ScanDump(engine::Context &ctx, const Slice &user_ke
     return rocksdb::Status::OK();
   }
 
-  const auto first_page_index = static_cast<uint32_t>(iterator - 1);
-  const auto buckets_per_page = std::max<uint32_t>(1, metadata.page_size / metadata.bucket_size);
+  const uint32_t first_page_index = iterator - 1;
+  const uint32_t buckets_per_page = std::max<uint32_t>(1, metadata.page_size / metadata.bucket_size);
 
   uint32_t page_index = first_page_index;
   uint16_t filter_index = 0;
@@ -643,10 +652,6 @@ rocksdb::Status CuckooChain::ScanDump(engine::Context &ctx, const Slice &user_ke
   }
   if (filter_index == metadata.n_filters) {
     return rocksdb::Status::OK();
-  }
-
-  if (metadata.page_size > kCuckooFilterMaxScanDumpSize - 2 * sizeof(uint32_t)) {
-    return rocksdb::Status::InvalidArgument("cuckoo filter page size exceeds scan dump limit");
   }
 
   const uint32_t page_payload_size = std::max<uint32_t>(metadata.page_size, sizeof(uint32_t));

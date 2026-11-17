@@ -1813,16 +1813,20 @@ TEST_F(RedisCuckooFilterTest, InsertStorageErrorDoesNotCommitPrefix) {
   EXPECT_FALSE(exists);
 }
 
-TEST_F(RedisCuckooFilterTest, ScanDumpEmptyFilterReturnsHeader) {
+TEST_F(RedisCuckooFilterTest, ScanDumpReturnsHeader) {
   reserveAndVerify(key_, 100, 2, 20, 2);
+  bool added = false;
+  ASSERT_TRUE(cuckoo_->Add(*ctx_, key_, "scandump-header-item", &added).ok());
+  ASSERT_TRUE(added);
+
   uint64_t next_iterator = 0;
   std::string data;
   bool has_data = false;
   auto s = cuckoo_->ScanDump(*ctx_, key_, 0, &next_iterator, &data, &has_data);
   ASSERT_TRUE(s.ok()) << s.ToString();
-  EXPECT_EQ(next_iterator, 1);
-  ASSERT_EQ(data.size(), 35);
-  EXPECT_EQ(DecodeFixed64(data.data()), 0U);
+  EXPECT_EQ(next_iterator, 1U);
+  ASSERT_EQ(data.size(), 35U);
+  EXPECT_EQ(DecodeFixed64(data.data()), 1U);
   EXPECT_EQ(DecodeFixed64(data.data() + 8), 0U);
   EXPECT_EQ(DecodeFixed16(data.data() + 16), 1U);
   EXPECT_EQ(static_cast<uint8_t>(data[18]), 2U);
@@ -1831,19 +1835,16 @@ TEST_F(RedisCuckooFilterTest, ScanDumpEmptyFilterReturnsHeader) {
   EXPECT_EQ(DecodeFixed64(data.data() + 23), 100U);
   EXPECT_EQ(DecodeFixed32(data.data() + 31), kCuckooFilterDefaultPageSize);
   EXPECT_TRUE(has_data);
+}
 
-  s = cuckoo_->ScanDump(*ctx_, key_, next_iterator, &next_iterator, &data, &has_data);
+TEST_F(RedisCuckooFilterTest, ScanDumpEmptyFilterReturnsEmptyResult) {
+  reserveAndVerify(key_, 100, 2, 20, 2);
+  uint64_t next_iterator = 0;
+  std::string data;
+  bool has_data = false;
+  auto s = cuckoo_->ScanDump(*ctx_, key_, 0, &next_iterator, &data, &has_data);
   ASSERT_TRUE(s.ok()) << s.ToString();
-  ASSERT_EQ(next_iterator, 2U);
-  EXPECT_EQ(data.size(), 12U);
-  EXPECT_EQ(DecodeFixed32(data.data()), 0U);
-  EXPECT_EQ(DecodeFixed32(data.data() + 4), 1U);
-  EXPECT_EQ(DecodeFixed32(data.data() + 8), 0U);
-  EXPECT_TRUE(has_data);
-
-  s = cuckoo_->ScanDump(*ctx_, key_, next_iterator, &next_iterator, &data, &has_data);
-  ASSERT_TRUE(s.ok()) << s.ToString();
-  EXPECT_EQ(next_iterator, 0);
+  EXPECT_EQ(next_iterator, 0U);
   EXPECT_TRUE(data.empty());
   EXPECT_FALSE(has_data);
 }

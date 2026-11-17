@@ -612,28 +612,7 @@ func TestCuckooFilter(t *testing.T) {
 		key := "test_cuckoo_filter_scandump_empty"
 		require.NoError(t, rdb.Del(ctx, key).Err())
 		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "100").Err())
-		header := rdb.Do(ctx, "cf.scandump", key, "0")
-		require.NoError(t, header.Err())
-		headerValues, ok := header.Val().([]interface{})
-		require.True(t, ok)
-		require.Equal(t, int64(1), headerValues[0])
-		require.NotEmpty(t, headerValues[1])
-
-		dataReply := rdb.Do(ctx, "cf.scandump", key, "1")
-		require.NoError(t, dataReply.Err())
-		dataValues, ok := dataReply.Val().([]interface{})
-		require.True(t, ok)
-		chunk, ok := dataValues[1].(string)
-		require.True(t, ok)
-		pageIndex, pageBytes, skipped := decodeDumpChunk(chunk)
-		require.Empty(t, pageBytes)
-		require.Equal(t, uint32(0), pageIndex)
-		require.Equal(t, []uint32{0}, skipped)
-		require.Equal(t, int64(2), dataValues[0])
-
-		endReply := rdb.Do(ctx, "cf.scandump", key, dataValues[0])
-		require.NoError(t, endReply.Err())
-		require.Equal(t, []interface{}{int64(0), nil}, endReply.Val())
+		require.Equal(t, []interface{}{int64(0), nil}, rdb.Do(ctx, "cf.scandump", key, "0").Val())
 	})
 
 	t.Run("CF.SCANDUMP returns header", func(t *testing.T) {

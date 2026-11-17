@@ -254,6 +254,7 @@ class Connection : public EvbufCallbackBase<Connection> {
   bool multi_error_ = false;
   std::atomic<bool> is_running_ = false;
   std::deque<redis::CommandTokens> multi_cmds_;
+  int multi_slot_ = -1;
 
   std::vector<KeyspaceEvent> pending_keyspace_events_;
   bool in_script_ = false;

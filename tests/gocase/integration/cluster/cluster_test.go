@@ -493,7 +493,16 @@ func TestClusterMultiple(t *testing.T) {
 	t.Run("cluster MULTI-exec cross slots and in one node", func(t *testing.T) {
 		require.NoError(t, rdb[1].Do(ctx, "MULTI").Err())
 		require.NoError(t, rdb[1].Set(ctx, util.SlotTable[0], 0, 0).Err())
-		require.NoError(t, rdb[1].Set(ctx, util.SlotTable[1], 0, 0).Err())
+		util.ErrorRegexp(t, rdb[1].Set(ctx, util.SlotTable[1], 0, 0).Err(), "CROSSSLOT.*")
+		require.ErrorContains(t, rdb[1].Do(ctx, "EXEC").Err(), "EXECABORT")
+	})
+
+	t.Run("cluster MULTI-exec same slot and in one node", func(t *testing.T) {
+		key1 := fmt.Sprintf("{%s}1", util.SlotTable[0])
+		key2 := fmt.Sprintf("{%s}2", util.SlotTable[0])
+		require.NoError(t, rdb[1].Do(ctx, "MULTI").Err())
+		require.NoError(t, rdb[1].Set(ctx, key1, 0, 0).Err())
+		require.NoError(t, rdb[1].Set(ctx, key2, 0, 0).Err())
 		require.EqualValues(t, []interface{}{"OK", "OK"}, rdb[1].Do(ctx, "EXEC").Val())
 	})
 

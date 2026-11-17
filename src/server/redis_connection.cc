@@ -597,6 +597,27 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
         Reply(redis::Error(s));
         continue;
       }
+
+      if (is_multi_exec && !in_exec_) {
+        int slot = -1;
+        attributes->ForEachKeyRange(
+            [&slot, &cmd_tokens](const std::vector<std::string> &, const redis::CommandKeyRange &key_range) {
+              key_range.ForEachKey(
+                  [&slot](const std::string &key) {
+                    if (slot == -1) slot = GetSlotIdFromKey(key);
+                  },
+                  cmd_tokens);
+            },
+            cmd_tokens);
+        if (slot != -1) {
+          if (multi_slot_ == -1) {
+            multi_slot_ = slot;
+          } else if (multi_slot_ != slot) {
+            Reply(redis::Error({Status::RedisCrossSlot, "Attempted to access keys that don't hash to the same slot"}));
+            continue;
+          }
+        }
+      }
     }
 
     // reset the ASKING flag after executing the next query
@@ -750,6 +771,7 @@ void Connection::ResetMultiExec() {
   in_exec_ = false;
   multi_error_ = false;
   multi_cmds_.clear();
+  multi_slot_ = -1;
   // Drop events from failed or aborted transactions.
   pending_keyspace_events_.clear();
   // Retain capacity for typical transactions, but request releasing unusually large buffers.

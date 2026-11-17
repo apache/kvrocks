@@ -200,11 +200,14 @@ func StartTLSServer(t testing.TB, configs map[string]string) *KvrocksServer {
 	configs["tls-key-file"] = filepath.Join(dir, "server.key")
 	configs["tls-ca-cert-file"] = filepath.Join(dir, "ca.crt")
 
+	lock := acquireServerStartLock(t)
+	defer releaseServerStartLock(t, lock)
+
 	addr, err := findFreePort()
 	require.NoError(t, err)
 	configs["tls-port"] = fmt.Sprintf("%d", addr.Port)
 
-	s := StartServer(t, configs)
+	s := startServerWithCLIOptionsLocked(t, true, configs, []string{})
 	s.tlsAddr = addr
 
 	return s
@@ -220,19 +223,42 @@ func StartServerWithCLIOptions(
 	configs map[string]string,
 	options []string,
 ) *KvrocksServer {
+	lock := acquireServerStartLock(t)
+	defer releaseServerStartLock(t, lock)
 
+	return startServerWithCLIOptionsLocked(t, withConfigFile, configs, options)
+}
+
+// acquireServerStartLock serializes port selection and server startup across test
+// processes. findFreePort releases the port before Kvrocks binds it, so parallel
+// tests can select the same port. SO_REUSEPORT lets both servers bind it, and
+// clients may reach the wrong server. Callers must keep the lock until the server
+// is ready.
+func acquireServerStartLock(t testing.TB) *os.File {
+	require.NotEmpty(t, *workspace, "please set the workspace by `-workspace`")
+	lock, err := os.OpenFile(filepath.Join(*workspace, "server-start.lock"), os.O_CREATE|os.O_RDWR, 0o600)
+	require.NoError(t, err)
+	require.NoError(t, syscall.Flock(int(lock.Fd()), syscall.LOCK_EX))
+	return lock
+}
+
+func releaseServerStartLock(t testing.TB, lock *os.File) {
+	require.NoError(t, syscall.Flock(int(lock.Fd()), syscall.LOCK_UN))
+	require.NoError(t, lock.Close())
+}
+
+// startServerWithCLIOptionsLocked requires the caller to hold the server start
+// lock so the selected ports cannot be taken by another test process before
+// Kvrocks binds them.
+func startServerWithCLIOptionsLocked(
+	t testing.TB,
+	withConfigFile bool,
+	configs map[string]string,
+	options []string,
+) *KvrocksServer {
 	b := *binPath
 	require.NotEmpty(t, b, "please set the binary path by `-binPath`")
 	cmd := exec.Command(b)
-
-	// findFreePort releases the port before Kvrocks binds it, so parallel tests can
-	// select the same port. SO_REUSEPORT lets both servers bind it, and clients may
-	// reach the wrong server. Serialize port selection and startup across test
-	// processes until the server is ready.
-	lock, err := os.OpenFile(filepath.Join(*workspace, "server-start.lock"), os.O_CREATE|os.O_RDWR, 0o600)
-	require.NoError(t, err)
-	defer func() { require.NoError(t, lock.Close()) }()
-	require.NoError(t, syscall.Flock(int(lock.Fd()), syscall.LOCK_EX))
 
 	addr, err := findFreePort()
 	require.NoError(t, err)

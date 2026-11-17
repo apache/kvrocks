@@ -56,7 +56,7 @@ else()
         so you can try switching to GCC>=11 or Clang>=12 if you encounter problems")
 endif()
 
-if(CMAKE_GENERATOR STREQUAL "Ninja")
+if(CMAKE_GENERATOR STREQUAL "Ninja" OR CMAKE_GENERATOR STREQUAL "Xcode")
     set(MAKE_COMMAND make)
     set(NINJA_MAKE_JOBS 4 CACHE STRING "specify concurrent level while ninja calling make")
     set(NINJA_MAKE_JOBS_FLAG -j${NINJA_MAKE_JOBS})

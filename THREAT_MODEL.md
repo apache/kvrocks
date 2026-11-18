@@ -191,8 +191,9 @@ Lua run-time intrinsically beyond configured maxima *(maintainer — no intrinsi
    *Symptom:* a namespace/unauth client runs an admin command. *Severity:* critical.
 3. **Authentication gate (when configured).** With `requirepass`/namespace tokens set, commands beyond
    `AUTH` are refused on an unauthenticated connection *(maintainer — PragmaTwice)*.
-   *Symptom:* pre-auth data access, or a client bypassing configured authentication to trigger a crash or OOM. This does not include deployments with authentication
-   intentionally disabled (§5a/§9). *Severity:* critical.
+   *Symptom:* pre-auth data access, or a client bypassing configured authentication to trigger a crash or
+   OOM. This does not include deployments with authentication intentionally disabled (§5a/§9).
+   *Severity:* critical.
 4. **Lua sandboxing.** Scripts run in a constrained LuaJIT environment without arbitrary host/file access and
    confined to the caller's namespace *(maintainer — scripting confined to the namespace; no host access)*.
    *Symptom:* sandbox escape / host access / cross-namespace access from a script. *Severity:* critical.

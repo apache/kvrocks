@@ -190,19 +190,22 @@ Lua run-time intrinsically beyond configured maxima *(maintainer — no intrinsi
    management and sensitive admin commands (`config`, `slaveof`, `bgsave`, cluster ops) *(documented)*.
    *Symptom:* a namespace/unauth client runs an admin command. *Severity:* critical.
 3. **Authentication gate (when configured).** With `requirepass`/namespace tokens set, commands beyond
-   `AUTH` are refused on an unauthenticated connection *(maintainer — PragmaTwice)*. *Symptom:* pre-auth data access.
-   *Severity:* critical.
+   `AUTH` are refused on an unauthenticated connection *(maintainer — PragmaTwice)*.
+   *Symptom:* pre-auth data access, or a client bypassing configured authentication to trigger a crash or OOM. This does not include deployments with authentication
+   intentionally disabled (§5a/§9). *Severity:* critical.
 4. **Lua sandboxing.** Scripts run in a constrained LuaJIT environment without arbitrary host/file access and
    confined to the caller's namespace *(maintainer — scripting confined to the namespace; no host access)*.
    *Symptom:* sandbox escape / host access / cross-namespace access from a script. *Severity:* critical.
 5. **Memory safety on protocol parsing.** Well-formed and malformed RESP input does not cause memory-corruption
-   on supported platforms *(inferred)*. *Symptom:* OOB read/write, crash from crafted input. *Severity:*
-   critical.
+   on supported platforms *(inferred)*. *Symptom:* OOB read/write. *Severity:*
+   critical. A crash alone does not establish a memory-corruption vulnerability; availability-only
+   crashes from authenticated clients using authorized commands are ordinary bugs (§9).
 6. **Resource bounds.** There is **no intrinsic DoS guarantee beyond configured limits** *(maintainer)*;
    the operator's contract is to configure `maxclients` and size limits. (The `luajit_bytecode_dos` test
    shows Lua DoS is taken seriously, but no broader intrinsic guarantee is claimed.) *Symptom:* hang/OOM/disk-fill
    beyond configured limits. *Severity:* medium (treated as operator-tuning, not a property breach, unless a
-   configured limit is bypassed).
+   configured limit is bypassed). Availability-only crashes or OOM from authenticated clients using
+   authorized commands are ordinary bugs (§9), including when a configured resource limit is bypassed.
 
 ## §9 Security properties the project does NOT provide
 
@@ -226,6 +229,18 @@ Lua run-time intrinsically beyond configured maxima *(maintainer — no intrinsi
   pipelines) or adversarial Lua beyond configured limits — **no intrinsic guarantee beyond configured limits**
   *(maintainer)*.
 
+**Crash and OOM triage:** Kvrocks is intended to run on a trusted network with access restricted to
+trusted clients. If an authenticated client triggers a crash or OOM through commands it is authorized
+to execute, and the only impact is loss of availability, the issue is an ordinary bug rather than a
+security vulnerability *(maintainer)*. Reports of these bugs are welcome through
+[GitHub Issues](https://github.com/apache/kvrocks/issues) or `dev@kvrocks.apache.org`.
+
+Crashes or OOM caused by bypassing configured authentication, and unauthorized access such as crossing
+namespace or privilege boundaries, remain security issues. This does not change the existing Lua
+sandbox or host-access boundaries (§8). Disabling authentication is an operator choice (§5a), not an
+authentication bypass. If the impact or authorization boundary is unclear, report privately according
+to `SECURITY.md`.
+
 **False-friend properties:**
 
 - *The namespace token looks like a per-user credential but is a shared per-namespace secret* — anyone with
@@ -244,7 +259,8 @@ Lua run-time intrinsically beyond configured maxima *(maintainer — no intrinsi
 - **Plaintext token/data sniffing & MITM** without TLS — when TLS is off, restrict access to trusted personnel
   *(maintainer)*.
 - **RESP command injection** from a downstream app that interpolates untrusted input into commands.
-- **Lua-based DoS / sandbox probing.**
+- **Availability-only Lua crashes or OOM from authenticated clients using authorized commands** (§9);
+  Lua sandbox escapes remain security issues (§8.4).
 - **Cross-namespace pub/sub** on a multi-tenant instance (known limitation, §9).
 
 ## §10 Downstream (operator) responsibilities
@@ -284,6 +300,8 @@ Lua run-time intrinsically beyond configured maxima *(maintainer — no intrinsi
   a property breach *(maintainer)* → `KNOWN-NON-FINDING` (namespacing pub/sub is desirable hardening).
 - **Admin command "danger" (`FLUSHALL`, `CONFIG`, `DEBUG`, `bgsave`)** reachable with the admin token — by
   design; admin token is root-equivalent (§7).
+- **Availability-only crashes or OOM from authenticated clients using authorized commands** — ordinary
+  bugs, not security vulnerabilities (§9). Report through GitHub Issues or `dev@kvrocks.apache.org`.
 - **Findings in `tests/`, `dev/`, `utils/`, `x.py`** — out of scope (§3).
 - **RESP command injection** attributable to a downstream caller concatenating input — not a Kvrocks bug (§9).
 - **RocksDB-internal warnings** from the bundled storage engine that are not reachable from client input.
@@ -311,7 +329,7 @@ Lua run-time intrinsically beyond configured maxima *(maintainer — no intrinsi
 | `OUT-OF-MODEL: unsupported-component` | Lands in `tests/`, `dev/`, `utils/`, tooling. | §3 |
 | `OUT-OF-MODEL: non-default-build` | Only under a discouraged/non-default `kvrocks.conf` setting. | §5a |
 | `BY-DESIGN: property-disclaimed` | Concerns a §9-disclaimed property (no-auth default, no-TLS default, logical-only namespace isolation, non-namespaced pub/sub). | §9 |
-| `KNOWN-NON-FINDING` | Matches a §11a entry (incl. cross-namespace pub/sub). | §11a |
+| `KNOWN-NON-FINDING` | Matches a §11a entry (incl. cross-namespace pub/sub and authenticated, authorized-command availability-only crashes/OOM). Ordinary bugs are still welcome through GitHub Issues or the dev mailing list. | §11a |
 | `MODEL-GAP` | Routes to none of the above → revise the model. | §12 |
 
 ## §14 Open questions for the maintainers

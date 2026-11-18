@@ -68,7 +68,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Check typos
-        uses: crate-ci/typos@v1.52.0
+        uses: crate-ci/typos@v1.52.2
         with:
           config: .github/config/typos.toml
       - uses: apache/skywalking-eyes/header@v0.9.0
@@ -343,7 +343,7 @@ jobs:
         if: ${{ matrix.sonarcloud }}
 
       - name: Install Build Wrapper
-        uses: SonarSource/sonarqube-scan-action/install-build-wrapper@e805d875275f728fac1885b413934be6d7c63f65 # v8.4.1
+        uses: SonarSource/sonarqube-scan-action/install-build-wrapper@59202af334b4ba7b5db01b701b8e79f8b3bef0f4 # v8.5.0
         if: ${{ matrix.sonarcloud }}
 
       - name: Build Kvrocks

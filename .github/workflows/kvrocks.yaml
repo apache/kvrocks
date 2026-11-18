@@ -526,7 +526,7 @@ jobs:
             image: rockylinux:8
             compiler: gcc
           - name: Rocky Linux 9
-            image: rockylinux:9
+            image: rockylinux:9.3
             compiler: gcc
           - name: Debian 12
             image: debian:12

@@ -52,7 +52,8 @@ memory datasets on RocksDB, accessed by Redis clients, optionally clustered.
 Caller roles:
 
 - **Unauthenticated client** — a TCP peer that has not presented a valid token; untrusted.
-- **Namespace client** — authenticated with a namespace token; trusted only within its namespace.
+- **Namespace client** — authenticated with a namespace token; trusted within its keyspace. Clients
+  permitted to load Lua Functions are also trusted as authors of shared functions (§9).
 - **Admin client** — authenticated with the `requirepass` admin token; trusted for the instance.
 - **Replica / cluster peer** — another Kvrocks node in the same replication/cluster topology; assumed
   operator-provisioned and trusted *(maintainer — peers are trusted)*.
@@ -66,7 +67,7 @@ Caller roles:
 | RESP command + connection layer | TCP `:6666`, `src/server`, command dispatch | network | **Yes** |
 | AuthN + namespace isolation | `AUTH`, namespace tokens, `requirepass` | — | **Yes** |
 | Admin command surface | `config`, `slaveof`, `bgsave`, `namespace`, `cluster`, `debug` | disk / net | **Yes** |
-| Lua scripting | `EVAL`/`FUNCTION`, `src/commands/cmd_script.cc`, `src/storage/scripting.cc` (LuaJIT) | sandboxed Lua | **Yes** |
+| Lua scripting | `EVAL`/`FUNCTION`/`FCALL`, `src/commands/cmd_script.cc`, `src/storage/scripting.cc` (LuaJIT) | sandboxed Lua | **Yes** |
 | Storage engine | RocksDB, `src/storage` | filesystem | **Yes** |
 | Replication | binlog master→replica (async) | network | **Yes** |
 | Cluster mode | proxyless centralized cluster, slot migration | network | **Yes** |
@@ -104,7 +105,8 @@ Trust transitions:
 3. **Admin token → full control:** the admin token may run all commands, including `config`, `slaveof`,
    `bgsave`, namespace management, and cluster operations *(documented)*.
 4. **EVAL → Lua sandbox:** scripts execute in the embedded LuaJIT sandbox, which is intended to deny
-   arbitrary host access *(maintainer — scripting confined to the namespace; no host access)*.
+   arbitrary host access. Function libraries and names are shared across namespaces; functions execute
+   with the caller's connection and keyspace, not the creator's identity (§9) *(maintainer)*.
 5. **Master → replica:** the master streams a binlog to replicas; the replica applies it. Peers are
    mutually trusted within the topology *(maintainer — peers are trusted)*.
 
@@ -115,7 +117,8 @@ Trust transitions:
 - A finding in **namespace isolation** is in-model if it lets a namespace token read/write outside its
   namespace or run an admin-only command.
 - A finding in **Lua scripting** is in-model if a script permitted to a non-admin caller can break the
-  sandbox or access another namespace / host resources.
+  sandbox or access another namespace's keys / host resources. Sharing or calling a Lua Function across
+  namespaces is expected and is not itself a security issue (§9).
 - A finding reachable only from `kvrocks.conf`, the data dir, or the admin token is out of model (§3).
 - A finding requiring a malicious replica/cluster peer is **out of model** — peers are trusted
   *(maintainer)*.
@@ -146,7 +149,7 @@ maintainer has clarified the supported posture for the auth/TLS defaults (see ru
 | `bind` | `127.0.0.1` | Localhost-only by default; limits exposure | Safe default; reports requiring a routable bind + no auth are operator misconfig |
 | `tls-port` / `tls-*` | **off** | No transport encryption ⇒ token + data in plaintext on the wire | *(maintainer)* Same as `requirepass`: when TLS is off, operators are responsible for restricting access to trusted personnel only; plaintext-on-untrusted-network is operator responsibility |
 | namespace tokens | none until configured | Multi-tenant isolation only exists once namespaces+tokens are set | Strict per-namespace keyspace confinement *(maintainer)*; pub/sub is a known exception (§9) |
-| Lua scripting (`EVAL`) | enabled *(inferred)* | Adds a sandboxed code-execution surface | Sandbox confined to the namespace; no host access *(maintainer)* |
+| Lua scripting (`EVAL`/`FUNCTION`/`FCALL`) | enabled *(inferred)* | Adds a sandboxed code-execution surface | No host access; key operations use the caller's namespace; Function libraries and names are shared (§9) *(maintainer)* |
 | `maxclients` / value-size / proto limits | defaults *(inferred)* | DoS envelope | No intrinsic guarantee beyond configured limits *(maintainer)* |
 
 ## §6 Assumptions about inputs
@@ -156,7 +159,7 @@ maintainer has clarified the supported posture for the auth/TLS defaults (see ru
 | any RESP command | command name + arguments | **yes** (any connected client) | auth gate; namespace confinement; arg bounds |
 | `AUTH` | token | **yes** | constant-time compare *(maintainer — desirable hardening)*; throttling |
 | key/value ops | key, value bytes | **yes** (within namespace) | value-size / memory limits |
-| `EVAL`/`FUNCTION` | Lua script body + keys/args | **yes** (if non-admin may script) | sandbox; no cross-namespace/host access |
+| `EVAL`/`FUNCTION`/`FCALL` | Lua script body + keys/args | **yes** (if non-admin may script) | sandbox; caller's keyspace and privileges; trusted Function authors (§9) |
 | `namespace`/`config`/`slaveof`/`bgsave`/`cluster` | args | **yes**, but **admin-token-gated** | admin-token-only enforcement |
 | replication stream | binlog bytes from master | from a **trusted** peer *(maintainer — peers are trusted)* | peer authenticity (network/TLS) |
 | `kvrocks.conf` | all keys | **no — operator-trusted** | never sourced from a client |
@@ -194,9 +197,11 @@ Lua run-time intrinsically beyond configured maxima *(maintainer — no intrinsi
    *Symptom:* pre-auth data access, or a client bypassing configured authentication to trigger a crash or
    OOM. This does not include deployments with authentication intentionally disabled (§5a/§9).
    *Severity:* critical.
-4. **Lua sandboxing.** Scripts run in a constrained LuaJIT environment without arbitrary host/file access and
-   confined to the caller's namespace *(maintainer — scripting confined to the namespace; no host access)*.
-   *Symptom:* sandbox escape / host access / cross-namespace access from a script. *Severity:* critical.
+4. **Lua sandboxing.** Scripts run in a constrained LuaJIT environment without arbitrary host/file access.
+   Key operations use the caller's namespace and privileges, while Function libraries and names are
+   shared across namespaces (§9) *(maintainer)*. *Symptom:* sandbox escape / host access / unauthorized
+   access to another namespace's keys from a script, not cross-namespace Function availability.
+   *Severity:* critical.
 5. **Memory safety on protocol parsing.** Well-formed and malformed RESP input does not cause memory-corruption
    on supported platforms *(inferred)*. *Symptom:* OOB read/write. *Severity:*
    critical. A crash alone does not establish a memory-corruption vulnerability; availability-only
@@ -226,6 +231,14 @@ Lua run-time intrinsically beyond configured maxima *(maintainer — no intrinsi
   across the instance *(maintainer — known limitation)*. This is a documented current limitation rather than
   a property breach; a report matching exactly this behaviour is a `KNOWN-NON-FINDING` (§11a), while
   namespacing pub/sub is desirable hardening.
+- **Lua Functions are shared across namespaces by design.** Function libraries and names are
+  instance-wide; a function loaded by one namespace can be listed and called by another. This is
+  expected functionality, not a security vulnerability *(maintainer)*. When authentication is configured,
+  `FUNCTION LOAD` requires authentication, but not specifically the admin token. The deployment trusts
+  internal clients permitted to load functions not to introduce malicious functions. When `requirepass`
+  is unset, there is no password requirement and operators must restrict access to trusted clients (§5a).
+  Function execution uses the caller's connection, namespace, and privileges; shared Function
+  availability does not authorize access to another namespace's keys or arbitrary host resources.
 - **No strong anti-DoS guarantee** against expensive commands (`KEYS`, large `MGET`, huge values, deep
   pipelines) or adversarial Lua beyond configured limits — **no intrinsic guarantee beyond configured limits**
   *(maintainer)*.
@@ -248,8 +261,9 @@ to `SECURITY.md`.
   the token is every user of that namespace; rotation is manual (`namespace set`).
 - *`requirepass` looks like "a password" but is the **admin** token* — it is not a low-privilege credential;
   giving it out grants full control.
-- *Namespace confinement looks total but pub/sub is an exception* — keyspace access is strictly confined, but
-  pub/sub channels currently cross namespaces *(maintainer)*.
+- *Namespace confinement is not isolation of every shared feature* — pub/sub channels and Lua Function
+  libraries/names are shared across namespaces. Function key operations still use the caller's namespace
+  *(maintainer)*.
 - *Replication/cluster membership is authenticated and peers are trusted* — it is **not** a defence against a
   malicious peer; the model assumes trusted peers *(maintainer)*.
 
@@ -272,6 +286,8 @@ to `SECURITY.md`.
   trusted/segmented network. **When TLS is off, restrict access to trusted personnel only** *(maintainer)*.
 - Treat the admin token as root-equivalent; distribute only namespace tokens to tenants; rotate on exposure.
 - Do not rely on namespace isolation for **pub/sub** — channels are not currently namespaced *(maintainer)*.
+- Trust all clients permitted to load **Lua Functions**: libraries and names are shared across namespaces,
+  and the model assumes internal clients do not install malicious functions (§9).
 - Run replication/cluster peers on a trusted network (and/or with TLS); peers are trusted, so provision them
   yourself *(maintainer)*.
 - Configure resource limits (`maxclients`, value/proto size) for the deployment's risk profile — there is no
@@ -301,6 +317,8 @@ to `SECURITY.md`.
   a property breach *(maintainer)* → `KNOWN-NON-FINDING` (namespacing pub/sub is desirable hardening).
 - **Admin command "danger" (`FLUSHALL`, `CONFIG`, `DEBUG`, `bgsave`)** reachable with the admin token — by
   design; admin token is root-equivalent (§7).
+- **Cross-namespace Lua Function availability** — shared libraries/names and calling a function loaded
+  by another namespace are expected functionality, not a security vulnerability (§9).
 - **Availability-only crashes or OOM from authenticated clients using authorized commands** — ordinary
   bugs, not security vulnerabilities (§9). Report through GitHub Issues or `dev@kvrocks.apache.org`.
 - **Findings in `tests/`, `dev/`, `utils/`, `x.py`** — out of scope (§3).
@@ -329,7 +347,7 @@ to `SECURITY.md`.
 | `OUT-OF-MODEL: adversary-not-in-scope` | Requires operator / admin-token / filesystem / trusted-peer capability. | §7, §3 |
 | `OUT-OF-MODEL: unsupported-component` | Lands in `tests/`, `dev/`, `utils/`, tooling. | §3 |
 | `OUT-OF-MODEL: non-default-build` | Only under a discouraged/non-default `kvrocks.conf` setting. | §5a |
-| `BY-DESIGN: property-disclaimed` | Concerns a §9-disclaimed property (no-auth default, no-TLS default, logical-only namespace isolation, non-namespaced pub/sub). | §9 |
+| `BY-DESIGN: property-disclaimed` | Concerns a §9-disclaimed property (no-auth default, no-TLS default, logical-only namespace isolation, non-namespaced pub/sub, shared Lua Functions). | §9 |
 | `KNOWN-NON-FINDING` | Matches a §11a entry (incl. cross-namespace pub/sub and authenticated, authorized-command availability-only crashes/OOM). Ordinary bugs are still welcome through GitHub Issues or the dev mailing list. | §11a |
 | `MODEL-GAP` | Routes to none of the above → revise the model. | §12 |
 
@@ -351,9 +369,11 @@ All questions below have been answered by PragmaTwice (Kvrocks PMC) and folded i
 4. *(Answered — maintainer.)* **Namespace isolation:** strict per-namespace keyspace confinement; metadata is
    admin-only. **Known limitation:** pub/sub does **not** currently respect namespaces (documented in §9 as a
    known limitation / `KNOWN-NON-FINDING`; namespacing it is desirable hardening). *Remaining:* none — strict
-   per-namespace keyspace confinement holds; pub/sub is the only documented cross-namespace exception.
-5. *(Answered — maintainer.)* **Lua scripting** is confined to the caller's namespace with no host access;
-   namespace clients may run it, confined to their namespace. *Remaining:* none.
+   per-namespace keyspace confinement holds. Pub/sub channels and Lua Function libraries/names are shared (§9).
+5. *(Answered — maintainer.)* **Lua scripting:** no arbitrary host access; key operations use the caller's
+   namespace and privileges. Lua Function libraries/names are shared across namespaces by design.
+   Function loading requires authentication when configured, and internal clients permitted to load
+   functions are trusted not to introduce malicious functions (§9). *Remaining:* none.
 6. *(Answered — maintainer.)* **RocksDB data-at-rest** is operator-trusted disk; **no per-namespace encryption
    is claimed**. *Remaining:* none.
 

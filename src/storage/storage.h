@@ -357,6 +357,7 @@ class Storage {
   // Rename checkpoint to "*.trash" under checkpoint_mu_, then DestroyDB outside the lock.
   Status TryPurgeCheckpoint(int fetch_file_threads);
   int64_t GetCheckpointCreateTimeSecs() const { return checkpoint_info_.create_time_secs; }
+  void SetCheckpointCreateTimeSecs(int64_t t) { checkpoint_info_.create_time_secs = t; }
   void SetCheckpointAccessTimeSecs(int64_t t) { checkpoint_info_.access_time_secs = t; }
   int64_t GetCheckpointAccessTimeSecs() const { return checkpoint_info_.access_time_secs; }
   void SetDBInRetryableIOError(bool yes_or_no) { db_in_retryable_io_error_ = yes_or_no; }

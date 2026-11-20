@@ -752,9 +752,13 @@ static rocksdb::Status CopySegmentsBytesToBitfield(engine::Context &ctx, Bitmap:
     auto copyable = std::max(0, cache_size - segment_byte_offset);
     auto copy_count = std::min(static_cast<int>(remain_bytes), copyable);
     auto src = reinterpret_cast<const uint8_t *>(cache->data() + segment_byte_offset);
-    auto status = bitfield->Set(byte_offset, copy_count, src);
-    if (!status) {
-      return rocksdb::Status::InvalidArgument();
+    // Segments store bits LSB first, but ArrayBitfieldBitmap expects MSB first.
+    for (int i = 0; i < copy_count; ++i) {
+      uint8_t swapped = kBitSwapTable[src[i]];
+      auto status = bitfield->Set(byte_offset + i, 1, &swapped);
+      if (!status) {
+        return rocksdb::Status::InvalidArgument();
+      }
     }
 
     // next segment will copy from its front.
@@ -807,6 +811,9 @@ static rocksdb::Status CopyBitfieldBytesToSegments(engine::Context &ctx, Bitmap:
     auto status = bitfield.Get(byte_offset, copy_count, dst);
     if (!status) {
       return rocksdb::Status::InvalidArgument();
+    }
+    for (int i = 0; i < copy_count; ++i) {
+      dst[i] = kBitSwapTable[dst[i]];
     }
 
     // next segment will copy from its front.

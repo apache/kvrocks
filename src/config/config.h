@@ -158,6 +158,12 @@ struct Config {
   bool master_use_repl_port = false;
   bool purge_backup_on_fullsync = false;
   int fullsync_recv_file_delay = 0;
+  // The maximum lifetime (in seconds) of the checkpoint used by full sync; once it's
+  // exceeded, the checkpoint will be purged even if replicas are still fetching files.
+  int checkpoint_alive_time_secs = 24 * 60 * 60;
+  // The idle time (in seconds) to purge the checkpoint used by full sync when no
+  // replica is fetching its files.
+  int checkpoint_idle_time_secs = 30;
   bool use_rsid_psync = false;
   bool replication_group_sync = false;
   bool replication_no_slowdown = false;

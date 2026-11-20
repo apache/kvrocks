@@ -20,9 +20,15 @@
 
 #include "redis_bloom_chain.h"
 
+#include "common/encoding.h"
 #include "types/bloom_filter.h"
 
 namespace redis {
+
+namespace {
+constexpr char kBloomFilterDumpMagic[] = "KVBLOOM";
+constexpr uint8_t kBloomFilterDumpVersion = 1;
+}  // namespace
 
 rocksdb::Status BloomChain::getBloomChainMetadata(engine::Context &ctx, const Slice &ns_key,
                                                   BloomChainMetadata *metadata) {
@@ -299,6 +305,40 @@ rocksdb::Status BloomChain::Info(engine::Context &ctx, const Slice &user_key, Bl
   info->n_filters = metadata.n_filters;
   info->size = metadata.size;
   info->expansion = metadata.expansion;
+
+  return rocksdb::Status::OK();
+}
+
+// The payload layout is:
+//   magic (7 bytes), version (1 byte), n_filters (u16), expansion (u16),
+//   base_capacity (u32), error_rate (double), bloom_bytes (u32), size (u64),
+//   then n_filters entries of [u32 length][bitset bytes].
+rocksdb::Status BloomChain::Get(engine::Context &ctx, const Slice &user_key, std::string *value) {
+  std::string ns_key = AppendNamespacePrefix(user_key);
+
+  BloomChainMetadata metadata;
+  rocksdb::Status s = getBloomChainMetadata(ctx, ns_key, &metadata);
+  if (!s.ok()) return s;
+
+  std::vector<std::string> bf_key_list;
+  getBFKeyList(ns_key, metadata, &bf_key_list);
+
+  std::vector<rocksdb::PinnableSlice> bf_data_list;
+  s = getBFDataList(ctx, bf_key_list, &bf_data_list);
+  if (!s.ok()) return s;
+
+  value->clear();
+  value->append(kBloomFilterDumpMagic, sizeof(kBloomFilterDumpMagic) - 1);
+  PutFixed8(value, kBloomFilterDumpVersion);
+  PutFixed16(value, metadata.n_filters);
+  PutFixed16(value, metadata.expansion);
+  PutFixed32(value, metadata.base_capacity);
+  PutDouble(value, metadata.error_rate);
+  PutFixed32(value, metadata.bloom_bytes);
+  PutFixed64(value, metadata.size);
+  for (const auto &bf_data : bf_data_list) {
+    PutSizedString(value, rocksdb::Slice(bf_data.data(), bf_data.size()));
+  }
 
   return rocksdb::Status::OK();
 }

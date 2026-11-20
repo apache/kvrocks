@@ -34,6 +34,7 @@
 #include "time_util.h"
 #include "types/redis_bitmap.h"
 #include "types/redis_bitmap_string.h"
+#include "types/redis_bloom_chain.h"
 #include "types/redis_hash.h"
 #include "types/redis_list.h"
 #include "types/redis_set.h"
@@ -738,7 +739,7 @@ Status RDB::Dump(const std::string &key, const RedisType type) {
 
 Status RDB::SaveObjectType(const RedisType type) {
   int robj_type = -1;
-  if (type == kRedisString || type == kRedisBitmap) {
+  if (type == kRedisString || type == kRedisBitmap || type == kRedisBloomFilter) {
     robj_type = RDBTypeString;
   } else if (type == kRedisHash) {
     robj_type = RDBTypeHash;
@@ -810,6 +811,14 @@ Status RDB::SaveObject(const std::string &key, const RedisType type) {
     uint32_t max_btos_size = static_cast<uint32_t>(config->max_bitmap_to_string_mb) * MiB;
     auto s = bitmap_db.GetString(ctx, key, max_btos_size, &value);
     if (!s.ok() && !s.IsNotFound()) {
+      return {Status::RedisExecErr, s.ToString()};
+    }
+    return SaveStringObject(value);
+  } else if (type == kRedisBloomFilter) {
+    std::string value;
+    redis::BloomChain bloom_db(storage_, ns_);
+    auto s = bloom_db.Get(ctx, key, &value);
+    if (!s.ok()) {
       return {Status::RedisExecErr, s.ToString()};
     }
     return SaveStringObject(value);

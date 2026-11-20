@@ -631,6 +631,36 @@ func TestScriptingWithRESP3(t *testing.T) {
 		// return as an array in RESP2
 		require.EqualValues(t, []interface{}{"f1", "v1"}, vals)
 	})
+
+	t.Run("EVAL - nil is encoded for the protocol of the client", func(t *testing.T) {
+		mustReadEval := func(c *util.TCPClient, script string, lines ...string) {
+			require.NoError(t, c.WriteArgs("EVAL", script, "0"))
+			for _, line := range lines {
+				c.MustRead(t, line)
+			}
+		}
+
+		resp3 := srv.NewTCPClient()
+		defer func() { require.NoError(t, resp3.Close()) }()
+		require.NoError(t, resp3.WriteArgs("HELLO", "3"))
+		// the HELLO reply ends with the nil of `modules`
+		for line := ""; line != "_"; {
+			var err error
+			line, err = resp3.ReadLine()
+			require.NoError(t, err)
+		}
+		mustReadEval(resp3, "return nil", "_")
+		mustReadEval(resp3, "return false", "_")
+		mustReadEval(resp3, "return {1,false,'x'}", "*3", ":1", "_", "$1", "x")
+		mustReadEval(resp3, "return redis.call('get', 'no-such-key')", "_")
+		mustReadEval(resp3, "redis.setresp(3); return redis.call('get', 'no-such-key')", "_")
+
+		resp2 := srv.NewTCPClient()
+		defer func() { require.NoError(t, resp2.Close()) }()
+		mustReadEval(resp2, "return nil", "$-1")
+		mustReadEval(resp2, "redis.setresp(3); return nil", "$-1")
+		mustReadEval(resp2, "redis.setresp(3); return redis.call('get', 'no-such-key')", "$-1")
+	})
 }
 
 func TestEvalScriptFlags(t *testing.T) {

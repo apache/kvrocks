@@ -446,7 +446,7 @@ Status FunctionCall(redis::Connection *conn, engine::Context *ctx, const std::st
     lua_pop(lua, 2);
     return {Status::NotOK, fmt::format("Error while running function `{}`: {}", name, err_msg)};
   } else {
-    *output = ReplyToRedisReply(conn, lua);
+    *output = ReplyToRedisReply(conn, lua, conn->GetProtocolVersion());
     lua_pop(lua, 2);
   }
 
@@ -726,7 +726,7 @@ Status EvalGenericCommand(redis::Connection *conn, engine::Context *ctx, const s
     *output = redis::Error({Status::NotOK, msg});
     lua_pop(lua, 2);
   } else {
-    *output = ReplyToRedisReply(conn, lua);
+    *output = ReplyToRedisReply(conn, lua, saved_protocol_version);
     lua_pop(lua, 2);
   }
   conn->SetProtocolVersion(saved_protocol_version);
@@ -1279,7 +1279,11 @@ constexpr int kMaxLuaReplyNestingDepth = 100;
 
 // Convert the Lua value at the top of the stack (and everything nested in it)
 // into RESP protocol bytes. This function does not pop any element on the stack.
-StatusOr<std::string> LuaTypeToRedisReply(redis::Connection *conn, lua_State *lua, int depth) {
+//
+// `conn` carries the protocol version of the script, which EVAL forces to RESP2
+// and `redis.setresp` can change. A nil is not a value of the script, so it is
+// encoded for `client_resp`, the protocol version of the client that reads the reply.
+StatusOr<std::string> LuaTypeToRedisReply(redis::Connection *conn, lua_State *lua, int depth, redis::RESP client_resp) {
   std::string output;
   const char *obj_s = nullptr;
   size_t obj_len = 0;
@@ -1300,7 +1304,7 @@ StatusOr<std::string> LuaTypeToRedisReply(redis::Connection *conn, lua_State *lu
       break;
     case LUA_TBOOLEAN:
       if (conn->GetProtocolVersion() == redis::RESP::v2) {
-        output = lua_toboolean(lua, -1) ? redis::Integer(1) : conn->NilString();
+        output = lua_toboolean(lua, -1) ? redis::Integer(1) : redis::NilString(client_resp);
       } else {
         output = conn->Bool(lua_toboolean(lua, -1));
       }
@@ -1398,7 +1402,7 @@ StatusOr<std::string> LuaTypeToRedisReply(redis::Connection *conn, lua_State *lu
         while (lua_next(lua, -2)) {
           lua_pushvalue(lua, -2);
           // return key
-          auto key_output = LuaTypeToRedisReply(conn, lua, depth + 1);
+          auto key_output = LuaTypeToRedisReply(conn, lua, depth + 1, client_resp);
           if (!key_output) {
             lua_pop(lua, 4);  // pop the key copy, value, iteration key and 'map' table
             return key_output;
@@ -1406,7 +1410,7 @@ StatusOr<std::string> LuaTypeToRedisReply(redis::Connection *conn, lua_State *lu
           map_output += *key_output;
           lua_pop(lua, 1);  // pop the converted key copy
           // return value
-          auto value_output = LuaTypeToRedisReply(conn, lua, depth + 1);
+          auto value_output = LuaTypeToRedisReply(conn, lua, depth + 1, client_resp);
           if (!value_output) {
             lua_pop(lua, 3);  // pop the value, iteration key and 'map' table
             return value_output;
@@ -1432,7 +1436,7 @@ StatusOr<std::string> LuaTypeToRedisReply(redis::Connection *conn, lua_State *lu
         while (lua_next(lua, -2)) {
           lua_pop(lua, 1);
           lua_pushvalue(lua, -1);
-          auto entry_output = LuaTypeToRedisReply(conn, lua, depth + 1);
+          auto entry_output = LuaTypeToRedisReply(conn, lua, depth + 1, client_resp);
           if (!entry_output) {
             lua_pop(lua, 3);  // pop the entry copy, iteration key and 'set' table
             return entry_output;
@@ -1457,7 +1461,7 @@ StatusOr<std::string> LuaTypeToRedisReply(redis::Connection *conn, lua_State *lu
           break;
         }
         mbulklen++;
-        auto element_output = LuaTypeToRedisReply(conn, lua, depth + 1);
+        auto element_output = LuaTypeToRedisReply(conn, lua, depth + 1, client_resp);
         if (!element_output) {
           lua_pop(lua, 1);  // pop the element
           return element_output;
@@ -1468,13 +1472,13 @@ StatusOr<std::string> LuaTypeToRedisReply(redis::Connection *conn, lua_State *lu
       output = redis::MultiLen(mbulklen) + output;
       break;
     default:
-      output = conn->NilString();
+      output = redis::NilString(client_resp);
   }
   return output;
 }
 
-std::string ReplyToRedisReply(redis::Connection *conn, lua_State *lua) {
-  auto reply = LuaTypeToRedisReply(conn, lua, 1);
+std::string ReplyToRedisReply(redis::Connection *conn, lua_State *lua, redis::RESP client_resp) {
+  auto reply = LuaTypeToRedisReply(conn, lua, 1, client_resp);
   if (!reply) {
     // Discard the partially converted reply and report a single top-level
     // error instead of embedding it deep inside nested array headers.

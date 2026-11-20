@@ -130,7 +130,7 @@ rocksdb::Status CuckooPageCache::SetBucketSlotWithUndo(uint16_t filter_index, ui
   mutation->bucket_index = bucket_index;
   mutation->slot_idx = slot_idx;
   mutation->old_fingerprint = getBucketRefSlot(bucket, slot_idx);
-  mutation->page_was_dirty = bucket.page->is_dirty;
+  mutation->page_was_dirty = bucket.page->IsDirty();
   setBucketRefSlot(bucket, slot_idx, fingerprint);
   return rocksdb::Status::OK();
 }
@@ -153,13 +153,15 @@ rocksdb::Status CuckooPageCache::RestoreBucketSlot(const SlotMutation &mutation)
   }
 
   it->second.data[offset] = static_cast<char>(mutation.old_fingerprint);
-  it->second.is_dirty = mutation.page_was_dirty;
+  if (!mutation.page_was_dirty && it->second.IsDirty()) {
+    it->second.clean_list_iter = clean_page_keys_.insert(clean_page_keys_.end(), it->first);
+  }
   return rocksdb::Status::OK();
 }
 
 rocksdb::Status CuckooPageCache::WriteBackDirtyPages(rocksdb::WriteBatchBase *batch) {
   for (const auto &entry : pages_) {
-    if (!entry.second.is_dirty) continue;
+    if (!entry.second.IsDirty()) continue;
     if (std::all_of(entry.second.data.begin(), entry.second.data.end(), [](char value) { return value == 0; })) {
       if (entry.second.exists) {
         auto s = batch->Delete(entry.first);
@@ -174,16 +176,16 @@ rocksdb::Status CuckooPageCache::WriteBackDirtyPages(rocksdb::WriteBatchBase *ba
 }
 
 void CuckooPageCache::DiscardCleanPages() {
-  for (auto it = pages_.begin(); it != pages_.end();) {
-    if (it->second.is_dirty) {
-      ++it;
-    } else {
-      it = pages_.erase(it);
-    }
+  for (const auto &page_key : clean_page_keys_) {
+    pages_.erase(page_key);
   }
+  clean_page_keys_.clear();
 }
 
-void CuckooPageCache::DiscardCachedPages() { pages_.clear(); }
+void CuckooPageCache::DiscardCachedPages() {
+  pages_.clear();
+  clean_page_keys_.clear();
+}
 
 rocksdb::Status CuckooPageCache::resolveBucketLocation(uint16_t filter_index, uint32_t num_buckets,
                                                        uint32_t bucket_index, BucketLocation *location) const {
@@ -229,8 +231,7 @@ rocksdb::Status CuckooPageCache::loadPage(const BucketLocation &location, PageEn
   s = normalizePage(s, location.expected_page_size, &page_entry);
   if (!s.ok()) return s;
 
-  auto result = pages_.emplace(location.page_key, std::move(page_entry));
-  *page = &result.first->second;
+  *page = cachePage(location.page_key, std::move(page_entry));
   return rocksdb::Status::OK();
 }
 
@@ -258,9 +259,23 @@ rocksdb::Status CuckooPageCache::loadPages(const std::vector<BucketLocation> &lo
     }
     auto s = normalizePage(statuses[i], locations[i].expected_page_size, &page_entry);
     if (!s.ok()) return s;
-    pages_.emplace(locations[i].page_key, std::move(page_entry));
+    cachePage(locations[i].page_key, std::move(page_entry));
   }
   return rocksdb::Status::OK();
+}
+
+CuckooPageCache::PageEntry *CuckooPageCache::cachePage(const std::string &page_key, PageEntry &&page) {
+  auto [it, inserted] = pages_.emplace(page_key, std::move(page));
+  if (inserted) {
+    it->second.clean_list_iter = clean_page_keys_.insert(clean_page_keys_.end(), it->first);
+  }
+  return &it->second;
+}
+
+void CuckooPageCache::markDirty(PageEntry *page) {
+  if (!page->clean_list_iter) return;
+  clean_page_keys_.erase(*page->clean_list_iter);
+  page->clean_list_iter.reset();
 }
 
 rocksdb::Status CuckooPageCache::normalizePage(const rocksdb::Status &status, uint32_t expected_size, PageEntry *page) {
@@ -279,7 +294,7 @@ bool CuckooPageCache::tryInsertInBucketRef(const BucketRef &bucket, uint8_t fing
     size_t offset = bucket.offset + i;
     if (static_cast<uint8_t>(bucket.page->data[offset]) == 0) {
       bucket.page->data[offset] = static_cast<char>(fingerprint);
-      bucket.page->is_dirty = true;
+      markDirty(bucket.page);
       *slot_idx = i;
       return true;
     }
@@ -293,7 +308,7 @@ uint8_t CuckooPageCache::getBucketRefSlot(const BucketRef &bucket, uint32_t slot
 
 void CuckooPageCache::setBucketRefSlot(const BucketRef &bucket, uint32_t slot_idx, uint8_t fingerprint) {
   bucket.page->data[bucket.offset + slot_idx] = static_cast<char>(fingerprint);
-  bucket.page->is_dirty = true;
+  markDirty(bucket.page);
 }
 
 rocksdb::Status CuckooPageCache::CountFingerprintInBucket(uint16_t filter_index, uint32_t num_buckets,

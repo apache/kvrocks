@@ -24,6 +24,8 @@
 #include <rocksdb/write_batch.h>
 
 #include <cstdint>
+#include <list>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -47,6 +49,10 @@ class CuckooPageCache {
 
   CuckooPageCache(engine::Storage *storage, engine::Context &ctx, const Slice &ns_key, bool slot_id_encoded,
                   uint64_t version, uint8_t bucket_size, uint32_t page_size);
+
+  CuckooPageCache(const CuckooPageCache &) = delete;
+  CuckooPageCache &operator=(const CuckooPageCache &) = delete;
+  ~CuckooPageCache() = default;
 
   uint8_t BucketSize() const { return bucket_size_; }
 
@@ -74,7 +80,9 @@ class CuckooPageCache {
   struct PageEntry {
     std::string data;
     bool exists = false;
-    bool is_dirty = false;
+    std::optional<std::list<std::string>::iterator> clean_list_iter;
+
+    bool IsDirty() const { return !clean_list_iter.has_value(); }
   };
 
   struct BucketRef {
@@ -95,11 +103,13 @@ class CuckooPageCache {
                                      BucketRef *bucket);
   rocksdb::Status loadPage(const BucketLocation &location, PageEntry **page);
   rocksdb::Status loadPages(const std::vector<BucketLocation> &locations);
+  PageEntry *cachePage(const std::string &page_key, PageEntry &&page);
+  void markDirty(PageEntry *page);
   static rocksdb::Status normalizePage(const rocksdb::Status &status, uint32_t expected_size, PageEntry *page);
 
-  static bool tryInsertInBucketRef(const BucketRef &bucket, uint8_t fingerprint, size_t *slot_idx);
+  bool tryInsertInBucketRef(const BucketRef &bucket, uint8_t fingerprint, size_t *slot_idx);
   static uint8_t getBucketRefSlot(const BucketRef &bucket, uint32_t slot_idx);
-  static void setBucketRefSlot(const BucketRef &bucket, uint32_t slot_idx, uint8_t fingerprint);
+  void setBucketRefSlot(const BucketRef &bucket, uint32_t slot_idx, uint8_t fingerprint);
 
   engine::Storage *storage_ = nullptr;
   engine::Context &ctx_;
@@ -110,6 +120,8 @@ class CuckooPageCache {
   uint32_t page_size_ = 0;
   // Maps encoded cuckoo page keys to cached page entries.
   std::unordered_map<std::string, PageEntry> pages_;
+  // Avoid rescanning dirty pages accumulated by earlier items in a bulk insertion.
+  std::list<std::string> clean_page_keys_;
 };
 
 }  // namespace redis

@@ -174,6 +174,8 @@ def get_source_files(dir: Path) -> List[str]:
         *glob(str(dir / "src/**/*.cc"), recursive=True),
         *glob(str(dir / "tests/cppunit/**/*.h"), recursive=True),
         *glob(str(dir / "tests/cppunit/**/*.cc"), recursive=True),
+        *glob(str(dir / "tests/fuzz/**/*.h"), recursive=True),
+        *glob(str(dir / "tests/fuzz/**/*.cc"), recursive=True),
         *glob(str(dir / "utils/kvrocks2redis/**/*.h"), recursive=True),
         *glob(str(dir / "utils/kvrocks2redis/**/*.cc"), recursive=True),
     ]

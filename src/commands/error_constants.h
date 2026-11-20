@@ -35,6 +35,8 @@ inline constexpr const char *errUnbalancedStreamList =
     "Unbalanced XREAD list of streams: for each stream key an ID or '$' must be specified.";
 inline constexpr const char *errTimeoutIsNegative = "timeout is negative";
 inline constexpr const char *errTimeoutIsNotFloat = "timeout is not a float or out of range";
+inline constexpr const char *errRadiusIsNegative = "radius cannot be negative";
+inline constexpr const char *errBoxSizeIsNegative = "height or width cannot be negative";
 inline constexpr const char *errLimitIsNegative = "LIMIT can't be negative";
 inline constexpr const char *errLimitOptionNotAllowed =
     "syntax error, LIMIT cannot be used without the special ~ option";

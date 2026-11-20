@@ -252,6 +252,22 @@ class CommandPubSub : public Commander {
   std::string subcommand_;
 };
 
+class CommandSPublish : public Commander {
+ public:
+  Status Execute([[maybe_unused]] engine::Context &ctx, Server *srv, [[maybe_unused]] Connection *conn,
+                 std::string *output) override {
+    uint16_t slot = 0;
+    if (srv->GetConfig()->cluster_enabled) {
+      slot = GetSlotIdFromKey(args_[1]);
+    }
+
+    int receivers = srv->SPublish(args_[1], args_[2], slot);
+    *output = redis::Integer(receivers);
+
+    return Status::OK();
+  }
+};
+
 REDIS_REGISTER_COMMANDS(Pubsub, MakeCmdAttr<CommandPublish>("publish", 3, "read-only", NO_KEY),
                         MakeCmdAttr<CommandMPublish>("mpublish", -3, "read-only", NO_KEY),
                         MakeCmdAttr<CommandSubscribe>("subscribe", -2, "read-only no-multi no-script", NO_KEY),
@@ -260,6 +276,7 @@ REDIS_REGISTER_COMMANDS(Pubsub, MakeCmdAttr<CommandPublish>("publish", 3, "read-
                         MakeCmdAttr<CommandPUnSubscribe>("punsubscribe", -1, "read-only no-multi no-script", NO_KEY),
                         MakeCmdAttr<CommandSSubscribe>("ssubscribe", -2, "read-only no-multi no-script", NO_KEY),
                         MakeCmdAttr<CommandSUnSubscribe>("sunsubscribe", -1, "read-only no-multi no-script", NO_KEY),
+                        MakeCmdAttr<CommandSPublish>("spublish", 3, "read-only ok-loading", NO_KEY),
                         MakeCmdAttr<CommandPubSub>("pubsub", -2, "read-only no-script", NO_KEY), )
 
 }  // namespace redis

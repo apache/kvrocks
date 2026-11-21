@@ -67,6 +67,8 @@ bool IsHashFieldExpirationMetadataExpired(const HashMetadata &metadata, uint64_t
 
 bool MetadataFilter::Filter([[maybe_unused]] int level, const Slice &key, const Slice &value,
                             [[maybe_unused]] std::string *new_value, [[maybe_unused]] bool *modified) const {
+  if (stor_->IsSlotIdEncoded() && stor_->IsSlotCompactionProtected(ExtractSlotId(key))) return false;
+
   Metadata metadata(kRedisNone, false);
   rocksdb::Status s = metadata.Decode(value);
   auto [ns, user_key] = ExtractNamespaceKey(key, stor_->IsSlotIdEncoded());
@@ -141,6 +143,10 @@ bool SubKeyFilter::IsMetadataExpired(const InternalKey &ikey, const Metadata &me
 rocksdb::CompactionFilter::Decision SubKeyFilter::FilterBlobByKey([[maybe_unused]] int level, const Slice &key,
                                                                   [[maybe_unused]] std::string *new_value,
                                                                   [[maybe_unused]] std::string *skip_until) const {
+  if (stor_->IsSlotIdEncoded() && stor_->IsSlotCompactionProtected(ExtractSlotId(key))) {
+    return rocksdb::CompactionFilter::Decision::kKeep;
+  }
+
   InternalKey ikey(key, stor_->IsSlotIdEncoded());
   Metadata metadata(kRedisNone, false);
   Status s = GetMetadata(ikey, &metadata);
@@ -183,6 +189,8 @@ rocksdb::CompactionFilter::Decision SubKeyFilter::FilterBlobByKey([[maybe_unused
 
 bool SubKeyFilter::Filter([[maybe_unused]] int level, const Slice &key, const Slice &value,
                           [[maybe_unused]] std::string *new_value, [[maybe_unused]] bool *modified) const {
+  if (stor_->IsSlotIdEncoded() && stor_->IsSlotCompactionProtected(ExtractSlotId(key))) return false;
+
   InternalKey ikey(key, stor_->IsSlotIdEncoded());
   Metadata metadata(kRedisNone, false);
   Status s = GetMetadata(ikey, &metadata);
@@ -344,6 +352,8 @@ bool IndexFilter::Filter([[maybe_unused]] int level, const Slice &key, [[maybe_u
   auto ns = rev_key.ns;
   auto user_key = rev_key.user_key;
   auto ns_key = ComposeNamespaceKey(ns, user_key, stor_->IsSlotIdEncoded());
+  if (stor_->IsSlotIdEncoded() && stor_->IsSlotCompactionProtected(ExtractSlotId(ns_key))) return false;
+
   std::string metadata_value;
   auto s = db->Get(rocksdb::ReadOptions(), stor_->GetCFHandle(ColumnFamilyID::Metadata), ns_key, &metadata_value);
   if (s.IsNotFound()) {

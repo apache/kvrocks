@@ -25,11 +25,12 @@
 #include "db_util.h"
 
 namespace engine {
-DBIterator::DBIterator(engine::Context &ctx, rocksdb::ReadOptions read_options, int slot)
+DBIterator::DBIterator(engine::Context &ctx, rocksdb::ReadOptions read_options, int slot, bool include_expired)
     : storage_(ctx.storage),
       read_options_(std::move(read_options)),
       ctx_(&ctx),
       slot_(slot),
+      include_expired_(include_expired),
       metadata_cf_handle_(storage_->GetCFHandle(ColumnFamilyID::Metadata)) {
   metadata_iter_ = util::UniqueIterator(storage_->NewIterator(ctx, read_options_, metadata_cf_handle_));
 }
@@ -55,8 +56,7 @@ void DBIterator::nextUntilValid() {
 
   while (metadata_iter_->Valid()) {
     Metadata metadata(kRedisNone, false);
-    // Skip the metadata if it's expired
-    if (metadata.Decode(metadata_iter_->value()).ok() && !metadata.Expired()) {
+    if (metadata.Decode(metadata_iter_->value()).ok() && (include_expired_ || !metadata.Expired())) {
       metadata_ = metadata;
       break;
     }

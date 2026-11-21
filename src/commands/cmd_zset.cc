@@ -1530,7 +1530,7 @@ class CommandZDiffStore : public Commander {
     if (*parse_result <= 0) return {Status::RedisParseErr, errValueMustBePositive};
 
     numkeys_ = *parse_result;
-    if (numkeys_ > args.size() - 3) return {Status::RedisParseErr, errInvalidSyntax};
+    if (numkeys_ != args.size() - 3) return {Status::RedisParseErr, errInvalidSyntax};
 
     size_t j = 0;
     while (j < numkeys_) {

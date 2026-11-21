@@ -19,11 +19,15 @@
  */
 
 #include <gtest/gtest.h>
+#include <rocksdb/perf_context.h>
+#include <rocksdb/perf_level.h>
 
 #include <memory>
 
 #include "test_base.h"
+#include "types/redis_hyperloglog.h"
 #include "types/redis_set.h"
+#include "types/redis_string.h"
 
 class RedisSetTest : public TestBase {
  protected:
@@ -210,6 +214,83 @@ TEST_F(RedisSetTest, Union) {
   s = set_->Del(*ctx_, k1);
   s = set_->Del(*ctx_, k2);
   s = set_->Del(*ctx_, k3);
+}
+
+TEST_F(RedisSetTest, UnionCard) {
+  uint64_t ret = 0;
+  ASSERT_TRUE(set_->Add(*ctx_, key_, {"a", "b", "c"}, &ret).ok());
+  ASSERT_TRUE(set_->Add(*ctx_, "other", {"b", "d"}, &ret).ok());
+  for (bool approx : {false, true}) {
+    for (uint64_t limit : {0, 1, 3, 4, 10}) {
+      ASSERT_TRUE(set_->UnionCard(*ctx_, {key_, "missing", "other", key_}, approx, limit, &ret).ok());
+      EXPECT_EQ(ret, limit == 0 ? 4 : std::min<uint64_t>(4, limit));
+    }
+    ret = 42;
+    ASSERT_TRUE(set_->UnionCard(*ctx_, {"missing", "missing"}, approx, 0, &ret).ok());
+    EXPECT_EQ(ret, 0);
+    ASSERT_TRUE(set_->UnionCard(*ctx_, {}, approx, 0, &ret).ok());
+    EXPECT_EQ(ret, 0);
+  }
+}
+
+TEST_F(RedisSetTest, UnionCardWrongTypeAfterLimit) {
+  uint64_t ret = 0;
+  ASSERT_TRUE(set_->Add(*ctx_, key_, fields_, &ret).ok());
+  redis::String strings(storage_.get(), "set_ns");
+  ASSERT_TRUE(strings.Set(*ctx_, "wrongtype", "value").ok());
+  for (bool approx : {false, true}) {
+    auto s = set_->UnionCard(*ctx_, {key_, "missing", "wrongtype"}, approx, 1, &ret);
+    EXPECT_TRUE(s.IsInvalidArgument()) << s.ToString();
+  }
+}
+
+TEST_F(RedisSetTest, UnionCardApproxUsesHyperLogLog) {
+  std::vector<std::string> first, second;
+  std::vector<uint64_t> hashes;
+  for (int i = 0; i < 20000; ++i) {
+    auto member = std::to_string(i);
+    if (i < 15000) first.push_back(member);
+    if (i >= 5000) second.push_back(member);
+    hashes.push_back(redis::HyperLogLog::HllHash(member));
+  }
+  ASSERT_TRUE(set_->Overwrite(*ctx_, key_, first).ok());
+  ASSERT_TRUE(set_->Overwrite(*ctx_, "other", second).ok());
+  redis::HyperLogLog hll(storage_.get(), "set_ns");
+  uint64_t ret = 0, expected = 0;
+  ASSERT_TRUE(hll.Add(*ctx_, "hll", hashes, &ret).ok());
+  ASSERT_TRUE(hll.Count(*ctx_, "hll", &expected).ok());
+  EXPECT_NE(expected, 20000);
+  EXPECT_NEAR(expected, 20000, 1000);
+  ASSERT_TRUE(set_->UnionCard(*ctx_, {key_, "other", key_}, true, 0, &ret).ok());
+  EXPECT_EQ(ret, expected);
+  ASSERT_TRUE(set_->UnionCard(*ctx_, {key_, "other"}, true, 30000, &ret).ok());
+  EXPECT_EQ(ret, expected);
+  ASSERT_TRUE(set_->UnionCard(*ctx_, {key_, "other"}, true, 1000, &ret).ok());
+  EXPECT_EQ(ret, 1000);
+  ASSERT_TRUE(set_->UnionCard(*ctx_, {key_, "other"}, false, 0, &ret).ok());
+  EXPECT_EQ(ret, 20000);
+}
+
+TEST_F(RedisSetTest, UnionCardLimitStopsIteration) {
+  std::vector<std::string> members;
+  members.reserve(4096);
+  for (int i = 0; i < 4096; ++i) members.push_back(std::to_string(i));
+  ASSERT_TRUE(set_->Overwrite(*ctx_, key_, members).ok());
+  auto previous_level = rocksdb::GetPerfLevel();
+  auto restore_level = MakeScopeExit([previous_level] { rocksdb::SetPerfLevel(previous_level); });
+  rocksdb::SetPerfLevel(rocksdb::PerfLevel::kEnableCount);
+  for (bool approx : {false, true}) {
+    uint64_t ret = 0;
+    auto *perf = rocksdb::get_perf_context();
+    perf->Reset();
+    ASSERT_TRUE(set_->UnionCard(*ctx_, {key_}, approx, 0, &ret).ok());
+    auto full_read_bytes = perf->iter_read_bytes;
+    ASSERT_GT(full_read_bytes, 0);
+    perf->Reset();
+    ASSERT_TRUE(set_->UnionCard(*ctx_, {key_}, approx, 1, &ret).ok());
+    EXPECT_EQ(ret, 1);
+    EXPECT_LT(perf->iter_read_bytes, full_read_bytes / 10);
+  }
 }
 
 TEST_F(RedisSetTest, Inter) {

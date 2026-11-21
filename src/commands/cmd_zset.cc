@@ -257,8 +257,11 @@ class CommandZPop : public Commander {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    output->append(redis::MultiLen(member_scores.size() * 2));
+    auto use_nested_array = conn->GetProtocolVersion() == RESP::v3 && args_.size() == 3;
+
+    output->append(redis::MultiLen(member_scores.size() * (use_nested_array ? 1 : 2)));
     for (const auto &ms : member_scores) {
+      if (use_nested_array) output->append(redis::MultiLen(2));
       output->append(redis::BulkString(ms.member));
       output->append(conn->Double(ms.score));
     }

@@ -320,6 +320,16 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, enabledRES
 		require.Equal(t, []redis.Z{{Score: 10, Member: "a"}, {Score: 20, Member: "b"}}, rdb.ZPopMin(ctx, "ztmp", 2).Val())
 		require.EqualValues(t, 1, rdb.ZCard(ctx, "ztmp").Val())
 		require.Equal(t, []redis.Z{{Score: 30, Member: "c"}}, rdb.ZPopMin(ctx, "ztmp", 3).Val())
+		rdb.ZAdd(ctx, "ztmp", redis.Z{Score: 10, Member: "a"}, redis.Z{Score: 20, Member: "b"}, redis.Z{Score: 30, Member: "c"}, redis.Z{Score: 40, Member: "d"})
+		if isRESP3 {
+			require.Equal(t, []interface{}{"a", float64(10)}, rdb.Do(ctx, "zpopmin", "ztmp").Val())
+			require.Equal(t, []interface{}{[]interface{}{"b", float64(20)}}, rdb.Do(ctx, "zpopmin", "ztmp", 1).Val())
+			require.Equal(t, []interface{}{[]interface{}{"c", float64(30)}, []interface{}{"d", float64(40)}}, rdb.Do(ctx, "zpopmin", "ztmp", 3).Val())
+		} else {
+			require.Equal(t, []interface{}{"a", "10"}, rdb.Do(ctx, "zpopmin", "ztmp").Val())
+			require.Equal(t, []interface{}{"b", "20"}, rdb.Do(ctx, "zpopmin", "ztmp", 1).Val())
+			require.Equal(t, []interface{}{"c", "30", "d", "40"}, rdb.Do(ctx, "zpopmin", "ztmp", 3).Val())
+		}
 	})
 
 	t.Run(fmt.Sprintf("ZPOPMAX basics - %s", encoding), func(t *testing.T) {
@@ -338,6 +348,16 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, enabledRES
 		require.Equal(t, []redis.Z{{Score: 30, Member: "c"}, {Score: 20, Member: "b"}}, rdb.ZPopMax(ctx, "ztmp", 2).Val())
 		require.EqualValues(t, 1, rdb.ZCard(ctx, "ztmp").Val())
 		require.Equal(t, []redis.Z{{Score: 10, Member: "a"}}, rdb.ZPopMax(ctx, "ztmp", 3).Val())
+		rdb.ZAdd(ctx, "ztmp", redis.Z{Score: 10, Member: "a"}, redis.Z{Score: 20, Member: "b"}, redis.Z{Score: 30, Member: "c"}, redis.Z{Score: 40, Member: "d"})
+		if isRESP3 {
+			require.Equal(t, []interface{}{"d", float64(40)}, rdb.Do(ctx, "zpopmax", "ztmp").Val())
+			require.Equal(t, []interface{}{[]interface{}{"c", float64(30)}}, rdb.Do(ctx, "zpopmax", "ztmp", 1).Val())
+			require.Equal(t, []interface{}{[]interface{}{"b", float64(20)}, []interface{}{"a", float64(10)}}, rdb.Do(ctx, "zpopmax", "ztmp", 3).Val())
+		} else {
+			require.Equal(t, []interface{}{"d", "40"}, rdb.Do(ctx, "zpopmax", "ztmp").Val())
+			require.Equal(t, []interface{}{"c", "30"}, rdb.Do(ctx, "zpopmax", "ztmp", 1).Val())
+			require.Equal(t, []interface{}{"b", "20", "a", "10"}, rdb.Do(ctx, "zpopmax", "ztmp", 3).Val())
+		}
 	})
 
 	t.Run(fmt.Sprintf("BZPOPMIN basics - %s", encoding), func(t *testing.T) {

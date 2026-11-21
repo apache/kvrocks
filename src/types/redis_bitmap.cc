@@ -384,15 +384,9 @@ rocksdb::Status Bitmap::BitPos(engine::Context &ctx, const Slice &user_key, bool
             .Encode();
     s = storage_->Get(ctx, read_options, sub_key, &pin_value);
     if (!s.ok() && !s.IsNotFound()) return s;
-    if (s.IsNotFound()) {
-      if (!bit) {
-        // Note: even if stop is given, we can return immediately when bit is 0.
-        // because bit_pos will always be greater.
-        *pos = i * kBitmapSegmentBits;
-        return rocksdb::Status::OK();
-      }
-      continue;
-    }
+    // A missing segment, and the bytes past the end of a segment that is shorter than the bitmap (BITOP does not
+    // store zero results, and SETBIT only extends a segment up to the byte it writes), are all 0.
+    if (s.IsNotFound() && bit) continue;
     size_t byte_pos_in_segment = 0;
     size_t byte_with_bit_start = -1;
     size_t byte_with_bit_stop = -2;
@@ -402,42 +396,28 @@ rocksdb::Status Bitmap::BitPos(engine::Context &ctx, const Slice &user_key, bool
       byte_pos_in_segment = (u_start / to_bit_factor) % kBitmapSegmentBytes;
       byte_with_bit_start = byte_pos_in_segment;
     }
-    size_t stop_byte_in_segment = pin_value.size();
+    size_t stop_byte_in_segment = kBitmapSegmentBytes;
     if (i == stop_segment_index) {
-      CHECK((u_stop / to_bit_factor) % kBitmapSegmentBytes + 1 <= pin_value.size());
       stop_byte_in_segment = (u_stop / to_bit_factor) % kBitmapSegmentBytes + 1;
-      byte_with_bit_stop = stop_byte_in_segment;
+      byte_with_bit_stop = stop_byte_in_segment - 1;
     }
-    // Invariant:
-    // 1. pin_value.size() <= kBitmapSegmentBytes.
-    // 2. If it's the last segment, metadata.size % kBitmapSegmentBytes <= pin_value.size().
+    // No set bit can be found past the stored bytes.
+    if (bit) stop_byte_in_segment = std::min(stop_byte_in_segment, pin_value.size());
     for (; byte_pos_in_segment < stop_byte_in_segment; byte_pos_in_segment++) {
+      char byte = byte_pos_in_segment < pin_value.size() ? pin_value[byte_pos_in_segment] : '\0';
       int bit_pos_in_byte_value = -1;
       if (is_bit_index) {
         uint32_t start_bit = 0, stop_bit = 7;
         std::tie(start_bit, stop_bit) = range_in_byte(byte_with_bit_start, byte_with_bit_stop, byte_pos_in_segment);
-        bit_pos_in_byte_value = bit_pos_in_byte_startstop(pin_value[byte_pos_in_segment], bit, start_bit, stop_bit);
+        bit_pos_in_byte_value = bit_pos_in_byte_startstop(byte, bit, start_bit, stop_bit);
       } else {
-        bit_pos_in_byte_value = bit_pos_in_byte(pin_value[byte_pos_in_segment], bit);
+        bit_pos_in_byte_value = bit_pos_in_byte(byte, bit);
       }
 
       if (bit_pos_in_byte_value != -1) {
         *pos = static_cast<int64_t>(i * kBitmapSegmentBits + byte_pos_in_segment * 8 + bit_pos_in_byte_value);
         return rocksdb::Status::OK();
       }
-    }
-    if (bit) {
-      continue;
-    }
-    // There're two cases that `pin_value.size() < kBitmapSegmentBytes`:
-    // 1. If it's the last segment, we've done searching in the above loop.
-    // 2. If it's not the last segment, we can check if the segment is all 0.
-    if (pin_value.size() < kBitmapSegmentBytes) {
-      if (i == stop_segment_index) {
-        continue;
-      }
-      *pos = static_cast<int64_t>(i * kBitmapSegmentBits + pin_value.size() * 8);
-      return rocksdb::Status::OK();
     }
   }
   // bit was not found

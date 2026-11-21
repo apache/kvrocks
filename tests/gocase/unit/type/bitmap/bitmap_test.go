@@ -687,6 +687,62 @@ func TestBitmap(t *testing.T) {
 		require.EqualValues(t, 2, cmd.Val())
 	})
 
+	t.Run("BITPOS on a bitmap whose segments are shorter than its size", func(t *testing.T) {
+		t.Parallel()
+		p := util.KeyPrefix(t)
+		a, b, c, d := p+"a", p+"b", p+"c", p+"d"
+		bitpos := func(args ...interface{}) int64 {
+			v, err := rdb.Do(ctx, append([]interface{}{"BITPOS"}, args...)...).Int64()
+			require.NoError(t, err)
+			return v
+		}
+
+		// BITOP stores no segment for an all-zero result, but the bitmap still has 245 bytes.
+		require.NoError(t, rdb.SetBit(ctx, a, 1959, 1).Err())
+		require.EqualValues(t, 245, rdb.BitOpAnd(ctx, b, p+"missing", a).Val())
+		require.EqualValues(t, 1952, bitpos(b, 0, -1))
+		require.EqualValues(t, 1950, bitpos(b, 0, 1950, 1959, "BIT"))
+		require.EqualValues(t, -1, bitpos(b, 1))
+		// SETBIT then stores a segment of 206 bytes, shorter than the 245 bytes of the bitmap.
+		require.NoError(t, rdb.SetBit(ctx, b, 1646, 0).Err())
+		require.EqualValues(t, 1952, bitpos(b, 0, -1))
+		require.EqualValues(t, 1920, bitpos(b, 0, 240, 244))
+		require.EqualValues(t, -1, bitpos(b, 1))
+		require.EqualValues(t, 0, bitpos(b, 0))
+
+		// The start is inside a segment that is not stored.
+		require.NoError(t, rdb.SetBit(ctx, c, 10000, 1).Err())
+		require.EqualValues(t, 16, bitpos(c, 0, 2))
+		require.EqualValues(t, 17, bitpos(c, 0, 17, 30, "BIT"))
+
+		// The start is past the stored bytes of a segment that is not the last one.
+		require.NoError(t, rdb.SetBit(ctx, d, 8, 1).Err())
+		require.NoError(t, rdb.SetBit(ctx, d, 10000, 1).Err())
+		require.EqualValues(t, 40, bitpos(d, 0, 5))
+		require.EqualValues(t, 10000, bitpos(d, 1, 5))
+	})
+
+	t.Run("BITPOS BIT stops at the end bit on a bitmap", func(t *testing.T) {
+		t.Parallel()
+		p := util.KeyPrefix(t)
+		a, b := p+"a", p+"b"
+		bitpos := func(args ...interface{}) int64 {
+			v, err := rdb.Do(ctx, append([]interface{}{"BITPOS"}, args...)...).Int64()
+			require.NoError(t, err)
+			return v
+		}
+
+		require.NoError(t, rdb.SetBit(ctx, a, 0, 1).Err())
+		require.EqualValues(t, -1, bitpos(a, 0, 0, 0, "BIT"))
+		require.EqualValues(t, 0, bitpos(a, 1, 0, 0, "BIT"))
+		require.EqualValues(t, 1, bitpos(a, 0, 0, 7, "BIT"))
+
+		require.NoError(t, rdb.SetBit(ctx, b, 8191, 1).Err())
+		require.EqualValues(t, -1, bitpos(b, 1, -2, -2, "BIT"))
+		require.EqualValues(t, 8191, bitpos(b, 1, -1, -1, "BIT"))
+		require.EqualValues(t, -1, bitpos(b, 1, 1, -2, "BIT"))
+	})
+
 	t.Run("BITPOS BYTE option produces same result as default byte-indexed mode", func(t *testing.T) {
 		require.NoError(t, rdb.Set(ctx, "mykey", "\x00\xff\xf0", 0).Err())
 		byteResult := rdb.BitPos(ctx, "mykey", 1, 1)

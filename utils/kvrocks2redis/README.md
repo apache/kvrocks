@@ -12,6 +12,13 @@ When the program runs, the following files are generated:
 2. xxx_last_next_offset.txt: indicates the position of the AOF file read by the `redis-writer` thread.
 3. last_next_seq.txt: indicates the sequence number parsed by `kvrocks2redis` to record the synchronization location and check whether incremental synchronization can be performed.
 
+## JSON
+
+Full and incremental synchronization export JSON documents using `JSON.SET key $ value`.
+Full synchronization decodes each document using its stored JSON or CBOR format and preserves its logical JSON value.
+Key expiration is replayed using `PEXPIREAT` with the original absolute millisecond timestamp.
+The destination must support `JSON.SET`; JSON documents are not converted to Redis strings.
+
 ## Hash field expiration
 
 Full synchronization decodes each hash using its stored encoding mode, skips expired fields, and preserves live field expirations using `HSET` followed by `HPEXPIREAT` with the original absolute timestamp.

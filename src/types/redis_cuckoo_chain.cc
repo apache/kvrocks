@@ -131,10 +131,21 @@ rocksdb::Status CuckooChain::Reserve(engine::Context &ctx, const Slice &user_key
 }
 
 rocksdb::Status CuckooChain::Add(engine::Context &ctx, const Slice &user_key, const Slice &item, bool *added) {
+  return addItem(ctx, user_key, item, /*check_exists=*/false, kCFLogDataAdd, added);
+}
+
+rocksdb::Status CuckooChain::AddNx(engine::Context &ctx, const Slice &user_key, const Slice &item, bool *added) {
+  return addItem(ctx, user_key, item, /*check_exists=*/true, kCFLogDataAddNx, added);
+}
+
+rocksdb::Status CuckooChain::addItem(engine::Context &ctx, const Slice &user_key, const Slice &item, bool check_exists,
+                                     const std::string &log_cmd, bool *added) {
+  *added = false;
   std::string ns_key = AppendNamespacePrefix(user_key);
 
   CuckooChainMetadata metadata(false);
   auto s = getCuckooChainMetadata(ctx, ns_key, &metadata);
+  bool is_new = false;
   if (s.IsNotFound()) {
     // RedisBloom CF.ADD auto-creates the filter when the key does not exist:
     // https://redis.io/docs/latest/commands/cf.add/
@@ -147,6 +158,7 @@ rocksdb::Status CuckooChain::Add(engine::Context &ctx, const Slice &user_key, co
     metadata.n_filters = 1;
     metadata.num_deleted_items = 0;
     metadata.page_size = kCuckooFilterDefaultPageSize;
+    is_new = true;
   } else if (!s.ok()) {
     return s;
   }
@@ -154,21 +166,34 @@ rocksdb::Status CuckooChain::Add(engine::Context &ctx, const Slice &user_key, co
   s = validateMetadata(metadata);
   if (!s.ok()) return s;
 
-  // Calculate hash and fingerprint for the item
   uint64_t hash = CuckooFilterHelper::Hash(item.data(), item.size());
   uint8_t fingerprint = CuckooFilterHelper::GenerateFingerprint(hash);
   CuckooPageCache pages(storage_, ctx, ns_key, storage_->IsSlotIdEncoded(), metadata.version, metadata.bucket_size,
                         metadata.page_size);
 
+  // Check oldest to newest so the newest filter's pages stay cached for the insert below.
+  // A match may be a false positive (same fingerprint in a candidate bucket), as in RedisBloom.
+  if (check_exists && !is_new) {
+    for (uint16_t idx = 0; idx < metadata.n_filters; ++idx) {
+      uint32_t num_buckets = 0;
+      s = CuckooFilterHelper::GetFilterNumBuckets(metadata.base_capacity, metadata.expansion, metadata.bucket_size, idx,
+                                                  &num_buckets);
+      if (!s.ok()) return s;
+      CuckooSubFilter sub_filter(pages, idx, num_buckets);
+      bool found = false;
+      s = sub_filter.Contains(hash, fingerprint, &found);
+      if (!s.ok()) return s;
+      if (found) return rocksdb::Status::OK();
+      if (idx + 1 < metadata.n_filters) pages.DiscardCleanPages();
+    }
+  }
+
   bool inserted = false;
   s = tryInsertFingerprint(&metadata, pages, hash, fingerprint, &inserted);
   if (!s.ok()) return s;
-  if (!inserted) {
-    *added = false;
-    return rocksdb::Status::Aborted("filter is full");
-  }
+  if (!inserted) return rocksdb::Status::Aborted("filter is full");
 
-  s = commitPagesAndMetadata(ctx, user_key, ns_key, &metadata, pages, kCFLogDataAdd);
+  s = commitPagesAndMetadata(ctx, user_key, ns_key, &metadata, pages, log_cmd);
   if (!s.ok()) return s;
 
   *added = true;

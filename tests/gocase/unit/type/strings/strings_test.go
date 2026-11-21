@@ -276,6 +276,31 @@ func testString(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.Equal(t, "", rdb.GetDel(ctx, "foo").Val())
 	})
 
+	t.Run("GETDEL edge cases", func(t *testing.T) {
+		// A missing key must report nil, not an empty string.
+		require.NoError(t, rdb.Del(ctx, "getdel-missing").Err())
+		val, err := rdb.GetDel(ctx, "getdel-missing").Result()
+		require.ErrorIs(t, err, redis.Nil)
+		require.Empty(t, val)
+
+		// An empty string value is distinguishable from a missing key,
+		// and the key must be gone afterwards.
+		require.NoError(t, rdb.Set(ctx, "getdel-empty", "", 0).Err())
+		val, err = rdb.GetDel(ctx, "getdel-empty").Result()
+		require.NoError(t, err)
+		require.Equal(t, "", val)
+		require.EqualValues(t, 0, rdb.Exists(ctx, "getdel-empty").Val())
+
+		// GETDEL removes a key that has a TTL.
+		require.NoError(t, rdb.Set(ctx, "getdel-ttl", "v", 10*time.Second).Err())
+		require.Equal(t, "v", rdb.GetDel(ctx, "getdel-ttl").Val())
+		require.EqualValues(t, 0, rdb.Exists(ctx, "getdel-ttl").Val())
+
+		// Non-string values are rejected.
+		require.NoError(t, rdb.RPush(ctx, "getdel-list", "a").Err())
+		require.ErrorContains(t, rdb.GetDel(ctx, "getdel-list").Err(), "WRONGTYPE")
+	})
+
 	t.Run("DelEX command no args", func(t *testing.T) {
 		key := "test-string-key69"
 		value := "test-strings-value69"

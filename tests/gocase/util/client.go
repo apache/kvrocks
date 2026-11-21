@@ -79,16 +79,11 @@ func Populate(t testing.TB, rdb *redis.Client, prefix string, n, size int) {
 }
 
 func SimpleTCPProxy(ctx context.Context, t testing.TB, to string, slowdown bool) uint64 {
-	addr, err := findFreePort()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
-		t.Fatalf("can't find a free port, %v", err)
+		t.Fatalf("listen to a free port failed, err: %v", err)
 	}
-	from := addr.String()
-
-	listener, err := net.Listen("tcp", from)
-	if err != nil {
-		t.Fatalf("listen to %s failed, err: %v", from, err)
-	}
+	addr := listener.Addr().(*net.TCPAddr)
 
 	copyBytes := func(src, dest io.ReadWriter) func() error {
 		buffer := make([]byte, 4096)
@@ -97,7 +92,6 @@ func SimpleTCPProxy(ctx context.Context, t testing.TB, to string, slowdown bool)
 			for {
 				select {
 				case <-ctx.Done():
-					t.Log("forwarding tcp stream stopped")
 					break COPY_LOOP
 				default:
 					if slowdown {
@@ -162,16 +156,11 @@ func SimpleTCPProxy(ctx context.Context, t testing.TB, to string, slowdown bool)
 // When paused, the proxy stops reading from the source, causing the sender's
 // TCP buffer to fill up and eventually blocking writes.
 func PausableTCPProxy(ctx context.Context, t testing.TB, to string, pauseCh <-chan bool) uint64 {
-	addr, err := findFreePort()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
-		t.Fatalf("can't find a free port, %v", err)
+		t.Fatalf("listen to a free port failed, err: %v", err)
 	}
-	from := addr.String()
-
-	listener, err := net.Listen("tcp", from)
-	if err != nil {
-		t.Fatalf("listen to %s failed, err: %v", from, err)
-	}
+	addr := listener.Addr().(*net.TCPAddr)
 
 	paused := &atomic.Bool{}
 
@@ -194,7 +183,6 @@ func PausableTCPProxy(ctx context.Context, t testing.TB, to string, pauseCh <-ch
 			for {
 				select {
 				case <-ctx.Done():
-					t.Log("forwarding tcp stream stopped")
 					break COPY_LOOP
 				default:
 					// When paused, only block reading from the master (to slave direction)

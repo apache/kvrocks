@@ -631,6 +631,72 @@ func TestScriptingWithRESP3(t *testing.T) {
 		// return as an array in RESP2
 		require.EqualValues(t, []interface{}{"f1", "v1"}, vals)
 	})
+
+	t.Run("EVAL - nil is encoded for the protocol of the client", func(t *testing.T) {
+		mustReadEval := func(c *util.TCPClient, script string, lines ...string) {
+			require.NoError(t, c.WriteArgs("EVAL", script, "0"))
+			for _, line := range lines {
+				c.MustRead(t, line)
+			}
+		}
+
+		resp3 := newRESP3TCPClient(t, srv)
+		defer func() { require.NoError(t, resp3.Close()) }()
+		mustReadEval(resp3, "return nil", "_")
+		mustReadEval(resp3, "return false", "_")
+		mustReadEval(resp3, "return {1,false,'x'}", "*3", ":1", "_", "$1", "x")
+		mustReadEval(resp3, "return redis.call('get', 'no-such-key')", "_")
+		mustReadEval(resp3, "redis.setresp(3); return redis.call('get', 'no-such-key')", "_")
+
+		resp2 := srv.NewTCPClient()
+		defer func() { require.NoError(t, resp2.Close()) }()
+		mustReadEval(resp2, "return nil", "$-1")
+		mustReadEval(resp2, "redis.setresp(3); return nil", "$-1")
+		mustReadEval(resp2, "redis.setresp(3); return redis.call('get', 'no-such-key')", "$-1")
+	})
+
+	t.Run("FCALL - redis.setresp does not change the protocol of the client", func(t *testing.T) {
+		code := `#!lua name=setresplib
+redis.register_function('setresp_nil', function(keys, args) redis.setresp(tonumber(args[1])); return nil end)
+redis.register_function('setresp_error', function(keys, args) redis.setresp(tonumber(args[1])); error('failed') end)`
+		require.NoError(t, rdb.Do(ctx, "FUNCTION", "LOAD", code).Err())
+		defer func() { require.NoError(t, rdb.Do(ctx, "FUNCTION", "DELETE", "setresplib").Err()) }()
+
+		resp2 := srv.NewTCPClient()
+		defer func() { require.NoError(t, resp2.Close()) }()
+		require.NoError(t, resp2.WriteArgs("FCALL", "setresp_nil", "0", "3"))
+		resp2.MustRead(t, "$-1")
+		require.NoError(t, resp2.WriteArgs("GET", "no-such-key"))
+		resp2.MustRead(t, "$-1")
+		require.NoError(t, resp2.WriteArgs("FCALL", "setresp_error", "0", "3"))
+		resp2.MustMatch(t, "^-.*failed")
+		require.NoError(t, resp2.WriteArgs("GET", "no-such-key"))
+		resp2.MustRead(t, "$-1")
+
+		resp3 := newRESP3TCPClient(t, srv)
+		defer func() { require.NoError(t, resp3.Close()) }()
+		require.NoError(t, resp3.WriteArgs("FCALL", "setresp_nil", "0", "2"))
+		resp3.MustRead(t, "_")
+		require.NoError(t, resp3.WriteArgs("GET", "no-such-key"))
+		resp3.MustRead(t, "_")
+		require.NoError(t, resp3.WriteArgs("FCALL", "setresp_error", "0", "2"))
+		resp3.MustMatch(t, "^-.*failed")
+		require.NoError(t, resp3.WriteArgs("GET", "no-such-key"))
+		resp3.MustRead(t, "_")
+	})
+}
+
+// newRESP3TCPClient returns a raw client that has switched to RESP3 and read the HELLO reply.
+func newRESP3TCPClient(t *testing.T, srv *util.KvrocksServer) *util.TCPClient {
+	c := srv.NewTCPClient()
+	require.NoError(t, c.WriteArgs("HELLO", "3"))
+	// the HELLO reply ends with the nil of `modules`
+	for line := ""; line != "_"; {
+		var err error
+		line, err = c.ReadLine()
+		require.NoError(t, err)
+	}
+	return c
 }
 
 func TestEvalScriptFlags(t *testing.T) {

@@ -486,6 +486,16 @@ func TestClusterMultiple(t *testing.T) {
 		require.ErrorContains(t, rdb[1].MSet(ctx, util.SlotTable[0], 0, util.SlotTable[1], 1).Err(), "CROSSSLOT")
 	})
 
+	t.Run("ZRANGESTORE rejects source and destination in different slots", func(t *testing.T) {
+		src := "{" + util.SlotTable[0] + "}zsrc"
+		dst := "{" + util.SlotTable[1] + "}zdst"
+		require.NoError(t, rdb[1].ZAdd(ctx, src, redis.Z{Score: 1, Member: "a"}).Err())
+
+		err := rdb[1].Do(ctx, "ZRANGESTORE", dst, src, 0, -1).Err()
+		require.ErrorContains(t, err, "CROSSSLOT")
+		require.EqualValues(t, 0, rdb[1].Exists(ctx, dst).Val())
+	})
+
 	t.Run("multiple keys(the same slots) command is right", func(t *testing.T) {
 		require.NoError(t, rdb[1].MSet(ctx, util.SlotTable[0], 0, util.SlotTable[0], 1).Err())
 	})

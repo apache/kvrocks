@@ -648,6 +648,7 @@ void Server::BlockOnKey(const std::string &key, redis::Connection *conn) {
 void Server::UnblockOnKey(const std::string &key, redis::Connection *conn) {
   std::lock_guard<std::mutex> guard(blocking_keys_mu_);
 
+  woken_blocking_conns_.erase(ConnContext(conn->Owner(), conn->GetFD()));
   auto iter = blocking_keys_.find(key);
   if (iter == blocking_keys_.end()) {
     return;
@@ -717,14 +718,21 @@ void Server::WakeupBlockingConns(const std::string &key, size_t n_conns) {
     return;
   }
 
-  while (n_conns-- && !iter->second.empty()) {
-    auto conn_ctx = iter->second.front();
+  for (const auto &conn_ctx : iter->second) {
+    if (n_conns == 0) break;
+    if (!woken_blocking_conns_.emplace(conn_ctx).second) continue;
+
     auto s = conn_ctx.owner->EnableWriteEvent(conn_ctx.fd);
     if (!s.IsOK()) {
       ERROR("[server] Failed to enable write event on blocked client {}: {}", conn_ctx.fd, s.Msg());
     }
-    iter->second.pop_front();
+    n_conns--;
   }
+}
+
+void Server::RewaitOnKeys(redis::Connection *conn) {
+  std::lock_guard<std::mutex> guard(blocking_keys_mu_);
+  woken_blocking_conns_.erase(ConnContext(conn->Owner(), conn->GetFD()));
 }
 
 void Server::OnEntryAddedToStream(const std::string &ns, const std::string &key, const redis::StreamEntryID &entry_id) {

@@ -237,6 +237,7 @@ class Server {
 
   void BlockOnKey(const std::string &key, redis::Connection *conn);
   void UnblockOnKey(const std::string &key, redis::Connection *conn);
+  void RewaitOnKeys(redis::Connection *conn);
   void BlockOnStreams(const std::vector<std::string> &keys, const std::vector<redis::StreamEntryID> &entry_ids,
                       redis::Connection *conn);
   void UnblockOnStreams(const std::vector<std::string> &keys, redis::Connection *conn);
@@ -456,6 +457,7 @@ class Server {
   std::vector<std::map<std::string, std::list<ConnContext>>> pubsub_shard_channels_;
   std::mutex pubsub_shard_channels_mu_;
   std::map<std::string, std::list<ConnContext>> blocking_keys_;
+  std::set<ConnContext> woken_blocking_conns_;
   std::mutex blocking_keys_mu_;
 
   std::atomic<int> blocked_clients_{0};

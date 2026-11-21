@@ -93,16 +93,19 @@ class BlockingCommander : public Commander,
 
       auto guard = GetLocks();
       done = OnBlockingWrite();
-    }
 
-    if (!done) {
-      // The connection may be waked up but can't pop from the datatype.
-      // For example, connection A is blocked on it and connection B added a new element;
-      // then connection A was unblocked, but this element may be taken by
-      // another connection C. So we need to block connection A again
-      // and wait for the element being added by disabling the WRITE event.
-      bufferevent_disable(bev, EV_WRITE);
-      return;
+      if (!done) {
+        // The connection may be waked up but can't pop from the datatype.
+        // For example, connection A is blocked on it and connection B added a new element;
+        // then connection A was unblocked, but this element may be taken by
+        // another connection C. So we need to block connection A again
+        // and wait for the element being added by disabling the WRITE event.
+        // This has to happen before the key locks are released, or a write in between
+        // would see A as woken already and not wake it.
+        bufferevent_disable(bev, EV_WRITE);
+        conn_->GetServer()->RewaitOnKeys(conn_);
+        return;
+      }
     }
 
     if (timer_) {

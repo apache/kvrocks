@@ -579,6 +579,84 @@ func TestBitmap(t *testing.T) {
 		require.EqualValues(t, []interface{}{int64(10), int64(20)}, res.Val())
 	})
 
+	t.Run("BITFIELD GET on bitmap type reads bits written by SETBIT (issue #2500)", func(t *testing.T) {
+		t.Parallel()
+		k := util.KeyPrefix(t) + "bm"
+		// 'X' is 0b01011000
+		Set2SetBit(t, rdb, ctx, k, []byte("X"))
+		require.Equal(t, "bitmap", rdb.Type(ctx, k).Val())
+		require.Equal(t, "X", rdb.Get(ctx, k).Val())
+		for _, command := range []string{"BITFIELD", "BITFIELD_RO"} {
+			res := rdb.Do(ctx, command, k, "GET", "u7", 0, "GET", "u1", 1, "GET", "u8", 0, "GET", "i8", 0)
+			require.NoError(t, res.Err())
+			require.EqualValues(t, []interface{}{int64(44), int64(1), int64(88), int64(88)}, res.Val())
+		}
+
+		k2 := util.KeyPrefix(t) + "bm2"
+		require.NoError(t, rdb.SetBit(ctx, k2, 0, 1).Err())
+		require.Equal(t, "bitmap", rdb.Type(ctx, k2).Val())
+		for _, command := range []string{"BITFIELD", "BITFIELD_RO"} {
+			res := rdb.Do(ctx, command, k2, "GET", "u1", 0, "GET", "u8", 0, "GET", "i8", 0)
+			require.NoError(t, res.Err())
+			require.EqualValues(t, []interface{}{int64(1), int64(128), int64(-128)}, res.Val())
+		}
+	})
+
+	t.Run("BITFIELD SET and INCRBY on bitmap type are visible to GETBIT and GET", func(t *testing.T) {
+		t.Parallel()
+		p := util.KeyPrefix(t)
+
+		k := p + "set_u8"
+		require.EqualValues(t, []int64{0}, rdb.BitField(ctx, k, "SET", "u8", 0, 128).Val())
+		require.Equal(t, "bitmap", rdb.Type(ctx, k).Val())
+		require.EqualValues(t, 1, rdb.GetBit(ctx, k, 0).Val())
+		require.EqualValues(t, 0, rdb.GetBit(ctx, k, 7).Val())
+		require.Equal(t, "\x80", rdb.Get(ctx, k).Val())
+
+		k = p + "set_u4_unaligned"
+		require.EqualValues(t, []int64{0}, rdb.BitField(ctx, k, "SET", "u4", 4, 15).Val())
+		require.Equal(t, "bitmap", rdb.Type(ctx, k).Val())
+		require.Equal(t, "\x0f", rdb.Get(ctx, k).Val())
+		for i := int64(0); i < 8; i++ {
+			require.EqualValues(t, i/4, rdb.GetBit(ctx, k, i).Val())
+		}
+
+		k = p + "incrby"
+		require.NoError(t, rdb.SetBit(ctx, k, 7, 1).Err())
+		require.Equal(t, "bitmap", rdb.Type(ctx, k).Val())
+		require.EqualValues(t, []int64{2}, rdb.BitField(ctx, k, "INCRBY", "u8", 0, 1).Val())
+		require.Equal(t, "\x02", rdb.Get(ctx, k).Val())
+
+		k = p + "neighbors"
+		require.NoError(t, rdb.SetBit(ctx, k, 0, 1).Err())
+		require.NoError(t, rdb.SetBit(ctx, k, 7, 1).Err())
+		require.Equal(t, "bitmap", rdb.Type(ctx, k).Val())
+		require.EqualValues(t, []int64{0}, rdb.BitField(ctx, k, "SET", "u4", 2, 0).Val())
+		require.Equal(t, "\x81", rdb.Get(ctx, k).Val())
+	})
+
+	t.Run("BITFIELD on bitmap type across a segment boundary", func(t *testing.T) {
+		t.Parallel()
+		p := util.KeyPrefix(t)
+		// Bitmap segments are 1024 bytes, so bits 8191 and 8192 live in different segments.
+		k := p + "read"
+		require.NoError(t, rdb.SetBit(ctx, k, 8191, 1).Err())
+		require.NoError(t, rdb.SetBit(ctx, k, 8192, 1).Err())
+		require.Equal(t, "bitmap", rdb.Type(ctx, k).Val())
+		res := rdb.BitField(ctx, k, "GET", "u2", 8191, "GET", "u8", 8188)
+		require.NoError(t, res.Err())
+		require.EqualValues(t, []int64{3, 24}, res.Val())
+
+		k = p + "write"
+		require.EqualValues(t, []int64{0}, rdb.BitField(ctx, k, "SET", "u8", 8188, 255).Val())
+		require.Equal(t, "bitmap", rdb.Type(ctx, k).Val())
+		require.EqualValues(t, 0, rdb.GetBit(ctx, k, 8187).Val())
+		for i := int64(8188); i < 8196; i++ {
+			require.EqualValues(t, 1, rdb.GetBit(ctx, k, i).Val())
+		}
+		require.EqualValues(t, 0, rdb.GetBit(ctx, k, 8196).Val())
+	})
+
 	t.Run("BITPOS BIT option check", func(t *testing.T) {
 		t.Parallel()
 		p := util.KeyPrefix(t)

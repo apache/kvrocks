@@ -439,16 +439,21 @@ Status FunctionCall(redis::Connection *conn, engine::Context *ctx, const std::st
   // save keys on registry the to perform key touching check
   SaveOnRegistry(lua, REGISTRY_KEYS_NAME, &keys);
 
+  // A function may change the protocol version via `redis.setresp`. That only applies to
+  // the function, so save the version of the client and restore it after the execution.
+  auto saved_protocol_version = conn->GetProtocolVersion();
   PushArray(lua, keys);
   PushArray(lua, argv);
   if (lua_pcall(lua, 2, 1, -4)) {
     std::string err_msg = lua_tostring(lua, -1);
     lua_pop(lua, 2);
+    conn->SetProtocolVersion(saved_protocol_version);
     return {Status::NotOK, fmt::format("Error while running function `{}`: {}", name, err_msg)};
   } else {
-    *output = ReplyToRedisReply(conn, lua, conn->GetProtocolVersion());
+    *output = ReplyToRedisReply(conn, lua, saved_protocol_version);
     lua_pop(lua, 2);
   }
+  conn->SetProtocolVersion(saved_protocol_version);
 
   RemoveFromRegistry(lua, REGISTRY_KEYS_NAME);
   RemoveFromRegistry(lua, REGISTRY_SCRIPT_RUN_CTX_NAME);

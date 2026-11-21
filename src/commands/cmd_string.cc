@@ -424,7 +424,12 @@ class CommandSetEX : public Commander {
 
     if (*parse_result <= 0) return {Status::RedisParseErr, errInvalidExpireTime};
 
-    expire_ = *parse_result * 1000 + util::GetTimeStampMS();
+    uint64_t now_ms = util::GetTimeStampMS();
+    if (*parse_result > (std::numeric_limits<int64_t>::max() - static_cast<int64_t>(now_ms)) / 1000) {
+      return {Status::RedisParseErr, errInvalidExpireTime};
+    }
+
+    expire_ = static_cast<uint64_t>(*parse_result) * 1000 + now_ms;
 
     return Commander::Parse(args);
   }
@@ -455,7 +460,12 @@ class CommandPSetEX : public Commander {
 
     if (*ttl_ms <= 0) return {Status::RedisParseErr, errInvalidExpireTime};
 
-    expire_ = *ttl_ms + util::GetTimeStampMS();
+    uint64_t now_ms = util::GetTimeStampMS();
+    if (*ttl_ms > std::numeric_limits<int64_t>::max() - static_cast<int64_t>(now_ms)) {
+      return {Status::RedisParseErr, errInvalidExpireTime};
+    }
+
+    expire_ = static_cast<uint64_t>(*ttl_ms) + now_ms;
 
     return Commander::Parse(args);
   }

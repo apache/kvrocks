@@ -471,7 +471,9 @@ Status Storage::RestoreFromBackup() {
   // TODO(@ruoshan): assert role to be slave
   // We must reopen the backup engine every time, as the files is changed
   rocksdb::BackupEngineOptions bk_option(config_->backup_sync_dir);
-  auto bes = util::BackupEngineOpen(db_->GetEnv(), bk_option);
+  // Use 'env_' instead of 'db_->GetEnv()': the DB may already be closed
+  // (e.g. 'slave-empty-db-before-fullsync yes' closed it before the fetch).
+  auto bes = util::BackupEngineOpen(env_, bk_option);
   if (!bes) return std::move(bes);
 
   backup_ = std::move(*bes);

@@ -68,7 +68,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Check typos
-        uses: crate-ci/typos@v1.52.0
+        uses: crate-ci/typos@v1.52.2
         with:
           config: .github/config/typos.toml
       - uses: apache/skywalking-eyes/header@v0.9.0
@@ -343,7 +343,7 @@ jobs:
         if: ${{ matrix.sonarcloud }}
 
       - name: Install Build Wrapper
-        uses: SonarSource/sonarqube-scan-action/install-build-wrapper@4d1dc0c91ee400dcf8a6dddf2f705ac36542e304 # v8.4.0
+        uses: SonarSource/sonarqube-scan-action/install-build-wrapper@59202af334b4ba7b5db01b701b8e79f8b3bef0f4 # v8.5.0
         if: ${{ matrix.sonarcloud }}
 
       - name: Build Kvrocks
@@ -528,6 +528,8 @@ jobs:
           - name: Rocky Linux 9
             image: rockylinux:9
             compiler: gcc
+            # Work around missing PATH in the Rocky Linux 9.9 image
+            container_options: --env PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
           - name: Debian 12
             image: debian:12
             compiler: gcc
@@ -539,6 +541,7 @@ jobs:
     runs-on: ubuntu-22.04
     container:
       image: ${{ matrix.image }}
+      options: ${{ matrix.container_options }}
       volumes:
         - /usr/local/lib/android:/usr-local-lib-android
         - /usr/share/dotnet:/usr-share-dotnet

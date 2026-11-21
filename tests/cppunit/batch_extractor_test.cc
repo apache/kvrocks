@@ -21,7 +21,11 @@
 
 #include <gtest/gtest.h>
 
+#include <tuple>
+
 #include "server/redis_reply.h"
+#include "test_base.h"
+#include "types/json.h"
 
 TEST(WriteBatchLogData, HashEncoding) {
   redis::WriteBatchLogData legacy(HashSubkeyEncodingMode::kLegacy);
@@ -99,3 +103,52 @@ TEST_P(HashBatchExtractorTest, InvalidHashEncoding) {
 }
 
 INSTANTIATE_TEST_SUITE_P(SlotEncoding, HashBatchExtractorTest, ::testing::Bool());
+
+class JsonBatchExtractorTest : public TestFixture, public ::testing::TestWithParam<std::tuple<bool, bool>> {};
+
+TEST_P(JsonBatchExtractorTest, ReplaysExpirationAndPersistence) {
+  const auto [slot_encoded, wide_metadata] = GetParam();
+  const auto ns_key = ComposeNamespaceKey("ns", "key{json}", slot_encoded);
+  const uint64_t expire = 4000000000123ULL;
+  auto value = JsonValue::FromString(R"({"nested":[1,true,null,"hello\u0000世界"]})");
+  ASSERT_TRUE(value.IsOK());
+  auto json = value->Dump();
+  ASSERT_TRUE(json.IsOK());
+  for (auto format : {JsonStorageFormat::JSON, JsonStorageFormat::CBOR}) {
+    SCOPED_TRACE(static_cast<int>(format));
+    auto payload = format == JsonStorageFormat::JSON ? value->Dump() : value->DumpCBOR();
+    ASSERT_TRUE(payload.IsOK());
+    JsonMetadata metadata;
+    metadata.flags = kRedisJson | (wide_metadata ? METADATA_64BIT_ENCODING_MASK : 0);
+    metadata.format = format;
+    rocksdb::WriteBatch batch;
+    std::vector<std::string> expected;
+    for (uint64_t timestamp : {uint64_t{0}, expire, uint64_t{0}}) {
+      metadata.expire = timestamp;
+      std::string bytes;
+      metadata.Encode(&bytes);
+      bytes += *payload;
+      // Expiration changes, including PERSIST, use the generic expiration log type.
+      auto log = expected.empty() ? redis::WriteBatchLogData(kRedisJson)
+                                  : redis::WriteBatchLogData(kRedisNone, {std::to_string(kRedisCmdExpire)});
+      ASSERT_TRUE(batch.PutLogData(log.Encode()).ok());
+      ASSERT_TRUE(batch.Put(storage_->GetCFHandle(ColumnFamilyID::Metadata), ns_key, bytes).ok());
+      expected.emplace_back(redis::ArrayOfBulkStrings({"JSON.SET", "key{json}", "$", *json}));
+      if (timestamp > 0) {
+        auto stored_expire = wide_metadata ? timestamp : Metadata::ExpireMsToS(timestamp) * 1000;
+        expected.emplace_back(redis::ArrayOfBulkStrings({"PEXPIREAT", "key{json}", std::to_string(stored_expire)}));
+      } else {
+        expected.emplace_back(redis::ArrayOfBulkStrings({"PERSIST", "key{json}"}));
+      }
+    }
+    for (bool to_redis : {false, true}) {
+      SCOPED_TRACE(to_redis);
+      WriteBatchExtractor extractor(slot_encoded, -1, to_redis);
+      ASSERT_TRUE(batch.Iterate(&extractor).ok());
+      ASSERT_EQ(extractor.GetRESPCommands()->size(), 1);
+      EXPECT_EQ(extractor.GetRESPCommands()->at("ns"), expected);
+    }
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(Encodings, JsonBatchExtractorTest, ::testing::Combine(::testing::Bool(), ::testing::Bool()));

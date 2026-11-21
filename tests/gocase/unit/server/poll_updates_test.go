@@ -351,7 +351,9 @@ func TestPollUpdates_WithRESPFormat(t *testing.T) {
 			Namespace: "default",
 			Commands: [][]string{
 				{"JSON.SET", "json", "$", `{"field":"value"}`},
+				{"PERSIST", "json"},
 				{"JSON.SET", "json", "$", `{}`},
+				{"PERSIST", "json"},
 			}},
 		}, pollUpdates.Updates)
 	})

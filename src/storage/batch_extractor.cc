@@ -79,6 +79,10 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
       if (metadata.expire > 0) {
         command_args = {"PEXPIREAT", user_key, std::to_string(metadata.expire)};
         resp_commands_[ns].emplace_back(redis::ArrayOfBulkStrings(command_args));
+      } else {
+        // JSON.SET preserves an existing TTL, so replay the persistent state explicitly.
+        command_args = {"PERSIST", user_key};
+        resp_commands_[ns].emplace_back(redis::ArrayOfBulkStrings(command_args));
       }
     } else if (metadata.expire > 0) {
       auto args = log_data_.GetArguments();

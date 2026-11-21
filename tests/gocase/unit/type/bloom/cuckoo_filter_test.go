@@ -584,6 +584,62 @@ func TestCuckooFilter(t *testing.T) {
 		require.Error(t, rdb.Do(ctx, "cf.count", "key_only").Err())
 		require.Error(t, rdb.Do(ctx, "cf.count", "key", "item1", "item2").Err())
 	})
+
+	t.Run("CF.ADDNX creates filter", func(t *testing.T) {
+		key := "test_cuckoo_filter_addnx_create"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.Equal(t, true, rdb.Do(ctx, "cf.addnx", key, "item").Val())
+		require.Equal(t, "MBbloomCF", rdb.Type(ctx, key).Val())
+		require.Equal(t, true, rdb.Do(ctx, "cf.exists", key, "item").Val())
+	})
+
+	t.Run("CF.ADDNX duplicate returns 0", func(t *testing.T) {
+		key := "test_cuckoo_filter_addnx_dup"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.Equal(t, true, rdb.Do(ctx, "cf.addnx", key, "item").Val())
+		require.Equal(t, false, rdb.Do(ctx, "cf.addnx", key, "item").Val())
+		require.Equal(t, int64(1), rdb.Do(ctx, "cf.count", key, "item").Val())
+	})
+
+	t.Run("CF.ADDNX after CF.ADD returns 0", func(t *testing.T) {
+		key := "test_cuckoo_filter_addnx_after_add"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.Equal(t, int64(1), rdb.Do(ctx, "cf.add", key, "item").Val())
+		require.Equal(t, false, rdb.Do(ctx, "cf.addnx", key, "item").Val())
+	})
+
+	t.Run("CF.ADDNX wrong number of arguments", func(t *testing.T) {
+		require.Error(t, rdb.Do(ctx, "cf.addnx", "key_only").Err())
+		require.Error(t, rdb.Do(ctx, "cf.addnx", "key", "item1", "item2").Err())
+	})
+
+	t.Run("CF.ADDNX wrong type returns WRONGTYPE", func(t *testing.T) {
+		key := "test_cuckoo_filter_addnx_wrong_type"
+		require.NoError(t, rdb.Set(ctx, key, "value", 0).Err())
+		requireWrongType(t, rdb.Do(ctx, "cf.addnx", key, "item").Err())
+	})
+
+	t.Run("CF.ADDNX full non-scaling filter returns error", func(t *testing.T) {
+		key := "test_cuckoo_filter_addnx_full"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.NoError(t, rdb.Do(ctx, "cf.reserve", key, "2", "BUCKETSIZE", "1", "EXPANSION", "0").Err())
+		var err error
+		for i := 0; i < 100 && err == nil; i++ {
+			err = rdb.Do(ctx, "cf.addnx", key, fmt.Sprintf("item_%d", i)).Err()
+		}
+		require.ErrorContains(t, err, "filter is full")
+	})
+
+	t.Run("CF.ADDNX preserves TTL on duplicate", func(t *testing.T) {
+		key := "test_cuckoo_filter_addnx_ttl"
+		require.NoError(t, rdb.Del(ctx, key).Err())
+		require.Equal(t, true, rdb.Do(ctx, "cf.addnx", key, "item").Val())
+		require.NoError(t, rdb.Expire(ctx, key, 1000*time.Second).Err())
+		require.Equal(t, false, rdb.Do(ctx, "cf.addnx", key, "item").Val())
+		ttl := rdb.TTL(ctx, key).Val()
+		require.Greater(t, ttl, 900*time.Second)
+		require.LessOrEqual(t, ttl, 1000*time.Second)
+	})
 }
 
 func TestCuckooFilterInsert(t *testing.T) {
@@ -788,6 +844,11 @@ func TestCuckooFilterRESP3(t *testing.T) {
 	require.NoError(t, c.WriteArgs("cf.mexists", key, "alpha", "beta"))
 	c.MustRead(t, "*2")
 	c.MustRead(t, "#t")
+	c.MustRead(t, "#f")
+
+	require.NoError(t, c.WriteArgs("cf.addnx", key, "gamma"))
+	c.MustRead(t, "#t")
+	require.NoError(t, c.WriteArgs("cf.addnx", key, "gamma"))
 	c.MustRead(t, "#f")
 }
 

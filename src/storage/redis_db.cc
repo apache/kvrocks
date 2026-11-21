@@ -244,6 +244,14 @@ rocksdb::Status Database::TTL(engine::Context &ctx, const Slice &user_key, int64
   Metadata metadata(kRedisNone, false);
   s = metadata.Decode(value);
   if (!s.ok()) return s;
+  // Report -2 when the metadata is expired, so that TTL stays consistent with
+  // EXISTS and TYPE which also rely on Metadata::Expired(). This also covers
+  // containers whose metadata is kept but treated as expired once empty (e.g. a
+  // hash whose last field was deleted, leaving size == 0 but expire == 0).
+  if (metadata.Expired()) {
+    *ttl = -2;
+    return rocksdb::Status::OK();
+  }
   *ttl = metadata.TTL();
 
   return rocksdb::Status::OK();

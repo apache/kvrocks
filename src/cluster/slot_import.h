@@ -42,10 +42,10 @@ class SlotImport : public redis::Database {
   explicit SlotImport(Server *srv);
   ~SlotImport() = default;
 
-  Status Start(const SlotRange &slot_range);
-  Status Success(const SlotRange &slot_range);
-  Status Fail(const SlotRange &slot_range);
-  Status StopForLinkError();
+  Status Start(const SlotRange &slot_range, uint64_t conn_id);
+  Status Success(const SlotRange &slot_range, uint64_t conn_id);
+  Status Fail(const SlotRange &slot_range, uint64_t conn_id);
+  Status StopForLinkError(uint64_t conn_id);
   SlotRange GetSlotRange();
   int GetStatus();
   void GetImportInfo(std::string *info);
@@ -55,4 +55,6 @@ class SlotImport : public redis::Database {
   std::mutex mutex_;
   SlotRange import_slot_range_;
   int import_status_;
+  // Connection that started the current import. A later start of the same range does not replace it.
+  uint64_t import_conn_id_ = 0;
 };

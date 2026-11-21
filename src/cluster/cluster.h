@@ -90,6 +90,7 @@ class Cluster {
   Status MigrateSlotRange(const SlotRange &slot_range, const std::string &dst_node_id,
                           SyncMigrateContext *blocking_ctx = nullptr);
   Status ImportSlotRange(redis::Connection *conn, const SlotRange &slot_range, int state);
+  Status ClearImportSlotRange(const SlotRange &slot_range);
   std::string GetMyId() const { return myid_; }
   Status DumpClusterNodes(const std::string &file);
   Status LoadClusterNodes(const std::string &file_path);
@@ -116,5 +117,6 @@ class Cluster {
   std::shared_ptr<ClusterNode> slots_nodes_[kClusterSlots];
 
   std::map<int, std::string> migrated_slots_;
+  // Slots this node has imported successfully and may serve before the topology catches up.
   std::set<int> imported_slots_;
 };

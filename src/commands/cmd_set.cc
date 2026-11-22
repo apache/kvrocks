@@ -18,6 +18,7 @@
  *
  */
 
+#include <algorithm>
 #include <cstdint>
 
 #include "commander.h"
@@ -390,8 +391,16 @@ class CommandSUnionCard : public Commander {
   }
 
   static CommandKeyRange Range(const std::vector<std::string> &args) {
-    auto numkeys = *ParseInt<int64_t>(args[1], 10);
-    return {2, static_cast<int>(1 + numkeys), 1};
+    auto numkeys = ParseInt<int64_t>(args[1], 10);
+    // An invalid numkeys is rejected in Parse, so fall back to treating the
+    // remaining arguments as keys instead of dereferencing an empty optional.
+    if (!numkeys || *numkeys <= 0) {
+      return {2, -1, 1};
+    }
+    // Clamp to the number of keys actually present before adding, so that a
+    // huge numkeys cannot overflow.
+    auto last_key = 1 + std::min<int64_t>(*numkeys, static_cast<int64_t>(args.size()) - 2);
+    return {2, static_cast<int>(last_key), 1};
   }
 
  private:

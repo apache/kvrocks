@@ -47,6 +47,8 @@ class Set : public SubKeyScanner {
   rocksdb::Status Diff(engine::Context &ctx, const std::vector<Slice> &keys, std::vector<std::string> *members);
   rocksdb::Status DiffCard(engine::Context &ctx, const std::vector<Slice> &keys, uint64_t limit, uint64_t *cardinality);
   rocksdb::Status Union(engine::Context &ctx, const std::vector<Slice> &keys, std::vector<std::string> *members);
+  rocksdb::Status UnionCard(engine::Context &ctx, const std::vector<Slice> &keys, bool approx, uint64_t limit,
+                            uint64_t *cardinality);
   rocksdb::Status Inter(engine::Context &ctx, const std::vector<Slice> &keys, std::vector<std::string> *members);
   rocksdb::Status InterCard(engine::Context &ctx, const std::vector<Slice> &keys, uint64_t limit,
                             uint64_t *cardinality);

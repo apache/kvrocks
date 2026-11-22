@@ -177,7 +177,7 @@ TEST_P(RedisBitmapTest, BitPosClearBit) {
     /// (integer) 0
     /// ```
     ///
-    /// String will set a empty string value when initializing, so, when first
+    /// String will set an empty string value when initializing, so, when first
     /// querying, it should return -1.
     bitmap_->BitPos(*ctx_, key_, false, 0, -1, /*stop_given=*/false, &pos, /*bit_index=*/false);
     if (i == 0 && !use_bitmap) {

@@ -244,6 +244,21 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, enabledRES
 		require.ErrorContains(t, rdb.Do(ctx, "zunionstore", "out", "3.3", "myzet").Err(), "value is not an integer or out of range")
 	})
 
+	t.Run("ZUNIONSTORE/ZINTERSTORE/ZDIFFSTORE - numkeys must be positive", func(t *testing.T) {
+		rdb.Del(ctx, "out")
+		rdb.Del(ctx, "myzet")
+		rdb.ZAdd(ctx, "myzet", redis.Z{Score: 1, Member: "a"})
+
+		for _, cmd := range []string{"zunionstore", "zinterstore", "zdiffstore"} {
+			for _, numkeys := range []string{"0", "-1"} {
+				require.ErrorContains(t, rdb.Do(ctx, cmd, "out", numkeys, "myzet").Err(), "value is out of range, must be positive")
+			}
+		}
+
+		require.EqualValues(t, int64(1), rdb.ZCard(ctx, "myzet").Val())
+		require.EqualValues(t, int64(0), rdb.ZCard(ctx, "out").Val())
+	})
+
 	t.Run("ZUNIONSTORE - invalid weights will raise error", func(t *testing.T) {
 		rdb.Del(ctx, "out")
 		rdb.Del(ctx, "myzet")
@@ -1631,6 +1646,16 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, enabledRES
 		cmd := rdb.ZDiffWithScores(ctx, "zseta", "zsetb")
 		require.NoError(t, cmd.Err())
 		require.EqualValues(t, []redis.Z([]redis.Z{}), cmd.Val())
+	})
+
+	t.Run("ZDIFFSTORE rejects trailing arguments", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "zdiff-src", "zdiff-dst").Err())
+		require.NoError(t, rdb.ZAdd(ctx, "zdiff-src", redis.Z{Score: 1, Member: "a"}).Err())
+		require.NoError(t, rdb.ZAdd(ctx, "zdiff-dst", redis.Z{Score: 9, Member: "keep"}).Err())
+
+		err := rdb.Do(ctx, "ZDIFFSTORE", "zdiff-dst", "1", "zdiff-src", "GARBAGE").Err()
+		require.ErrorContains(t, err, "syntax error")
+		require.Equal(t, []redis.Z{{Score: 9, Member: "keep"}}, rdb.ZRangeWithScores(ctx, "zdiff-dst", 0, -1).Val())
 	})
 
 	t.Run("ZDIFFSTORE with three sets - ", func(t *testing.T) {

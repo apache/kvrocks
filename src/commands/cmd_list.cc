@@ -883,12 +883,10 @@ class CommandLPos : public Commander {
     }
     // Otherwise we return an array.
     else {
-      std::vector<std::string> values;
-      values.reserve(indexes.size());
+      *output = redis::MultiLen(indexes.size());
       for (const auto &index : indexes) {
-        values.emplace_back(std::to_string(index));
+        output->append(redis::Integer(index));
       }
-      *output = ArrayOfBulkStrings(values);
     }
     return Status::OK();
   }

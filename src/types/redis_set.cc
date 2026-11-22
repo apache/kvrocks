@@ -272,7 +272,6 @@ rocksdb::Status Set::Move(engine::Context &ctx, const Slice &src, const Slice &d
     return s;
   }
   s = Add(ctx, dst, members, &ret);
-  *flag = (ret != 0);
   return s;
 }
 

@@ -34,6 +34,16 @@
 
 namespace redis {
 
+static void AppendMemberScores(const Connection *conn, const std::vector<MemberScore> &member_scores, bool with_scores,
+                               bool use_nested_array, std::string *output) {
+  output->append(redis::MultiLen(member_scores.size() * (with_scores && !use_nested_array ? 2 : 1)));
+  for (const auto &ms : member_scores) {
+    if (with_scores && use_nested_array) output->append(redis::MultiLen(2));
+    output->append(redis::BulkString(ms.member));
+    if (with_scores) output->append(conn->Double(ms.score));
+  }
+}
+
 class CommandZAdd : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
@@ -259,12 +269,7 @@ class CommandZPop : public Commander {
 
     auto use_nested_array = conn->GetProtocolVersion() == RESP::v3 && args_.size() == 3;
 
-    output->append(redis::MultiLen(member_scores.size() * (use_nested_array ? 1 : 2)));
-    for (const auto &ms : member_scores) {
-      if (use_nested_array) output->append(redis::MultiLen(2));
-      output->append(redis::BulkString(ms.member));
-      output->append(conn->Double(ms.score));
-    }
+    AppendMemberScores(conn, member_scores, true, use_nested_array, output);
 
     return Status::OK();
   }
@@ -421,11 +426,7 @@ static void SendMembersWithScoresForZMpop(Connection *conn, const std::string &u
   std::string output;
   output.append(redis::MultiLen(2));
   output.append(redis::BulkString(user_key));
-  output.append(redis::MultiLen(member_scores.size() * 2));
-  for (const auto &ms : member_scores) {
-    output.append(redis::BulkString(ms.member));
-    output.append(conn->Double(ms.score));
-  }
+  AppendMemberScores(conn, member_scores, true, true, &output);
   conn->Reply(output);
 }
 
@@ -849,14 +850,7 @@ class CommandZRangeGeneric : public Commander {
     }
 
     auto is_resp3 = conn->GetProtocolVersion() == RESP::v3;
-    // RESP3 with scores should return an array of arrays,
-    // so we don't need to multiply the size by 2 here.
-    output->append(redis::MultiLen(member_scores.size() * (with_scores_ && !is_resp3 ? 2 : 1)));
-    for (const auto &ms : member_scores) {
-      if (with_scores_ && is_resp3) output->append(MultiLen(2));
-      output->append(redis::BulkString(ms.member));
-      if (with_scores_) output->append(conn->Double(ms.score));
-    }
+    AppendMemberScores(conn, member_scores, with_scores_, is_resp3, output);
     return Status::OK();
   }
 
@@ -1178,11 +1172,8 @@ class CommandZUnion : public Commander {
       return score1.score < score2.score;
     };
     std::sort(member_scores.begin(), member_scores.end(), compare_score);
-    output->append(redis::MultiLen(member_scores.size() * (with_scores_ ? 2 : 1)));
-    for (const auto &ms : member_scores) {
-      output->append(redis::BulkString(ms.member));
-      if (with_scores_) output->append(conn->Double(ms.score));
-    }
+    auto is_resp3 = conn->GetProtocolVersion() == RESP::v3;
+    AppendMemberScores(conn, member_scores, with_scores_, is_resp3, output);
     return Status::OK();
   }
 
@@ -1317,11 +1308,8 @@ class CommandZInter : public CommandZUnion {
       return ms1.score < ms2.score;
     };
     std::sort(member_scores.begin(), member_scores.end(), ms_comparator);
-    output->append(redis::MultiLen(member_scores.size() * (with_scores_ ? 2 : 1)));
-    for (const auto &member_score : member_scores) {
-      output->append(redis::BulkString(member_score.member));
-      if (with_scores_) output->append(conn->Double(member_score.score));
-    }
+    auto is_resp3 = conn->GetProtocolVersion() == RESP::v3;
+    AppendMemberScores(conn, member_scores, with_scores_, is_resp3, output);
     return Status::OK();
   }
 
@@ -1447,18 +1435,12 @@ class CommandZRandMember : public Commander {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    std::vector<std::string> result_entries;
-    result_entries.reserve(member_scores.size());
-
-    for (const auto &[member, score] : member_scores) {
-      result_entries.emplace_back(BulkString(member));
-      if (with_scores_) result_entries.emplace_back(conn->Double(score));
+    if (no_parameters_) {
+      *output = member_scores.empty() ? conn->NilString() : redis::BulkString(member_scores.front().member);
+    } else {
+      auto is_resp3 = conn->GetProtocolVersion() == RESP::v3;
+      AppendMemberScores(conn, member_scores, with_scores_, is_resp3, output);
     }
-
-    if (no_parameters_)
-      *output = s.IsNotFound() ? conn->NilString() : result_entries[0];
-    else
-      *output = Array(result_entries);
     return Status::OK();
   }
 
@@ -1504,11 +1486,8 @@ class CommandZDiff : public Commander {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    output->append(redis::MultiLen(members_with_scores.size() * (with_scores_ ? 2 : 1)));
-    for (const auto &ms : members_with_scores) {
-      output->append(redis::BulkString(ms.member));
-      if (with_scores_) output->append(conn->Double(ms.score));
-    }
+    auto is_resp3 = conn->GetProtocolVersion() == RESP::v3;
+    AppendMemberScores(conn, members_with_scores, with_scores_, is_resp3, output);
 
     return Status::OK();
   }

@@ -528,6 +528,107 @@ var streamTests = func(t *testing.T, configs util.KvrocksServerConfigs) {
 		require.EqualValues(t, 1, rdb.XDel(ctx, "somestream", "2-0", "2-0", "2-0").Val())
 		require.EqualValues(t, 0, rdb.XLen(ctx, "somestream").Val())
 	})
+	t.Run("XDEL keeps first and last entry metadata on surviving entries", func(t *testing.T) {
+		tests := []struct {
+			name            string
+			ids             []string
+			survivor        string
+			maxDeletedEntry string
+		}{
+			{name: "first entry", ids: []string{"2-0", "1-0"}, survivor: "3-0", maxDeletedEntry: "2-0"},
+			{name: "last entry", ids: []string{"2-0", "3-0"}, survivor: "1-0", maxDeletedEntry: "3-0"},
+		}
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				require.NoError(t, rdb.Del(ctx, "somestream").Err())
+				for _, id := range []string{"1-0", "2-0", "3-0"} {
+					require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "somestream", ID: id, Values: []string{"foo", "bar"}}).Err())
+				}
+				require.EqualValues(t, 2, rdb.XDel(ctx, "somestream", test.ids...).Val())
+
+				info, err := rdb.XInfoStream(ctx, "somestream").Result()
+				require.NoError(t, err)
+				require.EqualValues(t, 1, info.Length)
+				require.Equal(t, test.survivor, info.FirstEntry.ID)
+				require.Equal(t, test.survivor, info.LastEntry.ID)
+				require.Equal(t, test.survivor, info.RecordedFirstEntryID)
+				require.Equal(t, test.maxDeletedEntry, info.MaxDeletedEntryID)
+
+				require.EqualValues(t, 0, rdb.XTrimMinID(ctx, "somestream", test.survivor).Val())
+				entries := rdb.XRange(ctx, "somestream", "-", "+").Val()
+				require.Len(t, entries, 1)
+				require.Equal(t, test.survivor, entries[0].ID)
+			})
+		}
+	})
+
+	t.Run("XDEL advances first and last entry metadata independently", func(t *testing.T) {
+		tests := []struct {
+			name            string
+			entryIDs        []string
+			deleteIDs       []string
+			survivors       []string
+			maxDeletedEntry string
+		}{
+			{
+				name:            "prefix deletion",
+				entryIDs:        []string{"1-0", "2-0", "3-0", "4-0"},
+				deleteIDs:       []string{"2-0", "1-0"},
+				survivors:       []string{"3-0", "4-0"},
+				maxDeletedEntry: "2-0",
+			},
+			{
+				name:            "suffix deletion",
+				entryIDs:        []string{"1-0", "2-0", "3-0", "4-0"},
+				deleteIDs:       []string{"3-0", "4-0"},
+				survivors:       []string{"1-0", "2-0"},
+				maxDeletedEntry: "4-0",
+			},
+			{
+				name:            "prefix and suffix deletion with surviving middle",
+				entryIDs:        []string{"1-0", "2-0", "3-0", "4-0", "5-0", "6-0"},
+				deleteIDs:       []string{"2-0", "1-0", "5-0", "6-0"},
+				survivors:       []string{"3-0", "4-0"},
+				maxDeletedEntry: "6-0",
+			},
+			{
+				name:            "full deletion",
+				entryIDs:        []string{"1-0", "2-0", "3-0", "4-0"},
+				deleteIDs:       []string{"1-0", "2-0", "3-0", "4-0"},
+				maxDeletedEntry: "4-0",
+			},
+		}
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				require.NoError(t, rdb.Del(ctx, "somestream").Err())
+				for _, id := range test.entryIDs {
+					require.NoError(t, rdb.XAdd(ctx, &redis.XAddArgs{Stream: "somestream", ID: id, Values: []string{"foo", "bar"}}).Err())
+				}
+				require.EqualValues(t, len(test.deleteIDs), rdb.XDel(ctx, "somestream", test.deleteIDs...).Val())
+
+				info, err := rdb.XInfoStream(ctx, "somestream").Result()
+				require.NoError(t, err)
+				require.EqualValues(t, len(test.survivors), info.Length)
+				require.Equal(t, test.maxDeletedEntry, info.MaxDeletedEntryID)
+				if len(test.survivors) == 0 {
+					require.Empty(t, info.FirstEntry.ID)
+					require.Empty(t, info.LastEntry.ID)
+					require.Equal(t, "0-0", info.RecordedFirstEntryID)
+				} else {
+					require.Equal(t, test.survivors[0], info.FirstEntry.ID)
+					require.Equal(t, test.survivors[len(test.survivors)-1], info.LastEntry.ID)
+					require.Equal(t, test.survivors[0], info.RecordedFirstEntryID)
+					require.EqualValues(t, 0, rdb.XTrimMinID(ctx, "somestream", test.survivors[0]).Val())
+				}
+
+				entries := rdb.XRange(ctx, "somestream", "-", "+").Val()
+				require.Len(t, entries, len(test.survivors))
+				for i, id := range test.survivors {
+					require.Equal(t, id, entries[i].ID)
+				}
+			})
+		}
+	})
 
 	// Here the idea is to check the consistency of the stream data structure as we remove all the elements down to zero elements.
 	t.Run("XDEL fuzz test", func(t *testing.T) {

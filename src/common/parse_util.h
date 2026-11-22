@@ -56,7 +56,7 @@ StatusOr<ParseResultAndPos<T>> TryParseInt(std::string_view v, int base = 10) {
   return ParseResultAndPos<T>{res, end};
 }
 
-// ParseInt parses a string to a integer,
+// ParseInt parses a string to an integer,
 // not like TryParseInt, the whole string need to be parsed as an integer,
 // e.g. ParseInt("100MB") -> error status
 template <typename T = long long>  // NOLINT

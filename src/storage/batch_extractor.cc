@@ -76,13 +76,26 @@ rocksdb::Status WriteBatchExtractor::PutCF(uint32_t column_family_id, const Slic
       if (!json_bytes) return rocksdb::Status::Corruption(json_bytes.Msg());
       command_args = {"JSON.SET", user_key, "$", json_bytes.GetValue()};
       resp_commands_[ns].emplace_back(redis::ArrayOfBulkStrings(command_args));
-      if (metadata.expire > 0) {
-        command_args = {"PEXPIREAT", user_key, std::to_string(metadata.expire)};
-        resp_commands_[ns].emplace_back(redis::ArrayOfBulkStrings(command_args));
-      } else {
-        // JSON.SET preserves an existing TTL, so replay the persistent state explicitly.
-        command_args = {"PERSIST", user_key};
-        resp_commands_[ns].emplace_back(redis::ArrayOfBulkStrings(command_args));
+      // RedisJSON keeps an existing TTL across root updates, so a regular JSON write
+      // already matches the destination state. Only EXPIRE/PERSIST batches (written by
+      // Database::Expire) change the expiration, so replay it just for them.
+      auto args = log_data_.GetArguments();
+      if (args->size() > 0) {
+        auto parse_result = ParseInt<int>((*args)[0], 10);
+        if (!parse_result) {
+          return rocksdb::Status::InvalidArgument(
+              fmt::format("failed to parse Redis command from log data: {}", parse_result.Msg()));
+        }
+
+        auto cmd = static_cast<RedisCommand>(*parse_result);
+        if (cmd == kRedisCmdExpire) {
+          if (metadata.expire > 0) {
+            command_args = {"PEXPIREAT", user_key, std::to_string(metadata.expire)};
+          } else {
+            command_args = {"PERSIST", user_key};
+          }
+          resp_commands_[ns].emplace_back(redis::ArrayOfBulkStrings(command_args));
+        }
       }
     } else if (metadata.expire > 0) {
       auto args = log_data_.GetArguments();

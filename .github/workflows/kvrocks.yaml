@@ -526,8 +526,10 @@ jobs:
             image: rockylinux:8
             compiler: gcc
           - name: Rocky Linux 9
-            image: rockylinux:9.3
+            image: rockylinux:9
             compiler: gcc
+            # Work around missing PATH in the Rocky Linux 9.9 image
+            container_options: --env PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
           - name: Debian 12
             image: debian:12
             compiler: gcc
@@ -539,6 +541,7 @@ jobs:
     runs-on: ubuntu-22.04
     container:
       image: ${{ matrix.image }}
+      options: ${{ matrix.container_options }}
       volumes:
         - /usr/local/lib/android:/usr-local-lib-android
         - /usr/share/dotnet:/usr-share-dotnet

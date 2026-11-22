@@ -1812,3 +1812,189 @@ TEST_F(RedisCuckooFilterTest, InsertStorageErrorDoesNotCommitPrefix) {
   ASSERT_TRUE(cuckoo_->Exists(*ctx_, key_, first, &exists).ok());
   EXPECT_FALSE(exists);
 }
+
+TEST_F(RedisCuckooFilterTest, AddNxBasic) {
+  reserveAndVerify(key_, 1000, 4, 500, 2);
+  bool added = false;
+  ASSERT_TRUE(cuckoo_->AddNx(*ctx_, key_, "item1", &added).ok());
+  EXPECT_TRUE(added);
+  bool exists = false;
+  ASSERT_TRUE(cuckoo_->Exists(*ctx_, key_, "item1", &exists).ok());
+  EXPECT_TRUE(exists);
+}
+
+// AddNx matches on fingerprints, so a different item sharing a fingerprint in one of the two candidate buckets is also
+// reported as present (a false positive, as in RedisBloom). The same item is the deterministic case tested here.
+TEST_F(RedisCuckooFilterTest, AddNxDuplicateNotAdded) {
+  reserveAndVerify(key_, 1000, 4, 500, 2);
+  bool added = false;
+  ASSERT_TRUE(cuckoo_->AddNx(*ctx_, key_, "item1", &added).ok());
+  ASSERT_TRUE(added);
+  ASSERT_TRUE(cuckoo_->AddNx(*ctx_, key_, "item1", &added).ok());
+  EXPECT_FALSE(added);
+
+  redis::CuckooFilterInfo info;
+  ASSERT_TRUE(cuckoo_->Info(*ctx_, key_, &info).ok());
+  EXPECT_EQ(info.item_count, 1);
+  uint64_t count = 0;
+  ASSERT_TRUE(cuckoo_->Count(*ctx_, key_, "item1", &count).ok());
+  EXPECT_EQ(count, 1);
+}
+
+TEST_F(RedisCuckooFilterTest, AddNxAfterAddNotAdded) {
+  reserveAndVerify(key_, 1000, 4, 500, 2);
+  addAndVerify(key_, "item1", 1000, 4, 500, 2, 1);
+  bool added = true;
+  ASSERT_TRUE(cuckoo_->AddNx(*ctx_, key_, "item1", &added).ok());
+  EXPECT_FALSE(added);
+}
+
+TEST_F(RedisCuckooFilterTest, AddNxToNonExistentFilter) {
+  bool added = false;
+  ASSERT_TRUE(cuckoo_->AddNx(*ctx_, key_, "item1", &added).ok());
+  EXPECT_TRUE(added);
+  verifyMetadata(key_, redis::kCFDefaultCapacity, redis::kCFDefaultBucketSize, redis::kCFDefaultMaxIterations,
+                 redis::kCFDefaultExpansion, 1, 1);
+
+  redis::CuckooFilterInfo info;
+  ASSERT_TRUE(cuckoo_->Info(*ctx_, key_, &info).ok());
+  EXPECT_EQ(info.bucket_size, 2);
+  EXPECT_EQ(info.max_iterations, 20);
+  EXPECT_EQ(info.expansion, 1);
+  EXPECT_EQ(info.n_filters, 1);
+}
+
+TEST_F(RedisCuckooFilterTest, AddNxNoWriteWhenPresent) {
+  reserveAndVerify(key_, 1000, 4, 500, 2);
+  bool added = false;
+  ASSERT_TRUE(cuckoo_->AddNx(*ctx_, key_, "item1", &added).ok());
+  ASSERT_TRUE(added);
+
+  const auto sequence = storage_->GetDB()->GetLatestSequenceNumber();
+  ASSERT_TRUE(cuckoo_->AddNx(*ctx_, key_, "item1", &added).ok());
+  EXPECT_FALSE(added);
+  EXPECT_EQ(storage_->GetDB()->GetLatestSequenceNumber(), sequence);
+  verifyMetadata(key_, 1000, 4, 500, 2, 1, 1);
+}
+
+TEST_F(RedisCuckooFilterTest, AddNxSeesOlderSubFilters) {
+  CuckooChainMetadata metadata;
+  metadata.size = 1;
+  metadata.base_capacity = 2;
+  metadata.bucket_size = 1;
+  metadata.max_iterations = 1;
+  metadata.expansion = 2;
+  metadata.n_filters = 2;
+  metadata.num_deleted_items = 0;
+  metadata.page_size = 1;
+  writeMetadata(key_, metadata);
+
+  const std::string item = "item";
+  auto hash = redis::CuckooFilterHelper::Hash(item);
+  auto fingerprint = redis::CuckooFilterHelper::GenerateFingerprint(hash);
+  uint32_t num_buckets = 0;
+  auto s = redis::CuckooFilterHelper::GetFilterNumBuckets(metadata.base_capacity, metadata.expansion,
+                                                          metadata.bucket_size, 0, &num_buckets);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  placeFingerprint(key_, metadata, 0, num_buckets, static_cast<uint32_t>(hash % num_buckets), 0, fingerprint);
+
+  bool added = true;
+  s = cuckoo_->AddNx(*ctx_, key_, item, &added);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  EXPECT_FALSE(added);
+  EXPECT_EQ(getMetadata(key_).size, 1);
+}
+
+TEST_F(RedisCuckooFilterTest, AddNxDuplicateInNewestOfMultiFilterChain) {
+  CuckooChainMetadata metadata;
+  metadata.size = 1;
+  metadata.base_capacity = 2;
+  metadata.bucket_size = 1;
+  metadata.max_iterations = 1;
+  metadata.expansion = 2;
+  metadata.n_filters = 3;
+  metadata.num_deleted_items = 0;
+  metadata.page_size = 1;
+  writeMetadata(key_, metadata);
+
+  const std::string item = "item";
+  auto hash = redis::CuckooFilterHelper::Hash(item);
+  auto fingerprint = redis::CuckooFilterHelper::GenerateFingerprint(hash);
+  uint32_t num_buckets = 0;
+  auto s = redis::CuckooFilterHelper::GetFilterNumBuckets(metadata.base_capacity, metadata.expansion,
+                                                          metadata.bucket_size, 2, &num_buckets);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  placeFingerprint(key_, metadata, 2, num_buckets, static_cast<uint32_t>(hash % num_buckets), 0, fingerprint);
+
+  bool added = true;
+  s = cuckoo_->AddNx(*ctx_, key_, item, &added);
+  ASSERT_TRUE(s.ok()) << s.ToString();
+  EXPECT_FALSE(added);
+  EXPECT_EQ(getMetadata(key_).size, 1);
+}
+
+TEST_F(RedisCuckooFilterTest, AddNxDetectsDuplicatesAfterExpansion) {
+  reserveAndVerify(key_, 4, 2, 20, 2);
+  std::vector<std::string> added_items;
+  for (int i = 0; i < 200 && getMetadata(key_).n_filters < 3; ++i) {
+    std::string item = "item_" + std::to_string(i);
+    bool added = false;
+    auto s = cuckoo_->AddNx(*ctx_, key_, item, &added);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    if (added) added_items.push_back(item);
+  }
+  auto metadata = getMetadata(key_);
+  ASSERT_GE(metadata.n_filters, 3);
+  ASSERT_EQ(metadata.size, added_items.size());
+
+  const auto sequence = storage_->GetDB()->GetLatestSequenceNumber();
+  for (const auto &item : added_items) {
+    bool added = true;
+    auto s = cuckoo_->AddNx(*ctx_, key_, item, &added);
+    ASSERT_TRUE(s.ok()) << s.ToString();
+    EXPECT_FALSE(added) << item;
+  }
+  EXPECT_EQ(storage_->GetDB()->GetLatestSequenceNumber(), sequence);
+  EXPECT_EQ(getMetadata(key_).size, added_items.size());
+}
+
+TEST_F(RedisCuckooFilterTest, AddNxFullNonScaling) {
+  reserveAndVerify(key_, 2, 1, 1, 0);
+  rocksdb::Status s;
+  bool full = false;
+  for (int i = 0; i < 100 && !full; ++i) {
+    bool added = false;
+    s = cuckoo_->AddNx(*ctx_, key_, "item_" + std::to_string(i), &added);
+    if (s.IsAborted()) {
+      full = true;
+    } else {
+      ASSERT_TRUE(s.ok()) << s.ToString();
+    }
+  }
+  EXPECT_TRUE(full);
+}
+
+TEST_F(RedisCuckooFilterTest, AddNxAfterDeleteReAdds) {
+  reserveAndVerify(key_, 1000, 4, 500, 2);
+  addAndVerify(key_, "item1", 1000, 4, 500, 2, 1);
+  bool deleted = false;
+  ASSERT_TRUE(cuckoo_->Delete(*ctx_, key_, "item1", &deleted).ok());
+  ASSERT_TRUE(deleted);
+  bool added = false;
+  ASSERT_TRUE(cuckoo_->AddNx(*ctx_, key_, "item1", &added).ok());
+  EXPECT_TRUE(added);
+}
+
+TEST_F(RedisCuckooFilterTest, AddNxRejectsInvalidMetadata) {
+  reserveAndVerify(key_, 1000, 4, 500, 2);
+  addAndVerify(key_, "known", 1000, 4, 500, 2, 1);
+  auto metadata = getMetadata(key_);
+  metadata.expansion = 0;
+  metadata.n_filters = 2;
+  writeMetadata(key_, metadata);
+
+  bool added = true;
+  auto s = cuckoo_->AddNx(*ctx_, key_, "item", &added);
+  EXPECT_TRUE(s.IsCorruption()) << s.ToString();
+  EXPECT_FALSE(added);
+}

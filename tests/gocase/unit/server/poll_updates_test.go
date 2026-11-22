@@ -342,6 +342,8 @@ func TestPollUpdates_WithRESPFormat(t *testing.T) {
 	t.Run("JSON type", func(t *testing.T) {
 		require.NoError(t, rdb0.JSONSet(ctx, "json", "$", `{"field": "value"}`).Err())
 		require.NoError(t, rdb0.JSONDel(ctx, "json", "$.field").Err())
+		// Regular JSON writes keep the destination TTL like RedisJSON,
+		// so they replay as a single JSON.SET without expiration commands.
 		result, err := rdb0.Do(ctx, "POLLUPDATES", pollUpdates.NextSeq, "MAX", 10, "FORMAT", "RESP").Result()
 		require.NoError(t, err)
 
@@ -354,6 +356,23 @@ func TestPollUpdates_WithRESPFormat(t *testing.T) {
 				{"JSON.SET", "json", "$", `{}`},
 			}},
 		}, pollUpdates.Updates)
+
+		// EXPIRE/PERSIST batches replay the expiration explicitly:
+		// PEXPIREAT while a deadline is set, PERSIST once it is cleared.
+		require.NoError(t, rdb0.Do(ctx, "EXPIRE", "json", "100").Err())
+		require.NoError(t, rdb0.Do(ctx, "PERSIST", "json").Err())
+		result, err = rdb0.Do(ctx, "POLLUPDATES", pollUpdates.NextSeq, "MAX", 10, "FORMAT", "RESP").Result()
+		require.NoError(t, err)
+
+		pollUpdates = parsePollUpdatesResult(t, result.(map[any]any), true)
+		require.Len(t, pollUpdates.Updates, 1)
+		commands := pollUpdates.Updates[0].(RESPFormat).Commands
+		require.Len(t, commands, 4)
+		require.Equal(t, []string{"JSON.SET", "json", "$", `{}`}, commands[0])
+		require.Equal(t, []string{"PEXPIREAT", "json"}, commands[1][:2])
+		require.NotEmpty(t, commands[1][2])
+		require.Equal(t, []string{"JSON.SET", "json", "$", `{}`}, commands[2])
+		require.Equal(t, []string{"PERSIST", "json"}, commands[3])
 	})
 }
 

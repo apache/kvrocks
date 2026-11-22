@@ -24,6 +24,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <queue>
 #include <unordered_set>
 
 #include "db_util.h"
@@ -377,12 +378,88 @@ rocksdb::Status Set::UnionCard(engine::Context &ctx, const std::vector<Slice> &k
     if (!s.ok()) return s;
     sets.emplace_back(std::move(ns_key), metadata);
   }
+  if (sets.empty()) return rocksdb::Status::OK();
 
-  std::unordered_set<std::string> members;
-  std::vector<std::array<uint8_t, kHyperLogLogSegmentBytes>> registers(approx ? kHyperLogLogSegmentCount : 0);
+  // The union is at least as large as any single set, so a set that already
+  // reaches LIMIT saturates the answer without scanning any subkey.
+  if (limit != 0) {
+    for (const auto &[ns_key, metadata] : sets) {
+      if (metadata.size >= limit) {
+        *cardinality = limit;
+        return rocksdb::Status::OK();
+      }
+    }
+  }
+  // With a single set the metadata already carries the exact cardinality.
+  if (!approx && sets.size() == 1) {
+    *cardinality = sets.front().second.size;
+    return rocksdb::Status::OK();
+  }
+
+  if (!approx) {
+    // Subkeys of every set share the version prefix and are stored in
+    // lexicographic order, so a k-way merge counts distinct members with
+    // O(numkeys) memory instead of materializing the union.
+    struct Cursor {
+      std::string prefix;
+      std::string next_prefix;
+      Slice upper_bound;  // over next_prefix; the vector is reserved, so both stay in place
+      std::unique_ptr<rocksdb::Iterator> iter;
+    };
+    std::vector<Cursor> cursors;
+    cursors.reserve(sets.size());
+    for (const auto &[ns_key, metadata] : sets) {
+      auto &cursor = cursors.emplace_back();
+      cursor.prefix = InternalKey(ns_key, "", metadata.version, storage_->IsSlotIdEncoded()).Encode();
+      cursor.next_prefix = InternalKey(ns_key, "", metadata.version + 1, storage_->IsSlotIdEncoded()).Encode();
+    }
+    for (auto &cursor : cursors) {
+      cursor.upper_bound = Slice(cursor.next_prefix);
+      auto read_options = ctx.DefaultScanOptions();
+      read_options.iterate_upper_bound = &cursor.upper_bound;
+      cursor.iter = util::UniqueIterator(ctx, read_options);
+      cursor.iter->Seek(cursor.prefix);
+    }
+
+    struct Entry {
+      std::string member;
+      size_t cursor;
+    };
+    const auto by_member = [](const Entry &lhs, const Entry &rhs) { return lhs.member > rhs.member; };
+    std::priority_queue<Entry, std::vector<Entry>, decltype(by_member)> heap(by_member);
+    auto push_head = [&](size_t idx) {
+      const auto &iter = cursors[idx].iter;
+      if (iter->Valid() && iter->key().starts_with(cursors[idx].prefix)) {
+        InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
+        heap.push({ikey.GetSubKey().ToString(), idx});
+      }
+    };
+    for (size_t idx = 0; idx < cursors.size(); idx++) push_head(idx);
+    while (!heap.empty()) {
+      const auto entry = heap.top();
+      heap.pop();
+      ++*cardinality;
+      if (limit != 0 && *cardinality == limit) break;
+      // Skip the same member at the head of the other cursors.
+      while (!heap.empty() && heap.top().member == entry.member) {
+        const auto duplicate = heap.top();
+        heap.pop();
+        cursors[duplicate.cursor].iter->Next();
+        push_head(duplicate.cursor);
+      }
+      cursors[entry.cursor].iter->Next();
+      push_head(entry.cursor);
+    }
+    for (const auto &cursor : cursors) {
+      if (!cursor.iter->status().ok()) return cursor.iter->status();
+    }
+    return rocksdb::Status::OK();
+  }
+
+  std::vector<std::array<uint8_t, kHyperLogLogSegmentBytes>> registers(kHyperLogLogSegmentCount);
   std::vector<nonstd::span<const uint8_t>> register_spans;
   register_spans.reserve(registers.size());
-  for (const auto &segment : registers) {
+  for (auto &segment : registers) {
     register_spans.emplace_back(segment.data(), segment.size());
   }
   uint64_t until_check = limit;
@@ -396,13 +473,6 @@ rocksdb::Status Set::UnionCard(engine::Context &ctx, const std::vector<Slice> &k
     for (iter->Seek(prefix); iter->Valid() && iter->key().starts_with(prefix); iter->Next()) {
       InternalKey ikey(iter->key(), storage_->IsSlotIdEncoded());
       const auto &member = ikey.GetSubKey();
-      if (!approx) {
-        if (members.insert(member.ToString()).second && ++*cardinality == limit) {
-          return rocksdb::Status::OK();
-        }
-        continue;
-      }
-
       auto result = ExtractDenseHllResult(HyperLogLog::HllHash(member.ToStringView()));
       auto *segment = registers[result.register_index / kHyperLogLogSegmentRegisters].data();
       auto index = result.register_index % kHyperLogLogSegmentRegisters;
@@ -421,10 +491,8 @@ rocksdb::Status Set::UnionCard(engine::Context &ctx, const std::vector<Slice> &k
     }
     if (!iter->status().ok()) return iter->status();
   }
-  if (approx) {
-    *cardinality = HllDenseEstimate(register_spans);
-    if (limit != 0) *cardinality = std::min(*cardinality, limit);
-  }
+  *cardinality = HllDenseEstimate(register_spans);
+  if (limit != 0) *cardinality = std::min(*cardinality, limit);
   return rocksdb::Status::OK();
 }
 

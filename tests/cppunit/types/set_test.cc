@@ -272,10 +272,18 @@ TEST_F(RedisSetTest, UnionCardApproxUsesHyperLogLog) {
 }
 
 TEST_F(RedisSetTest, UnionCardLimitStopsIteration) {
-  std::vector<std::string> members;
-  members.reserve(4096);
-  for (int i = 0; i < 4096; ++i) members.push_back(std::to_string(i));
-  ASSERT_TRUE(set_->Overwrite(*ctx_, key_, members).ok());
+  // Two disjoint sets of 4096 members each: a limit above every single set but
+  // below the 8192 union cannot be answered by the metadata fast paths and must
+  // stop the scan early.
+  std::vector<std::string> first, second;
+  first.reserve(4096);
+  second.reserve(4096);
+  for (int i = 0; i < 4096; ++i) {
+    first.push_back("a" + std::to_string(i));
+    second.push_back("b" + std::to_string(i));
+  }
+  ASSERT_TRUE(set_->Overwrite(*ctx_, key_, first).ok());
+  ASSERT_TRUE(set_->Overwrite(*ctx_, "other", second).ok());
   auto previous_level = rocksdb::GetPerfLevel();
   auto restore_level = MakeScopeExit([previous_level] { rocksdb::SetPerfLevel(previous_level); });
   rocksdb::SetPerfLevel(rocksdb::PerfLevel::kEnableCount);
@@ -283,14 +291,31 @@ TEST_F(RedisSetTest, UnionCardLimitStopsIteration) {
     uint64_t ret = 0;
     auto *perf = rocksdb::get_perf_context();
     perf->Reset();
-    ASSERT_TRUE(set_->UnionCard(*ctx_, {key_}, approx, 0, &ret).ok());
+    ASSERT_TRUE(set_->UnionCard(*ctx_, {key_, "other"}, approx, 0, &ret).ok());
     auto full_read_bytes = perf->iter_read_bytes;
     ASSERT_GT(full_read_bytes, 0);
     perf->Reset();
-    ASSERT_TRUE(set_->UnionCard(*ctx_, {key_}, approx, 1, &ret).ok());
-    EXPECT_EQ(ret, 1);
-    EXPECT_LT(perf->iter_read_bytes, full_read_bytes / 10);
+    ASSERT_TRUE(set_->UnionCard(*ctx_, {key_, "other"}, approx, 4097, &ret).ok());
+    EXPECT_EQ(ret, 4097);
+    EXPECT_LT(perf->iter_read_bytes, full_read_bytes * 3 / 4);
   }
+}
+
+TEST_F(RedisSetTest, UnionCardSingleSetAvoidsSubkeyScan) {
+  std::vector<std::string> members;
+  members.reserve(4096);
+  for (int i = 0; i < 4096; ++i) members.push_back(std::to_string(i));
+  ASSERT_TRUE(set_->Overwrite(*ctx_, key_, members).ok());
+  auto previous_level = rocksdb::GetPerfLevel();
+  auto restore_level = MakeScopeExit([previous_level] { rocksdb::SetPerfLevel(previous_level); });
+  rocksdb::SetPerfLevel(rocksdb::PerfLevel::kEnableCount);
+  auto *perf = rocksdb::get_perf_context();
+  uint64_t ret = 0;
+  perf->Reset();
+  ASSERT_TRUE(set_->UnionCard(*ctx_, {key_}, false, 0, &ret).ok());
+  EXPECT_EQ(ret, 4096);
+  // The exact cardinality of a single set comes from the metadata.
+  EXPECT_EQ(perf->iter_read_bytes, 0);
 }
 
 TEST_F(RedisSetTest, Inter) {

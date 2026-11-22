@@ -1512,7 +1512,7 @@ class CommandZDiffStore : public Commander {
     if (*parse_result <= 0) return {Status::RedisParseErr, errValueMustBePositive};
 
     numkeys_ = *parse_result;
-    if (numkeys_ > args.size() - 3) return {Status::RedisParseErr, errInvalidSyntax};
+    if (numkeys_ != args.size() - 3) return {Status::RedisParseErr, errInvalidSyntax};
 
     size_t j = 0;
     while (j < numkeys_) {
@@ -1560,7 +1560,7 @@ REDIS_REGISTER_COMMANDS(ZSet, MakeCmdAttr<CommandZAdd>("zadd", -4, "write", 1, 1
                         MakeCmdAttr<CommandBZPopMin>("bzpopmin", -3, "write blocking", 1, -2, 1),
                         MakeCmdAttr<CommandZMPop>("zmpop", -4, "write", CommandZMPop::Range),
                         MakeCmdAttr<CommandBZMPop>("bzmpop", -5, "write blocking", CommandBZMPop::Range),
-                        MakeCmdAttr<CommandZRangeStore>("zrangestore", -5, "write", 1, 1, 1),
+                        MakeCmdAttr<CommandZRangeStore>("zrangestore", -5, "write", 1, 2, 1),
                         MakeCmdAttr<CommandZRange>("zrange", -4, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandZRevRange>("zrevrange", -4, "read-only", 1, 1, 1),
                         MakeCmdAttr<CommandZRangeByLex>("zrangebylex", -4, "read-only", 1, 1, 1),

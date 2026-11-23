@@ -208,7 +208,8 @@ class CommandExpire : public Commander {
   Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
     redis::Database redis(srv->storage, conn->GetNamespace());
 
-    auto s = redis.Expire(ctx, args_[1], ttl_ * 1000 + util::GetTimeStampMS());
+    uint64_t expire_at = ttl_ <= 0 ? 0 : static_cast<uint64_t>(ttl_) * 1000 + util::GetTimeStampMS();
+    auto s = redis.Expire(ctx, args_[1], expire_at);
     if (s.ok()) {
       *output = redis::Integer(1);
     } else {
@@ -218,20 +219,21 @@ class CommandExpire : public Commander {
   }
 
  private:
-  uint64_t ttl_ = 0;
+  int64_t ttl_ = 0;
 };
 
 class CommandPExpire : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    seconds_ = GET_OR_RET(ParseInt<int64_t>(args[2], 10)) + util::GetTimeStampMS();
+    ttl_ = GET_OR_RET(ParseInt<int64_t>(args[2], 10));
     return Status::OK();
   }
 
   Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
     redis::Database redis(srv->storage, conn->GetNamespace());
 
-    auto s = redis.Expire(ctx, args_[1], seconds_);
+    uint64_t expire_at = ttl_ <= 0 ? 0 : static_cast<uint64_t>(ttl_) + util::GetTimeStampMS();
+    auto s = redis.Expire(ctx, args_[1], expire_at);
     if (s.ok()) {
       *output = redis::Integer(1);
     } else {
@@ -241,7 +243,7 @@ class CommandPExpire : public Commander {
   }
 
  private:
-  uint64_t seconds_ = 0;
+  int64_t ttl_ = 0;
 };
 
 class CommandExpireAt : public Commander {
@@ -260,7 +262,8 @@ class CommandExpireAt : public Commander {
   Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
     redis::Database redis(srv->storage, conn->GetNamespace());
 
-    auto s = redis.Expire(ctx, args_[1], timestamp_ * 1000);
+    uint64_t expire_at = timestamp_ <= 0 ? 0 : static_cast<uint64_t>(timestamp_) * 1000;
+    auto s = redis.Expire(ctx, args_[1], expire_at);
     if (s.ok()) {
       *output = redis::Integer(1);
     } else {
@@ -270,7 +273,7 @@ class CommandExpireAt : public Commander {
   }
 
  private:
-  uint64_t timestamp_ = 0;
+  int64_t timestamp_ = 0;
 };
 
 class CommandPExpireAt : public Commander {
@@ -289,7 +292,8 @@ class CommandPExpireAt : public Commander {
   Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
     redis::Database redis(srv->storage, conn->GetNamespace());
 
-    auto s = redis.Expire(ctx, args_[1], timestamp_);
+    uint64_t expire_at = timestamp_ <= 0 ? 0 : static_cast<uint64_t>(timestamp_);
+    auto s = redis.Expire(ctx, args_[1], expire_at);
     if (s.ok()) {
       *output = redis::Integer(1);
     } else {
@@ -299,7 +303,7 @@ class CommandPExpireAt : public Commander {
   }
 
  private:
-  uint64_t timestamp_ = 0;
+  int64_t timestamp_ = 0;
 };
 
 class CommandExpireTime : public Commander {

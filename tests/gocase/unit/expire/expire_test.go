@@ -268,4 +268,15 @@ func TestExpire(t *testing.T) {
 		util.ErrorRegexp(t, rdb.Do(ctx, "expire", "foo", "").Err(), ".*not started as an integer*.")
 	})
 
+	t.Run("Expire commands delete keys for negative deadlines", func(t *testing.T) {
+		for _, command := range []string{"EXPIRE", "PEXPIRE", "EXPIREAT", "PEXPIREAT"} {
+			t.Run(command, func(t *testing.T) {
+				key := "negative-" + command
+				require.NoError(t, rdb.Set(ctx, key, "value", 0).Err())
+				require.EqualValues(t, 1, rdb.Do(ctx, command, key, -2000000000).Val())
+				require.EqualValues(t, 0, rdb.Exists(ctx, key).Val())
+			})
+		}
+	})
+
 }

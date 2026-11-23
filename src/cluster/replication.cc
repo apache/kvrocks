@@ -627,7 +627,6 @@ ReplicationThread::CBState ReplicationThread::tryPSyncWriteCB(bufferevent *bev) 
 
   // To adapt to old master using old PSYNC, i.e. only use next sequence id.
   // Also use old PSYNC if replica can't find replication id from WAL and DB.
-  psync_time_us_ = util::GetTimeStampUS();
   if (!srv_->GetConfig()->use_rsid_psync || next_try_old_psync_ || replid.length() != kReplIdLength) {
     next_try_old_psync_ = false;  // Reset next_try_old_psync_
     SendString(bev, redis::ArrayOfBulkStrings({"PSYNC", std::to_string(next_seq)}));
@@ -1179,8 +1178,13 @@ Status ReplicationThread::parseWriteBatch(const rocksdb::WriteBatch &write_batch
 
   switch (write_batch_handler.Type()) {
     case kBatchTypePublish:
-      // Older primaries do not record publish timestamps.
-      if (write_batch_handler.PublishTime() != 0 && write_batch_handler.PublishTime() < psync_time_us_) break;
+      // The publish time comes from the master's clock, so this relies on synchronized clocks.
+      // Older masters do not record publish timestamps.
+      if (write_batch_handler.PublishTime() != 0 && write_batch_handler.PublishTime() < publish_cutoff_us_) {
+        DEBUG("[replication] Skip Pub/Sub message on channel {} published before replication started",
+              write_batch_handler.Key());
+        break;
+      }
       srv_->PublishMessage(write_batch_handler.Key(), write_batch_handler.Value());
       break;
     case kBatchTypePropagate:

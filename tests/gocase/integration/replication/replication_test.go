@@ -120,7 +120,7 @@ func TestReplicationPubSubSkipsOldMessages(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, &redis.Message{Channel: "news", Payload: "new message"}, message)
 
-	// Keep the replica disconnected while publishing another message.
+	// Messages published while the replica is reconnecting must still be delivered.
 	require.NoError(t, masterClient.ConfigSet(ctx, "requirepass", "secret").Err())
 	_, err = masterClient.ClientKillByFilter(ctx, "type", "slave").Result()
 	require.NoError(t, err)
@@ -133,7 +133,7 @@ func TestReplicationPubSubSkipsOldMessages(t *testing.T) {
 	require.Equal(t, "2", util.FindInfoEntry(masterClient, "sync_partial_ok"))
 
 	require.NoError(t, masterClient.Do(ctx, "MPUBLISH", "news", "new message 2", "new message 3").Err())
-	for _, payload := range []string{"new message 2", "new message 3"} {
+	for _, payload := range []string{"disconnected message", "new message 2", "new message 3"} {
 		message, err = pubsub.ReceiveTimeout(ctx, 5*time.Second)
 		require.NoError(t, err)
 		require.Equal(t, &redis.Message{Channel: "news", Payload: payload}, message)

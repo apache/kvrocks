@@ -2164,7 +2164,7 @@ Status ServerLogData::Decode(const rocksdb::Slice &blob) {
   const char *header = blob.data();
   if (*header == kReplIdTag && blob.size() == 2 + kReplIdLength) {
     type_ = kReplIdLog;
-  } else if (*header == kPublishTag && blob.size() > 2) {
+  } else if (*header == kPublishTag && blob.size() > 2 && blob[1] == ' ') {
     type_ = kPublishLog;
   } else {
     return {Status::NotOK};

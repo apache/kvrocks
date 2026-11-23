@@ -38,6 +38,7 @@
 #include "server/redis_connection.h"
 #include "status.h"
 #include "storage/storage.h"
+#include "time_util.h"
 
 class Server;
 
@@ -169,7 +170,9 @@ class ReplicationThread : private EventCallbackBase<ReplicationThread> {
   std::atomic<int64_t> last_io_time_secs_ = 0;
   int64_t last_ack_time_secs_ = 0;
   std::atomic<int> reconnect_attempts_ = 0;  // For exponential backoff on reconnection
-  uint64_t psync_time_us_ = 0;
+  // Pub/Sub messages published before this replica attached to the master are not
+  // delivered to local subscribers; messages missed during a reconnect still are.
+  const uint64_t publish_cutoff_us_ = util::GetTimeStampUS();
   bool next_try_old_psync_ = false;
   bool next_try_without_announce_ip_address_ = false;
 

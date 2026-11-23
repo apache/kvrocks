@@ -63,16 +63,14 @@ struct NotExpr : seq<WSPad<Not>, BooleanExpr> {};
 struct And : string<'a', 'n', 'd'> {};
 // left recursion elimination
 // struct AndExpr : sor<seq<AndExpr, And, BooleanExpr>, BooleanExpr> {};
-struct AndExpr : seq<BooleanExpr, plus<seq<And, BooleanExpr>>> {};
-struct AndExprP : sor<AndExpr, BooleanExpr> {};
+struct AndExpr : seq<BooleanExpr, star<seq<And, BooleanExpr>>> {};
 
 struct Or : string<'o', 'r'> {};
 // left recursion elimination
 // struct OrExpr : sor<seq<OrExpr, Or, AndExpr>, AndExpr> {};
-struct OrExpr : seq<AndExprP, plus<seq<Or, AndExprP>>> {};
-struct OrExprP : sor<OrExpr, AndExprP> {};
+struct OrExpr : seq<AndExpr, star<seq<Or, AndExpr>>> {};
 
-struct QueryExpr : seq<OrExprP> {};
+struct QueryExpr : seq<OrExpr> {};
 
 struct Select : string<'s', 'e', 'l', 'e', 'c', 't'> {};
 struct From : string<'f', 'r', 'o', 'm'> {};

@@ -169,3 +169,66 @@ TEST(SQLParserTest, Vector) {
   AssertIR(Parse("select a from b order by embedding <-> [3.6] limit 5"),
            "select a from b where true sortby embedding <-> [3.600000] limit 0, 5");
 }
+
+TEST(SQLParserTest, MaxNestingDepth) {
+  auto make_not_query = [](size_t depth) {
+    std::string q = "select a from b where ";
+    for (size_t i = 0; i < depth; ++i) q += "not ";
+    q += "true";
+    return q;
+  };
+  auto make_paren_query = [](size_t depth) {
+    return "select a from b where " + std::string(depth, '(') + "true" + std::string(depth, ')');
+  };
+
+  // Expected limits follow kqir::kMaxQueryNestingDepth (issue 3810): up to 100 nested
+  // NOT/parenthesis levels are accepted; 101 levels are rejected with a depth error.
+  ASSERT_EQ(Parse(make_not_query(kqir::kMaxQueryNestingDepth)).Msg(), Status::ok_msg);
+  ASSERT_EQ(Parse(make_not_query(kqir::kMaxQueryNestingDepth + 1)).Msg(), "maximum query nesting depth exceeded");
+  ASSERT_EQ(Parse(make_not_query(20000)).Msg(), "maximum query nesting depth exceeded");
+
+  ASSERT_EQ(Parse(make_paren_query(kqir::kMaxQueryNestingDepth)).Msg(), Status::ok_msg);
+  ASSERT_EQ(Parse(make_paren_query(kqir::kMaxQueryNestingDepth + 1)).Msg(), "maximum query nesting depth exceeded");
+  ASSERT_EQ(Parse(make_paren_query(20000)).Msg(), "maximum query nesting depth exceeded");
+
+  // Deepest tree within kMaxQueryNestingDepth: a top-level OR/AND plus 100
+  // parenthesized groups, i.e. A or A and (A or A and (... (A or A and A))).
+  // Alternating OR/AND at successive levels is not the worst case.
+  for (const auto& leaf : {"a > 1", "v <-> [1,2] < 3"}) {
+    std::string worst = "(" + std::string(leaf) + " or " + leaf + " and " + leaf + ")";
+    for (size_t i = 1; i < kqir::kMaxQueryNestingDepth; ++i) {
+      worst = "(" + std::string(leaf) + " or " + leaf + " and " + worst + ")";
+    }
+    worst = std::string(leaf) + " or " + leaf + " and " + worst;
+    ASSERT_EQ(Parse("select a from b where " + worst).Msg(), Status::ok_msg);
+  }
+
+  // Flat wide queries reset nesting depth across siblings and must still succeed.
+  std::string wide_query = "select a from b where true";
+  for (size_t i = 0; i < 500; ++i) {
+    wide_query += " and true";
+  }
+  ASSERT_EQ(Parse(wide_query).Msg(), Status::ok_msg);
+
+  // Direct Transformer::Transform depth guard: kMaxIRTransformDepth-1 NOT nodes
+  // are accepted; kMaxIRTransformDepth NOT nodes are rejected.
+  auto make_not_tree = [](size_t not_count) {
+    auto leaf = std::make_unique<kqir::peg::parse_tree::node>();
+    leaf->set_type<kqir::Boolean>();
+    leaf->m_begin.data = "true";
+    leaf->m_end.data = leaf->m_begin.data + 4;
+    auto head = std::move(leaf);
+    for (size_t i = 0; i < not_count; ++i) {
+      auto not_node = std::make_unique<kqir::peg::parse_tree::node>();
+      not_node->set_type<NotExpr>();
+      not_node->children.push_back(std::move(head));
+      head = std::move(not_node);
+    }
+    auto root = std::make_unique<kqir::peg::parse_tree::node>();
+    root->children.push_back(std::move(head));
+    return root;
+  };
+  ASSERT_EQ(Transformer({}).Transform(make_not_tree(kqir::kMaxIRTransformDepth - 1)).Msg(), Status::ok_msg);
+  ASSERT_EQ(Transformer({}).Transform(make_not_tree(kqir::kMaxIRTransformDepth)).Msg(),
+            "maximum query nesting depth exceeded");
+}

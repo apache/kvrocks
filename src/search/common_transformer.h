@@ -21,14 +21,33 @@
 #pragma once
 
 #include <map>
+#include <tao/pegtl/contrib/limit_depth.hpp>
 #include <tao/pegtl/contrib/parse_tree.hpp>
 #include <tao/pegtl/contrib/unescape.hpp>
 #include <tao/pegtl/demangle.hpp>
+#include <type_traits>
 
 #include "common_parser.h"
 #include "status.h"
 
 namespace kqir {
+
+// Cap query nesting depth so deeply nested expressions cannot exhaust the
+// worker thread stack during PEGTL parsing or IR transformation.
+inline constexpr size_t kMaxQueryNestingDepth = 100;
+// Each parenthesized group adds at most two parse-tree nodes (OR and AND).
+// Adding the root, SearchStmt, WhereClause, the outermost OR/AND, and the leaf
+// (including its numeric literal) gives a measured worst-case IR transformation
+// depth of 206. The +16 sets the limit at 216 to leave a margin.
+inline constexpr size_t kMaxIRTransformDepth = kMaxQueryNestingDepth * 2 + 16;
+
+// MaxDepth is kMaxQueryNestingDepth + 1 so the innermost atom (BooleanExpr)
+// still fits inside a query with kMaxQueryNestingDepth parenthesized groups.
+template <typename TargetRule, size_t MaxDepth = kMaxQueryNestingDepth + 1>
+struct QueryDepthLimit {
+  template <typename Rule>
+  using Action = std::conditional_t<std::is_same_v<Rule, TargetRule>, peg::limit_depth<MaxDepth>, peg::nothing<Rule>>;
+};
 
 using ParamMap = std::map<std::string, std::string, std::less<>>;
 

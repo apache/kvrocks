@@ -65,15 +65,13 @@ struct BooleanExpr : sor<FieldQuery, ParenExpr, NotExpr, WSPad<Wildcard>> {};
 
 struct NotExpr : seq<WSPad<one<'-'>>, BooleanExpr> {};
 
-struct AndExpr : seq<BooleanExpr, plus<seq<BooleanExpr>>> {};
-struct AndExprP : sor<AndExpr, BooleanExpr> {};
+struct AndExpr : seq<BooleanExpr, star<BooleanExpr>> {};
 
-struct OrExpr : seq<AndExprP, plus<seq<one<'|'>, AndExprP>>> {};
-struct OrExprP : sor<OrExpr, AndExprP> {};
+struct OrExpr : seq<AndExpr, star<seq<one<'|'>, AndExpr>>> {};
 
 struct PrefilterExpr : seq<WSPad<Wildcard>, ArrowOp, WSPad<KnnSearch>> {};
 
-struct QueryP : sor<PrefilterExpr, OrExprP> {};
+struct QueryP : sor<PrefilterExpr, OrExpr> {};
 
 struct QueryExpr : seq<QueryP> {};
 

@@ -466,9 +466,6 @@ func TestClientPause(t *testing.T) {
 		require.Equal(t, "$-1", <-wCh)
 		require.Equal(t, "other", unpauseClient.Get(ctx, "w_k").Val())
 
-		if len(adminClient.ConfigGet(ctx, "hash-encoding-mode").Val()) == 0 {
-			return
-		}
 		defer func() {
 			_ = adminClient.ConfigSet(ctx, "hash-encoding-mode", "legacy").Err()
 			_ = adminClient.ConfigSet(ctx, "hash-length-mode", "accurate").Err()

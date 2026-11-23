@@ -1036,24 +1036,16 @@ bool ShouldPauseCmdInWriteMode(const std::string &cmd_name, uint64_t cmd_flags) 
   return (cmd_flags & redis::kCmdWrite) != 0 || kWriteModeSpecialCmds.count(util::ToLower(cmd_name)) > 0;
 }
 
-bool IsConfigFieldWritable(const Config &config, const std::string &field_name) {
-  std::vector<std::string> values;
-  config.Get(field_name, &values);
-  return !values.empty();
-}
-
-void PromoteHashFlagsFromQueuedConfigSet(const Config &config, const redis::CommandTokens &cmd_tokens,
-                                         bool *may_be_field_exp, bool *may_be_accurate) {
+void PromoteHashFlagsFromQueuedConfigSet(const redis::CommandTokens &cmd_tokens, bool *may_be_field_exp,
+                                         bool *may_be_accurate) {
   if (cmd_tokens.size() != 4 || !util::EqualICase(cmd_tokens[1], "set")) {
     return;
   }
   const auto &cfg_key = cmd_tokens[2];
   const auto &cfg_val = cmd_tokens[3];
-  if (util::EqualICase(cfg_key, "hash-encoding-mode") && util::EqualICase(cfg_val, "field-expiration") &&
-      IsConfigFieldWritable(config, "hash-encoding-mode")) {
+  if (util::EqualICase(cfg_key, "hash-encoding-mode") && util::EqualICase(cfg_val, "field-expiration")) {
     *may_be_field_exp = true;
-  } else if (util::EqualICase(cfg_key, "hash-length-mode") && util::EqualICase(cfg_val, "accurate") &&
-             IsConfigFieldWritable(config, "hash-length-mode")) {
+  } else if (util::EqualICase(cfg_key, "hash-length-mode") && util::EqualICase(cfg_val, "accurate")) {
     *may_be_accurate = true;
   }
 }
@@ -1072,10 +1064,15 @@ bool HasPausedCmdInMultiExecWriteMode(redis::Connection *conn, const Config &con
     const auto *attr = cmd_iter->second;
     if (util::EqualICase(attr->name, "client")) continue;
     if (util::EqualICase(attr->name, "config")) {
-      PromoteHashFlagsFromQueuedConfigSet(config, cmd_tokens, &may_be_field_exp, &may_be_accurate);
+      PromoteHashFlagsFromQueuedConfigSet(cmd_tokens, &may_be_field_exp, &may_be_accurate);
       continue;
     }
     auto flags = attr->GenerateFlags(cmd_tokens, config);
+    // 2-arg HLEN only reports kCmdWrite from GenerateFlags when field-expiration + accurate are already active in
+    // config, but an earlier CONFIG SET queued in the same MULTI can enable that repair-write path before HLEN
+    // executes. We only promote (never clear) because existing keys may retain field-expiration metadata or a queued
+    // CONFIG SET may fail. Any future dynamic write flags affected by in-transaction CONFIG SET need the same pre-EXEC
+    // tracking here.
     if (util::EqualICase(attr->name, "hlen") && cmd_tokens.size() == 2 && may_be_field_exp && may_be_accurate) {
       flags |= redis::kCmdWrite;
     }

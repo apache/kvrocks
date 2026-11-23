@@ -303,33 +303,29 @@ TEST_F(ServerClientPauseTest, WriteDynamicAndConfigPromotedMultiExecBlockedInWri
   cfg->hash_length_mode = HashLengthMode::kApproximate;
   EXPECT_TRUE(commandPassesThrough("exec", exec_flags));
 
-  std::vector<std::string> probe;
-  cfg->Get("hash-length-mode", &probe);
-  if (!probe.empty()) {
-    *conn_->GetMultiExecCommands() = {{"CONFIG", "SET", "hash-length-mode", "accurate"}, {"HLEN", "h1"}};
-    EXPECT_FALSE(commandPassesThrough("exec", exec_flags));
-    *conn_->GetMultiExecCommands() = {{"HLEN", "h1"}, {"CONFIG", "SET", "hash-length-mode", "accurate"}};
-    EXPECT_TRUE(commandPassesThrough("exec", exec_flags));
+  *conn_->GetMultiExecCommands() = {{"CONFIG", "SET", "hash-length-mode", "accurate"}, {"HLEN", "h1"}};
+  EXPECT_FALSE(commandPassesThrough("exec", exec_flags));
+  *conn_->GetMultiExecCommands() = {{"HLEN", "h1"}, {"CONFIG", "SET", "hash-length-mode", "accurate"}};
+  EXPECT_TRUE(commandPassesThrough("exec", exec_flags));
 
-    cfg->hash_encoding_mode = HashSubkeyEncodingMode::kLegacy;
-    *conn_->GetMultiExecCommands() = {
-        {"CONFIG", "SET", "hash-encoding-mode", "field-expiration"},
-        {"CONFIG", "SET", "hash-length-mode", "accurate"},
-        {"HLEN", "h1"},
-    };
-    EXPECT_FALSE(commandPassesThrough("exec", exec_flags));
+  cfg->hash_encoding_mode = HashSubkeyEncodingMode::kLegacy;
+  *conn_->GetMultiExecCommands() = {
+      {"CONFIG", "SET", "hash-encoding-mode", "field-expiration"},
+      {"CONFIG", "SET", "hash-length-mode", "accurate"},
+      {"HLEN", "h1"},
+  };
+  EXPECT_FALSE(commandPassesThrough("exec", exec_flags));
 
-    cfg->hash_encoding_mode = HashSubkeyEncodingMode::kFieldExpiration;
-    cfg->hash_length_mode = HashLengthMode::kAccurate;
-    *conn_->GetMultiExecCommands() = {{"CONFIG", "SET", "hash-encoding-mode", "legacy"}, {"HLEN", "h1"}};
-    EXPECT_FALSE(commandPassesThrough("exec", exec_flags));
-    *conn_->GetMultiExecCommands() = {
-        {"HELLO", "3", "AUTH", "default", "pw"},
-        {"CONFIG", "SET", "hash-length-mode", "approximate"},
-        {"HLEN", "h1"},
-    };
-    EXPECT_FALSE(commandPassesThrough("exec", exec_flags));
-  }
+  cfg->hash_encoding_mode = HashSubkeyEncodingMode::kFieldExpiration;
+  cfg->hash_length_mode = HashLengthMode::kAccurate;
+  *conn_->GetMultiExecCommands() = {{"CONFIG", "SET", "hash-encoding-mode", "legacy"}, {"HLEN", "h1"}};
+  EXPECT_FALSE(commandPassesThrough("exec", exec_flags));
+  *conn_->GetMultiExecCommands() = {
+      {"HELLO", "3", "AUTH", "default", "pw"},
+      {"CONFIG", "SET", "hash-length-mode", "approximate"},
+      {"HLEN", "h1"},
+  };
+  EXPECT_FALSE(commandPassesThrough("exec", exec_flags));
 
   cfg->hash_encoding_mode = orig_encoding;
   cfg->hash_length_mode = orig_len_mode;

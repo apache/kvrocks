@@ -91,6 +91,55 @@ func TestClusterReplication(t *testing.T) {
 	})
 }
 
+func TestReplicationPubSubSkipsOldMessages(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	masterSrv := util.StartServer(t, map[string]string{})
+	defer masterSrv.Close()
+	masterClient := masterSrv.NewClient()
+	defer func() { require.NoError(t, masterClient.Close()) }()
+	require.NoError(t, masterClient.Publish(ctx, "news", "old message").Err())
+	require.NoError(t, masterClient.Do(ctx, "MPUBLISH", "news", "old message 2", "old message 3").Err())
+
+	replicaSrv := util.StartServer(t, map[string]string{})
+	defer replicaSrv.Close()
+	replicaClient := replicaSrv.NewClient()
+	defer func() { require.NoError(t, replicaClient.Close()) }()
+	pubsub := replicaClient.Subscribe(ctx, "news")
+	defer func() { require.NoError(t, pubsub.Close()) }()
+	_, err := pubsub.ReceiveTimeout(ctx, 5*time.Second)
+	require.NoError(t, err)
+
+	util.SlaveOf(t, replicaClient, masterSrv)
+	util.WaitForOffsetSync(t, masterClient, replicaClient, 10*time.Second)
+	require.Equal(t, "1", util.FindInfoEntry(masterClient, "sync_partial_ok"))
+
+	require.NoError(t, masterClient.Publish(ctx, "news", "new message").Err())
+	message, err := pubsub.ReceiveTimeout(ctx, 5*time.Second)
+	require.NoError(t, err)
+	require.Equal(t, &redis.Message{Channel: "news", Payload: "new message"}, message)
+
+	// Keep the replica disconnected while publishing another message.
+	require.NoError(t, masterClient.ConfigSet(ctx, "requirepass", "secret").Err())
+	_, err = masterClient.ClientKillByFilter(ctx, "type", "slave").Result()
+	require.NoError(t, err)
+	require.Eventually(t, func() bool {
+		return util.FindInfoEntry(replicaClient, "master_link_status") == "down"
+	}, 5*time.Second, 10*time.Millisecond)
+	require.NoError(t, masterClient.Publish(ctx, "news", "disconnected message").Err())
+	require.NoError(t, masterClient.ConfigSet(ctx, "requirepass", "").Err())
+	util.WaitForOffsetSync(t, masterClient, replicaClient, 10*time.Second)
+	require.Equal(t, "2", util.FindInfoEntry(masterClient, "sync_partial_ok"))
+
+	require.NoError(t, masterClient.Do(ctx, "MPUBLISH", "news", "new message 2", "new message 3").Err())
+	for _, payload := range []string{"new message 2", "new message 3"} {
+		message, err = pubsub.ReceiveTimeout(ctx, 5*time.Second)
+		require.NoError(t, err)
+		require.Equal(t, &redis.Message{Channel: "news", Payload: payload}, message)
+	}
+}
+
 func TestReplicationWithHostname(t *testing.T) {
 	t.Parallel()
 	srvA := util.StartServer(t, map[string]string{})

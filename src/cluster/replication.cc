@@ -627,6 +627,7 @@ ReplicationThread::CBState ReplicationThread::tryPSyncWriteCB(bufferevent *bev) 
 
   // To adapt to old master using old PSYNC, i.e. only use next sequence id.
   // Also use old PSYNC if replica can't find replication id from WAL and DB.
+  psync_time_us_ = util::GetTimeStampUS();
   if (!srv_->GetConfig()->use_rsid_psync || next_try_old_psync_ || replid.length() != kReplIdLength) {
     next_try_old_psync_ = false;  // Reset next_try_old_psync_
     SendString(bev, redis::ArrayOfBulkStrings({"PSYNC", std::to_string(next_seq)}));
@@ -1178,6 +1179,8 @@ Status ReplicationThread::parseWriteBatch(const rocksdb::WriteBatch &write_batch
 
   switch (write_batch_handler.Type()) {
     case kBatchTypePublish:
+      // Older primaries do not record publish timestamps.
+      if (write_batch_handler.PublishTime() != 0 && write_batch_handler.PublishTime() < psync_time_us_) break;
       srv_->PublishMessage(write_batch_handler.Key(), write_batch_handler.Value());
       break;
     case kBatchTypePropagate:
@@ -1225,6 +1228,14 @@ bool ReplicationThread::isWrongPsyncNum(std::string_view err) {
 bool ReplicationThread::isUnknownOption(std::string_view err) {
   // err doesn't contain the CRLF, so cannot use redis::Error here.
   return err == RESP_PREFIX_ERROR + redis::StatusToRedisErrorMsg({Status::NotOK, redis::errUnknownOption});
+}
+
+void WriteBatchHandler::LogData(const rocksdb::Slice &blob) {
+  ServerLogData log_data;
+  if (log_data.Decode(blob).IsOK() && log_data.GetType() == kPublishLog) {
+    auto timestamp = ParseInt<uint64_t>(log_data.GetContent(), 10);
+    if (timestamp) publish_time_us_ = *timestamp;
+  }
 }
 
 rocksdb::Status WriteBatchHandler::PutCF(uint32_t column_family_id, const rocksdb::Slice &key,

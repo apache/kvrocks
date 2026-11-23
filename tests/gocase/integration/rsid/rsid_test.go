@@ -140,7 +140,7 @@ func TestRSIDMasterYesAndReplicaNo(t *testing.T) {
 	t.Run("Replica (use-rsid-psync no) can slaveof the master (use-rsid-psync yes)", func(t *testing.T) {
 		util.SlaveOf(t, replicaClient, srv)
 		util.WaitForSync(t, replicaClient)
-		require.Equal(t, "0", util.FindInfoEntry(rdb, "sync_full"))
+		require.Equal(t, "1", util.FindInfoEntry(rdb, "sync_full"))
 		require.Equal(t, "1", util.FindInfoEntry(rdb, "sync_partial_ok"))
 	})
 }

@@ -183,6 +183,7 @@ class ReplicationThread : private EventCallbackBase<ReplicationThread> {
   } fullsync_state_ = kFetchMetaID;
   rocksdb::BackupID fullsync_meta_id_ = 0;
   size_t fullsync_filesize_ = 0;
+  bool fullsync_done_ = false;
 
   // Internal states managed by IncrementBatchLoop procedure
   enum IncrementBatchLoopState {

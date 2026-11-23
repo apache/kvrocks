@@ -843,3 +843,36 @@ func TestReplicationExponentialBackoff(t *testing.T) {
 		}, 15*time.Second, 500*time.Millisecond, "slave should reconnect with backoff")
 	})
 }
+
+func TestEmptyReplicaDoesNotReplayHistoricalPubSub(t *testing.T) {
+	ctx := context.Background()
+	master := util.StartServer(t, map[string]string{})
+	defer master.Close()
+	masterClient := master.NewClient()
+	defer func() { require.NoError(t, masterClient.Close()) }()
+
+	// PUBLISH is written to the WAL even without a subscriber on the master.
+	require.NoError(t, masterClient.Publish(ctx, "news", "old message").Err())
+
+	replica := util.StartServer(t, map[string]string{})
+	defer replica.Close()
+	replicaClient := replica.NewClient()
+	defer func() { require.NoError(t, replicaClient.Close()) }()
+	pubsub := replicaClient.Subscribe(ctx, "news")
+	defer func() { require.NoError(t, pubsub.Close()) }()
+	_, err := pubsub.Receive(ctx)
+	require.NoError(t, err)
+
+	util.SlaveOf(t, replicaClient, master)
+	util.WaitForSync(t, replicaClient)
+	util.WaitForOffsetSync(t, masterClient, replicaClient, 5*time.Second)
+
+	// A message published after the replica connected must still arrive. If the
+	// empty replica replays historical PubSub WAL entries, it receives the old
+	// message first and this assertion fails.
+	require.NoError(t, masterClient.Publish(ctx, "news", "new message").Err())
+	msg, err := pubsub.ReceiveTimeout(ctx, 5*time.Second)
+	require.NoError(t, err)
+	require.IsType(t, &redis.Message{}, msg)
+	require.Equal(t, "new message", msg.(*redis.Message).Payload)
+}

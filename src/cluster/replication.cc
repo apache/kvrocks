@@ -607,6 +607,11 @@ ReplicationThread::CBState ReplicationThread::replConfReadCB(bufferevent *bev) {
 
 ReplicationThread::CBState ReplicationThread::tryPSyncWriteCB(bufferevent *bev) {
   auto cur_seq = storage_->LatestSeqNumber();
+  if (cur_seq == 0 && !fullsync_done_) {
+    INFO("[replication] Empty replica without a completed fullsync, switch to fullsync");
+    fullsync_steps_.Start();
+    return CBState::QUIT;
+  }
   auto next_seq = cur_seq + 1;
   std::string replid;
 
@@ -926,7 +931,9 @@ ReplicationThread::CBState ReplicationThread::fullSyncReadCB(bufferevent *bev) {
         ERROR("[replication] Failed to load and rewrite namespace: {}", s.Msg());
       }
 
-      // Switch to psync state machine again
+      // Switch to psync state machine again. An empty master still has sequence
+      // zero after fullsync, so remember that fullsync has already completed.
+      fullsync_done_ = true;
       psync_steps_.Start();
       return CBState::QUIT;
     }

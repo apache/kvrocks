@@ -1230,12 +1230,21 @@ Status Storage::TryPurgeCheckpoint(int fetch_file_threads) {
 }
 
 Status Storage::InWALBoundary(rocksdb::SequenceNumber seq) {
+  auto latest_seq = LatestSeqNumber();
+  if (seq == latest_seq) return Status::OK();
+  if (seq > latest_seq) {
+    return {Status::NotOK, fmt::format("checkpoint seq: {} is greater than the latest seq: {}", seq, latest_seq)};
+  }
+
+  // A checkpoint records its last applied sequence, but GetWALIter takes the
+  // next sequence to read. Check that replication can resume at exactly seq+1.
+  auto next_seq = seq + 1;
   std::unique_ptr<rocksdb::TransactionLogIterator> iter;
-  auto s = GetWALIter(seq, &iter);
+  auto s = GetWALIter(next_seq, &iter);
   if (!s.IsOK()) return s;
   auto wal_seq = iter->GetBatch().sequence;
-  if (seq < wal_seq) {
-    return {Status::NotOK, fmt::format("checkpoint seq: {} is smaller than the WAL seq: {}", seq, wal_seq)};
+  if (next_seq != wal_seq) {
+    return {Status::NotOK, fmt::format("checkpoint next seq: {} does not match the WAL seq: {}", next_seq, wal_seq)};
   }
   return Status::OK();
 }

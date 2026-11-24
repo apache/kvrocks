@@ -97,7 +97,7 @@ const char *RedisProtocolToLuaTypeDouble(lua_State *lua, const char *reply);
 const char *RedisProtocolToLuaTypeBigNumber(lua_State *lua, const char *reply);
 const char *RedisProtocolToLuaTypeVerbatimString(lua_State *lua, const char *reply);
 
-std::string ReplyToRedisReply(redis::Connection *conn, lua_State *lua);
+std::string ReplyToRedisReply(redis::Connection *conn, lua_State *lua, redis::RESP client_resp);
 
 void PushError(lua_State *lua, const char *err);
 [[noreturn]] int RaiseError(lua_State *lua);

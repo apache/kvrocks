@@ -149,3 +149,19 @@ TEST(CommandParser, ParsePositiveInt) {
   ASSERT_EQ(p.TakePositiveInt<int64_t>().GetValue(), 4294967296);
   ASSERT_FALSE(p.TakePositiveInt<int64_t>());
 }
+
+TEST(CommandParser, ParseNonNegativeFloat) {
+  std::vector<std::string> vec{"not float", "-0.5", "0", "1.5"};
+
+  CommandParser p(vec);
+
+  ASSERT_FALSE(p.TakeNonNegativeFloat("negative"));
+  ASSERT_TRUE(p.TakeStr());
+  auto s = p.TakeNonNegativeFloat("negative");
+  ASSERT_FALSE(s);
+  ASSERT_EQ(s.Msg(), "negative");
+  ASSERT_TRUE(p.TakeStr());
+  ASSERT_EQ(p.TakeNonNegativeFloat("negative").GetValue(), 0);
+  ASSERT_EQ(p.TakeNonNegativeFloat("negative").GetValue(), 1.5);
+  ASSERT_FALSE(p.TakeNonNegativeFloat("negative"));
+}

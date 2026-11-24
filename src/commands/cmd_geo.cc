@@ -247,11 +247,7 @@ class CommandGeoRadius : public CommandGeoBase {
     auto s = ParseLongLat(args[2], args[3], &longitude_, &latitude_);
     if (!s.IsOK()) return s;
 
-    auto radius = ParseFloat(args[4]);
-    if (!radius) {
-      return {Status::RedisParseErr, errValueIsNotFloat};
-    }
-    radius_ = *radius;
+    radius_ = GET_OR_RET(CommandParser(args, 4).TakeNonNegativeFloat(errRadiusIsNegative));
 
     s = ParseDistanceUnit(args[5]);
     if (!s.IsOK()) return s;
@@ -417,15 +413,15 @@ class CommandGeoSearch : public CommandGeoBase {
       } else if (parser.EatEqICase("byradius")) {
         auto s = setShapeType(kGeoShapeTypeCircular);
         if (!s.IsOK()) return s;
-        radius_ = GET_OR_RET(parser.TakeFloat());
+        radius_ = GET_OR_RET(parser.TakeNonNegativeFloat(errRadiusIsNegative));
         std::string distance_raw = GET_OR_RET(parser.TakeStr());
         s = ParseDistanceUnit(distance_raw);
         if (!s.IsOK()) return s;
       } else if (parser.EatEqICase("bybox")) {
         auto s = setShapeType(kGeoShapeTypeRectangular);
         if (!s.IsOK()) return s;
-        width_ = GET_OR_RET(parser.TakeFloat());
-        height_ = GET_OR_RET(parser.TakeFloat());
+        width_ = GET_OR_RET(parser.TakeNonNegativeFloat(errBoxSizeIsNegative));
+        height_ = GET_OR_RET(parser.TakeNonNegativeFloat(errBoxSizeIsNegative));
         std::string distance_raw = GET_OR_RET(parser.TakeStr());
         s = ParseDistanceUnit(distance_raw);
         if (!s.IsOK()) return s;
@@ -582,15 +578,15 @@ class CommandGeoSearchStore : public CommandGeoSearch {
       } else if (parser.EatEqICase("byradius")) {
         auto s = setShapeType(kGeoShapeTypeCircular);
         if (!s.IsOK()) return s;
-        radius_ = GET_OR_RET(parser.TakeFloat());
+        radius_ = GET_OR_RET(parser.TakeNonNegativeFloat(errRadiusIsNegative));
         std::string distance_raw = GET_OR_RET(parser.TakeStr());
         s = ParseDistanceUnit(distance_raw);
         if (!s.IsOK()) return s;
       } else if (parser.EatEqICase("bybox")) {
         auto s = setShapeType(kGeoShapeTypeRectangular);
         if (!s.IsOK()) return s;
-        width_ = GET_OR_RET(parser.TakeFloat());
-        height_ = GET_OR_RET(parser.TakeFloat());
+        width_ = GET_OR_RET(parser.TakeNonNegativeFloat(errBoxSizeIsNegative));
+        height_ = GET_OR_RET(parser.TakeNonNegativeFloat(errBoxSizeIsNegative));
         std::string distance_raw = GET_OR_RET(parser.TakeStr());
         s = ParseDistanceUnit(distance_raw);
         if (!s.IsOK()) return s;
@@ -650,11 +646,7 @@ class CommandGeoRadiusByMember : public CommandGeoRadius {
   CommandGeoRadiusByMember() = default;
 
   Status Parse(const std::vector<std::string> &args) override {
-    auto radius = ParseFloat(args[3]);
-    if (!radius) {
-      return {Status::RedisParseErr, errValueIsNotFloat};
-    }
-    radius_ = *radius;
+    radius_ = GET_OR_RET(CommandParser(args, 3).TakeNonNegativeFloat(errRadiusIsNegative));
 
     auto s = ParseDistanceUnit(args[4]);
     if (!s.IsOK()) return s;

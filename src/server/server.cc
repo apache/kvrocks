@@ -631,6 +631,33 @@ void Server::ListSChannelSubscribeNum(const std::vector<std::string> &channels,
   }
 }
 
+int Server::SPublish(const std::string &channel, const std::string &msg, uint16_t slot) {
+  assert((config_->cluster_enabled && slot < HASH_SLOTS_SIZE) || slot == 0);
+
+  int cnt = 0;
+  std::lock_guard<std::mutex> guard(pubsub_shard_channels_mu_);
+
+  auto iter = pubsub_shard_channels_[slot].find(channel);
+  if (iter == pubsub_shard_channels_[slot].end()) {
+    return cnt;
+  }
+
+  std::string reply;
+  reply.append(redis::MultiLen(3));
+  reply.append(redis::BulkString("smessage"));
+  reply.append(redis::BulkString(channel));
+  reply.append(redis::BulkString(msg));
+
+  for (const auto &conn_ctx : iter->second) {
+    auto s = conn_ctx.owner->Reply(conn_ctx.fd, reply);
+    if (s.IsOK()) {
+      cnt++;
+    }
+  }
+
+  return cnt;
+}
+
 void Server::BlockOnKey(const std::string &key, redis::Connection *conn) {
   std::lock_guard<std::mutex> guard(blocking_keys_mu_);
 

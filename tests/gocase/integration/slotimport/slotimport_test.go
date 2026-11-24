@@ -99,11 +99,8 @@ func TestImportedServer(t *testing.T) {
 
 	t.Run("IMPORT - slot states in right order", func(t *testing.T) {
 		slotNum := 1
-		slotKey := util.SlotTable[slotNum]
 
 		// import start
-		require.NoError(t, rdbA.Set(ctx, slotKey, "slot1", 0).Err())
-		require.Equal(t, "slot1", rdbA.Get(ctx, slotKey).Val())
 		require.Equal(t, "OK", rdbB.Do(ctx, "cluster", "import", slotNum, 0).Val())
 		clusterInfo := rdbB.ClusterInfo(ctx).Val()
 		require.Contains(t, clusterInfo, "importing_slot(s): 1")
@@ -111,14 +108,7 @@ func TestImportedServer(t *testing.T) {
 		clusterNodes := rdbB.ClusterNodes(ctx).Val()
 		require.Contains(t, clusterNodes, fmt.Sprintf("[%d-<-%s]", slotNum, srvAID))
 
-		require.NoError(t, rdbA.Do(ctx, "clusterx", "migrate", slotNum, srvBID).Err())
-		require.Eventually(t, func() bool {
-			clusterInfo := rdbA.ClusterInfo(context.Background()).Val()
-			return strings.Contains(clusterInfo, fmt.Sprintf("migrating_slot(s): %d", slotNum)) &&
-				strings.Contains(clusterInfo, fmt.Sprintf("migrating_state: %s", "success"))
-		}, 5*time.Second, 100*time.Millisecond)
-
-		// import success
+		// import success on the same connection
 		require.Equal(t, "OK", rdbB.Do(ctx, "cluster", "import", slotNum, 1).Val())
 		clusterInfo = rdbB.ClusterInfo(ctx).Val()
 		require.Contains(t, clusterInfo, "importing_slot(s): 1")
@@ -127,9 +117,55 @@ func TestImportedServer(t *testing.T) {
 		// import finish and should not contain the import section
 		clusterNodes = rdbB.ClusterNodes(ctx).Val()
 		require.NotContains(t, clusterNodes, fmt.Sprintf("[%d-<-%s]", slotNum, srvAID))
+	})
+
+	t.Run("IMPORT - slot migrated by migrator", func(t *testing.T) {
+		slotNum := 2
+		slotKey := util.SlotTable[slotNum]
+
+		require.NoError(t, rdbA.Set(ctx, slotKey, "slot2", 0).Err())
+		require.Equal(t, "slot2", rdbA.Get(ctx, slotKey).Val())
+
+		// the migrator drives start/data/success on its own connection
+		require.NoError(t, rdbA.Do(ctx, "clusterx", "migrate", slotNum, srvBID).Err())
+		require.Eventually(t, func() bool {
+			clusterInfo := rdbA.ClusterInfo(context.Background()).Val()
+			return strings.Contains(clusterInfo, fmt.Sprintf("migrating_slot(s): %d", slotNum)) &&
+				strings.Contains(clusterInfo, fmt.Sprintf("migrating_state: %s", "success"))
+		}, 5*time.Second, 100*time.Millisecond)
+
+		// import success
+		clusterInfo := rdbB.ClusterInfo(ctx).Val()
+		require.Contains(t, clusterInfo, "importing_slot(s): 2")
+		require.Contains(t, clusterInfo, "import_state: success")
+
+		// import finish and should not contain the import section
+		clusterNodes := rdbB.ClusterNodes(ctx).Val()
+		require.NotContains(t, clusterNodes, fmt.Sprintf("[%d-<-%s]", slotNum, srvAID))
 
 		time.Sleep(50 * time.Millisecond)
-		require.Equal(t, "slot1", rdbB.Get(ctx, slotKey).Val())
+		require.Equal(t, "slot2", rdbB.Get(ctx, slotKey).Val())
+	})
+
+	t.Run("IMPORT - same slot range from another connection is rejected", func(t *testing.T) {
+		slotNum := 3
+		require.Equal(t, "OK", rdbB.Do(ctx, "cluster", "import", slotNum, 0).Val())
+
+		other := srvB.NewClient()
+		defer func() { require.NoError(t, other.Close()) }()
+
+		// start the same slot range on another connection
+		require.ErrorContains(t, other.Do(ctx, "cluster", "import", slotNum, 0).Err(),
+			"only one importing job is allowed")
+		// success/fail from a connection that does not own the import
+		require.ErrorContains(t, other.Do(ctx, "cluster", "import", slotNum, 1).Err(), "mismatch conn id")
+		require.ErrorContains(t, other.Do(ctx, "cluster", "import", slotNum, 2).Err(), "mismatch conn id")
+
+		// the owning connection can still finish the import
+		require.Equal(t, "OK", rdbB.Do(ctx, "cluster", "import", slotNum, 2).Val())
+		clusterInfo := rdbB.ClusterInfo(ctx).Val()
+		require.Contains(t, clusterInfo, "importing_slot(s): 3")
+		require.Contains(t, clusterInfo, "import_state: error")
 	})
 
 	t.Run("IMPORT - slot state 'error'", func(t *testing.T) {

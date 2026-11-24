@@ -450,24 +450,33 @@ void Worker::FreeConnection(redis::Connection *conn) {
 }
 
 void Worker::FreeConnectionByID(int fd, uint64_t id) {
-  std::unique_lock<std::mutex> lock(conns_mu_);
-  auto iter = conns_.find(fd);
-  if (iter != conns_.end() && iter->second->GetID() == id) {
-    if (rate_limit_group_ != nullptr) {
-      bufferevent_remove_from_rate_limit_group(iter->second->GetBufferEvent());
+  // Do not call Connection::Close() here. It locks conns_mu_ again and deletes the
+  // connection. Invoke close_cb after releasing the mutex, then delete once.
+  redis::Connection *conn = nullptr;
+  {
+    std::unique_lock<std::mutex> lock(conns_mu_);
+    auto iter = conns_.find(fd);
+    if (iter != conns_.end() && iter->second->GetID() == id) {
+      if (rate_limit_group_ != nullptr) {
+        bufferevent_remove_from_rate_limit_group(iter->second->GetBufferEvent());
+      }
+      conn = iter->second;
+      conns_.erase(iter);
+      srv->DecrClientNum();
     }
-    delete iter->second;
-    conns_.erase(iter);
-    srv->DecrClientNum();
+
+    iter = monitor_conns_.find(fd);
+    if (iter != monitor_conns_.end() && iter->second->GetID() == id) {
+      delete iter->second;
+      monitor_conns_.erase(iter);
+      srv->DecrClientNum();
+      srv->DecrMonitorClientNum();
+    }
   }
 
-  iter = monitor_conns_.find(fd);
-  if (iter != monitor_conns_.end() && iter->second->GetID() == id) {
-    delete iter->second;
-    monitor_conns_.erase(iter);
-    srv->DecrClientNum();
-    srv->DecrMonitorClientNum();
-  }
+  if (!conn) return;
+  if (conn->close_cb) conn->close_cb(conn->GetFD());
+  delete conn;
 }
 
 Status Worker::EnableWriteEvent(int fd) {

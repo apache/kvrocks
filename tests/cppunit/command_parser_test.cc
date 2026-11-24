@@ -133,3 +133,19 @@ TEST(CommandParser, ParseFloat) {
   ASSERT_EQ(p.TakeFloat().GetValue(), 3);
   ASSERT_FALSE(p.TakeFloat());
 }
+
+TEST(CommandParser, ParsePositiveInt) {
+  std::vector<std::string> vec{"0", "-1", "1", "4294967295", "4294967296"};
+
+  CommandParser p(vec);
+
+  ASSERT_FALSE(p.TakePositiveInt<uint32_t>());
+  ASSERT_TRUE(p.TakeStr());
+  ASSERT_FALSE(p.TakePositiveInt<uint32_t>());
+  ASSERT_TRUE(p.TakeStr());
+  ASSERT_EQ(p.TakePositiveInt<uint32_t>().GetValue(), 1);
+  ASSERT_EQ(p.TakePositiveInt<uint32_t>().GetValue(), 4294967295);
+  ASSERT_FALSE(p.TakePositiveInt<uint32_t>());
+  ASSERT_EQ(p.TakePositiveInt<int64_t>().GetValue(), 4294967296);
+  ASSERT_FALSE(p.TakePositiveInt<int64_t>());
+}

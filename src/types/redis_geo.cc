@@ -121,7 +121,7 @@ rocksdb::Status Geo::SearchStore(engine::Context &ctx, const Slice &user_key, Ge
     // store key is not empty, try to remove it before returning.
     if (!s.ok() && s.IsNotFound() && !store_key.empty()) {
       auto del_s = ZSet::Del(ctx, store_key);
-      if (!del_s.ok()) return del_s;
+      if (!del_s.ok() && !del_s.IsNotFound()) return del_s;
     }
     if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
@@ -135,7 +135,7 @@ rocksdb::Status Geo::SearchStore(engine::Context &ctx, const Slice &user_key, Ge
   // store key is not empty, try to remove it before returning.
   if (!s.ok() && s.IsNotFound() && !store_key.empty()) {
     auto del_s = ZSet::Del(ctx, store_key);
-    if (!del_s.ok()) return del_s;
+    if (!del_s.ok() && !del_s.IsNotFound()) return del_s;
   }
   if (!s.ok()) return s.IsNotFound() ? rocksdb::Status::OK() : s;
 
@@ -150,7 +150,7 @@ rocksdb::Status Geo::SearchStore(engine::Context &ctx, const Slice &user_key, Ge
     // store key is not empty, try to remove it before returning.
     if (!store_key.empty()) {
       auto del_s = ZSet::Del(ctx, store_key);
-      if (!del_s.ok()) return del_s;
+      if (!del_s.ok() && !del_s.IsNotFound()) return del_s;
     }
     return rocksdb::Status::OK();
   }
@@ -168,7 +168,7 @@ rocksdb::Status Geo::SearchStore(engine::Context &ctx, const Slice &user_key, Ge
     int64_t returned_items_count = (count == 0 || result_length < count) ? result_length : count;
     if (returned_items_count == 0) {
       auto s = ZSet::Del(ctx, store_key);
-      if (!s.ok()) return s;
+      if (!s.ok() && !s.IsNotFound()) return s;
     } else {
       std::vector<MemberScore> member_scores;
       for (const auto &geo_point : *geo_points) {

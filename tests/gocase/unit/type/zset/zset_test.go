@@ -67,6 +67,38 @@ func createDefaultLexZset(rdb *redis.Client, ctx context.Context) {
 		{0, "omega"}})
 }
 
+func newZsetTCPClient(t *testing.T, srv *util.KvrocksServer, isRESP3 bool) *util.TCPClient {
+	t.Helper()
+	rd := srv.NewTCPClient()
+	t.Cleanup(func() { require.NoError(t, rd.Close()) })
+	if isRESP3 {
+		require.NoError(t, rd.WriteArgs("HELLO", "3"))
+		for _, line := range []string{
+			"%6",
+			"$6", "server", "$5", "redis",
+			"$7", "version", "$5", "7.0.0",
+			"$5", "proto", ":3",
+			"$4", "mode", "$10", "standalone",
+			"$4", "role", "$6", "master",
+			"$7", "modules", "_",
+		} {
+			rd.MustRead(t, line)
+		}
+	}
+	return rd
+}
+
+func mustReadZsetReply(t *testing.T, rd *util.TCPClient, isRESP3 bool, resp2, resp3 []string) {
+	t.Helper()
+	lines := resp2
+	if isRESP3 {
+		lines = resp3
+	}
+	for _, line := range lines {
+		rd.MustRead(t, line)
+	}
+}
+
 func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, enabledRESP3, encoding string, srv *util.KvrocksServer) {
 	isRESP3 := enabledRESP3 == "yes"
 	t.Run(fmt.Sprintf("Check encoding - %s", encoding), func(t *testing.T) {
@@ -244,6 +276,21 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, enabledRES
 		require.ErrorContains(t, rdb.Do(ctx, "zunionstore", "out", "3.3", "myzet").Err(), "value is not an integer or out of range")
 	})
 
+	t.Run("ZUNIONSTORE/ZINTERSTORE/ZDIFFSTORE - numkeys must be positive", func(t *testing.T) {
+		rdb.Del(ctx, "out")
+		rdb.Del(ctx, "myzet")
+		rdb.ZAdd(ctx, "myzet", redis.Z{Score: 1, Member: "a"})
+
+		for _, cmd := range []string{"zunionstore", "zinterstore", "zdiffstore"} {
+			for _, numkeys := range []string{"0", "-1"} {
+				require.ErrorContains(t, rdb.Do(ctx, cmd, "out", numkeys, "myzet").Err(), "value is out of range, must be positive")
+			}
+		}
+
+		require.EqualValues(t, int64(1), rdb.ZCard(ctx, "myzet").Val())
+		require.EqualValues(t, int64(0), rdb.ZCard(ctx, "out").Val())
+	})
+
 	t.Run("ZUNIONSTORE - invalid weights will raise error", func(t *testing.T) {
 		rdb.Del(ctx, "out")
 		rdb.Del(ctx, "myzet")
@@ -305,6 +352,18 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, enabledRES
 		require.Equal(t, []redis.Z{{Score: 10, Member: "a"}, {Score: 20, Member: "b"}}, rdb.ZPopMin(ctx, "ztmp", 2).Val())
 		require.EqualValues(t, 1, rdb.ZCard(ctx, "ztmp").Val())
 		require.Equal(t, []redis.Z{{Score: 30, Member: "c"}}, rdb.ZPopMin(ctx, "ztmp", 3).Val())
+		rdb.ZAdd(ctx, "ztmp", redis.Z{Score: 10, Member: "a"}, redis.Z{Score: 20, Member: "b"}, redis.Z{Score: 30, Member: "c"}, redis.Z{Score: 40, Member: "d"})
+		rd := newZsetTCPClient(t, srv, isRESP3)
+		require.NoError(t, rd.WriteArgs("zpopmin", "ztmp"))
+		mustReadZsetReply(t, rd, isRESP3, []string{"*2", "$1", "a", "$2", "10"}, []string{"*2", "$1", "a", ",10"})
+		require.NoError(t, rd.WriteArgs("zpopmin", "ztmp", "1"))
+		mustReadZsetReply(t, rd, isRESP3, []string{"*2", "$1", "b", "$2", "20"}, []string{"*1", "*2", "$1", "b", ",20"})
+		require.NoError(t, rd.WriteArgs("zpopmin", "ztmp", "3"))
+		mustReadZsetReply(t, rd, isRESP3,
+			[]string{"*4", "$1", "c", "$2", "30", "$1", "d", "$2", "40"},
+			[]string{"*2", "*2", "$1", "c", ",30", "*2", "$1", "d", ",40"})
+		require.NoError(t, rd.WriteArgs("zpopmin", "ztmp", "1"))
+		rd.MustRead(t, "*0")
 	})
 
 	t.Run(fmt.Sprintf("ZPOPMAX basics - %s", encoding), func(t *testing.T) {
@@ -323,6 +382,18 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, enabledRES
 		require.Equal(t, []redis.Z{{Score: 30, Member: "c"}, {Score: 20, Member: "b"}}, rdb.ZPopMax(ctx, "ztmp", 2).Val())
 		require.EqualValues(t, 1, rdb.ZCard(ctx, "ztmp").Val())
 		require.Equal(t, []redis.Z{{Score: 10, Member: "a"}}, rdb.ZPopMax(ctx, "ztmp", 3).Val())
+		rdb.ZAdd(ctx, "ztmp", redis.Z{Score: 10, Member: "a"}, redis.Z{Score: 20, Member: "b"}, redis.Z{Score: 30, Member: "c"}, redis.Z{Score: 40, Member: "d"})
+		rd := newZsetTCPClient(t, srv, isRESP3)
+		require.NoError(t, rd.WriteArgs("zpopmax", "ztmp"))
+		mustReadZsetReply(t, rd, isRESP3, []string{"*2", "$1", "d", "$2", "40"}, []string{"*2", "$1", "d", ",40"})
+		require.NoError(t, rd.WriteArgs("zpopmax", "ztmp", "1"))
+		mustReadZsetReply(t, rd, isRESP3, []string{"*2", "$1", "c", "$2", "30"}, []string{"*1", "*2", "$1", "c", ",30"})
+		require.NoError(t, rd.WriteArgs("zpopmax", "ztmp", "3"))
+		mustReadZsetReply(t, rd, isRESP3,
+			[]string{"*4", "$1", "b", "$2", "20", "$1", "a", "$2", "10"},
+			[]string{"*2", "*2", "$1", "b", ",20", "*2", "$1", "a", ",10"})
+		require.NoError(t, rd.WriteArgs("zpopmax", "ztmp", "1"))
+		rd.MustRead(t, "*0")
 	})
 
 	t.Run(fmt.Sprintf("BZPOPMIN basics - %s", encoding), func(t *testing.T) {
@@ -397,6 +468,27 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, enabledRES
 		require.Equal(t, []redis.Z{{Score: 40, Member: "d"}, {Score: 50, Member: "e"}, {Score: 60, Member: "f"}}, zset)
 		require.Equal(t, redis.Nil, rdb.ZMPop(ctx, "max", 10, "zseta", "zsetb").Err())
 		require.EqualValues(t, 0, rdb.Exists(ctx, "zseta", "zsetb").Val())
+
+		t.Run("reply format with count", func(t *testing.T) {
+			createZset(rdb, ctx, "zseta", []redis.Z{{Score: 10, Member: "a"}, {Score: 20, Member: "b"}})
+			rd := newZsetTCPClient(t, srv, isRESP3)
+			require.NoError(t, rd.WriteArgs("zmpop", "1", "zseta", "max", "count", "10"))
+			rd.MustRead(t, "*2")
+			rd.MustReadBulkString(t, "zseta")
+			mustReadZsetReply(t, rd, isRESP3,
+				[]string{"*2", "*2", "$1", "b", "$2", "20", "*2", "$1", "a", "$2", "10"},
+				[]string{"*2", "*2", "$1", "b", ",20", "*2", "$1", "a", ",10"})
+		})
+		t.Run("reply format without count", func(t *testing.T) {
+			createZset(rdb, ctx, "zseta", []redis.Z{{Score: 10, Member: "a"}})
+			rd := newZsetTCPClient(t, srv, isRESP3)
+			require.NoError(t, rd.WriteArgs("zmpop", "1", "zseta", "min"))
+			rd.MustRead(t, "*2")
+			rd.MustReadBulkString(t, "zseta")
+			mustReadZsetReply(t, rd, isRESP3,
+				[]string{"*1", "*2", "$1", "a", "$2", "10"},
+				[]string{"*1", "*2", "$1", "a", ",10"})
+		})
 	})
 
 	t.Run(fmt.Sprintf("ZMPOP error - %s", encoding), func(t *testing.T) {
@@ -445,6 +537,32 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, enabledRES
 		key, zset = r.Val()
 		require.Equal(t, "zseta", key)
 		require.Equal(t, []redis.Z{{Score: 1, Member: "a"}, {Score: 2, Member: "b"}}, zset)
+
+		t.Run("immediate reply format", func(t *testing.T) {
+			createZset(rdb, ctx, "zseta", []redis.Z{{Score: 1, Member: "a"}, {Score: 2, Member: "b"}})
+			rd := newZsetTCPClient(t, srv, isRESP3)
+			require.NoError(t, rd.WriteArgs("bzmpop", "1", "1", "zseta", "max", "count", "2"))
+			rd.MustRead(t, "*2")
+			rd.MustReadBulkString(t, "zseta")
+			mustReadZsetReply(t, rd, isRESP3,
+				[]string{"*2", "*2", "$1", "b", "$1", "2", "*2", "$1", "a", "$1", "1"},
+				[]string{"*2", "*2", "$1", "b", ",2", "*2", "$1", "a", ",1"})
+		})
+		t.Run("blocked reply format", func(t *testing.T) {
+			rdb.Del(ctx, "zseta")
+			rd := newZsetTCPClient(t, srv, isRESP3)
+			require.NoError(t, rd.WriteArgs("bzmpop", "10", "1", "zseta", "min", "count", "2"))
+			require.Eventually(t, func() bool {
+				cnt, _ := strconv.Atoi(util.FindInfoEntry(rdb, "blocked_clients"))
+				return cnt == 1
+			}, 5*time.Second, 100*time.Millisecond)
+			rdb.ZAdd(ctx, "zseta", redis.Z{Score: 1, Member: "a"}, redis.Z{Score: 2, Member: "b"})
+			rd.MustRead(t, "*2")
+			rd.MustReadBulkString(t, "zseta")
+			mustReadZsetReply(t, rd, isRESP3,
+				[]string{"*2", "*2", "$1", "a", "$1", "1", "*2", "$1", "b", "$1", "2"},
+				[]string{"*2", "*2", "$1", "a", ",1", "*2", "$1", "b", ",2"})
+		})
 	})
 
 	t.Run(fmt.Sprintf("BZMPOP error - %s", encoding), func(t *testing.T) {
@@ -595,6 +713,16 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, enabledRES
 			{3, "c"},
 			{4, "d"},
 		}, rdb.ZRangeWithScores(ctx, "ztmp", 0, -1).Val())
+
+		rd := newZsetTCPClient(t, srv, isRESP3)
+		require.NoError(t, rd.WriteArgs("zrange", "ztmp", "1", "2"))
+		rd.MustReadStrings(t, []string{"b", "c"})
+		require.NoError(t, rd.WriteArgs("zrange", "ztmp", "5", "6", "withscores"))
+		rd.MustRead(t, "*0")
+		require.NoError(t, rd.WriteArgs("zrange", "ztmp", "1", "2", "withscores"))
+		mustReadZsetReply(t, rd, isRESP3,
+			[]string{"*4", "$1", "b", "$1", "2", "$1", "c", "$1", "3"},
+			[]string{"*2", "*2", "$1", "b", ",2", "*2", "$1", "c", ",3"})
 
 		for i := 1; i < 10; i++ {
 			cmd := rdb.ZRangeArgs(ctx, redis.ZRangeArgs{Key: "ztmp", Count: 0, ByScore: true, Start: 0, Stop: -1, Offset: int64(i)})
@@ -1161,6 +1289,16 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, enabledRES
 			{3, "d"},
 			{5, "c"}}
 		require.Equal(t, zsetInt, rdb.ZUnionWithScores(ctx, redis.ZStore{Keys: []string{"zseta", "zsetb"}}).Val())
+
+		rd := newZsetTCPClient(t, srv, isRESP3)
+		require.NoError(t, rd.WriteArgs("zunion", "2", "zseta", "zsetb"))
+		rd.MustReadStrings(t, []string{"a", "b", "d", "c"})
+		require.NoError(t, rd.WriteArgs("zunion", "1", "zset_noexists", "withscores"))
+		rd.MustRead(t, "*0")
+		require.NoError(t, rd.WriteArgs("zunion", "2", "zseta", "zsetb", "withscores"))
+		mustReadZsetReply(t, rd, isRESP3,
+			[]string{"*8", "$1", "a", "$1", "1", "$1", "b", "$1", "3", "$1", "d", "$1", "3", "$1", "c", "$1", "5"},
+			[]string{"*4", "*2", "$1", "a", ",1", "*2", "$1", "b", ",3", "*2", "$1", "d", ",3", "*2", "$1", "c", ",5"})
 	})
 
 	t.Run(fmt.Sprintf("ZUNION with weights - %s", encoding), func(t *testing.T) {
@@ -1275,6 +1413,16 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, enabledRES
 
 		require.Equal(t, 0, len(rdb.ZInter(ctx, &redis.ZStore{Keys: []string{"zseta", "zsetb", "zset_noexists"}}).Val()))
 		require.Equal(t, 0, len(rdb.ZInterWithScores(ctx, &redis.ZStore{Keys: []string{"zseta", "zsetb", "zset_noexists"}, Weights: []float64{2, 3}, Aggregate: "sum"}).Val()))
+
+		rd := newZsetTCPClient(t, srv, isRESP3)
+		require.NoError(t, rd.WriteArgs("zinter", "2", "zseta", "zsetb"))
+		rd.MustReadStrings(t, []string{"b", "c"})
+		require.NoError(t, rd.WriteArgs("zinter", "2", "zseta", "zset_noexists", "withscores"))
+		rd.MustRead(t, "*0")
+		require.NoError(t, rd.WriteArgs("zinter", "2", "zseta", "zsetb", "withscores"))
+		mustReadZsetReply(t, rd, isRESP3,
+			[]string{"*4", "$1", "b", "$1", "3", "$1", "c", "$1", "5"},
+			[]string{"*2", "*2", "$1", "b", ",3", "*2", "$1", "c", ",5"})
 	})
 
 	t.Run(fmt.Sprintf("ZINTERCARD with LIMIT - %s", encoding), func(t *testing.T) {
@@ -1472,6 +1620,30 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, enabledRES
 		for _, v := range res {
 			require.Contains(t, z, v)
 		}
+
+		createZset(rdb, ctx, "zset_single", []redis.Z{{Score: 1.25, Member: "a"}})
+		t.Run("reply format with scores", func(t *testing.T) {
+			rd := newZsetTCPClient(t, srv, isRESP3)
+			require.NoError(t, rd.WriteArgs("zrandmember", "zset_single"))
+			rd.MustReadBulkString(t, "a")
+			require.NoError(t, rd.WriteArgs("zrandmember", "zset_single", "1"))
+			rd.MustReadStrings(t, []string{"a"})
+			require.NoError(t, rd.WriteArgs("zrandmember", "zset_single", "0", "withscores"))
+			rd.MustRead(t, "*0")
+			require.NoError(t, rd.WriteArgs("zrandmember", "key_not_exist", "2", "withscores"))
+			rd.MustRead(t, "*0")
+			require.NoError(t, rd.WriteArgs("zrandmember", "zset_single", "1", "withscores"))
+			mustReadZsetReply(t, rd, isRESP3,
+				[]string{"*2", "$1", "a", "$4", "1.25"},
+				[]string{"*1", "*2", "$1", "a", ",1.25"})
+		})
+		t.Run("reply format with repeated members", func(t *testing.T) {
+			rd := newZsetTCPClient(t, srv, isRESP3)
+			require.NoError(t, rd.WriteArgs("zrandmember", "zset_single", "-2", "withscores"))
+			mustReadZsetReply(t, rd, isRESP3,
+				[]string{"*4", "$1", "a", "$4", "1.25", "$1", "a", "$4", "1.25"},
+				[]string{"*2", "*2", "$1", "a", ",1.25", "*2", "$1", "a", ",1.25"})
+		})
 	})
 
 	for i, cmd := range []func(ctx context.Context, dest string, store *redis.ZStore) *redis.IntCmd{rdb.ZInterStore, rdb.ZUnionStore} {
@@ -1589,6 +1761,16 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, enabledRES
 		cmd := rdb.ZDiffWithScores(ctx, "zseta", "zsetb", "zsetc")
 		require.NoError(t, cmd.Err())
 		require.EqualValues(t, []redis.Z([]redis.Z{{Score: 1, Member: "a"}, {Score: 3, Member: "d"}}), cmd.Val())
+
+		rd := newZsetTCPClient(t, srv, isRESP3)
+		require.NoError(t, rd.WriteArgs("zdiff", "3", "zseta", "zsetb", "zsetc"))
+		rd.MustReadStrings(t, []string{"a", "d"})
+		require.NoError(t, rd.WriteArgs("zdiff", "2", "zseta", "zseta", "withscores"))
+		rd.MustRead(t, "*0")
+		require.NoError(t, rd.WriteArgs("zdiff", "3", "zseta", "zsetb", "zsetc", "withscores"))
+		mustReadZsetReply(t, rd, isRESP3,
+			[]string{"*4", "$1", "a", "$1", "1", "$1", "d", "$1", "3"},
+			[]string{"*2", "*2", "$1", "a", ",1", "*2", "$1", "d", ",3"})
 	})
 
 	t.Run(fmt.Sprintf("ZDIFF with empty sets - %s", encoding), func(t *testing.T) {
@@ -1631,6 +1813,16 @@ func basicTests(t *testing.T, rdb *redis.Client, ctx context.Context, enabledRES
 		cmd := rdb.ZDiffWithScores(ctx, "zseta", "zsetb")
 		require.NoError(t, cmd.Err())
 		require.EqualValues(t, []redis.Z([]redis.Z{}), cmd.Val())
+	})
+
+	t.Run("ZDIFFSTORE rejects trailing arguments", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "zdiff-src", "zdiff-dst").Err())
+		require.NoError(t, rdb.ZAdd(ctx, "zdiff-src", redis.Z{Score: 1, Member: "a"}).Err())
+		require.NoError(t, rdb.ZAdd(ctx, "zdiff-dst", redis.Z{Score: 9, Member: "keep"}).Err())
+
+		err := rdb.Do(ctx, "ZDIFFSTORE", "zdiff-dst", "1", "zdiff-src", "GARBAGE").Err()
+		require.ErrorContains(t, err, "syntax error")
+		require.Equal(t, []redis.Z{{Score: 9, Member: "keep"}}, rdb.ZRangeWithScores(ctx, "zdiff-dst", 0, -1).Val())
 	})
 
 	t.Run("ZDIFFSTORE with three sets - ", func(t *testing.T) {

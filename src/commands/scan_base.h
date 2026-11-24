@@ -90,7 +90,8 @@ class CommandScanBase : public Commander {
   std::string GenerateOutput(Server *srv, [[maybe_unused]] const Connection *conn, const std::vector<std::string> &keys,
                              CursorType cursor_type) const {
     std::vector<std::string> list;
-    if (keys.size() == static_cast<size_t>(limit_)) {
+    // A page may return limit + 1 elements, and ends with an empty element only when the scan is done.
+    if (keys.size() >= static_cast<size_t>(limit_) && !keys.back().empty()) {
       auto end_cursor = srv->GenerateCursorFromKeyName(keys.back(), cursor_type);
       list.emplace_back(redis::BulkString(end_cursor));
     } else {
@@ -127,7 +128,8 @@ class CommandSubkeyScanBase : public CommandScanBase {
   }
 
   std::string GetNextCursor(Server *srv, std::vector<std::string> &fields, CursorType cursor_type) const {
-    if (fields.size() == static_cast<size_t>(limit_)) {
+    // A page may return limit + 1 elements, and ends with an empty element only when the scan is done.
+    if (fields.size() >= static_cast<size_t>(limit_) && !fields.back().empty()) {
       return srv->GenerateCursorFromKeyName(fields.back(), cursor_type);
     }
     return "0";

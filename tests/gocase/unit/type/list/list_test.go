@@ -23,6 +23,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"math/rand"
 	"strconv"
 	"strings"
@@ -69,6 +70,21 @@ func testLTRIM(t *testing.T, configs util.KvrocksServerConfigs) {
 
 	key := "myList"
 	startLen := int64(32)
+
+	t.Run("LTRIM with maximum start index", func(t *testing.T) {
+		require.NoError(t, rdb.RPush(ctx, key, "a").Err())
+		require.True(t, rdb.Expire(ctx, key, time.Hour).Val())
+		trimCtx, cancel := context.WithTimeout(ctx, time.Second)
+		defer cancel()
+		require.NoError(t, rdb.LTrim(trimCtx, key, math.MaxInt32, math.MaxInt32).Err())
+		require.EqualValues(t, 0, rdb.LLen(ctx, key).Val())
+		require.EqualValues(t, 0, rdb.Exists(ctx, key).Val())
+		ttl, err := rdb.Do(ctx, "TTL", key).Int64()
+		require.NoError(t, err)
+		require.EqualValues(t, -2, ttl)
+		require.EqualValues(t, 1, rdb.RPush(ctx, key, "b").Val())
+		require.Equal(t, []string{"b"}, rdb.LRange(ctx, key, 0, -1).Val())
+	})
 
 	for typ, value := range largeValue {
 		t.Run(fmt.Sprintf("LTRIM stress testing - %s", typ), func(t *testing.T) {
@@ -1021,6 +1037,15 @@ func testList(t *testing.T, configs util.KvrocksServerConfigs) {
 			require.Equal(t, []int64{7, 6}, rdb.LPosCount(ctx, "mylist", "c", 2, redis.LPosArgs{Rank: -1}).Val())
 		})
 
+		// LPosCount also accepts bulk strings like "2", so check the raw reply to make sure
+		// LPOS with COUNT replies with integers, as Redis does.
+		t.Run("LPOS COUNT replies with integers", func(t *testing.T) {
+			require.Equal(t, []interface{}{int64(2)}, rdb.Do(ctx, "LPOS", "mylist", "c", "COUNT", 1).Val())
+			require.Equal(t, []interface{}{int64(2), int64(6), int64(7)}, rdb.Do(ctx, "LPOS", "mylist", "c", "COUNT", 0).Val())
+			require.Equal(t, []interface{}{int64(7), int64(6)}, rdb.Do(ctx, "LPOS", "mylist", "c", "RANK", -1, "COUNT", 2).Val())
+			require.Equal(t, []interface{}{}, rdb.Do(ctx, "LPOS", "mylist", "x", "COUNT", 0).Val())
+		})
+
 		t.Run("LPOS non existing key", func(t *testing.T) {
 			require.Empty(t, rdb.LPosCount(ctx, "mylistxxx", "c", 0, redis.LPosArgs{Rank: 2}).Val())
 		})
@@ -1512,6 +1537,23 @@ func testList(t *testing.T, configs util.KvrocksServerConfigs) {
 			require.EqualValues(t, 0, rdb.Exists(ctx, key2).Val())
 		})
 	}
+
+	t.Run("LMPOP and BLMPOP reject invalid arguments", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "lmpop-list").Err())
+		require.NoError(t, rdb.RPush(ctx, "lmpop-list", "a", "b").Err())
+
+		for _, args := range [][]interface{}{
+			{"lmpop", "0", "lmpop-list", "left"},
+			{"lmpop", "1", "lmpop-list", "left", "count", "0"},
+			{"blmpop", "0.01", "0", "lmpop-list", "left"},
+			{"blmpop", "0.01", "1", "lmpop-list", "left", "count", "0"},
+		} {
+			require.ErrorContains(t, rdb.Do(ctx, args...).Err(), "out of numeric range", args)
+		}
+		require.ErrorContains(t, rdb.Do(ctx, "blmpop", "-1", "1", "lmpop-list", "left").Err(), "timeout is negative")
+
+		require.EqualValues(t, 2, rdb.LLen(ctx, "lmpop-list").Val())
+	})
 }
 
 type kMetadataResponse struct {

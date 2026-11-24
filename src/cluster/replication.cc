@@ -55,6 +55,8 @@
 #include <event2/bufferevent_ssl.h>
 #include <openssl/err.h>
 #include <openssl/ssl.h>
+
+#include "server/tls_util.h"
 #endif
 
 FeedSlaveThread::FeedSlaveThread(Server *srv, redis::Connection *conn, rocksdb::SequenceNumber next_repl_seq)
@@ -375,6 +377,12 @@ void ReplicationThread::CallbacksStateMachine::Start() {
       ssl = SSL_new(repl_->srv_->ssl_ctx.get());
       if (!ssl) {
         ERROR("Failed to construct SSL structure for new connection: {}", fmt::streamed(SSLErrors{}));
+        evutil_closesocket(*cfd);
+        return;
+      }
+      if (auto s = SetTLSServerName(ssl, repl_->host_); !s.IsOK()) {
+        ERROR("[replication] {}", s.Msg());
+        SSL_free(ssl);
         evutil_closesocket(*cfd);
         return;
       }
@@ -946,6 +954,14 @@ Status ReplicationThread::parallelFetchFile(const std::string &dir,
 #ifdef ENABLE_OPENSSL
           if (this->srv_->GetConfig()->tls_replication) {
             ssl = SSL_new(this->srv_->ssl_ctx.get());
+            if (!ssl) {
+              return {Status::NotOK, fmt::format("Failed to construct SSL structure for new connection: {}",
+                                                 fmt::streamed(SSLErrors{}))};
+            }
+            if (auto s = SetTLSServerName(ssl, this->host_); !s.IsOK()) {
+              SSL_free(ssl);
+              return s;
+            }
           }
           auto exit = MakeScopeExit([ssl] { SSL_free(ssl); });
 #endif
@@ -1162,6 +1178,13 @@ Status ReplicationThread::parseWriteBatch(const rocksdb::WriteBatch &write_batch
 
   switch (write_batch_handler.Type()) {
     case kBatchTypePublish:
+      // The publish time comes from the master's clock, so this relies on synchronized clocks.
+      // Older masters do not record publish timestamps.
+      if (write_batch_handler.PublishTime() != 0 && write_batch_handler.PublishTime() < publish_cutoff_us_) {
+        DEBUG("[replication] Skip Pub/Sub message on channel {} published before replication started",
+              write_batch_handler.Key());
+        break;
+      }
       srv_->PublishMessage(write_batch_handler.Key(), write_batch_handler.Value());
       break;
     case kBatchTypePropagate:
@@ -1209,6 +1232,14 @@ bool ReplicationThread::isWrongPsyncNum(std::string_view err) {
 bool ReplicationThread::isUnknownOption(std::string_view err) {
   // err doesn't contain the CRLF, so cannot use redis::Error here.
   return err == RESP_PREFIX_ERROR + redis::StatusToRedisErrorMsg({Status::NotOK, redis::errUnknownOption});
+}
+
+void WriteBatchHandler::LogData(const rocksdb::Slice &blob) {
+  ServerLogData log_data;
+  if (log_data.Decode(blob).IsOK() && log_data.GetType() == kPublishLog) {
+    auto timestamp = ParseInt<uint64_t>(log_data.GetContent(), 10);
+    if (timestamp) publish_time_us_ = *timestamp;
+  }
 }
 
 rocksdb::Status WriteBatchHandler::PutCF(uint32_t column_family_id, const rocksdb::Slice &key,

@@ -48,6 +48,11 @@ enum class HashFieldStateKind {
   kExpiredTTLPhysical,
 };
 
+enum class HashFieldDecodeMode {
+  kWithValue,
+  kStateOnly,
+};
+
 struct HashFieldState {
   HashFieldStateKind kind = HashFieldStateKind::kMissing;
   std::string value;
@@ -123,7 +128,8 @@ void ApplyTTLToDeleted(HashMetadata *metadata) {
   ClearBoundsIfNoTtlCandidates(metadata);
 }
 
-rocksdb::Status DecodeFieldState(const HashMetadata &metadata, Slice raw_value, uint64_t now, HashFieldState *state) {
+rocksdb::Status DecodeFieldState(const HashMetadata &metadata, Slice raw_value, uint64_t now, HashFieldDecodeMode mode,
+                                 HashFieldState *state) {
   state->kind = HashFieldStateKind::kMissing;
   state->value.clear();
   state->expire = 0;
@@ -132,7 +138,9 @@ rocksdb::Status DecodeFieldState(const HashMetadata &metadata, Slice raw_value, 
   auto s = metadata.DecodeSubkeyValue(&raw_value, &expire);
   if (!s.ok()) return s;
 
-  state->value.assign(raw_value.data(), raw_value.size());
+  if (mode == HashFieldDecodeMode::kWithValue) {
+    state->value.assign(raw_value.data(), raw_value.size());
+  }
   state->expire = expire;
   if (expire == 0) {
     state->kind = HashFieldStateKind::kPersistent;
@@ -153,7 +161,28 @@ rocksdb::Status LoadFieldState(engine::Storage *storage, engine::Context &ctx, c
     return rocksdb::Status::OK();
   }
   if (!s.ok()) return s;
-  return DecodeFieldState(metadata, Slice(raw_value), now, state);
+  return DecodeFieldState(metadata, Slice(raw_value), now, HashFieldDecodeMode::kWithValue, state);
+}
+
+rocksdb::Status LoadFieldStatesByEncodedKeys(engine::Storage *storage, engine::Context &ctx,
+                                             const HashMetadata &metadata, const std::vector<Slice> &keys, uint64_t now,
+                                             HashFieldDecodeMode mode, std::vector<HashFieldState> *states) {
+  states->clear();
+  states->resize(keys.size());
+  if (keys.empty()) return rocksdb::Status::OK();
+
+  std::vector<rocksdb::PinnableSlice> raw_values(keys.size());
+  std::vector<rocksdb::Status> statuses(keys.size());
+  storage->MultiGet(ctx, ctx.DefaultMultiGetOptions(), storage->GetDB()->DefaultColumnFamily(), keys.size(),
+                    keys.data(), raw_values.data(), statuses.data());
+
+  for (size_t i = 0; i < keys.size(); ++i) {
+    if (statuses[i].IsNotFound()) continue;
+    if (!statuses[i].ok()) return statuses[i];
+    auto s = DecodeFieldState(metadata, Slice(raw_values[i]), now, mode, &(*states)[i]);
+    if (!s.ok()) return s;
+  }
+  return rocksdb::Status::OK();
 }
 
 bool HExpireConditionPasses(HashFieldExpireCondition condition, const HashFieldState &state, uint64_t expire_at) {
@@ -297,16 +326,13 @@ rocksdb::Status LoadFieldStates(engine::Storage *storage, engine::Context &ctx, 
   keys.reserve(encoded_keys.size());
   for (const auto &key : encoded_keys) keys.emplace_back(key);
 
-  std::vector<rocksdb::PinnableSlice> raw_values(keys.size());
-  std::vector<rocksdb::Status> statuses(keys.size());
-  storage->MultiGet(ctx, ctx.DefaultMultiGetOptions(), storage->GetDB()->DefaultColumnFamily(), keys.size(),
-                    keys.data(), raw_values.data(), statuses.data());
+  std::vector<HashFieldState> field_states;
+  auto s =
+      LoadFieldStatesByEncodedKeys(storage, ctx, metadata, keys, now, HashFieldDecodeMode::kWithValue, &field_states);
+  if (!s.ok()) return s;
 
   for (size_t i = 0; i < unique_fields.size(); ++i) {
-    if (statuses[i].IsNotFound()) continue;
-    if (!statuses[i].ok()) return statuses[i];
-    auto s = DecodeFieldState(metadata, Slice(raw_values[i]), now, &states->at(unique_fields[i]));
-    if (!s.ok()) return s;
+    states->at(unique_fields[i]) = std::move(field_states[i]);
   }
   return rocksdb::Status::OK();
 }
@@ -427,7 +453,7 @@ rocksdb::Status Hash::scanAndRepair(engine::Context &ctx, const Slice &ns_key, H
   auto iter = util::UniqueIterator(ctx, read_options);
   for (iter->Seek(prefix_key); iter->Valid() && iter->key().starts_with(prefix_key); iter->Next()) {
     HashFieldState state;
-    s = DecodeFieldState(*metadata, Slice(iter->value()), now, &state);
+    s = DecodeFieldState(*metadata, Slice(iter->value()), now, HashFieldDecodeMode::kWithValue, &state);
     if (!s.ok()) return s;
     if (state.kind == HashFieldStateKind::kExpiredTTLPhysical) {
       s = batch->Delete(iter->key());
@@ -473,7 +499,7 @@ rocksdb::Status Hash::Get(engine::Context &ctx, const Slice &user_key, const Sli
   s = getRawValue(ctx, sub_key, &raw_value);
   if (!s.ok()) return s;
   HashFieldState state;
-  s = DecodeFieldState(metadata, Slice(raw_value), util::GetTimeStampMS(), &state);
+  s = DecodeFieldState(metadata, Slice(raw_value), util::GetTimeStampMS(), HashFieldDecodeMode::kWithValue, &state);
   if (!s.ok()) return s;
   if (state.kind == HashFieldStateKind::kExpiredTTLPhysical) {
     return rocksdb::Status::NotFound();
@@ -639,7 +665,8 @@ rocksdb::Status Hash::MGet(engine::Context &ctx, const Slice &user_key, const st
     if (!statuses_vector[i].ok() && !statuses_vector[i].IsNotFound()) return statuses_vector[i];
     if (statuses_vector[i].ok()) {
       HashFieldState state;
-      s = DecodeFieldState(metadata, Slice(values_vector[i]), util::GetTimeStampMS(), &state);
+      s = DecodeFieldState(metadata, Slice(values_vector[i]), util::GetTimeStampMS(), HashFieldDecodeMode::kWithValue,
+                           &state);
       if (!s.ok()) return s;
       if (state.kind == HashFieldStateKind::kExpiredTTLPhysical) {
         values->emplace_back("");
@@ -970,35 +997,52 @@ rocksdb::Status Hash::Delete(engine::Context &ctx, const Slice &user_key, const 
   uint64_t persistent_removed = 0;
   std::unordered_set<std::string_view> field_set;
   uint64_t now = util::GetTimeStampMS();
-  for (const auto &field : fields) {
-    if (!field_set.emplace(field.ToStringView()).second) {
-      continue;
+  constexpr size_t kBatchSize = 32;
+  size_t batch_capacity = std::min(kBatchSize, fields.size());
+  std::vector<std::string> encoded_keys;
+  std::vector<rocksdb::Slice> keys;
+  std::vector<HashFieldState> states;
+  encoded_keys.reserve(batch_capacity);
+  keys.reserve(batch_capacity);
+  states.reserve(batch_capacity);
+  for (size_t offset = 0; offset < fields.size(); offset += kBatchSize) {
+    size_t batch_size = std::min(kBatchSize, fields.size() - offset);
+    keys.clear();
+    encoded_keys.clear();
+    for (size_t i = offset; i < offset + batch_size; ++i) {
+      const auto &field = fields[i];
+      if (!field_set.emplace(field.ToStringView()).second) continue;
+      encoded_keys.emplace_back(InternalKey(ns_key, field, metadata.version, storage_->IsSlotIdEncoded()).Encode());
+      keys.emplace_back(encoded_keys.back());
     }
-    std::string sub_key = InternalKey(ns_key, field, metadata.version, storage_->IsSlotIdEncoded()).Encode();
-    HashFieldState state;
-    s = LoadFieldState(storage_, ctx, metadata, sub_key, now, &state);
+    // Release each batch's pinned values without copying payloads that HDEL does not use.
+    s = LoadFieldStatesByEncodedKeys(storage_, ctx, metadata, keys, now, HashFieldDecodeMode::kStateOnly, &states);
     if (!s.ok()) return s;
-    switch (state.kind) {
-      case HashFieldStateKind::kMissing:
-        break;
-      case HashFieldStateKind::kPersistent:
-        persistent_removed += 1;
-        physical_removed += 1;
-        *deleted_cnt += 1;
-        s = batch->Delete(sub_key);
-        if (!s.ok()) return s;
-        break;
-      case HashFieldStateKind::kLiveTTL:
-        physical_removed += 1;
-        *deleted_cnt += 1;
-        s = batch->Delete(sub_key);
-        if (!s.ok()) return s;
-        break;
-      case HashFieldStateKind::kExpiredTTLPhysical:
-        physical_removed += 1;
-        s = batch->Delete(sub_key);
-        if (!s.ok()) return s;
-        break;
+
+    for (size_t i = 0; i < keys.size(); ++i) {
+      const auto &sub_key = keys[i];
+      switch (states[i].kind) {
+        case HashFieldStateKind::kMissing:
+          break;
+        case HashFieldStateKind::kPersistent:
+          persistent_removed += 1;
+          physical_removed += 1;
+          *deleted_cnt += 1;
+          s = batch->Delete(sub_key);
+          if (!s.ok()) return s;
+          break;
+        case HashFieldStateKind::kLiveTTL:
+          physical_removed += 1;
+          *deleted_cnt += 1;
+          s = batch->Delete(sub_key);
+          if (!s.ok()) return s;
+          break;
+        case HashFieldStateKind::kExpiredTTLPhysical:
+          physical_removed += 1;
+          s = batch->Delete(sub_key);
+          if (!s.ok()) return s;
+          break;
+      }
     }
   }
   if (physical_removed == 0) {
@@ -1073,7 +1117,8 @@ rocksdb::Status Hash::MSet(engine::Context &ctx, const Slice &user_key, const st
       }
       if (field_status.ok()) {
         HashFieldState state;
-        s = DecodeFieldState(metadata, Slice(values_vector[field_index]), util::GetTimeStampMS(), &state);
+        s = DecodeFieldState(metadata, Slice(values_vector[field_index]), util::GetTimeStampMS(),
+                             HashFieldDecodeMode::kWithValue, &state);
         if (!s.ok()) return s;
         state_kind = state.kind;
         if (nx && state.kind != HashFieldStateKind::kExpiredTTLPhysical) {
@@ -1170,7 +1215,8 @@ rocksdb::Status Hash::RangeByLex(engine::Context &ctx, const Slice &user_key, co
         break;
     }
     HashFieldState state;
-    s = DecodeFieldState(metadata, Slice(iter->value()), util::GetTimeStampMS(), &state);
+    s = DecodeFieldState(metadata, Slice(iter->value()), util::GetTimeStampMS(), HashFieldDecodeMode::kWithValue,
+                         &state);
     if (!s.ok()) return s;
     if (state.kind == HashFieldStateKind::kExpiredTTLPhysical) {
       continue;
@@ -1202,7 +1248,8 @@ rocksdb::Status Hash::GetAll(engine::Context &ctx, const Slice &user_key, std::v
   auto iter = util::UniqueIterator(ctx, read_options);
   for (iter->Seek(prefix_key); iter->Valid() && iter->key().starts_with(prefix_key); iter->Next()) {
     HashFieldState state;
-    s = DecodeFieldState(metadata, Slice(iter->value()), util::GetTimeStampMS(), &state);
+    s = DecodeFieldState(metadata, Slice(iter->value()), util::GetTimeStampMS(), HashFieldDecodeMode::kWithValue,
+                         &state);
     if (!s.ok()) return s;
     if (state.kind == HashFieldStateKind::kExpiredTTLPhysical) {
       continue;
@@ -1252,7 +1299,7 @@ rocksdb::Status Hash::Scan(engine::Context &ctx, const Slice &user_key, const st
       break;
     }
     HashFieldState state;
-    s = DecodeFieldState(metadata, Slice(iter->value()), now, &state);
+    s = DecodeFieldState(metadata, Slice(iter->value()), now, HashFieldDecodeMode::kWithValue, &state);
     if (!s.ok()) return s;
     if (state.kind == HashFieldStateKind::kExpiredTTLPhysical) {
       continue;
@@ -1263,7 +1310,8 @@ rocksdb::Status Hash::Scan(engine::Context &ctx, const Slice &user_key, const st
       values->emplace_back(std::move(state.value));
     }
     live_count++;
-    if (limit > 0 && live_count >= limit) {
+    // A page doesn't end with an empty field, and may return limit + 1 fields, see Database::Scan.
+    if (limit > 0 && live_count >= limit && !fields->back().empty()) {
       break;
     }
   }

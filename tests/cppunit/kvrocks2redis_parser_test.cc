@@ -23,23 +23,49 @@
 #include "kvrocks2redis/parser.h"
 #include "server/redis_reply.h"
 #include "test_base.h"
+#include "types/json.h"
+#include "types/redis_json.h"
+
+class TestableParser : public Parser {
+ public:
+  using Parser::parseJsonKV;
+  using Parser::Parser;
+};
 
 class RecordingWriter : public Writer {
  public:
   RecordingWriter() : Writer(nullptr) {}
   Status Write(const std::string &ns, const std::vector<std::string> &aofs) override {
-    if (fail) return {Status::NotOK, "test writer failure"};
+    if (fail || writes++ == fail_after) return {Status::NotOK, "test writer failure"};
     auto &output = commands[ns];
     output.insert(output.end(), aofs.begin(), aofs.end());
     return Status::OK();
   }
   std::map<std::string, std::vector<std::string>> commands;
   bool fail = false;
+  int fail_after = -1;
+  int writes = 0;
 };
 
 class Kvrocks2RedisParserTest : public TestFixture, public ::testing::TestWithParam<std::tuple<bool, bool>> {
  protected:
   void SetUp() override { config_.slot_id_encoded = std::get<0>(GetParam()); }
+
+  void putJson(const std::string &ns, const std::string &key, JsonStorageFormat format, const std::string &payload,
+               uint64_t expire = 0) {
+    JsonMetadata metadata;
+    metadata.flags = kRedisJson | (std::get<1>(GetParam()) ? METADATA_64BIT_ENCODING_MASK : 0);
+    metadata.format = format;
+    metadata.expire = expire;
+    std::string bytes;
+    metadata.Encode(&bytes);
+    bytes += payload;
+    auto ns_key = ComposeNamespaceKey(ns, key, storage_->IsSlotIdEncoded());
+    ASSERT_TRUE(
+        storage_->GetDB()
+            ->Put(storage_->DefaultWriteOptions(), storage_->GetCFHandle(ColumnFamilyID::Metadata), ns_key, bytes)
+            .ok());
+  }
 
   using Field = std::tuple<std::string, std::string, uint64_t>;
   void putHash(const std::string &ns, const std::string &key, HashSubkeyEncodingMode mode,
@@ -130,6 +156,104 @@ TEST_P(Kvrocks2RedisParserTest, InvalidHashDataAndWriterErrorsAreNotIgnored) {
   ASSERT_TRUE(storage_->GetDB()->Put(storage_->DefaultWriteOptions(), cf, ns_key, metadata).ok());
   EXPECT_FALSE(parser.ParseFullDB().IsOK());
   EXPECT_TRUE(writer.commands.empty());
+}
+
+TEST_P(Kvrocks2RedisParserTest, FullJsonExportPreservesValuesAndAbsoluteExpiration) {
+  const uint64_t expire = 4000000000123ULL;
+  const std::vector<std::string> values = {R"({"array":[1,true,null,{"text":"hello\u0000世界"}],"number":-1.25})",
+                                           R"(["a",{},[]])",
+                                           R"("text\u0000value")",
+                                           "42",
+                                           "-1.25",
+                                           "true",
+                                           "false",
+                                           "null",
+                                           "{}",
+                                           "[]"};
+  std::map<std::string, std::vector<std::string>> expected;
+  for (auto format : {JsonStorageFormat::JSON, JsonStorageFormat::CBOR}) {
+    auto ns = format == JsonStorageFormat::JSON ? "json" : "cbor";
+    for (size_t i = 0; i < values.size(); ++i) {
+      auto value = JsonValue::FromString(values[i]);
+      ASSERT_TRUE(value.IsOK());
+      auto payload = format == JsonStorageFormat::JSON ? value->Dump() : value->DumpCBOR();
+      ASSERT_TRUE(payload.IsOK());
+      auto key = "key{json}:" + std::to_string(i);
+      putJson(ns, key, format, *payload, i == 0 ? expire : 0);
+      expected[ns].emplace_back(redis::ArrayOfBulkStrings({"JSON.SET", key, "$", *value->Dump()}));
+      if (i == 0) {
+        auto stored_expire = std::get<1>(GetParam()) ? expire : Metadata::ExpireMsToS(expire) * 1000;
+        expected[ns].emplace_back(redis::ArrayOfBulkStrings({"PEXPIREAT", key, std::to_string(stored_expire)}));
+      }
+    }
+    putJson(ns, "expired", format, "invalid expired payload", 1);
+  }
+
+  for (auto format : {JsonStorageFormat::JSON, JsonStorageFormat::CBOR}) {
+    config_.json_storage_format = format;
+    RecordingWriter writer;
+    Parser parser(storage_.get(), &writer);
+    ASSERT_TRUE(parser.ParseFullDB().IsOK());
+    EXPECT_EQ(writer.commands, expected);
+  }
+}
+
+TEST_P(Kvrocks2RedisParserTest, JsonExpirationDuringExportIsSkipped) {
+  const uint64_t expire = 1000;
+  RecordingWriter writer;
+  TestableParser parser(storage_.get(), &writer);
+  for (auto format : {JsonStorageFormat::JSON, JsonStorageFormat::CBOR}) {
+    auto value = JsonValue::FromString(R"({"a":1})");
+    ASSERT_TRUE(value.IsOK());
+    auto payload = format == JsonStorageFormat::JSON ? value->Dump() : value->DumpCBOR();
+    ASSERT_TRUE(payload.IsOK());
+    putJson("ns", "a{json}", format, *payload, expire);
+    auto ns_key = ComposeNamespaceKey("ns", "a{json}", storage_->IsSlotIdEncoded());
+    std::string bytes;
+    ASSERT_TRUE(
+        storage_->GetDB()
+            ->Get(storage_->DefaultScanOptions(), storage_->GetCFHandle(ColumnFamilyID::Metadata), ns_key, &bytes)
+            .ok());
+    JsonMetadata metadata;
+    Slice rest(bytes);
+    ASSERT_TRUE(metadata.Decode(&rest).ok());
+    // Model a key that passes the scan's first check at its deadline but expires before the helper runs.
+    ASSERT_FALSE(metadata.ExpireAt(expire));
+    JsonValue decoded;
+    ASSERT_TRUE(redis::Json::FromRawString(bytes, &decoded).IsNotFound());
+    ASSERT_TRUE(parser.parseJsonKV(ns_key, bytes, metadata.expire).IsOK());
+    EXPECT_TRUE(writer.commands.empty());
+  }
+
+  putJson("ns", "b{json}", JsonStorageFormat::JSON, R"({"live":true})");
+  ASSERT_TRUE(parser.ParseFullDB().IsOK());
+  EXPECT_EQ(writer.commands["ns"],
+            std::vector<std::string>{redis::ArrayOfBulkStrings({"JSON.SET", "b{json}", "$", R"({"live":true})"})});
+}
+
+TEST_P(Kvrocks2RedisParserTest, FullJsonExportPropagatesWriterErrors) {
+  putJson("ns", "json", JsonStorageFormat::JSON, R"({"a":1})", 4000000000123ULL);
+  for (int fail_after : {0, 1}) {
+    RecordingWriter writer;
+    writer.fail_after = fail_after;
+    Parser parser(storage_.get(), &writer);
+    auto status = parser.ParseFullDB();
+    EXPECT_FALSE(status.IsOK());
+    EXPECT_NE(status.Msg().find("test writer failure"), std::string::npos);
+  }
+}
+
+TEST_P(Kvrocks2RedisParserTest, FullJsonExportRejectsInvalidPayloads) {
+  for (const auto &[format, payload] :
+       std::vector<std::pair<JsonStorageFormat, std::string>>{{JsonStorageFormat::JSON, "{"},
+                                                              {JsonStorageFormat::CBOR, std::string(1, '\x9f')},
+                                                              {static_cast<JsonStorageFormat>(255), "{}"}}) {
+    putJson("ns", "json", format, payload);
+    RecordingWriter writer;
+    Parser parser(storage_.get(), &writer);
+    EXPECT_FALSE(parser.ParseFullDB().IsOK());
+    EXPECT_TRUE(writer.commands.empty());
+  }
 }
 
 INSTANTIATE_TEST_SUITE_P(Encodings, Kvrocks2RedisParserTest, ::testing::Combine(::testing::Bool(), ::testing::Bool()));

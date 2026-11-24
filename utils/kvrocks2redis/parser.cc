@@ -30,6 +30,7 @@
 #include "server/redis_reply.h"
 #include "storage/redis_metadata.h"
 #include "time_util.h"
+#include "types/redis_json.h"
 #include "types/redis_string.h"
 
 Status Parser::ParseFullDB() {
@@ -55,6 +56,8 @@ Status Parser::ParseFullDB() {
     Status s;
     if (metadata.Type() == kRedisString) {
       s = parseSimpleKV(iter->key(), iter->value(), metadata.expire);
+    } else if (metadata.Type() == kRedisJson) {
+      s = parseJsonKV(iter->key(), iter->value(), metadata.expire);
     } else {
       s = parseComplexKV(iter->key(), metadata, iter->value());
     }
@@ -77,6 +80,23 @@ Status Parser::parseSimpleKV(const Slice &ns_key, const Slice &value, uint64_t e
     s = writer_->Write(ns, {command});
   }
 
+  return s;
+}
+
+Status Parser::parseJsonKV(const Slice &ns_key, const Slice &value, uint64_t expire) {
+  JsonValue json_value;
+  auto ds = redis::Json::FromRawString(value.ToStringView(), &json_value);
+  // The key may expire after ParseFullDB's initial expiration check.
+  if (ds.IsNotFound()) return Status::OK();
+  if (!ds.ok()) return {Status::NotOK, ds.ToString()};
+  auto json_bytes = GET_OR_RET(json_value.Dump());
+  auto [ns, user_key] = ExtractNamespaceKey<std::string>(ns_key, slot_id_encoded_);
+
+  auto s = writer_->Write(ns, {redis::ArrayOfBulkStrings({"JSON.SET", user_key, "$", json_bytes})});
+  if (!s.IsOK()) return s;
+  if (expire > 0) {
+    s = writer_->Write(ns, {redis::ArrayOfBulkStrings({"PEXPIREAT", user_key, std::to_string(expire)})});
+  }
   return s;
 }
 

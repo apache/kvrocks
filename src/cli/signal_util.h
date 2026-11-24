@@ -57,7 +57,7 @@ extern "C" inline void SegvHandler(int sig, [[maybe_unused]] siginfo_t *info, [[
   kill(getpid(), sig);
 }
 
-inline void SetupSigSegvAction(void (*handler)(int)) {
+inline void SetupSigSegvAction() {
   struct sigaction act;
 
   sigemptyset(&act.sa_mask);
@@ -70,9 +70,4 @@ inline void SetupSigSegvAction(void (*handler)(int)) {
   sigaction(SIGFPE, &act, nullptr);
   sigaction(SIGILL, &act, nullptr);
   sigaction(SIGABRT, &act, nullptr);
-
-  act.sa_flags = SA_NODEFER | SA_ONSTACK | SA_RESETHAND;
-  act.sa_handler = handler;
-  sigaction(SIGTERM, &act, nullptr);
-  sigaction(SIGINT, &act, nullptr);
 }

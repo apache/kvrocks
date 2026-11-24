@@ -26,7 +26,9 @@
 #endif
 
 #include <event2/thread.h>
+#include <pthread.h>
 
+#include <atomic>
 #include <iomanip>
 #include <iostream>
 #include <memory>
@@ -43,18 +45,10 @@
 #include "spdlog/sinks/stdout_color_sinks.h"
 #include "storage/storage.h"
 #include "string_util.h"
+#include "thread_util.h"
 #include "time_util.h"
 #include "vendor/crc64.h"
 #include "version_util.h"
-
-Server *srv = nullptr;
-
-extern "C" void SignalHandler(int sig) {
-  if (srv && !srv->IsStopped()) {
-    INFO("Signal {} ({}) received, stopping the server", strsignal(sig), sig);
-    srv->Stop();
-  }
-}
 
 struct NewOpt {
   friend auto &operator<<(std::ostream &os, NewOpt) { return os << std::string(4, ' ') << std::setw(32); }
@@ -141,6 +135,19 @@ static Status InitSpdlog(const Config &config) {
 }
 
 int main(int argc, char *argv[]) {
+  // Dependency threads must inherit the mask too, before Storage::Open starts RocksDB.
+  sigset_t termination_signals;
+  sigemptyset(&termination_signals);
+  sigaddset(&termination_signals, SIGTERM);
+  sigaddset(&termination_signals, SIGINT);
+  if (int error = pthread_sigmask(SIG_BLOCK, &termination_signals, nullptr); error != 0) {
+    std::cerr << "Failed to block termination signals: " << strerror(error) << std::endl;
+    return 1;
+  }
+  // Ignored dispositions can be inherited from the launching shell.
+  signal(SIGTERM, SIG_DFL);
+  signal(SIGINT, SIG_DFL);
+
   srand(static_cast<unsigned>(util::GetTimeStamp()));
   crc64_init();
 
@@ -148,7 +155,7 @@ int main(int argc, char *argv[]) {
   auto event_exit = MakeScopeExit(libevent_global_shutdown);
 
   signal(SIGPIPE, SIG_IGN);
-  SetupSigSegvAction(SignalHandler);
+  SetupSigSegvAction();
 
   auto opts = ParseCommandLineOptions(argc, argv);
 
@@ -204,13 +211,42 @@ int main(int argc, char *argv[]) {
     return 1;
   }
   Server server(&storage, &config);
-  srv = &server;
-  s = srv->Start();
+  s = server.Start();
   if (!s.IsOK()) {
     ERROR("Failed to start server: {}", s.Msg());
+    server.Stop();
+    server.Join();
     return 1;
   }
-  srv->Join();
+
+  // Start after daemonization and initialization; pending signals are consumed here.
+  std::atomic<bool> signal_waiter_finished = false;
+  auto signal_thread = util::CreateThread("signal-waiter", [&] {
+    while (true) {
+      int sig = 0;
+      int error = sigwait(&termination_signals, &sig);
+      if (signal_waiter_finished) return;
+      if (error != 0) {
+        ERROR("Failed to wait for termination signals: {}", strerror(error));
+        server.Stop();
+        return;
+      }
+      INFO("Signal {} ({}) received, stopping the server", strsignal(sig), sig);
+      server.Stop();
+    }
+  });
+  if (!signal_thread) {
+    ERROR("Failed to start signal waiter: {}", signal_thread.Msg());
+    server.Stop();
+    server.Join();
+    return 1;
+  }
+
+  server.Join();
+  // SHUTDOWN can stop the server without delivering a signal to the waiter.
+  signal_waiter_finished = true;
+  pthread_kill(signal_thread->native_handle(), SIGTERM);
+  signal_thread->join();
 
   return 0;
 }

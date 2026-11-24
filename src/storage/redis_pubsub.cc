@@ -20,6 +20,9 @@
 
 #include "redis_pubsub.h"
 
+#include "server/server.h"
+#include "time_util.h"
+
 namespace redis {
 
 rocksdb::Status PubSub::Publish(engine::Context &ctx, const Slice &channel, const Slice &value) {
@@ -27,6 +30,8 @@ rocksdb::Status PubSub::Publish(engine::Context &ctx, const Slice &channel, cons
     return rocksdb::Status::NotSupported("can't publish to db in slave mode");
   }
   auto batch = storage_->GetWriteBatchBase();
+  ServerLogData log_data(kPublishLog, std::to_string(util::GetTimeStampUS()));
+  batch->PutLogData(log_data.Encode());
   auto s = batch->Put(pubsub_cf_handle_, channel, value);
   if (!s.ok()) {
     return s;

@@ -32,7 +32,7 @@ namespace util {
 
 /* Count number of bits set in the binary array pointed by 's' and long
  * 'count' bytes. The implementation of this function is required to
- * work with a input string length up to 512 MB.
+ * work with an input string length up to 512 MB.
  * */
 inline size_t RawPopcount(const uint8_t *p, int64_t count) {
   size_t bits = 0;

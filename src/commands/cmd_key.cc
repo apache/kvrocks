@@ -201,95 +201,23 @@ class CommandExists : public Commander {
 class CommandExpire : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    ttl_ = GET_OR_RET(ParseInt<int64_t>(args[2], 10));
-    return Status::OK();
-  }
-
-  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
-    redis::Database redis(srv->storage, conn->GetNamespace());
-
-    auto s = redis.Expire(ctx, args_[1], ttl_ * 1000 + util::GetTimeStampMS());
-    if (s.ok()) {
-      *output = redis::Integer(1);
+    auto ttl = GET_OR_RET(ParseInt<int64_t>(args[2], 10));
+    uint64_t now_ms = util::GetTimeStampMS();
+    if (ttl > (std::numeric_limits<int64_t>::max() - static_cast<int64_t>(now_ms)) / 1000 ||
+        ttl < std::numeric_limits<int64_t>::min() / 1000) {
+      return {Status::RedisParseErr, errInvalidExpireTime};
+    }
+    if (ttl * 1000 + static_cast<int64_t>(now_ms) > 0) {
+      expire_at_ms_ = static_cast<uint64_t>(ttl * 1000 + static_cast<int64_t>(now_ms));
     } else {
-      *output = redis::Integer(0);
+      expire_at_ms_ = 1;
     }
-    return Status::OK();
-  }
-
- private:
-  uint64_t ttl_ = 0;
-};
-
-class CommandPExpire : public Commander {
- public:
-  Status Parse(const std::vector<std::string> &args) override {
-    seconds_ = GET_OR_RET(ParseInt<int64_t>(args[2], 10)) + util::GetTimeStampMS();
-    return Status::OK();
-  }
-
-  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
-    redis::Database redis(srv->storage, conn->GetNamespace());
-
-    auto s = redis.Expire(ctx, args_[1], seconds_);
-    if (s.ok()) {
-      *output = redis::Integer(1);
-    } else {
-      *output = redis::Integer(0);
-    }
-    return Status::OK();
-  }
-
- private:
-  uint64_t seconds_ = 0;
-};
-
-class CommandExpireAt : public Commander {
- public:
-  Status Parse(const std::vector<std::string> &args) override {
-    auto parse_result = ParseInt<int64_t>(args[2], 10);
-    if (!parse_result) {
-      return {Status::RedisParseErr, errValueNotInteger};
-    }
-
-    timestamp_ = *parse_result;
-
-    return Status::OK();
-  }
-
-  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
-    redis::Database redis(srv->storage, conn->GetNamespace());
-
-    auto s = redis.Expire(ctx, args_[1], timestamp_ * 1000);
-    if (s.ok()) {
-      *output = redis::Integer(1);
-    } else {
-      *output = redis::Integer(0);
-    }
-    return Status::OK();
-  }
-
- private:
-  uint64_t timestamp_ = 0;
-};
-
-class CommandPExpireAt : public Commander {
- public:
-  Status Parse(const std::vector<std::string> &args) override {
-    auto parse_result = ParseInt<int64_t>(args[2], 10);
-    if (!parse_result) {
-      return {Status::RedisParseErr, errValueNotInteger};
-    }
-
-    timestamp_ = *parse_result;
-
     return Commander::Parse(args);
   }
 
   Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
     redis::Database redis(srv->storage, conn->GetNamespace());
-
-    auto s = redis.Expire(ctx, args_[1], timestamp_);
+    auto s = redis.Expire(ctx, args_[1], expire_at_ms_);
     if (s.ok()) {
       *output = redis::Integer(1);
     } else {
@@ -299,7 +227,96 @@ class CommandPExpireAt : public Commander {
   }
 
  private:
-  uint64_t timestamp_ = 0;
+  uint64_t expire_at_ms_ = 0;
+};
+
+class CommandPExpire : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    auto ttl_ms = GET_OR_RET(ParseInt<int64_t>(args[2], 10));
+    uint64_t now_ms = util::GetTimeStampMS();
+    if (ttl_ms > std::numeric_limits<int64_t>::max() - static_cast<int64_t>(now_ms)) {
+      return {Status::RedisParseErr, errInvalidExpireTime};
+    }
+    if (ttl_ms + static_cast<int64_t>(now_ms) > 0) {
+      expire_at_ms_ = static_cast<uint64_t>(ttl_ms + static_cast<int64_t>(now_ms));
+    } else {
+      expire_at_ms_ = 1;
+    }
+    return Commander::Parse(args);
+  }
+
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    redis::Database redis(srv->storage, conn->GetNamespace());
+    auto s = redis.Expire(ctx, args_[1], expire_at_ms_);
+    if (s.ok()) {
+      *output = redis::Integer(1);
+    } else {
+      *output = redis::Integer(0);
+    }
+    return Status::OK();
+  }
+
+ private:
+  uint64_t expire_at_ms_ = 0;
+};
+
+class CommandExpireAt : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    auto timestamp = GET_OR_RET(ParseInt<int64_t>(args[2], 10));
+    if (timestamp > std::numeric_limits<int64_t>::max() / 1000 ||
+        timestamp < std::numeric_limits<int64_t>::min() / 1000) {
+      return {Status::RedisParseErr, errInvalidExpireTime};
+    }
+    if (timestamp * 1000 > 0) {
+      expire_at_ms_ = static_cast<uint64_t>(timestamp * 1000);
+    } else {
+      expire_at_ms_ = 1;
+    }
+    return Commander::Parse(args);
+  }
+
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    redis::Database redis(srv->storage, conn->GetNamespace());
+    auto s = redis.Expire(ctx, args_[1], expire_at_ms_);
+    if (s.ok()) {
+      *output = redis::Integer(1);
+    } else {
+      *output = redis::Integer(0);
+    }
+    return Status::OK();
+  }
+
+ private:
+  uint64_t expire_at_ms_ = 0;
+};
+
+class CommandPExpireAt : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    auto timestamp = GET_OR_RET(ParseInt<int64_t>(args[2], 10));
+    if (timestamp > 0) {
+      expire_at_ms_ = static_cast<uint64_t>(timestamp);
+    } else {
+      expire_at_ms_ = 1;
+    }
+    return Commander::Parse(args);
+  }
+
+  Status Execute(engine::Context &ctx, Server *srv, Connection *conn, std::string *output) override {
+    redis::Database redis(srv->storage, conn->GetNamespace());
+    auto s = redis.Expire(ctx, args_[1], expire_at_ms_);
+    if (s.ok()) {
+      *output = redis::Integer(1);
+    } else {
+      *output = redis::Integer(0);
+    }
+    return Status::OK();
+  }
+
+ private:
+  uint64_t expire_at_ms_ = 0;
 };
 
 class CommandExpireTime : public Commander {

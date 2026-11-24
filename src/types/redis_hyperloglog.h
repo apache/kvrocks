@@ -28,6 +28,7 @@ namespace redis {
 class HyperLogLog : public Database {
  public:
   explicit HyperLogLog(engine::Storage *storage, const std::string &ns) : Database(storage, ns) {}
+  rocksdb::Status Get(engine::Context &ctx, const Slice &user_key, std::string *value);
   rocksdb::Status Add(engine::Context &ctx, const Slice &user_key, const std::vector<uint64_t> &element_hashes,
                       uint64_t *ret);
   rocksdb::Status Count(engine::Context &ctx, const Slice &user_key, uint64_t *ret);

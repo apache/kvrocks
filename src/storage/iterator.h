@@ -53,7 +53,8 @@ class SubKeyIterator {
 
 class DBIterator {
  public:
-  explicit DBIterator(engine::Context &ctx, rocksdb::ReadOptions read_options, int slot = -1);
+  explicit DBIterator(engine::Context &ctx, rocksdb::ReadOptions read_options, int slot = -1,
+                      bool include_expired = false);
   ~DBIterator() = default;
 
   bool Valid() const;
@@ -75,6 +76,7 @@ class DBIterator {
   rocksdb::ReadOptions read_options_;
   Context *ctx_;
   int slot_ = -1;
+  bool include_expired_ = false;
   Metadata metadata_ = Metadata(kRedisNone, false);
 
   rocksdb::ColumnFamilyHandle *metadata_cf_handle_ = nullptr;

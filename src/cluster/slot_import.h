@@ -20,6 +20,7 @@
 
 #pragma once
 
+#include <memory>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -55,4 +56,5 @@ class SlotImport : public redis::Database {
   std::mutex mutex_;
   SlotRange import_slot_range_;
   int import_status_;
+  std::unique_ptr<engine::SlotRangeCompactionGuard> compaction_guard_;
 };

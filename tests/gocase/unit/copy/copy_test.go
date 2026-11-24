@@ -1113,3 +1113,70 @@ func TestCopyError(t *testing.T) {
 	})
 
 }
+
+func TestCopyDoesNotReviveStaleSubkeys(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{})
+	defer srv.Close()
+
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	defer func() { require.NoError(t, rdb.Close()) }()
+
+	compact := func(t *testing.T) {
+		require.NoError(t, rdb.Do(ctx, "COMPACT").Err())
+		require.Eventually(t, func() bool {
+			return util.FindInfoEntry(rdb, "is_compacting") == "no"
+		}, 10*time.Second, 100*time.Millisecond)
+	}
+
+	t.Run("Set", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "A", "B").Err())
+		require.NoError(t, rdb.SAdd(ctx, "A", "x", "y").Err())
+		require.NoError(t, rdb.Copy(ctx, "A", "B", 0, false).Err())
+		require.NoError(t, rdb.Del(ctx, "B").Err())
+		require.NoError(t, rdb.SRem(ctx, "A", "y").Err())
+		require.NoError(t, rdb.Copy(ctx, "A", "B", 0, false).Err())
+
+		check := func(t *testing.T) {
+			require.Equal(t, []string{"x"}, rdb.SMembers(ctx, "B").Val())
+			require.EqualValues(t, 1, rdb.SCard(ctx, "B").Val())
+		}
+		check(t)
+		compact(t)
+		check(t)
+	})
+
+	t.Run("Hash", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "H", "T").Err())
+		require.NoError(t, rdb.HSet(ctx, "H", "f1", "1", "f2", "2").Err())
+		require.NoError(t, rdb.Rename(ctx, "H", "T").Err())
+		require.NoError(t, rdb.HDel(ctx, "T", "f2").Err())
+		require.NoError(t, rdb.Rename(ctx, "T", "H").Err())
+
+		check := func(t *testing.T) {
+			require.Equal(t, map[string]string{"f1": "1"}, rdb.HGetAll(ctx, "H").Val())
+			require.EqualValues(t, 1, rdb.HLen(ctx, "H").Val())
+		}
+		check(t)
+		compact(t)
+		check(t)
+	})
+
+	t.Run("ZSet", func(t *testing.T) {
+		require.NoError(t, rdb.Del(ctx, "za", "zb").Err())
+		require.NoError(t, rdb.ZAdd(ctx, "za", redis.Z{Member: "x", Score: 1}, redis.Z{Member: "y", Score: 2}).Err())
+		require.NoError(t, rdb.Copy(ctx, "za", "zb", 0, false).Err())
+		require.NoError(t, rdb.Del(ctx, "zb").Err())
+		require.NoError(t, rdb.ZRem(ctx, "za", "y").Err())
+		require.NoError(t, rdb.Copy(ctx, "za", "zb", 0, false).Err())
+
+		check := func(t *testing.T) {
+			require.Equal(t, []string{"x"}, rdb.ZRange(ctx, "zb", 0, -1).Val())
+			require.Equal(t, []string{"x"}, rdb.ZRangeByScore(ctx, "zb", &redis.ZRangeBy{Min: "-inf", Max: "+inf"}).Val())
+			require.EqualValues(t, 1, rdb.ZCard(ctx, "zb").Val())
+		}
+		check(t)
+		compact(t)
+		check(t)
+	})
+}

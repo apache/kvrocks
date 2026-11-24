@@ -2303,7 +2303,7 @@ std::string Server::GetKeyNameFromCursor(const std::string &cursor, CursorType c
   }
 
   auto s = ParseInt<uint64_t>(cursor, 10);
-  // When Cursor 0 or not a Integer return empty string.
+  // When Cursor 0 or not an Integer return empty string.
   // Although the parameter 'cursor' is not expected to be 0, we still added a check for 0 to increase the robustness of
   // the code.
   if (!s.IsOK() || *s == 0) {

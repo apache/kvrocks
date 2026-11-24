@@ -1031,10 +1031,65 @@ const std::unordered_set<std::string> kWriteModeSpecialCmds = {
     "pfcount",
     "wait",
 };
+
+bool ShouldPauseCmdInWriteMode(const std::string &cmd_name, uint64_t cmd_flags) {
+  return (cmd_flags & redis::kCmdWrite) != 0 || kWriteModeSpecialCmds.count(util::ToLower(cmd_name)) > 0;
+}
+
+void PromoteHashFlagsFromQueuedConfigSet(const redis::CommandTokens &cmd_tokens, bool *may_be_field_exp,
+                                         bool *may_be_accurate) {
+  if (cmd_tokens.size() != 4 || !util::EqualICase(cmd_tokens[1], "set")) {
+    return;
+  }
+  const auto &cfg_key = cmd_tokens[2];
+  const auto &cfg_val = cmd_tokens[3];
+  if (util::EqualICase(cfg_key, "hash-encoding-mode") && util::EqualICase(cfg_val, "field-expiration")) {
+    *may_be_field_exp = true;
+  } else if (util::EqualICase(cfg_key, "hash-length-mode") && util::EqualICase(cfg_val, "accurate")) {
+    *may_be_accurate = true;
+  }
+}
+
+bool HasPausedCmdInMultiExecWriteMode(redis::Connection *conn, const Config &config) {
+  if (!conn->IsFlagEnabled(redis::Connection::kMultiExec)) {
+    return false;
+  }
+  const auto *commands = redis::CommandTable::Get();
+  bool may_be_field_exp = config.hash_encoding_mode == HashSubkeyEncodingMode::kFieldExpiration;
+  bool may_be_accurate = config.hash_length_mode == HashLengthMode::kAccurate;
+  for (const auto &cmd_tokens : *conn->GetMultiExecCommands()) {
+    if (cmd_tokens.empty()) continue;
+    auto cmd_iter = commands->find(util::ToLower(cmd_tokens.front()));
+    if (cmd_iter == commands->end()) continue;
+    const auto *attr = cmd_iter->second;
+    if (util::EqualICase(attr->name, "client")) continue;
+    if (util::EqualICase(attr->name, "config")) {
+      PromoteHashFlagsFromQueuedConfigSet(cmd_tokens, &may_be_field_exp, &may_be_accurate);
+      continue;
+    }
+    auto flags = attr->GenerateFlags(cmd_tokens, config);
+    // 2-arg HLEN only reports kCmdWrite from GenerateFlags when field-expiration + accurate are already active in
+    // config, but an earlier CONFIG SET queued in the same MULTI can enable that repair-write path before HLEN
+    // executes. We only promote (never clear) because existing keys may retain field-expiration metadata or a queued
+    // CONFIG SET may fail. Any future dynamic write flags affected by in-transaction CONFIG SET need the same pre-EXEC
+    // tracking here.
+    if (util::EqualICase(attr->name, "hlen") && cmd_tokens.size() == 2 && may_be_field_exp && may_be_accurate) {
+      flags |= redis::kCmdWrite;
+    }
+    if (ShouldPauseCmdInWriteMode(attr->name, flags)) {
+      return true;
+    }
+  }
+  return false;
+}
 }  // namespace
 
 bool Server::PauseConnIfNeeded(redis::Connection *conn, const std::string &cmd_name, uint64_t cmd_flags) {
   if (conn_pause_end_time_.load() == 0) {
+    return false;
+  }
+  // Once EXEC has started (BeginTxn), execute the queued transaction atomically without mid-EXEC suspension.
+  if (conn->IsInExec()) {
     return false;
   }
   if (conn->GetClientType() & kTypeSlave) {
@@ -1056,11 +1111,8 @@ bool Server::PauseConnIfNeeded(redis::Connection *conn, const std::string &cmd_n
   if (mode == PauseMode::kAll) {
     should_pause = true;
   } else if (mode == PauseMode::kWrite) {
-    if (cmd_flags & redis::kCmdWrite) {
-      should_pause = true;
-    } else {
-      should_pause = kWriteModeSpecialCmds.count(cmd_name) > 0;
-    }
+    should_pause = ShouldPauseCmdInWriteMode(cmd_name, cmd_flags) ||
+                   (util::EqualICase(cmd_name, "exec") && HasPausedCmdInMultiExecWriteMode(conn, *config_));
   }
   if (!should_pause) {
     return false;

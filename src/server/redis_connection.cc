@@ -536,8 +536,11 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
 
     auto cmd_flags = attributes->GenerateFlags(cmd_tokens, *config);
 
+    // Defer MULTI/EXEC's pause check until WorkExclusivityGuard() is held so scanning
+    // queued command flags/config cannot race with a concurrent CONFIG SET.
+    const bool defer_exec_pause_check = is_multi_exec && util::EqualICase(cmd_name, "exec");
     // Push the command back and stop processing; it will be re-executed after unpause.
-    if (srv_->PauseConnIfNeeded(this, cmd_name, cmd_flags)) {
+    if (!defer_exec_pause_check && srv_->PauseConnIfNeeded(this, cmd_name, cmd_flags)) {
       multi_error_exit.Disable();  // Don't mark transaction as failed - we're deferring, not erroring
       to_process_cmds->push_front(std::move(cmd_tokens));
       return;
@@ -565,6 +568,14 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
       // No lock guard, because 'exec' command has acquired 'WorkExclusivityGuard'
     } else if (cmd_flags & kCmdExclusive) {
       exclusivity = srv_->WorkExclusivityGuard();
+      // Re-evaluate flags and pause state after acquiring exclusivity so a concurrent
+      // CONFIG SET or CLIENT PAUSE completed while waiting for the lock is honored.
+      cmd_flags = attributes->GenerateFlags(cmd_tokens, *config);
+      if (srv_->PauseConnIfNeeded(this, cmd_name, cmd_flags)) {
+        multi_error_exit.Disable();
+        to_process_cmds->push_front(std::move(cmd_tokens));
+        return;
+      }
     } else {
       concurrency = srv_->WorkConcurrencyGuard();
     }

@@ -18,10 +18,16 @@
  *
  */
 
+#include <event2/buffer.h>
 #include <event2/bufferevent.h>
 #include <gtest/gtest.h>
 
+#include <chrono>
+#include <deque>
+#include <future>
 #include <memory>
+#include <string>
+#include <thread>
 
 #include "commands/commander.h"
 #include "common/time_util.h"
@@ -29,6 +35,7 @@
 #include "server/server.h"
 #include "server/worker.h"
 #include "test_base.h"
+#include "types/redis_string.h"
 
 class ServerClientPauseTest : public TestBase {
  protected:
@@ -220,4 +227,165 @@ TEST_F(ServerClientPauseTest, ParseUnpauseBasic) {
 TEST_F(ServerClientPauseTest, ParseUnpauseTooManyArgs) {
   auto s = ParseClientCommand({"client", "unpause", "extra"});
   EXPECT_EQ(s.GetCode(), Status::RedisParseErr) << "Expected RedisParseErr for extra argument to unpause";
+}
+
+namespace {
+std::string ReadPeerWireReplies(event_base *base, bufferevent *peer_bev) {
+  bufferevent_enable(peer_bev, EV_READ);
+  event_base_loop(base, EVLOOP_NONBLOCK);
+  evbuffer *in_buf = bufferevent_get_input(peer_bev);
+  const size_t in_len = evbuffer_get_length(in_buf);
+  std::string out(in_len, '\0');
+  if (in_len > 0) {
+    bufferevent_read(peer_bev, out.data(), in_len);
+  }
+  return out;
+}
+}  // namespace
+
+TEST_F(ServerClientPauseTest, ReadOnlyAndUnqueuedExecPassInWriteMode) {
+  redis::CommandTable::Reset();
+  constexpr uint64_t exec_flags = redis::kCmdExclusive | redis::kCmdBypassMulti | redis::kCmdSlow;
+
+  server_->PauseConns(util::GetTimeStampMS() + 60000, PauseMode::kWrite);
+  EXPECT_TRUE(commandPassesThrough("exec", exec_flags));
+
+  conn_->EnableFlag(redis::Connection::kMultiExec);
+  *conn_->GetMultiExecCommands() = {
+      {"GET", "k1"},         {"SCRIPT", "EXISTS", "0123456789abcdef0123456789abcdef01234567"},
+      {"HLEN", "h1"},        {"EVAL_RO", "return 1", "0"},
+      {"CLIENT", "GETNAME"},
+  };
+  EXPECT_TRUE(commandPassesThrough("exec", exec_flags));
+
+  server_->PauseConns(util::GetTimeStampMS() + 60000, PauseMode::kAll);
+  EXPECT_FALSE(commandPassesThrough("exec", exec_flags));
+
+  conn_->ResetMultiExec();
+  server_->UnpauseConns();
+}
+
+TEST_F(ServerClientPauseTest, WriteDynamicAndConfigPromotedMultiExecBlockedInWriteMode) {
+  redis::CommandTable::Reset();
+  constexpr uint64_t exec_flags = redis::kCmdExclusive | redis::kCmdBypassMulti | redis::kCmdSlow;
+  server_->PauseConns(util::GetTimeStampMS() + 60000, PauseMode::kWrite);
+
+  const std::vector<redis::CommandTokens> blocked_cases = {
+      {"SET", "k1", "v1"},       {"SCRIPT", "LOAD", "return 1"}, {"HLEN", "h1", "REPAIR"},
+      {"EVAL", "return 1", "0"}, {"PUBLISH", "ch", "msg"},       {"PFCOUNT", "hll"},
+  };
+  for (const auto &tokens : blocked_cases) {
+    conn_->ResetMultiExec();
+    conn_->EnableFlag(redis::Connection::kMultiExec);
+    *conn_->GetMultiExecCommands() = {{"GET", "k0"}, tokens};
+    EXPECT_FALSE(commandPassesThrough("exec", exec_flags)) << tokens.front();
+    EXPECT_FALSE(commandPassesThrough("EXEC", exec_flags)) << tokens.front();
+  }
+
+  auto *cmd_table = redis::CommandTable::Get();
+  (*cmd_table)["mypublish"] = (*cmd_table)["publish"];
+  cmd_table->erase("publish");
+  conn_->ResetMultiExec();
+  conn_->EnableFlag(redis::Connection::kMultiExec);
+  *conn_->GetMultiExecCommands() = {{"MYPUBLISH", "ch", "msg"}};
+  EXPECT_FALSE(commandPassesThrough("exec", exec_flags));
+  redis::CommandTable::Reset();
+
+  auto *cfg = storage_->GetConfig();
+  const auto orig_encoding = cfg->hash_encoding_mode;
+  const auto orig_len_mode = cfg->hash_length_mode;
+  cfg->hash_encoding_mode = HashSubkeyEncodingMode::kFieldExpiration;
+  cfg->hash_length_mode = HashLengthMode::kAccurate;
+  conn_->ResetMultiExec();
+  conn_->EnableFlag(redis::Connection::kMultiExec);
+  *conn_->GetMultiExecCommands() = {{"HLEN", "h1"}};
+  EXPECT_FALSE(commandPassesThrough("exec", exec_flags));
+  cfg->hash_length_mode = HashLengthMode::kApproximate;
+  EXPECT_TRUE(commandPassesThrough("exec", exec_flags));
+
+  *conn_->GetMultiExecCommands() = {{"CONFIG", "SET", "hash-length-mode", "accurate"}, {"HLEN", "h1"}};
+  EXPECT_FALSE(commandPassesThrough("exec", exec_flags));
+  *conn_->GetMultiExecCommands() = {{"HLEN", "h1"}, {"CONFIG", "SET", "hash-length-mode", "accurate"}};
+  EXPECT_TRUE(commandPassesThrough("exec", exec_flags));
+
+  cfg->hash_encoding_mode = HashSubkeyEncodingMode::kLegacy;
+  *conn_->GetMultiExecCommands() = {
+      {"CONFIG", "SET", "hash-encoding-mode", "field-expiration"},
+      {"CONFIG", "SET", "hash-length-mode", "accurate"},
+      {"HLEN", "h1"},
+  };
+  EXPECT_FALSE(commandPassesThrough("exec", exec_flags));
+
+  cfg->hash_encoding_mode = HashSubkeyEncodingMode::kFieldExpiration;
+  cfg->hash_length_mode = HashLengthMode::kAccurate;
+  *conn_->GetMultiExecCommands() = {{"CONFIG", "SET", "hash-encoding-mode", "legacy"}, {"HLEN", "h1"}};
+  EXPECT_FALSE(commandPassesThrough("exec", exec_flags));
+  *conn_->GetMultiExecCommands() = {
+      {"HELLO", "3", "AUTH", "default", "pw"},
+      {"CONFIG", "SET", "hash-length-mode", "approximate"},
+      {"HLEN", "h1"},
+  };
+  EXPECT_FALSE(commandPassesThrough("exec", exec_flags));
+
+  cfg->hash_encoding_mode = orig_encoding;
+  cfg->hash_length_mode = orig_len_mode;
+  conn_->ResetMultiExec();
+
+  // In-flight EXEC connections finish atomically without mid-transaction suspension.
+  conn_->SetInExec();
+  EXPECT_TRUE(commandPassesThrough("set", redis::kCmdWrite));
+  server_->PauseConns(util::GetTimeStampMS() + 60000, PauseMode::kAll);
+  EXPECT_TRUE(commandPassesThrough("get", redis::kCmdReadOnly));
+  conn_->ResetMultiExec();
+  EXPECT_FALSE(commandPassesThrough("set", redis::kCmdWrite));
+  server_->UnpauseConns();
+}
+
+TEST_F(ServerClientPauseTest, ExecWaitingOnExclusivityHonorsConcurrentWritePause) {
+  redis::CommandTable::Reset();
+  conn_->BecomeAdmin();
+  conn_->SetNamespace(kDefaultNamespace);
+  bufferevent_enable(bev_pair_[1], EV_READ);
+
+  conn_->EnableFlag(redis::Connection::kMultiExec);
+  *conn_->GetMultiExecCommands() = {{"SET", "race_pause_k", "v1"}};
+
+  std::deque<redis::CommandTokens> to_process = {{"EXEC"}};
+  auto shared_guard = server_->WorkConcurrencyGuard();
+
+  std::promise<void> started_promise;
+  auto started_future = started_promise.get_future();
+  std::thread exec_worker([&] {
+    started_promise.set_value();
+    (void)conn_->ExecuteCommands(&to_process);
+  });
+
+  started_future.wait();
+  std::this_thread::sleep_for(std::chrono::milliseconds(20));
+
+  server_->PauseConns(util::GetTimeStampMS() + 60000, PauseMode::kWrite);
+  shared_guard.unlock();
+  exec_worker.join();
+
+  EXPECT_EQ(ReadPeerWireReplies(base_, bev_pair_[1]), "");
+  EXPECT_TRUE(conn_->IsFlagEnabled(redis::Connection::kMultiExec));
+  EXPECT_TRUE(conn_->IsPaused());
+  ASSERT_EQ(to_process.size(), 1U);
+  EXPECT_EQ(to_process.front(), redis::CommandTokens({"EXEC"}));
+
+  redis::String string_db(storage_.get(), kDefaultNamespace);
+  engine::Context pre_ctx(storage_.get());
+  std::string got_val;
+  EXPECT_TRUE(string_db.Get(pre_ctx, "race_pause_k", &got_val).IsNotFound());
+
+  server_->RemovePausedConn(conn_.get());
+  server_->UnpauseConns();
+  conn_->Unpause();
+  (void)conn_->ExecuteCommands(&to_process);
+  EXPECT_TRUE(to_process.empty());
+  EXPECT_EQ(ReadPeerWireReplies(base_, bev_pair_[1]), "*1\r\n+OK\r\n");
+
+  engine::Context post_ctx(storage_.get());
+  ASSERT_TRUE(string_db.Get(post_ctx, "race_pause_k", &got_val).ok());
+  EXPECT_EQ(got_val, "v1");
 }

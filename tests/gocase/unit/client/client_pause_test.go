@@ -21,6 +21,7 @@ package client
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -282,5 +283,218 @@ func TestClientPause(t *testing.T) {
 		require.NoError(t, evalErr)
 		require.Equal(t, "PONG", evalVal)
 		require.GreaterOrEqual(t, time.Since(start).Milliseconds(), int64(400))
+	})
+
+	newAuthedTCPClient := func(t *testing.T, name string) *util.TCPClient {
+		t.Helper()
+		c := srv.NewTCPClient()
+		t.Cleanup(func() { require.NoError(t, c.Close()) })
+		require.NoError(t, c.WriteArgs("AUTH", "admin"))
+		c.MustRead(t, "+OK")
+		require.NoError(t, c.WriteArgs("CLIENT", "SETNAME", name))
+		c.MustRead(t, "+OK")
+		return c
+	}
+
+	queueTx := func(t *testing.T, c *util.TCPClient, cmds ...[]string) {
+		t.Helper()
+		require.NoError(t, c.WriteArgs("MULTI"))
+		c.MustRead(t, "+OK")
+		for _, cmd := range cmds {
+			require.NoError(t, c.WriteArgs(cmd...))
+			c.MustRead(t, "+QUEUED")
+		}
+	}
+
+	waitClientPaused := func(t *testing.T, name string) {
+		t.Helper()
+		require.Eventually(t, func() bool {
+			list, err := unpauseClient.Do(ctx, "CLIENT", "LIST").Text()
+			if err != nil {
+				return false
+			}
+			for _, line := range strings.Split(list, "\n") {
+				if strings.Contains(line, "name="+name+" ") && strings.Contains(line, "flags=z") {
+					return true
+				}
+			}
+			return false
+		}, 2*time.Second, 10*time.Millisecond, "expected client %s to enter paused state", name)
+	}
+
+	readLineAsync := func(c *util.TCPClient) <-chan string {
+		ch := make(chan string, 1)
+		go func() {
+			line, err := c.ReadLine()
+			if err != nil {
+				ch <- "ERR:" + err.Error()
+				return
+			}
+			ch <- line
+		}()
+		return ch
+	}
+
+	t.Run("CLIENT PAUSE WRITE holds pure-write EXEC and preserves pipelined commands", func(t *testing.T) {
+		require.NoError(t, adminClient.Del(ctx, "pw_a", "pw_b", "pw_seq").Err())
+		txConn := newAuthedTCPClient(t, "tx_pure_write")
+		queueTx(t, txConn, []string{"SET", "pw_a", "1"}, []string{"SET", "pw_b", "2"})
+
+		require.NoError(t, adminClient.Do(ctx, "CLIENT", "PAUSE", "10000", "WRITE").Err())
+		defer func() { _ = unpauseClient.Do(ctx, "CLIENT", "UNPAUSE").Err() }()
+
+		require.NoError(t, txConn.WriteArgs("EXEC"))
+		require.NoError(t, txConn.WriteArgs("INCR", "pw_seq"))
+		execCh := readLineAsync(txConn)
+
+		waitClientPaused(t, "tx_pure_write")
+		select {
+		case early := <-execCh:
+			require.FailNowf(t, "unexpected EXEC reply before UNPAUSE", "got %q", early)
+		case <-time.After(50 * time.Millisecond):
+		}
+		require.Equal(t, redis.Nil, unpauseClient.Get(ctx, "pw_a").Err())
+
+		require.NoError(t, unpauseClient.Do(ctx, "CLIENT", "UNPAUSE").Err())
+		require.Equal(t, "*2", <-execCh)
+		txConn.MustRead(t, "+OK")
+		txConn.MustRead(t, "+OK")
+		txConn.MustRead(t, ":1")
+		require.Equal(t, "1", unpauseClient.Get(ctx, "pw_a").Val())
+		require.Equal(t, "2", unpauseClient.Get(ctx, "pw_b").Val())
+
+		require.NoError(t, txConn.WriteArgs("INCR", "pw_seq"))
+		txConn.MustRead(t, ":2")
+	})
+
+	t.Run("CLIENT PAUSE WRITE holds read-then-write EXEC until pause expires", func(t *testing.T) {
+		require.NoError(t, adminClient.Del(ctx, "rw_k0", "rw_k1").Err())
+		require.NoError(t, adminClient.Set(ctx, "rw_k0", "v0", 0).Err())
+		rwConn := newAuthedTCPClient(t, "tx_read_write")
+		queueTx(t, rwConn, []string{"GET", "rw_k0"}, []string{"SET", "rw_k1", "v1"})
+
+		execStart := time.Now()
+		require.NoError(t, adminClient.Do(ctx, "CLIENT", "PAUSE", "1000", "WRITE").Err())
+		defer func() { _ = unpauseClient.Do(ctx, "CLIENT", "UNPAUSE").Err() }()
+		require.NoError(t, rwConn.WriteArgs("EXEC"))
+		rwCh := readLineAsync(rwConn)
+
+		waitClientPaused(t, "tx_read_write")
+		select {
+		case early := <-rwCh:
+			require.FailNowf(t, "unexpected truncated EXEC reply before expiry", "got %q", early)
+		default:
+		}
+		require.Equal(t, redis.Nil, unpauseClient.Get(ctx, "rw_k1").Err())
+
+		require.Equal(t, "*2", <-rwCh)
+		rwConn.MustReadBulkString(t, "v0")
+		rwConn.MustRead(t, "+OK")
+		require.GreaterOrEqual(t, time.Since(execStart).Milliseconds(), int64(800))
+		require.Equal(t, "v1", unpauseClient.Get(ctx, "rw_k1").Val())
+	})
+
+	t.Run("CLIENT PAUSE queued inside MULTI commits full transaction atomically", func(t *testing.T) {
+		defer func() { _ = unpauseClient.Do(ctx, "CLIENT", "UNPAUSE").Err() }()
+		require.NoError(t, adminClient.Del(ctx, "tc_a1", "tc_a2", "tc_post").Err())
+
+		tcConn := newAuthedTCPClient(t, "tx_in_exec_pause")
+		queueTx(t, tcConn,
+			[]string{"SET", "tc_a1", "v1"},
+			[]string{"CLIENT", "PAUSE", "10000", "ALL"},
+			[]string{"GET", "tc_a1"},
+			[]string{"SET", "tc_a2", "v2"},
+		)
+		require.NoError(t, tcConn.WriteArgs("EXEC"))
+		require.NoError(t, tcConn.WriteArgs("SET", "tc_post", "v3"))
+
+		hdr, err := tcConn.ReadLine()
+		require.NoError(t, err)
+		if hdr != "*4" {
+			_ = unpauseClient.Do(ctx, "CLIENT", "UNPAUSE").Err()
+			require.Equal(t, "*4", hdr, "tc_a1=%q tc_a2_err=%v",
+				unpauseClient.Get(ctx, "tc_a1").Val(), unpauseClient.Get(ctx, "tc_a2").Err())
+		}
+		tcConn.MustRead(t, "+OK")
+		tcConn.MustRead(t, "+OK")
+		tcConn.MustReadBulkString(t, "v1")
+		tcConn.MustRead(t, "+OK")
+
+		postCh := readLineAsync(tcConn)
+		waitClientPaused(t, "tx_in_exec_pause")
+		require.NoError(t, unpauseClient.Do(ctx, "CLIENT", "UNPAUSE").Err())
+		require.Equal(t, "+OK", <-postCh)
+		require.Equal(t, "v1", unpauseClient.Get(ctx, "tc_a1").Val())
+		require.Equal(t, "v2", unpauseClient.Get(ctx, "tc_a2").Val())
+		require.Equal(t, "v3", unpauseClient.Get(ctx, "tc_post").Val())
+	})
+
+	t.Run("CLIENT PAUSE WRITE lets read-only EXEC pass and holds dynamic or watched write EXEC", func(t *testing.T) {
+		defer func() { _ = unpauseClient.Do(ctx, "CLIENT", "UNPAUSE").Err() }()
+		require.NoError(t, adminClient.Del(ctx, "ro_k", "w_k", "hl_fe").Err())
+		require.NoError(t, adminClient.Set(ctx, "ro_k", "abc", 0).Err())
+		require.NoError(t, adminClient.Set(ctx, "w_k", "init", 0).Err())
+
+		roConn := newAuthedTCPClient(t, "tx_readonly")
+		wConn := newAuthedTCPClient(t, "tx_watch")
+		require.NoError(t, wConn.WriteArgs("WATCH", "w_k"))
+		wConn.MustRead(t, "+OK")
+		queueTx(t, wConn, []string{"SET", "w_k", "tx_val"})
+		require.NoError(t, adminClient.Set(ctx, "w_k", "other", 0).Err())
+
+		require.NoError(t, adminClient.Do(ctx, "CLIENT", "PAUSE", "10000", "WRITE").Err())
+
+		// Read-only MULTI/EXEC passes immediately during WRITE pause.
+		t0 := time.Now()
+		queueTx(t, roConn, []string{"GET", "ro_k"}, []string{"STRLEN", "ro_k"})
+		require.NoError(t, roConn.WriteArgs("EXEC"))
+		roConn.MustRead(t, "*2")
+		roConn.MustReadBulkString(t, "abc")
+		roConn.MustRead(t, ":3")
+		require.Less(t, time.Since(t0).Milliseconds(), int64(1000))
+
+		// Write EXEC with dirty WATCH still waits for UNPAUSE before returning nil.
+		require.NoError(t, wConn.WriteArgs("EXEC"))
+		wCh := readLineAsync(wConn)
+		select {
+		case early := <-wCh:
+			require.FailNowf(t, "dirty-WATCH write EXEC should wait for UNPAUSE", "got %q", early)
+		case <-time.After(50 * time.Millisecond):
+		}
+		waitClientPaused(t, "tx_watch")
+		require.NoError(t, unpauseClient.Do(ctx, "CLIENT", "UNPAUSE").Err())
+		require.Equal(t, "$-1", <-wCh)
+		require.Equal(t, "other", unpauseClient.Get(ctx, "w_k").Val())
+
+		defer func() {
+			_ = adminClient.ConfigSet(ctx, "hash-encoding-mode", "legacy").Err()
+			_ = adminClient.ConfigSet(ctx, "hash-length-mode", "accurate").Err()
+		}()
+		require.NoError(t, adminClient.ConfigSet(ctx, "hash-encoding-mode", "field-expiration").Err())
+		require.NoError(t, adminClient.ConfigSet(ctx, "hash-length-mode", "approximate").Err())
+		require.NoError(t, adminClient.HSet(ctx, "hl_fe", "f1", "v1").Err())
+
+		cfgConn := newAuthedTCPClient(t, "tx_cfg_hlen")
+		queueTx(t, cfgConn, []string{"CONFIG", "SET", "hash-length-mode", "accurate"}, []string{"HLEN", "hl_fe"})
+		require.NoError(t, adminClient.Do(ctx, "CLIENT", "PAUSE", "10000", "WRITE").Err())
+		require.NoError(t, cfgConn.WriteArgs("EXEC"))
+		cfgCh := readLineAsync(cfgConn)
+		select {
+		case early := <-cfgCh:
+			require.FailNowf(t, "in-MULTI CONFIG SET + HLEN EXEC should pause", "got %q", early)
+		case <-time.After(50 * time.Millisecond):
+		}
+		waitClientPaused(t, "tx_cfg_hlen")
+
+		queueTx(t, roConn, []string{"GET", "ro_k"}, []string{"HLEN", "hl_fe"})
+		require.NoError(t, roConn.WriteArgs("EXEC"))
+		roConn.MustRead(t, "*2")
+		roConn.MustReadBulkString(t, "abc")
+		roConn.MustRead(t, ":1")
+
+		require.NoError(t, unpauseClient.Do(ctx, "CLIENT", "UNPAUSE").Err())
+		require.Equal(t, "*2", <-cfgCh)
+		cfgConn.MustRead(t, "+OK")
+		cfgConn.MustRead(t, ":1")
 	})
 }

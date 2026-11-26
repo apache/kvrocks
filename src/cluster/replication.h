@@ -38,6 +38,7 @@
 #include "server/redis_connection.h"
 #include "status.h"
 #include "storage/storage.h"
+#include "time_util.h"
 
 class Server;
 
@@ -169,6 +170,9 @@ class ReplicationThread : private EventCallbackBase<ReplicationThread> {
   std::atomic<int64_t> last_io_time_secs_ = 0;
   int64_t last_ack_time_secs_ = 0;
   std::atomic<int> reconnect_attempts_ = 0;  // For exponential backoff on reconnection
+  // Pub/Sub messages published before this replica attached to the master are not
+  // delivered to local subscribers; messages missed during a reconnect still are.
+  const uint64_t publish_cutoff_us_ = util::GetTimeStampUS();
   bool next_try_old_psync_ = false;
   bool next_try_without_announce_ip_address_ = false;
 
@@ -230,6 +234,7 @@ class ReplicationThread : private EventCallbackBase<ReplicationThread> {
  */
 class WriteBatchHandler : public rocksdb::WriteBatch::Handler {
  public:
+  void LogData(const rocksdb::Slice &blob) override;
   rocksdb::Status PutCF(uint32_t column_family_id, const rocksdb::Slice &key, const rocksdb::Slice &value) override;
   rocksdb::Status DeleteCF([[maybe_unused]] uint32_t column_family_id,
                            [[maybe_unused]] const rocksdb::Slice &key) override {
@@ -243,8 +248,10 @@ class WriteBatchHandler : public rocksdb::WriteBatch::Handler {
   WriteBatchType Type() { return type_; }
   std::string Key() const { return kv_.first; }
   std::string Value() const { return kv_.second; }
+  uint64_t PublishTime() const { return publish_time_us_; }
 
  private:
   std::pair<std::string, std::string> kv_;
   WriteBatchType type_ = kBatchTypeNone;
+  uint64_t publish_time_us_ = 0;
 };

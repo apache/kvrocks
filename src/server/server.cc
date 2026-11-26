@@ -2150,6 +2150,8 @@ void Server::cleanupExitedWorkerThreads(bool force) {
 std::string ServerLogData::Encode() const {
   if (type_ == kReplIdLog) {
     return std::string(1, kReplIdTag) + " " + content_;
+  } else if (type_ == kPublishLog) {
+    return std::string(1, kPublishTag) + " " + content_;
   }
   return content_;
 }
@@ -2160,13 +2162,16 @@ Status ServerLogData::Decode(const rocksdb::Slice &blob) {
   }
 
   const char *header = blob.data();
-  // Only support `kReplIdTag` now
   if (*header == kReplIdTag && blob.size() == 2 + kReplIdLength) {
     type_ = kReplIdLog;
-    content_ = std::string(blob.data() + 2, blob.size() - 2);
-    return Status::OK();
+  } else if (*header == kPublishTag && blob.size() > 2) {
+    type_ = kPublishLog;
+  } else {
+    return {Status::NotOK};
   }
-  return {Status::NotOK};
+
+  content_ = std::string(blob.data() + 2, blob.size() - 2);
+  return Status::OK();
 }
 
 void Server::updateWatchedKeysFromRange(const std::vector<std::string> &args, const redis::CommandKeyRange &range) {
@@ -2298,7 +2303,7 @@ std::string Server::GetKeyNameFromCursor(const std::string &cursor, CursorType c
   }
 
   auto s = ParseInt<uint64_t>(cursor, 10);
-  // When Cursor 0 or not a Integer return empty string.
+  // When Cursor 0 or not an Integer return empty string.
   // Although the parameter 'cursor' is not expected to be 0, we still added a check for 0 to increase the robustness of
   // the code.
   if (!s.IsOK() || *s == 0) {

@@ -37,16 +37,23 @@ namespace ir = kqir;
 template <typename Rule>
 using TreeSelector = parse_tree::selector<
     Rule, parse_tree::store_content::on<Number, UnsignedInteger, StringL, Param, Identifier, Inf, Term>,
-    parse_tree::remove_content::on<TagList, NumericRange, VectorRange, ExclusiveNumber, FieldQuery, NotExpr, AndExpr,
-                                   OrExpr, PrefilterExpr, KnnSearch, Wildcard, VectorRangeToken, KnnToken, ArrowOp>>;
+    parse_tree::remove_content::on<TagList, NumericRange, VectorRange, ExclusiveNumber, FieldQuery, NotExpr,
+                                   PrefilterExpr, KnnSearch, Wildcard, VectorRangeToken, KnnToken, ArrowOp>,
+    parse_tree::fold_one::on<AndExpr, OrExpr>>;
 
 template <typename Input>
 StatusOr<std::unique_ptr<parse_tree::node>> ParseToTree(Input&& in) {
-  if (auto root = parse_tree::parse<seq<QueryExpr, eof>, TreeSelector>(std::forward<Input>(in))) {
-    return root;
-  } else {
-    // TODO: improve parse error message, with source location
-    return {Status::NotOK, "invalid syntax"};
+  try {
+    if (auto root = parse_tree::parse<seq<QueryExpr, eof>, TreeSelector, QueryDepthLimit<BooleanExpr>::Action>(
+            std::forward<Input>(in))) {
+      return root;
+    } else {
+      // TODO: improve parse error message, with source location
+      return {Status::NotOK, "invalid syntax"};
+    }
+  } catch (const peg::parse_error&) {
+    // parse_error is thrown only by peg::limit_depth, the sole action used here.
+    return {Status::NotOK, "maximum query nesting depth exceeded"};
   }
 }
 
@@ -63,10 +70,14 @@ struct Transformer : ir::TreeTransformer {
     return std::make_unique<ir::VectorLiteral>(std::move(values));
   };
 
-  auto Transform(const TreeNode& node) -> StatusOr<std::unique_ptr<Node>> {
-    auto number_or_param = [this](const TreeNode& node) -> StatusOr<std::unique_ptr<NumericLiteral>> {
+  auto Transform(const TreeNode& node, size_t depth = 0) -> StatusOr<std::unique_ptr<Node>> {
+    if (depth > kMaxIRTransformDepth) {
+      return {Status::NotOK, "maximum query nesting depth exceeded"};
+    }
+
+    auto number_or_param = [this, depth](const TreeNode& node) -> StatusOr<std::unique_ptr<NumericLiteral>> {
       if (Is<Number>(node)) {
-        return Node::MustAs<ir::NumericLiteral>(GET_OR_RET(Transform(node)));
+        return Node::MustAs<ir::NumericLiteral>(GET_OR_RET(Transform(node, depth + 1)));
       } else if (Is<Param>(node)) {
         auto val = GET_OR_RET(ParseFloat(GET_OR_RET(GetParam(node)))
                                   .Prefixed(fmt::format("parameter {} is not a number", node->string_view())));
@@ -161,7 +172,8 @@ struct Transformer : ir::TreeTransformer {
     } else if (Is<NotExpr>(node)) {
       CHECK(node->children.size() == 1);
 
-      return Node::Create<ir::NotExpr>(Node::MustAs<ir::QueryExpr>(GET_OR_RET(Transform(node->children[0]))));
+      return Node::Create<ir::NotExpr>(
+          Node::MustAs<ir::QueryExpr>(GET_OR_RET(Transform(node->children[0], depth + 1))));
     } else if (Is<PrefilterExpr>(node)) {
       // TODO: allow hybrid query
       CHECK(node->children.size() == 3);
@@ -182,7 +194,7 @@ struct Transformer : ir::TreeTransformer {
       std::vector<std::unique_ptr<ir::QueryExpr>> exprs;
 
       for (const auto& child : node->children) {
-        exprs.push_back(Node::MustAs<ir::QueryExpr>(GET_OR_RET(Transform(child))));
+        exprs.push_back(Node::MustAs<ir::QueryExpr>(GET_OR_RET(Transform(child, depth + 1))));
       }
 
       return Node::Create<ir::AndExpr>(std::move(exprs));
@@ -190,14 +202,14 @@ struct Transformer : ir::TreeTransformer {
       std::vector<std::unique_ptr<ir::QueryExpr>> exprs;
 
       for (const auto& child : node->children) {
-        exprs.push_back(Node::MustAs<ir::QueryExpr>(GET_OR_RET(Transform(child))));
+        exprs.push_back(Node::MustAs<ir::QueryExpr>(GET_OR_RET(Transform(child, depth + 1))));
       }
 
       return Node::Create<ir::OrExpr>(std::move(exprs));
     } else if (IsRoot(node)) {
       CHECK(node->children.size() == 1);
 
-      return Transform(node->children[0]);
+      return Transform(node->children[0], depth + 1);
     } else {
       // UNREACHABLE CODE, just for debugging here
       return {Status::NotOK, fmt::format("encountered invalid node type: {}", node->type)};

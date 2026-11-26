@@ -42,26 +42,37 @@ using TreeSelector = parse_tree::selector<
     parse_tree::store_content::on<Boolean, Number, StringL, Param, Identifier, NumericCompareOp, AscOrDesc,
                                   UnsignedInteger>,
     parse_tree::remove_content::on<HasTagExpr, NumericCompareExpr, VectorCompareOp, VectorLiteral, VectorCompareExpr,
-                                   VectorRangeExpr, NotExpr, AndExpr, OrExpr, Wildcard, SelectExpr, FromExpr,
-                                   WhereClause, OrderByClause, OrderByExpr, LimitClause, SearchStmt>>;
+                                   VectorRangeExpr, NotExpr, Wildcard, SelectExpr, FromExpr, WhereClause, OrderByClause,
+                                   OrderByExpr, LimitClause, SearchStmt>,
+    parse_tree::fold_one::on<AndExpr, OrExpr>>;
 
 template <typename Input>
 StatusOr<std::unique_ptr<parse_tree::node>> ParseToTree(Input&& in) {
-  if (auto root = parse_tree::parse<seq<SearchStmt, eof>, TreeSelector>(std::forward<Input>(in))) {
-    return root;
-  } else {
-    // TODO: improve parse error message, with source location
-    return {Status::NotOK, "invalid syntax"};
+  try {
+    if (auto root = parse_tree::parse<seq<SearchStmt, eof>, TreeSelector, QueryDepthLimit<BooleanExpr>::Action>(
+            std::forward<Input>(in))) {
+      return root;
+    } else {
+      // TODO: improve parse error message, with source location
+      return {Status::NotOK, "invalid syntax"};
+    }
+  } catch (const peg::parse_error&) {
+    // parse_error is thrown only by peg::limit_depth, the sole action used here.
+    return {Status::NotOK, "maximum query nesting depth exceeded"};
   }
 }
 
 struct Transformer : ir::TreeTransformer {
   explicit Transformer(const ParamMap& param_map) : TreeTransformer(param_map) {}
 
-  auto Transform(const TreeNode& node) -> StatusOr<std::unique_ptr<Node>> {
-    auto number_or_param = [this](const TreeNode& node) -> StatusOr<std::unique_ptr<NumericLiteral>> {
+  auto Transform(const TreeNode& node, size_t depth = 0) -> StatusOr<std::unique_ptr<Node>> {
+    if (depth > kMaxIRTransformDepth) {
+      return {Status::NotOK, "maximum query nesting depth exceeded"};
+    }
+
+    auto number_or_param = [this, depth](const TreeNode& node) -> StatusOr<std::unique_ptr<NumericLiteral>> {
       if (Is<Number>(node)) {
-        return Node::MustAs<ir::NumericLiteral>(GET_OR_RET(Transform(node)));
+        return Node::MustAs<ir::NumericLiteral>(GET_OR_RET(Transform(node, depth + 1)));
       } else if (Is<Param>(node)) {
         auto val = GET_OR_RET(ParseFloat(GET_OR_RET(GetParam(node)))
                                   .Prefixed(fmt::format("parameter {} is not a number", node->string_view())));
@@ -91,7 +102,7 @@ struct Transformer : ir::TreeTransformer {
       const auto& tag = node->children[1];
       std::unique_ptr<ir::StringLiteral> res;
       if (Is<StringL>(tag)) {
-        res = Node::MustAs<ir::StringLiteral>(GET_OR_RET(Transform(tag)));
+        res = Node::MustAs<ir::StringLiteral>(GET_OR_RET(Transform(tag, depth + 1)));
       } else if (Is<Param>(tag)) {
         res = std::make_unique<ir::StringLiteral>(GET_OR_RET(GetParam(tag)));
       } else {
@@ -125,16 +136,17 @@ struct Transformer : ir::TreeTransformer {
       return Node::Create<ir::VectorRangeExpr>(
           std::make_unique<ir::FieldRef>(vector_comp_expr->children[0]->string()),
           GET_OR_RET(number_or_param(node->children[1])),
-          Node::MustAs<ir::VectorLiteral>(GET_OR_RET(Transform(vector_comp_expr->children[2]))));
+          Node::MustAs<ir::VectorLiteral>(GET_OR_RET(Transform(vector_comp_expr->children[2], depth + 1))));
     } else if (Is<NotExpr>(node)) {
       CHECK(node->children.size() == 1);
 
-      return Node::Create<ir::NotExpr>(Node::MustAs<ir::QueryExpr>(GET_OR_RET(Transform(node->children[0]))));
+      return Node::Create<ir::NotExpr>(
+          Node::MustAs<ir::QueryExpr>(GET_OR_RET(Transform(node->children[0], depth + 1))));
     } else if (Is<AndExpr>(node)) {
       std::vector<std::unique_ptr<ir::QueryExpr>> exprs;
 
       for (const auto& child : node->children) {
-        exprs.push_back(Node::MustAs<ir::QueryExpr>(GET_OR_RET(Transform(child))));
+        exprs.push_back(Node::MustAs<ir::QueryExpr>(GET_OR_RET(Transform(child, depth + 1))));
       }
 
       return Node::Create<ir::AndExpr>(std::move(exprs));
@@ -142,7 +154,7 @@ struct Transformer : ir::TreeTransformer {
       std::vector<std::unique_ptr<ir::QueryExpr>> exprs;
 
       for (const auto& child : node->children) {
-        exprs.push_back(Node::MustAs<ir::QueryExpr>(GET_OR_RET(Transform(child))));
+        exprs.push_back(Node::MustAs<ir::QueryExpr>(GET_OR_RET(Transform(child, depth + 1))));
       }
 
       return Node::Create<ir::OrExpr>(std::move(exprs));
@@ -163,7 +175,7 @@ struct Transformer : ir::TreeTransformer {
       return Node::Create<ir::IndexRef>(node->children[0]->string());
     } else if (Is<WhereClause>(node)) {
       CHECK(node->children.size() == 1);
-      return Transform(node->children[0]);
+      return Transform(node->children[0], depth + 1);
     } else if (Is<LimitClause>(node)) {
       CHECK(node->children.size() == 1 || node->children.size() == 2);
 
@@ -186,7 +198,8 @@ struct Transformer : ir::TreeTransformer {
         CHECK(vector_compare_expr->children.size() == 3);
         auto field = std::make_unique<FieldRef>(vector_compare_expr->children[0]->string());
         return Node::Create<SortByClause>(
-            std::move(field), Node::MustAs<ir::VectorLiteral>(GET_OR_RET(Transform(vector_compare_expr->children[2]))));
+            std::move(field),
+            Node::MustAs<ir::VectorLiteral>(GET_OR_RET(Transform(vector_compare_expr->children[2], depth + 1))));
       } else {
         auto field = std::make_unique<FieldRef>(order_by_expr->children[0]->string());
         auto order = SortByClause::Order::ASC;
@@ -198,8 +211,8 @@ struct Transformer : ir::TreeTransformer {
     } else if (Is<SearchStmt>(node)) {  // root node
       CHECK(node->children.size() >= 2 && node->children.size() <= 5);
 
-      auto index = Node::MustAs<ir::IndexRef>(GET_OR_RET(Transform(node->children[1])));
-      auto select = Node::MustAs<ir::SelectClause>(GET_OR_RET(Transform(node->children[0])));
+      auto index = Node::MustAs<ir::IndexRef>(GET_OR_RET(Transform(node->children[1], depth + 1)));
+      auto select = Node::MustAs<ir::SelectClause>(GET_OR_RET(Transform(node->children[0], depth + 1)));
 
       std::unique_ptr<ir::QueryExpr> query_expr;
       std::unique_ptr<ir::LimitClause> limit;
@@ -207,11 +220,11 @@ struct Transformer : ir::TreeTransformer {
 
       for (size_t i = 2; i < node->children.size(); ++i) {
         if (Is<WhereClause>(node->children[i])) {
-          query_expr = Node::MustAs<ir::QueryExpr>(GET_OR_RET(Transform(node->children[i])));
+          query_expr = Node::MustAs<ir::QueryExpr>(GET_OR_RET(Transform(node->children[i], depth + 1)));
         } else if (Is<LimitClause>(node->children[i])) {
-          limit = Node::MustAs<ir::LimitClause>(GET_OR_RET(Transform(node->children[i])));
+          limit = Node::MustAs<ir::LimitClause>(GET_OR_RET(Transform(node->children[i], depth + 1)));
         } else if (Is<OrderByClause>(node->children[i])) {
-          sort_by = Node::MustAs<ir::SortByClause>(GET_OR_RET(Transform(node->children[i])));
+          sort_by = Node::MustAs<ir::SortByClause>(GET_OR_RET(Transform(node->children[i], depth + 1)));
         }
       }
 
@@ -224,7 +237,7 @@ struct Transformer : ir::TreeTransformer {
     } else if (IsRoot(node)) {
       CHECK(node->children.size() == 1);
 
-      return Transform(node->children[0]);
+      return Transform(node->children[0], depth + 1);
     } else {
       // UNREACHABLE CODE, just for debugging here
       return {Status::NotOK, fmt::format("encountered invalid node type: {}", node->type)};

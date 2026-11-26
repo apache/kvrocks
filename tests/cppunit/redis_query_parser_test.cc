@@ -140,3 +140,64 @@ TEST(RedisQueryParserTest, Vector) {
   vec_str = "";
   ASSERT_EQ(Parse("@field:[VECTOR_RANGE 10 $vector]", {{"vector", vec_str}}).Msg(), "empty vector is invalid");
 }
+
+TEST(RedisQueryParserTest, MaxNestingDepth) {
+  auto make_not_query = [](size_t depth) { return std::string(depth, '-') + "@a:[1 2]"; };
+  auto make_paren_query = [](size_t depth) { return std::string(depth, '(') + "@a:[1 2]" + std::string(depth, ')'); };
+
+  // Expected limits follow kqir::kMaxQueryNestingDepth (issue 3810): up to 100 nested
+  // NOT/parenthesis levels are accepted; 101 levels are rejected with a depth error.
+  ASSERT_EQ(Parse(make_not_query(kqir::kMaxQueryNestingDepth)).Msg(), Status::ok_msg);
+  ASSERT_EQ(Parse(make_not_query(kqir::kMaxQueryNestingDepth + 1)).Msg(), "maximum query nesting depth exceeded");
+  ASSERT_EQ(Parse(make_not_query(20000)).Msg(), "maximum query nesting depth exceeded");
+
+  ASSERT_EQ(Parse(make_paren_query(kqir::kMaxQueryNestingDepth)).Msg(), Status::ok_msg);
+  ASSERT_EQ(Parse(make_paren_query(kqir::kMaxQueryNestingDepth + 1)).Msg(), "maximum query nesting depth exceeded");
+  ASSERT_EQ(Parse(make_paren_query(20000)).Msg(), "maximum query nesting depth exceeded");
+
+  // Mixed NOT and parenthesized expressions share the same nesting budget.
+  std::string mixed_ok;
+  for (size_t i = 0; i < kqir::kMaxQueryNestingDepth / 2; ++i) mixed_ok += "-(";
+  mixed_ok += "@a:[1 2]";
+  for (size_t i = 0; i < kqir::kMaxQueryNestingDepth / 2; ++i) mixed_ok += ")";
+  ASSERT_EQ(Parse(mixed_ok).Msg(), Status::ok_msg);
+  ASSERT_EQ(Parse("-" + mixed_ok).Msg(), "maximum query nesting depth exceeded");
+
+  // Deepest tree within kMaxQueryNestingDepth: a top-level OR/AND plus 100
+  // parenthesized groups, i.e. A | A (A | A (... (A | A A))) with A = @a:[1 2].
+  // Alternating OR/AND at successive levels is not the worst case.
+  const std::string A = "@a:[1 2]";
+  std::string worst = "(" + A + " | " + A + " " + A + ")";
+  for (size_t i = 1; i < kqir::kMaxQueryNestingDepth; ++i) {
+    worst = "(" + A + " | " + A + " " + worst + ")";
+  }
+  worst = A + " | " + A + " " + worst;
+  ASSERT_EQ(Parse(worst).Msg(), Status::ok_msg);
+
+  // Flat wide queries reset nesting depth across siblings and must still succeed.
+  std::string wide_query = "@a:[1 2]";
+  for (size_t i = 0; i < 500; ++i) {
+    wide_query += " | @a:[1 2]";
+  }
+  ASSERT_EQ(Parse(wide_query).Msg(), Status::ok_msg);
+
+  // Direct Transformer::Transform depth guard: kMaxIRTransformDepth-1 NOT nodes
+  // are accepted; kMaxIRTransformDepth NOT nodes are rejected.
+  auto make_not_tree = [](size_t not_count) {
+    auto leaf = std::make_unique<kqir::peg::parse_tree::node>();
+    leaf->set_type<Wildcard>();
+    auto head = std::move(leaf);
+    for (size_t i = 0; i < not_count; ++i) {
+      auto not_node = std::make_unique<kqir::peg::parse_tree::node>();
+      not_node->set_type<NotExpr>();
+      not_node->children.push_back(std::move(head));
+      head = std::move(not_node);
+    }
+    auto root = std::make_unique<kqir::peg::parse_tree::node>();
+    root->children.push_back(std::move(head));
+    return root;
+  };
+  ASSERT_EQ(Transformer({}).Transform(make_not_tree(kqir::kMaxIRTransformDepth - 1)).Msg(), Status::ok_msg);
+  ASSERT_EQ(Transformer({}).Transform(make_not_tree(kqir::kMaxIRTransformDepth)).Msg(),
+            "maximum query nesting depth exceeded");
+}

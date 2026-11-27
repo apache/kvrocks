@@ -19,20 +19,25 @@
 
 """Reconcile Apache Kvrocks nightly test outcomes with a deduplicated GitHub Issue."""
 
-from argparse import ArgumentParser
-from dataclasses import dataclass
+import http.client
 import json
+import logging
 import os
+import re
 import time
-from typing import Any, Dict, List, Optional, Protocol, Sequence
 import urllib.error
 import urllib.parse
 import urllib.request
+from argparse import ArgumentParser
+from dataclasses import dataclass
+from email.utils import parsedate_to_datetime
+from typing import Any, Dict, List, Optional, Protocol, Sequence
 
 NIGHTLY_MARKER = "<!-- kvrocks-nightly-key: nightly-tests -->"
+LAST_RUN_ID_MARKER = "<!-- kvrocks-nightly-last-run-id: {} -->"
 NIGHTLY_LABEL = "ci/nightly"
 NIGHTLY_TITLE = "Nightly CI failure: Nightly Tests"
-FAILURE_CONCLUSIONS = {"failure", "timed_out", "startup_failure", "cancelled"}
+FAILURE_CONCLUSIONS = {"failure", "timed_out", "startup_failure"}
 
 
 @dataclass(frozen=True)
@@ -60,6 +65,9 @@ class RepoClient(Protocol):
 
 
 class GitHubRESTClient:
+    PAGE_SIZE = 100
+    MAX_PAGES = 100
+
     def __init__(self, repository: str, token: str) -> None:
         self.repository = repository
         self.base_url = f"https://api.github.com/repos/{repository}"
@@ -75,30 +83,59 @@ class GitHubRESTClient:
         }
         data = None if payload is None else json.dumps(payload).encode("utf-8")
         url = f"{self.base_url}{path}"
+        req = urllib.request.Request(url, data=data, headers=headers, method=method)
         for attempt in range(3):
+            delay: float = 2**attempt
             try:
-                req = urllib.request.Request(url, data=data, headers=headers, method=method)
                 with urllib.request.urlopen(req, timeout=60) as resp:
                     raw = resp.read()
                     return json.loads(raw.decode("utf-8")) if raw else None
             except urllib.error.HTTPError as err:
-                if err.code == 422 and method == "POST" and path == "/labels":
-                    return None
-                if err.code not in (429, 500, 502, 503, 504) or attempt == 2:
-                    detail = err.read().decode("utf-8", errors="replace")[:500]
-                    raise RuntimeError(f"{method} {url} failed with HTTP {err.code}: {detail}") from None
-            time.sleep(2**attempt)
-        return None
+                with err:
+                    if err.code == 422 and method == "POST" and path == "/labels":
+                        return None
+                    retry_after = err.headers.get("Retry-After")
+                    rate_limited = err.code == 403 and (
+                        retry_after is not None or err.headers.get("X-RateLimit-Remaining") == "0"
+                    )
+                    if attempt == 2 or (not rate_limited and err.code not in (429, 500, 502, 503, 504)):
+                        detail = err.read(500).decode("utf-8", errors="replace")
+                        raise RuntimeError(f"{method} {url} failed with HTTP {err.code}: {detail}") from None
+                    if retry_after is not None:
+                        delay = self._retry_delay(retry_after, delay)
+            except (urllib.error.URLError, TimeoutError, http.client.HTTPException) as err:
+                if attempt == 2:
+                    raise RuntimeError(f"{method} {url} failed: {err}") from err
+            time.sleep(delay)
+
+    @staticmethod
+    def _retry_delay(retry_after: str, fallback: float) -> float:
+        try:
+            delay = int(retry_after)
+        except ValueError:
+            try:
+                delay = parsedate_to_datetime(retry_after).timestamp() - time.time()
+            except (ValueError, OverflowError, OSError):
+                return fallback
+        return min(30, max(0, delay))
+
+    def _paginate(self, path: str, *, items_key: Optional[str] = None) -> List[Dict[str, Any]]:
+        items: List[Dict[str, Any]] = []
+        separator = "&" if "?" in path else "?"
+        for page in range(1, self.MAX_PAGES + 1):
+            response = self._request(f"{path}{separator}per_page={self.PAGE_SIZE}&page={page}")
+            batch = response
+            if items_key is not None:
+                batch = response.get(items_key) if isinstance(response, dict) else None
+            if not isinstance(batch, list):
+                raise RuntimeError(f"Unexpected response for {path} on page {page}")
+            items.extend(batch)
+            if len(batch) < self.PAGE_SIZE:
+                return items
+        raise RuntimeError(f"Pagination limit reached for {path} after {self.MAX_PAGES} pages")
 
     def list_run_jobs(self, run_id: str) -> List[Dict[str, Any]]:
-        jobs: List[Dict[str, Any]] = []
-        for page in range(1, 10):
-            resp = self._request(f"/actions/runs/{run_id}/jobs?per_page=100&page={page}")
-            batch = resp.get("jobs", []) if isinstance(resp, dict) else []
-            jobs.extend(batch)
-            if len(batch) < 100:
-                break
-        return jobs
+        return self._paginate(f"/actions/runs/{run_id}/jobs", items_key="jobs")
 
     def ensure_label(self, name: str, color: str, description: str) -> None:
         encoded = urllib.parse.quote(name, safe="")
@@ -116,9 +153,7 @@ class GitHubRESTClient:
 
     def list_open_nightly_issues(self, label: str) -> List[Dict[str, Any]]:
         encoded = urllib.parse.quote(label, safe="")
-        issues = self._request(f"/issues?state=open&labels={encoded}&per_page=50")
-        if not isinstance(issues, list):
-            return []
+        issues = self._paginate(f"/issues?state=open&labels={encoded}")
         return [item for item in issues if "pull_request" not in item]
 
     def create_issue(self, title: str, body: str, labels: List[str]) -> Dict[str, Any]:
@@ -174,6 +209,7 @@ def render_issue_body(
     short_sha = head_sha[:7] if head_sha else "unknown"
     lines = [
         NIGHTLY_MARKER,
+        LAST_RUN_ID_MARKER.format(run_id),
         "### Nightly Test Failure Report",
         "",
         f"- **Workflow Run**: [{run_id}]({run_url})",
@@ -191,6 +227,12 @@ def render_issue_body(
     return "\n".join(lines) + "\n"
 
 
+def recorded_run_id(issue: Dict[str, Any]) -> int:
+    pattern = LAST_RUN_ID_MARKER.format(r"([0-9]+)")
+    match = re.search(rf"^{pattern}\r?$", issue.get("body") or "", re.MULTILINE)
+    return int(match[1]) if match else 0
+
+
 def reconcile_nightly_status(
     client: RepoClient,
     *,
@@ -199,11 +241,16 @@ def reconcile_nightly_status(
     head_sha: str,
     self_job_name: str,
     apply_changes: bool,
+    expected_jobs: Sequence[str] = (),
 ) -> Dict[str, Any]:
     raw_jobs = client.list_run_jobs(run_id)
     results = collect_job_results(raw_jobs, self_job_name=self_job_name)
     failed = [item for item in results if item.conclusion in FAILURE_CONCLUSIONS]
-    all_passed = len(results) > 0 and all(item.conclusion == "success" for item in results)
+    all_passed = (
+        bool(expected_jobs)
+        and set(expected_jobs).issubset(item.name for item in results)
+        and all(item.conclusion == "success" for item in results)
+    )
 
     summary: Dict[str, Any] = {
         "total_jobs": len(results),
@@ -214,22 +261,27 @@ def reconcile_nightly_status(
     }
 
     if not apply_changes:
-        summary["action"] = "dry_run_failure" if failed else "dry_run_pass"
+        if failed:
+            summary["action"] = "dry_run_failure"
+        elif all_passed:
+            summary["action"] = "dry_run_pass"
+        else:
+            summary["action"] = "dry_run_incomplete"
+        return summary
+    if not failed and not all_passed:
         return summary
 
+    current_run_id = int(run_id)
     open_issues = [
         issue
         for issue in client.list_open_nightly_issues(NIGHTLY_LABEL)
         if NIGHTLY_MARKER in str(issue.get("body") or "")
     ]
-    existing = open_issues[0] if open_issues else None
-
     if failed:
-        client.ensure_label(
-            NIGHTLY_LABEL,
-            "b60205",
-            "Automated nightly CI regression report",
-        )
+        existing = max(open_issues, key=recorded_run_id, default=None)
+        if existing is not None and current_run_id <= recorded_run_id(existing):
+            logging.info("Skipping already recorded or stale failure run %s for issue #%s", run_id, existing["number"])
+            return summary
         body = render_issue_body(
             repository=repository,
             run_id=run_id,
@@ -237,6 +289,11 @@ def reconcile_nightly_status(
             results=results,
         )
         if existing is None:
+            client.ensure_label(
+                NIGHTLY_LABEL,
+                "b60205",
+                "Automated nightly CI regression report",
+            )
             created = client.create_issue(
                 NIGHTLY_TITLE,
                 body,
@@ -255,16 +312,24 @@ def reconcile_nightly_status(
             )
             summary["action"] = "updated_issue"
             summary["issue_number"] = num
-    elif all_passed and existing is not None:
-        num = int(existing["number"])
+    else:
         run_url = f"https://github.com/{repository}/actions/runs/{run_id}"
-        client.create_comment(
-            num,
-            f"Resolved: all nightly jobs passed in run [{run_id}]({run_url}) at `{head_sha[:7]}`. Closing automatically.",
-        )
-        client.update_issue(num, state="closed")
-        summary["action"] = "closed_issue"
-        summary["issue_number"] = num
+        closed_issues = []
+        for issue in open_issues:
+            num = int(issue["number"])
+            if current_run_id < recorded_run_id(issue):
+                logging.warning("Skipping stale recovery run %s for issue #%s", run_id, num)
+                continue
+            client.create_comment(
+                num,
+                f"Resolved: all nightly jobs passed in run [{run_id}]({run_url}) at `{head_sha[:7]}`. Closing automatically.",
+            )
+            client.update_issue(num, state="closed")
+            closed_issues.append(num)
+        if closed_issues:
+            summary["action"] = "closed_issue"
+            summary["issue_number"] = closed_issues[0]
+            summary["closed_issues"] = closed_issues
 
     return summary
 
@@ -275,6 +340,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--head-sha", required=True)
     parser.add_argument("--self-job-name", default="Report Nightly Status")
+    parser.add_argument(
+        "--expected-jobs",
+        action="append",
+        default=[],
+        help="Job names required for recovery, as a comma-separated list or repeated option.",
+    )
     parser.add_argument("--apply", action="store_true", help="Create, update, or close GitHub issues.")
     args = parser.parse_args(argv)
 
@@ -290,9 +361,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         head_sha=args.head_sha,
         self_job_name=args.self_job_name,
         apply_changes=args.apply,
+        expected_jobs=[name.strip() for value in args.expected_jobs for name in value.split(",") if name.strip()],
     )
     print(json.dumps(outcome, indent=2))
-    return 1 if outcome["failed_jobs"] else 0
+    return 0
 
 
 if __name__ == "__main__":

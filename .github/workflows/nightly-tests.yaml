@@ -1,0 +1,348 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+name: Nightly Tests
+
+on:
+  schedule:
+    # Daily 02:00 Asia/Shanghai (18:00 UTC).
+    - cron: '0 18 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Run nightly tests without creating, updating, or closing GitHub issues"
+        required: false
+        default: false
+        type: boolean
+  pull_request:
+    paths:
+      - '.github/workflows/nightly-tests.yaml'
+      - '.github/scripts/nightly_report.py'
+      - '.github/scripts/test_nightly_report.py'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-tests-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  KVROCKS_DEPS_CACHE_DIR: build-deps
+  RISCV_PATH: "/opt/riscv"
+
+jobs:
+  validate-reporter:
+    name: Validate nightly reporter
+    if: github.event_name != 'schedule' || github.repository == 'apache/kvrocks'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Run nightly reporter unit tests
+        run: python3 -m unittest discover -v -s .github/scripts -p "test_nightly_report.py"
+
+  riscv-qemu:
+    name: Ubuntu RISC-V GCC without luaJIT (QEMU)
+    if: >-
+      (github.event_name == 'schedule' && github.repository == 'apache/kvrocks')
+      || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    env:
+      RISCV_TOOLCHAIN_URL: "https://github.com/riscv-collab/riscv-gnu-toolchain/releases/download/2025.07.03/riscv64-glibc-ubuntu-24.04-gcc-nightly-2025.07.03-nightly.tar.xz"
+    steps:
+      - name: Maximize build space
+        run: |
+          sudo df -h
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          sudo df -h
+
+      - name: Setup RISC-V Toolchain
+        run: |
+          sudo apt update
+          sudo apt install -y wget build-essential cmake ninja-build git python3 python3-pip \
+            autoconf automake libtool libgflags-dev libsnappy-dev zlib1g-dev liblz4-dev libzstd-dev \
+            qemu-user qemu-user-static
+          echo "NPROC=$(nproc)" >> $GITHUB_ENV
+          sudo mkdir -p $RISCV_PATH
+          wget "${RISCV_TOOLCHAIN_URL}" -O riscv-toolchain.tar.xz
+          sudo tar -xJf riscv-toolchain.tar.xz -C $RISCV_PATH --strip-components=1
+          rm riscv-toolchain.tar.xz
+          sudo sed -i "s|libdir='/mnt/riscv/riscv64-unknown-linux-gnu/lib'|libdir='$RISCV_PATH/riscv64-unknown-linux-gnu/lib'|g" \
+            $RISCV_PATH/riscv64-unknown-linux-gnu/lib/libatomic.la
+          echo "PATH=$RISCV_PATH/bin:$PATH" >> $GITHUB_ENV
+          echo "LD_LIBRARY_PATH=/opt/riscv/lib:${LD_LIBRARY_PATH:-}" >> $GITHUB_ENV
+          echo "QEMU_LD_PREFIX=$RISCV_PATH/sysroot" >> $GITHUB_ENV
+
+      - name: Cache redis
+        id: cache-redis
+        uses: actions/cache@v6
+        with:
+          path: ~/local/bin/redis-cli
+          key: ubuntu-24.04-redis-cli
+      - name: Cache redis server
+        id: cache-redis-server
+        uses: actions/cache@v6
+        with:
+          path: ~/local/bin/redis-server
+          key: ubuntu-24.04-redis-server
+      - name: Install redis
+        if: ${{ steps.cache-redis.outputs.cache-hit != 'true' || steps.cache-redis-server.outputs.cache-hit != 'true' }}
+        run: |
+          curl -O https://download.redis.io/releases/redis-6.2.14.tar.gz
+          tar -xzf redis-6.2.14.tar.gz
+          mkdir -p $HOME/local/bin
+          pushd redis-6.2.14 && BUILD_TLS=yes make -j$NPROC redis-cli && mv src/redis-cli $HOME/local/bin/ && popd
+          pushd redis-6.2.14 && BUILD_TLS=yes make -j$NPROC redis-server && mv src/redis-server $HOME/local/bin/ && popd
+
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Restore Kvrocks dependency cache
+        id: cache-kvrocks-deps
+        uses: actions/cache@v6
+        with:
+          path: ${{ env.KVROCKS_DEPS_CACHE_DIR }}
+          key: kvrocks-full-deps-${{ hashFiles('x.py', 'CMakeLists.txt', 'cmake/**/*.cmake') }}
+          enableCrossOsArchive: true
+      - name: Fetch Kvrocks dependencies
+        if: ${{ steps.cache-kvrocks-deps.outputs.cache-hit != 'true' }}
+        run: |
+          ./x.py fetch-deps ${{ env.KVROCKS_DEPS_CACHE_DIR }} -D ENABLE_LUAJIT=OFF
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: 3.x
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: 'tests/gocase/go.mod'
+          cache: true
+          cache-dependency-path: 'tests/gocase/go.sum'
+
+      - name: Build Kvrocks (RISC-V)
+        run: |
+          ./x.py build -j$NPROC --unittest --toolchain cmake/riscv64.cmake --dep-dir ${{ env.KVROCKS_DEPS_CACHE_DIR }}
+
+      - name: Run Unit Test
+        run: ./x.py test cpp
+
+      - name: Run Go Integration Cases
+        run: |
+          export PATH=$PATH:$HOME/local/bin/
+          ./x.py test go build -parallel 2 -luaJITEnable=false
+
+      - name: Run kvrocks2redis Test
+        run: |
+          pip3 install redis==5.2.0
+          $HOME/local/bin/redis-server --daemonize yes
+          mkdir -p kvrocks2redis-ci-data
+          ./build/kvrocks --dir "$(pwd)/kvrocks2redis-ci-data" --pidfile "$(pwd)/kvrocks.pid" --daemonize yes
+          for _ in {1..100}; do
+            if $HOME/local/bin/redis-cli -p 6379 ping >/dev/null 2>&1 && $HOME/local/bin/redis-cli -p 6666 ping >/dev/null 2>&1; then
+              break
+            fi
+            sleep 0.1
+          done
+          printf "data-dir %s/kvrocks2redis-ci-data\ndaemonize yes\noutput-dir ./\nnamespace.__namespace 127.0.0.1 6379\n" "$(pwd)" > ./kvrocks2redis-ci.conf
+          ./build/kvrocks2redis -c ./kvrocks2redis-ci.conf
+          for _ in {1..100}; do
+            if $HOME/local/bin/redis-cli -p 6666 info replication | grep -q "connected_slaves:1"; then
+              break
+            fi
+            sleep 0.1
+          done
+          python3 utils/kvrocks2redis/tests/populate-kvrocks.py --password="" --flushdb=true
+          for _ in {1..100}; do
+            if [[ "$($HOME/local/bin/redis-cli -p 6379 get foo2 2>/dev/null)" == "2" ]]; then
+              break
+            fi
+            sleep 0.1
+          done
+          python3 utils/kvrocks2redis/tests/check_consistency.py --src_password=""
+
+  gcc-tsan:
+    name: Ubuntu GCC TSan
+    if: >-
+      (github.event_name == 'schedule' && github.repository == 'apache/kvrocks')
+      || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Setup Linux
+        run: |
+          sudo apt update
+          sudo apt install -y ninja-build ccache
+          echo "NPROC=$(nproc)" >> $GITHUB_ENV
+
+      - name: Cache redis
+        id: cache-redis
+        uses: actions/cache@v6
+        with:
+          path: ~/local/bin/redis-cli
+          key: ubuntu-22.04-redis-cli
+      - name: Install redis-cli
+        if: ${{ steps.cache-redis.outputs.cache-hit != 'true' }}
+        run: |
+          curl -O https://download.redis.io/releases/redis-6.2.14.tar.gz
+          tar -xzf redis-6.2.14.tar.gz
+          mkdir -p $HOME/local/bin
+          pushd redis-6.2.14 && BUILD_TLS=yes make -j$NPROC redis-cli && mv src/redis-cli $HOME/local/bin/ && popd
+
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Restore Kvrocks dependency cache
+        id: cache-kvrocks-deps
+        uses: actions/cache@v6
+        with:
+          path: ${{ env.KVROCKS_DEPS_CACHE_DIR }}
+          key: kvrocks-full-deps-${{ hashFiles('x.py', 'CMakeLists.txt', 'cmake/**/*.cmake') }}
+          enableCrossOsArchive: true
+      - name: Fetch Kvrocks dependencies
+        if: ${{ steps.cache-kvrocks-deps.outputs.cache-hit != 'true' }}
+        run: |
+          ./x.py fetch-deps ${{ env.KVROCKS_DEPS_CACHE_DIR }}
+
+      - name: Restore ccache
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ccache
+          key: ccache-ubuntu22-gcc-tsan-${{ github.sha }}
+          restore-keys: |
+            ccache-ubuntu22-gcc-tsan-
+      - name: Configure ccache
+        run: |
+          ccache --set-config=max_size=2G
+          ccache --set-config=compression=true
+          ccache --set-config=compiler_check=content
+          ccache --set-config=base_dir="$GITHUB_WORKSPACE"
+          ccache --set-config=hash_dir=false
+          ccache -z
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: 3.x
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: 'tests/gocase/go.mod'
+          cache: true
+          cache-dependency-path: 'tests/gocase/go.sum'
+
+      - name: Build Kvrocks (GCC TSan)
+        run: |
+          ./x.py build -j$NPROC --unittest --compiler gcc -DDISABLE_JEMALLOC=ON -DENABLE_TSAN=ON \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            --dep-dir ${{ env.KVROCKS_DEPS_CACHE_DIR }}
+          ccache -s
+
+      - name: Run Unit Test
+        run: |
+          ulimit -c unlimited
+          export LSAN_OPTIONS="suppressions=$(realpath ./tests/lsan-suppressions)"
+          export TSAN_OPTIONS="suppressions=$(realpath ./tests/tsan-suppressions)"
+          ./x.py test cpp
+
+      - name: Run Go Integration Cases
+        run: |
+          ulimit -c unlimited
+          export LSAN_OPTIONS="suppressions=$(realpath ./tests/lsan-suppressions)"
+          export TSAN_OPTIONS="suppressions=$(realpath ./tests/tsan-suppressions)"
+          export PATH=$PATH:$HOME/local/bin/
+          ./x.py test go build -parallel 4 -tags=ignore_when_tsan
+
+      - name: Find reports and crashes
+        if: always()
+        run: |
+          SANITIZER_OUTPUT=$(grep "Sanitizer:" tests/gocase/workspace -r || true)
+          if [[ $SANITIZER_OUTPUT ]]; then
+            echo "found sanitizer reports:"
+            echo "$SANITIZER_OUTPUT"
+            cat $(echo "$SANITIZER_OUTPUT" | awk -F ':' '{print $1}')
+            exit 1
+          fi
+          CRASHES=$(grep "Ooops!" tests/gocase/workspace -r || true)
+          if [[ $CRASHES ]]; then
+            echo "found crashes:"
+            echo "$CRASHES"
+            cat $(echo "$CRASHES" | awk -F ':' '{print $1}')
+            exit 1
+          fi
+
+  cold-start-build:
+    name: Pure Cold-Start Release Build
+    if: >-
+      (github.event_name == 'schedule' && github.repository == 'apache/kvrocks')
+      || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Setup Linux
+        run: |
+          sudo apt update
+          sudo apt install -y autoconf automake libtool libssl-dev
+          echo "NPROC=$(nproc)" >> $GITHUB_ENV
+
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v7
+        with:
+          python-version: 3.x
+
+      # Intentionally disable both ccache and KVROCKS_DEPS_CACHE_DIR to verify
+      # upstream dependency download URLs and clean out-of-the-box ./x.py build.
+      - name: Build Kvrocks from scratch without caches
+        run: |
+          ./x.py build -j$NPROC --unittest --compiler gcc -DENABLE_OPENSSL=ON
+
+      - name: Run Unit Test
+        run: ./x.py test cpp
+
+  report:
+    name: Report Nightly Status
+    if: >-
+      always() && (
+        (github.event_name == 'schedule' && github.repository == 'apache/kvrocks')
+        || github.event_name == 'workflow_dispatch'
+      )
+    needs:
+      - validate-reporter
+      - riscv-qemu
+      - gcc-tsan
+      - cold-start-build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Reconcile nightly test issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DRY_RUN: ${{ inputs.dry_run || 'false' }}
+        run: |
+          args=(
+            --repository "${{ github.repository }}"
+            --run-id "${{ github.run_id }}"
+            --head-sha "${{ github.sha }}"
+            --self-job-name "Report Nightly Status"
+          )
+          if [[ "$GITHUB_REPOSITORY" == "apache/kvrocks" && "$GITHUB_REF" == "refs/heads/unstable" && "$DRY_RUN" != "true" ]]; then
+            args+=(--apply)
+          fi
+          python3 .github/scripts/nightly_report.py "${args[@]}"

@@ -241,7 +241,7 @@ jobs:
           fetch-depth: 0
       - name: Restore Kvrocks dependency cache
         id: cache-kvrocks-deps
-        uses: actions/cache@v6
+        uses: actions/cache/restore@v6
         with:
           path: ${{ env.KVROCKS_DEPS_CACHE_DIR }}
           key: kvrocks-full-deps-${{ hashFiles('x.py', 'CMakeLists.txt', 'cmake/**/*.cmake') }}
@@ -251,18 +251,31 @@ jobs:
         run: |
           ./x.py fetch-deps ${{ env.KVROCKS_DEPS_CACHE_DIR }} ${{ matrix.without_luajit }}
 
-      - name: Restore ccache
+      - name: Set ccache directory
         if: ${{ matrix.use_ccache }}
+        run: echo "CCACHE_DIR=$RUNNER_TEMP/ccache" >> "$GITHUB_ENV"
+      - name: Restore and save ccache on push
+        if: ${{ matrix.use_ccache && github.event_name == 'push' }}
         uses: actions/cache@v6
         with:
-          path: ~/.cache/ccache
+          path: ${{ env.CCACHE_DIR }}
           key: ccache-${{ matrix.cache_key }}-${{ github.sha }}
           restore-keys: |
             ccache-${{ matrix.cache_key }}-
+            ${{ matrix.cache_fallback_key != '' && format('ccache-{0}-', matrix.cache_fallback_key) || '' }}
+      - name: Restore ccache
+        if: ${{ matrix.use_ccache && github.event_name != 'push' }}
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-${{ matrix.cache_key }}-${{ github.sha }}
+          restore-keys: |
+            ccache-${{ matrix.cache_key }}-
+            ${{ matrix.cache_fallback_key != '' && format('ccache-{0}-', matrix.cache_fallback_key) || '' }}
       - name: Configure ccache
         if: ${{ matrix.use_ccache }}
         run: |
-          ccache --set-config=max_size=2G
+          ccache --set-config=max_size=1G
           ccache --set-config=compression=true
           ccache --set-config=compiler_check=content
           ccache --set-config=base_dir="$GITHUB_WORKSPACE"
@@ -340,7 +353,7 @@ jobs:
           if [[ -n "${{ matrix.without_luajit }}" ]]; then
             GOCASE_RUN_ARGS="$GOCASE_RUN_ARGS -luaJITEnable=false"
           fi
-          ./x.py test go build -parallel 4 $GOCASE_RUN_ARGS ${{ matrix.go_tags }}
+          ./x.py test go build -parallel ${{ matrix.go_parallel || 2 }} $GOCASE_RUN_ARGS ${{ matrix.go_tags }}
 
       - name: Install redis-py
         if: ${{ !matrix.skip_kvrocks2redis }}
@@ -585,7 +598,7 @@ jobs:
       - uses: actions/checkout@v7
       - name: Restore Kvrocks dependency cache
         id: cache-kvrocks-deps
-        uses: actions/cache@v6
+        uses: actions/cache/restore@v6
         with:
           path: ${{ env.KVROCKS_DEPS_CACHE_DIR }}
           key: kvrocks-full-deps-${{ hashFiles('x.py', 'CMakeLists.txt', 'cmake/**/*.cmake') }}
@@ -596,11 +609,22 @@ jobs:
         run: |
           ./x.py fetch-deps ${{ env.KVROCKS_DEPS_CACHE_DIR }}
 
-      - name: Restore ccache
+      - name: Set ccache directory
         if: ${{ matrix.use_ccache }}
+        run: echo "CCACHE_DIR=$RUNNER_TEMP/ccache" >> "$GITHUB_ENV"
+      - name: Restore and save ccache on push
+        if: ${{ matrix.use_ccache && github.event_name == 'push' }}
         uses: actions/cache@v6
         with:
-          path: ~/.cache/ccache
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-container-${{ matrix.image }}-${{ github.sha }}
+          restore-keys: |
+            ccache-container-${{ matrix.image }}-
+      - name: Restore ccache
+        if: ${{ matrix.use_ccache && github.event_name != 'push' }}
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ env.CCACHE_DIR }}
           key: ccache-container-${{ matrix.image }}-${{ github.sha }}
           restore-keys: |
             ccache-container-${{ matrix.image }}-
@@ -608,7 +632,7 @@ jobs:
         if: ${{ matrix.use_ccache }}
         shell: bash
         run: |
-          ccache --set-config=max_size=2G
+          ccache --set-config=max_size=1G
           ccache --set-config=compression=true
           ccache --set-config=compiler_check=content
           ccache --set-config=base_dir="$GITHUB_WORKSPACE"

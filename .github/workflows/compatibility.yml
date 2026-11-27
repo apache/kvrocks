@@ -19,7 +19,10 @@ name: Compatibility Tests
 
 on:
   push:
-    branches: [unstable]
+    branches:
+      - unstable
+      - '*.*'
+      - '*.*.*'
   pull_request:
   merge_group:
     types:
@@ -122,3 +125,30 @@ jobs:
         run: |
           cd tests/gocase
           go test -count=1 -tags compat -run TestCompatibilityAllTypes ./integration/compatibility/
+
+  required-compatibility:
+    name: Required Compatibility
+    runs-on: ubuntu-24.04
+    if: always()
+    needs: [plan, build, compatibility-test]
+    steps:
+      - name: Check compatibility job results
+        env:
+          PLAN_RESULT: ${{ needs.plan.result }}
+          HAS_COMPAT_MATRIX: ${{ needs.plan.outputs.has_compat_matrix }}
+          BUILD_RESULT: ${{ needs.build.result }}
+          TEST_RESULT: ${{ needs.compatibility-test.result }}
+        run: |
+          if [[ "$PLAN_RESULT" != "success" ]]; then
+            echo "Compatibility planning failed (result=$PLAN_RESULT)."
+            exit 1
+          fi
+          if [[ "$HAS_COMPAT_MATRIX" != "true" ]]; then
+            echo "No compatibility tests planned."
+            exit 0
+          fi
+          if [[ "$BUILD_RESULT" != "success" || "$TEST_RESULT" != "success" ]]; then
+            echo "Compatibility checks failed (build=$BUILD_RESULT, tests=$TEST_RESULT)."
+            exit 1
+          fi
+          echo "All planned compatibility checks succeeded."

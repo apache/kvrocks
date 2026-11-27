@@ -113,46 +113,54 @@ jobs:
         id: check-format
         run: ./x.py check format --clang-format-path clang-format-18
       - name: Check with clang-tidy
+        shell: python
+        env:
+          TIDY_MODE: ${{ needs.plan.outputs.tidy_mode }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          ./x.py build --skip-build --dep-dir ${{ env.KVROCKS_DEPS_CACHE_DIR }}
-          if [[ "${{ needs.plan.outputs.tidy_mode }}" == "incremental" && "${{ github.event_name }}" == "pull_request" ]]; then
-            BASE_SHA="${{ github.event.pull_request.base.sha }}"
-            HEAD_SHA="${{ github.event.pull_request.head.sha }}"
-            mapfile -t CHANGED < <(git diff --name-only --diff-filter=ACMR "${BASE_SHA}...${HEAD_SHA}" -- 'src/**' 'utils/kvrocks2redis/**' 'tests/cppunit/**' || true)
-            declare -A TARGETS=()
-            FALLBACK_FULL=false
-            for f in "${CHANGED[@]}"; do
-              if [[ "$f" == *.cc && -f "$f" ]]; then
-                TARGETS["$f"]=1
-              elif [[ "$f" == *.h && -f "$f" ]]; then
-                stem="${f%.h}.cc"
-                if [[ -f "$stem" ]]; then
-                  TARGETS["$stem"]=1
-                else
-                  base_hdr="$(basename "$f")"
-                  mapfile -t REFS < <(grep -rlF "\"${base_hdr}\"" src utils/kvrocks2redis tests/cppunit --include='*.cc' | head -n 3 || true)
-                  if [[ ${#REFS[@]} -eq 0 ]]; then
-                    FALLBACK_FULL=true
-                  else
-                    for ref_cc in "${REFS[@]}"; do
-                      TARGETS["$ref_cc"]=1
-                    done
-                  fi
-                fi
-              fi
-            done
-            if [[ "$FALLBACK_FULL" == "true" || ${#TARGETS[@]} -gt 40 ]]; then
-              ./x.py check tidy -j $(nproc) --clang-tidy-path clang-tidy-18 --run-clang-tidy-path run-clang-tidy-18
-            elif [[ ${#TARGETS[@]} -gt 0 ]]; then
-              echo "Running incremental clang-tidy on ${#TARGETS[@]} translation unit(s): ${!TARGETS[*]}"
-              run-clang-tidy-18 -p build -j $(nproc) -clang-tidy-binary clang-tidy-18 \
-                -header-filter='kvrocks/src/|utils/kvrocks2redis/|tests/cppunit/' "${!TARGETS[@]}"
-            else
-              echo "No C/C++ translation units modified; skipping clang-tidy."
-            fi
-          else
-            ./x.py check tidy -j $(nproc) --clang-tidy-path clang-tidy-18 --run-clang-tidy-path run-clang-tidy-18
-          fi
+          import os
+          from pathlib import Path
+          import re
+          import subprocess
+          import sys
+
+          fallback_full = os.environ["TIDY_MODE"] != "incremental" or os.environ["GITHUB_EVENT_NAME"] != "pull_request"
+          targets = []
+          if not fallback_full:
+              base_sha, head_sha = os.environ["BASE_SHA"], os.environ["HEAD_SHA"]
+              diff = None
+              if base_sha and head_sha:
+                  diff = subprocess.run(
+                      ["git", "diff", "--no-renames", "--name-only", "-z", f"{base_sha}...{head_sha}"],
+                      stdout=subprocess.PIPE,
+                  )
+              if diff is None or diff.returncode != 0:
+                  print("Git diff unavailable; running full clang-tidy.", flush=True)
+                  fallback_full = True
+              else:
+                  for name in diff.stdout.split(b"\x00"):
+                      path = Path(os.fsdecode(name))
+                      if path.suffix in {".h", ".hh", ".hpp", ".hxx"}:
+                          fallback_full = True
+                          break
+                      if path.suffix in {".c", ".cc", ".cpp", ".cxx"} and path.is_file():
+                          targets.append(rf"^{re.escape(str(path.absolute()))}\Z")
+
+          if not fallback_full and not targets:
+              print("No changed C/C++ translation units to check; skipping clang-tidy.")
+              sys.exit(0)
+
+          subprocess.run(["./x.py", "build", "--skip-build", "--dep-dir", os.environ["KVROCKS_DEPS_CACHE_DIR"]], check=True)
+          jobs = subprocess.check_output(["nproc"], text=True).strip()
+          if fallback_full:
+              command = ["./x.py", "check", "tidy", "-j", jobs,
+                         "--clang-tidy-path", "clang-tidy-18", "--run-clang-tidy-path", "run-clang-tidy-18"]
+          else:
+              print(f"Running incremental clang-tidy on {len(targets)} translation unit(s).", flush=True)
+              command = ["run-clang-tidy-18", "-p", "build", "-j", jobs, "-clang-tidy-binary", "clang-tidy-18",
+                         "-header-filter=kvrocks/src/|utils/kvrocks2redis/|tests/cppunit/", *targets]
+          sys.exit(subprocess.call(command))
       - name: Lint with golangci-lint
         run: ./x.py check golangci-lint
       - name: Prepare format patch

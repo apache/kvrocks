@@ -1028,6 +1028,7 @@ void Server::UnpauseConns() {
 namespace {
 const std::unordered_set<std::string> kWriteModeSpecialCmds = {
     "publish",
+    "mpublish",
     "pfcount",
     "wait",
 };

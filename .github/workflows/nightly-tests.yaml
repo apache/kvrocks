@@ -158,15 +158,16 @@ jobs:
           redis_cli="$HOME/local/bin/redis-cli"
 
           redis_matches() {
-            local port=$1 expected=$2
+            local port=$1 expected=$2 actual
             shift 2
-            [[ "$("$redis_cli" -p "$port" "$@" 2>/dev/null)" == "$expected" ]]
+            actual=$(timeout 5s "$redis_cli" -p "$port" "$@" 2>/dev/null) &&
+              [[ "$actual" == "$expected" ]]
           }
 
           wait_for() {
-            local description=$1
+            local description=$1 deadline=$((SECONDS + 30))
             shift
-            for _ in {1..300}; do
+            while (( SECONDS < deadline )); do
               if "$@"; then
                 return 0
               fi
@@ -190,13 +191,17 @@ jobs:
           ./build/kvrocks --dir "$(pwd)/kvrocks2redis-ci-data" --pidfile "$(pwd)/kvrocks.pid" --daemonize yes
           wait_for "Redis startup on port 6379" redis_matches 6379 PONG ping
           wait_for "Kvrocks startup on port 6666" redis_matches 6666 PONG ping
-          [[ "$("$redis_cli" -p 6379 ping)" == "PONG" ]]
-          [[ "$("$redis_cli" -p 6666 ping)" == "PONG" ]]
+          [[ "$(timeout 5s "$redis_cli" -p 6379 ping)" == "PONG" ]]
+          [[ "$(timeout 5s "$redis_cli" -p 6666 ping)" == "PONG" ]]
 
           printf "data-dir %s/kvrocks2redis-ci-data\ndaemonize yes\noutput-dir ./\nnamespace.__namespace 127.0.0.1 6379\n" "$(pwd)" > ./kvrocks2redis-ci.conf
           ./build/kvrocks2redis -c ./kvrocks2redis-ci.conf
-          [[ "$("$redis_cli" -p 6666 set __ci_k2r_ready 1)" == "OK" ]]
+          [[ "$(timeout 5s "$redis_cli" -p 6666 set __ci_k2r_ready 1)" == "OK" ]]
           wait_for "kvrocks2redis sentinel sync" redis_matches 6379 1 get __ci_k2r_ready
+
+          # FLUSHDB range deletes are ignored by the write batch extractor.
+          [[ "$(timeout 5s "$redis_cli" -p 6666 del __ci_k2r_ready)" == "1" ]]
+          wait_for "kvrocks2redis sentinel deletion" redis_matches 6379 0 exists __ci_k2r_ready
 
           python3 utils/kvrocks2redis/tests/populate-kvrocks.py --password="" --flushdb=true
           wait_for "kvrocks2redis to sync all test writes and deletes" final_writes_synced
@@ -274,9 +279,9 @@ jobs:
         uses: actions/cache@v6
         with:
           path: ${{ env.CCACHE_DIR }}
-          key: ccache-ubuntu22-gcc-tsan-${{ github.sha }}
+          key: ccache-ubuntu22-gcc-tsan--${{ github.sha }}
           restore-keys: |
-            ccache-ubuntu22-gcc-tsan-
+            ccache-ubuntu22-gcc-tsan--
       - name: Configure ccache
         run: |
           ccache --set-config=max_size=1G

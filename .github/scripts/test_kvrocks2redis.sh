@@ -46,6 +46,10 @@ sentinel_synced() {
   [[ "$(replicated_value get __ci_k2r_ready)" == "1" ]]
 }
 
+sentinel_deletion_synced() {
+  [[ "$(replicated_value exists __ci_k2r_ready)" == "0" ]]
+}
+
 append_cases_synced() {
   [[ "$(replicated_value get foo2)" == "2" &&
      "$(replicated_value getbit bfoo 900000)" == "1" &&
@@ -80,6 +84,12 @@ if [[ "$(timeout 1 "$redis_cli" -p 6666 set __ci_k2r_ready 1)" != "OK" ]]; then
   fail "Failed to write the replication readiness key to Kvrocks."
 fi
 wait_for_sync sentinel_synced "Timed out waiting for kvrocks2redis to sync the readiness key."
+
+# kvrocks2redis skips the range deletes emitted by FLUSHDB.
+if [[ "$(timeout 1 "$redis_cli" -p 6666 del __ci_k2r_ready)" != "1" ]]; then
+  fail "Failed to delete the replication readiness key from Kvrocks."
+fi
+wait_for_sync sentinel_deletion_synced "Timed out waiting for kvrocks2redis to sync deletion of the readiness key."
 
 python3 utils/kvrocks2redis/tests/populate-kvrocks.py --password="" --flushdb=true
 wait_for_sync append_cases_synced "Timed out waiting for kvrocks2redis to sync the final test writes."

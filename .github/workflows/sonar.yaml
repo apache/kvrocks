@@ -26,7 +26,10 @@ jobs:
   sonarcloud:
     name: Upload to SonarCloud
     runs-on: ubuntu-22.04
-    if: github.event.workflow_run.conclusion == 'success' && github.repository_owner == 'apache'
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event != 'merge_group' &&
+      github.repository_owner == 'apache'
     steps:
       - uses: actions/checkout@v7
         with:
@@ -36,6 +39,7 @@ jobs:
       - name: Install Build Wrapper
         uses: SonarSource/sonarqube-scan-action/install-build-wrapper@59202af334b4ba7b5db01b701b8e79f8b3bef0f4 # v8.5.0
       - name: 'Download code coverage'
+        id: download-coverage
         uses: actions/github-script@v9
         with:
           script: |
@@ -44,9 +48,12 @@ jobs:
                repo: context.repo.repo,
                run_id: context.payload.workflow_run.id,
             });
-            let matchArtifact = allArtifacts.data.artifacts.filter((artifact) => {
-              return artifact.name == "sonarcloud-data"
-            })[0];
+            let matchArtifact = allArtifacts.data.artifacts.find((artifact) => artifact.name === 'sonarcloud-data');
+            if (!matchArtifact) {
+              core.info('No sonarcloud-data artifact found; skipping SonarCloud scan.');
+              core.setOutput('has_artifact', 'false');
+              return;
+            }
             let download = await github.rest.actions.downloadArtifact({
                owner: context.repo.owner,
                repo: context.repo.repo,
@@ -55,7 +62,9 @@ jobs:
             });
             let fs = require('fs');
             fs.writeFileSync(`${process.env.GITHUB_WORKSPACE}/sonarcloud-data.zip`, Buffer.from(download.data));
+            core.setOutput('has_artifact', 'true');
       - name: 'Unzip code coverage'
+        if: steps.download-coverage.outputs.has_artifact == 'true'
         run: |
           unzip sonarcloud-data.zip
           mv _build build
@@ -63,16 +72,19 @@ jobs:
           ls -a sonarcloud-data build
 
       - uses: actions/setup-python@v7
+        if: steps.download-coverage.outputs.has_artifact == 'true'
         with:
           python-version: 3.x
 
       - name: Extract PR number
+        if: steps.download-coverage.outputs.has_artifact == 'true'
         run: |
           PR_NUMBER=$(jq -r '.number | select (.!=null)' sonarcloud-data/github-event.json)
           echo "PR_NUMBER=$PR_NUMBER" >> "$GITHUB_ENV"
           echo "The PR number is ${PR_NUMBER:-<none>}"
 
       - name: SonarQube Scan
+        if: steps.download-coverage.outputs.has_artifact == 'true'
         uses: SonarSource/sonarqube-scan-action@59202af334b4ba7b5db01b701b8e79f8b3bef0f4 # v8.5.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

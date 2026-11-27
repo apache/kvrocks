@@ -267,19 +267,19 @@ jobs:
         uses: actions/cache@v6
         with:
           path: ${{ env.CCACHE_DIR }}
-          key: ccache-${{ matrix.cache_key }}-${{ github.sha }}
+          key: ccache-${{ matrix.cache_key }}--${{ github.sha }}
           restore-keys: |
-            ccache-${{ matrix.cache_key }}-
-            ${{ matrix.cache_fallback_key != '' && format('ccache-{0}-', matrix.cache_fallback_key) || '' }}
+            ccache-${{ matrix.cache_key }}--
+            ${{ matrix.cache_fallback_key != '' && format('ccache-{0}--', matrix.cache_fallback_key) || '' }}
       - name: Restore ccache
         if: ${{ matrix.use_ccache && github.event_name != 'push' }}
         uses: actions/cache/restore@v6
         with:
           path: ${{ env.CCACHE_DIR }}
-          key: ccache-${{ matrix.cache_key }}-${{ github.sha }}
+          key: ccache-${{ matrix.cache_key }}--${{ github.sha }}
           restore-keys: |
-            ccache-${{ matrix.cache_key }}-
-            ${{ matrix.cache_fallback_key != '' && format('ccache-{0}-', matrix.cache_fallback_key) || '' }}
+            ccache-${{ matrix.cache_key }}--
+            ${{ matrix.cache_fallback_key != '' && format('ccache-{0}--', matrix.cache_fallback_key) || '' }}
       - name: Configure ccache
         if: ${{ matrix.use_ccache }}
         run: |
@@ -603,17 +603,17 @@ jobs:
         uses: actions/cache@v6
         with:
           path: ${{ env.CCACHE_DIR }}
-          key: ccache-container-${{ matrix.image }}-${{ github.sha }}
+          key: ccache-container-${{ matrix.image }}--${{ github.sha }}
           restore-keys: |
-            ccache-container-${{ matrix.image }}-
+            ccache-container-${{ matrix.image }}--
       - name: Restore ccache
         if: ${{ matrix.use_ccache && github.event_name != 'push' }}
         uses: actions/cache/restore@v6
         with:
           path: ${{ env.CCACHE_DIR }}
-          key: ccache-container-${{ matrix.image }}-${{ github.sha }}
+          key: ccache-container-${{ matrix.image }}--${{ github.sha }}
           restore-keys: |
-            ccache-container-${{ matrix.image }}-
+            ccache-container-${{ matrix.image }}--
       - name: Configure ccache
         if: ${{ matrix.use_ccache }}
         shell: bash

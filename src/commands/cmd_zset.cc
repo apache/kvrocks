@@ -78,7 +78,7 @@ class CommandZAdd : public Commander {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    srv->WakeupBlockingConns(args_[1], member_scores_.size());
+    srv->WakeupBlockingConns(conn->GetNamespace(), args_[1], member_scores_.size());
 
     if (flags_.HasIncr()) {
       auto new_score = member_scores_[0].score;
@@ -342,17 +342,7 @@ class CommandBZPop : public BlockingCommander {
 
   std::string NoopReply(const Connection *conn) override { return conn->NilArray(); }
 
-  void BlockKeys() override {
-    for (const auto &key : keys_) {
-      srv_->BlockOnKey(key, conn_);
-    }
-  }
-
-  void UnblockKeys() override {
-    for (const auto &key : keys_) {
-      srv_->UnblockOnKey(key, conn_);
-    }
-  }
+  void BlockKeys() override { srv_->BlockOnKeys(keys_, conn_); }
 
   void SendMembersWithScores(const Connection *conn, const std::vector<MemberScore> &member_scores,
                              const std::string &user_key) {
@@ -391,6 +381,7 @@ class CommandBZPop : public BlockingCommander {
     bool empty = member_scores.empty();
     if (!empty) {
       SendMembersWithScores(conn_, member_scores, user_key);
+      popped_key_ = std::move(user_key);
     }
 
     return !empty;
@@ -544,17 +535,7 @@ class CommandBZMPop : public BlockingCommander {
     return StartBlocking(timeout_, output);
   }
 
-  void BlockKeys() override {
-    for (const auto &key : keys_) {
-      srv_->BlockOnKey(key, conn_);
-    }
-  }
-
-  void UnblockKeys() override {
-    for (const auto &key : keys_) {
-      srv_->UnblockOnKey(key, conn_);
-    }
-  }
+  void BlockKeys() override { srv_->BlockOnKeys(keys_, conn_); }
 
   std::string NoopReply(const Connection *conn) override { return conn->NilString(); }
 
@@ -583,6 +564,7 @@ class CommandBZMPop : public BlockingCommander {
     bool empty = member_scores.empty();
     if (!empty) {
       SendMembersWithScoresForZMpop(conn_, user_key, member_scores);
+      popped_key_ = std::move(user_key);
     }
 
     return !empty;

@@ -20,6 +20,9 @@
 
 #pragma once
 
+#include <optional>
+#include <string>
+
 #include "commander.h"
 #include "common/lock_manager.h"
 #include "event_util.h"
@@ -38,8 +41,10 @@ class BlockingCommander : public Commander,
   // method to block keys
   virtual void BlockKeys() = 0;
 
-  // method to unblock keys
-  virtual void UnblockKeys() = 0;
+  void UnblockKeys() {
+    conn_->GetServer()->UnblockConn(conn_, popped_key_);
+    conn_->DisableFlag(Connection::kBlocked);
+  }
 
   // method to access database in write callback
   // the return value indicates if the real database operation happens
@@ -58,6 +63,7 @@ class BlockingCommander : public Commander,
       return Status::OK();  // no blocking in multi-exec
     }
 
+    conn_->EnableFlag(Connection::kBlocked);
     BlockKeys();
     SetCB(conn_->GetBufferEvent());
 
@@ -92,6 +98,7 @@ class BlockingCommander : public Commander,
       auto concurrency = conn_->GetServer()->WorkConcurrencyGuard();
 
       auto guard = GetLocks();
+      popped_key_.reset();
       done = OnBlockingWrite();
 
       if (!done) {
@@ -103,16 +110,21 @@ class BlockingCommander : public Commander,
         // This has to happen before the key locks are released, or a write in between
         // would see A as woken already and not wake it.
         bufferevent_disable(bev, EV_WRITE);
-        conn_->GetServer()->RewaitOnKeys(conn_);
-        return;
+        // CLIENT KILL may have enabled WRITE just before it was disabled.
+        if (!conn_->IsFlagEnabled(Connection::kCloseAsync) && !conn_->IsFlagEnabled(Connection::kCloseAfterReply)) {
+          conn_->GetServer()->RewaitOnKeys(conn_);
+          return;
+        }
       }
+      UnblockKeys();
     }
 
-    if (timer_) {
-      timer_.reset();
+    timer_.reset();
+    if (!done) {
+      conn_->Close();
+      return;
     }
 
-    UnblockKeys();
     conn_->SetCB(bev);
     bufferevent_enable(bev, EV_READ);
     // We need to manually trigger the read event since we will stop processing commands
@@ -155,6 +167,7 @@ class BlockingCommander : public Commander,
  protected:
   Connection *conn_ = nullptr;
   UniqueEvent timer_;
+  std::optional<std::string> popped_key_;
 };
 
 }  // namespace redis

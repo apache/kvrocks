@@ -362,19 +362,19 @@ Status Worker::AddConnection(redis::Connection *c) {
   return Status::OK();
 }
 
-redis::Connection *Worker::removeConnection(int fd) {
+redis::Connection *Worker::removeConnection(int fd, std::optional<uint64_t> id) {
   redis::Connection *conn = nullptr;
 
   std::unique_lock<std::mutex> lock(conns_mu_);
   auto iter = conns_.find(fd);
-  if (iter != conns_.end()) {
+  if (iter != conns_.end() && (!id || iter->second->GetID() == *id)) {
     conn = iter->second;
     conns_.erase(iter);
     srv->DecrClientNum();
   }
 
   iter = monitor_conns_.find(fd);
-  if (iter != monitor_conns_.end()) {
+  if (iter != monitor_conns_.end() && (!id || iter->second->GetID() == *id)) {
     conn = iter->second;
     monitor_conns_.erase(iter);
     srv->DecrClientNum();
@@ -440,8 +440,18 @@ void Worker::FreeConnection(redis::Connection *conn) {
   if (!conn) return;
 
   removeConnection(conn->GetFD());
+  cleanupConnection(conn);
+}
+
+void Worker::FreeConnectionByID(int fd, uint64_t id) {
+  if (auto *conn = removeConnection(fd, id)) cleanupConnection(conn);
+}
+
+void Worker::cleanupConnection(redis::Connection *conn) {
+  // Wakeups can acquire conns_mu_ while holding a server lock.
   srv->ResetWatchedKeys(conn);
   srv->CleanupWaitConnection(conn);
+  srv->UnblockConn(conn);
   if (conn->IsPaused()) srv->RemovePausedConn(conn);
   if (rate_limit_group_) {
     bufferevent_remove_from_rate_limit_group(conn->GetBufferEvent());
@@ -449,31 +459,14 @@ void Worker::FreeConnection(redis::Connection *conn) {
   delete conn;
 }
 
-void Worker::FreeConnectionByID(int fd, uint64_t id) {
+Status Worker::EnableWriteEvent(int fd) { return enableWriteEvent(fd, std::nullopt); }
+
+Status Worker::EnableWriteEvent(int fd, uint64_t id) { return enableWriteEvent(fd, id); }
+
+Status Worker::enableWriteEvent(int fd, std::optional<uint64_t> id) {
   std::unique_lock<std::mutex> lock(conns_mu_);
   auto iter = conns_.find(fd);
-  if (iter != conns_.end() && iter->second->GetID() == id) {
-    if (rate_limit_group_ != nullptr) {
-      bufferevent_remove_from_rate_limit_group(iter->second->GetBufferEvent());
-    }
-    delete iter->second;
-    conns_.erase(iter);
-    srv->DecrClientNum();
-  }
-
-  iter = monitor_conns_.find(fd);
-  if (iter != monitor_conns_.end() && iter->second->GetID() == id) {
-    delete iter->second;
-    monitor_conns_.erase(iter);
-    srv->DecrClientNum();
-    srv->DecrMonitorClientNum();
-  }
-}
-
-Status Worker::EnableWriteEvent(int fd) {
-  std::unique_lock<std::mutex> lock(conns_mu_);
-  auto iter = conns_.find(fd);
-  if (iter != conns_.end()) {
+  if (iter != conns_.end() && (!id || iter->second->GetID() == *id)) {
     auto bev = iter->second->GetBufferEvent();
     bufferevent_enable(bev, EV_WRITE);
     return Status::OK();
@@ -618,7 +611,7 @@ void Worker::KickoutIdleClients(int timeout) {
     auto iter = conns_.upper_bound(last_iter_conn_fd_);
     while (iterations--) {
       if (iter == conns_.end()) iter = conns_.begin();
-      if (static_cast<int>(iter->second->GetIdleTime()) >= timeout) {
+      if (!iter->second->IsBlocked() && static_cast<int>(iter->second->GetIdleTime()) >= timeout) {
         to_be_killed_conns.emplace_back(iter->first, iter->second->GetID());
       }
       iter++;

@@ -32,9 +32,11 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <set>
 #include <shared_mutex>
 #include <string>
+#include <string_view>
 #include <type_traits>
 #include <unordered_map>
 #include <utility>
@@ -236,12 +238,13 @@ class Server {
                                 std::vector<ChannelSubscribeNum> *channel_subscribe_nums);
 
   void BlockOnKey(const std::string &key, redis::Connection *conn);
-  void UnblockOnKey(const std::string &key, redis::Connection *conn);
+  void BlockOnKeys(const std::vector<std::string> &keys, redis::Connection *conn);
+  void UnblockConn(redis::Connection *conn, std::optional<std::string_view> consumed_key = std::nullopt);
   void RewaitOnKeys(redis::Connection *conn);
   void BlockOnStreams(const std::vector<std::string> &keys, const std::vector<redis::StreamEntryID> &entry_ids,
                       redis::Connection *conn);
   void UnblockOnStreams(const std::vector<std::string> &keys, redis::Connection *conn);
-  void WakeupBlockingConns(const std::string &key, size_t n_conns);
+  void WakeupBlockingConns(const std::string &ns, const std::string &key, size_t n_conns);
   void OnEntryAddedToStream(const std::string &ns, const std::string &key, const redis::StreamEntryID &entry_id);
 
   // WAIT command infrastructure
@@ -456,8 +459,34 @@ class Server {
   std::mutex pubsub_channels_mu_;
   std::vector<std::map<std::string, std::list<ConnContext>>> pubsub_shard_channels_;
   std::mutex pubsub_shard_channels_mu_;
-  std::map<std::string, std::list<ConnContext>> blocking_keys_;
-  std::set<ConnContext> woken_blocking_conns_;
+  using BlockingKey = std::pair<std::string, std::string>;
+  struct BlockingConn {
+    Worker *owner;
+    int fd;
+    uint64_t id;
+
+    // Connection IDs are assigned by the server across all workers.
+    bool operator<(const BlockingConn &other) const { return id < other.id; }
+  };
+  struct BlockingKeyQueue {
+    BlockingKeyQueue() = default;
+    ~BlockingKeyQueue() = default;
+    BlockingKeyQueue(const BlockingKeyQueue &) = delete;
+    BlockingKeyQueue &operator=(const BlockingKeyQueue &) = delete;
+    BlockingKeyQueue(BlockingKeyQueue &&) = delete;
+    BlockingKeyQueue &operator=(BlockingKeyQueue &&) = delete;
+
+    std::list<BlockingConn> conns;
+    // Every waiter before this iterator already has a pending wakeup.
+    std::list<BlockingConn>::iterator next_to_wake = conns.end();
+  };
+  // The caller must hold blocking_keys_mu_.
+  void unblockConn(const BlockingConn &conn, std::optional<std::string_view> consumed_key, bool handoff_wakeup);
+  void wakeupBlockingConnsLocked(const BlockingKey &key, size_t n_conns);
+
+  std::map<BlockingKey, BlockingKeyQueue> blocking_keys_;
+  std::map<BlockingConn, std::map<BlockingKey, std::list<BlockingConn>::iterator>> conn_blocking_keys_;
+  std::map<BlockingConn, BlockingKey> woken_blocking_conns_;
   std::mutex blocking_keys_mu_;
 
   std::atomic<int> blocked_clients_{0};

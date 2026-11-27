@@ -2066,8 +2066,8 @@ func TestBlockedZSetPopRewokenAfterLosingMember(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		srv := util.StartServer(t, map[string]string{"workers": "1"})
 		t.Run(c.name+" after the member is popped in the same transaction", func(t *testing.T) {
+			srv := util.StartServer(t, map[string]string{"workers": "1"})
 			defer srv.Close()
 			rdb := srv.NewClient()
 			defer func() { require.NoError(t, rdb.Close()) }()
@@ -2093,4 +2093,39 @@ func TestBlockedZSetPopRewokenAfterLosingMember(t *testing.T) {
 			c.reply(t, rd)
 		})
 	}
+}
+
+func TestBlockedZSetWakeupsAcrossNamespaces(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{"workers": "4", "requirepass": "admin-pass"})
+	t.Cleanup(srv.Close)
+	ctx := context.Background()
+	admin := srv.NewClientWithOption(&redis.Options{Password: "admin-pass"})
+	t.Cleanup(func() { require.NoError(t, admin.Close()) })
+	require.NoError(t, admin.Do(ctx, "NAMESPACE", "ADD", "tenant", "tenant-token").Err())
+	tenant := srv.NewClientWithOption(&redis.Options{Password: "tenant-token"})
+	t.Cleanup(func() { require.NoError(t, tenant.Close()) })
+
+	waitBlocked := func(count string) {
+		require.Eventually(t, func() bool {
+			return util.FindInfoEntry(admin, "blocked_clients") == count
+		}, 5*time.Second, 10*time.Millisecond, "expected %s blocked clients", count)
+	}
+	block := func(password, count string) *util.TCPClient {
+		client := srv.NewTCPClient()
+		t.Cleanup(func() { require.NoError(t, client.Close()) })
+		require.NoError(t, client.WriteArgs("AUTH", password))
+		client.MustRead(t, "+OK")
+		require.NoError(t, client.WriteArgs("BZPOPMIN", "shared", "0"))
+		waitBlocked(count)
+		return client
+	}
+	adminWaiter := block("admin-pass", "1")
+	tenantWaiter := block("tenant-token", "2")
+
+	require.NoError(t, tenant.ZAdd(ctx, "shared", redis.Z{Member: "tenant", Score: 2}).Err())
+	waitBlocked("1")
+	tenantWaiter.MustReadStrings(t, []string{"shared", "tenant", "2"})
+	require.NoError(t, admin.ZAdd(ctx, "shared", redis.Z{Member: "admin", Score: 1}).Err())
+	waitBlocked("0")
+	adminWaiter.MustReadStrings(t, []string{"shared", "admin", "1"})
 }

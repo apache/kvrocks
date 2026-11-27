@@ -32,6 +32,7 @@
 #include <cstdlib>
 #include <functional>
 #include <iomanip>
+#include <iterator>
 #include <jsoncons/json.hpp>
 #include <memory>
 #include <mutex>
@@ -631,40 +632,49 @@ void Server::ListSChannelSubscribeNum(const std::vector<std::string> &channels,
   }
 }
 
-void Server::BlockOnKey(const std::string &key, redis::Connection *conn) {
+void Server::BlockOnKey(const std::string &key, redis::Connection *conn) { BlockOnKeys({key}, conn); }
+
+void Server::BlockOnKeys(const std::vector<std::string> &keys, redis::Connection *conn) {
+  auto ns = conn->GetNamespace();
+  BlockingConn ctx{conn->Owner(), conn->GetFD(), conn->GetID()};
   std::lock_guard<std::mutex> guard(blocking_keys_mu_);
 
-  auto conn_ctx = ConnContext(conn->Owner(), conn->GetFD());
-
-  if (auto iter = blocking_keys_.find(key); iter == blocking_keys_.end()) {
-    blocking_keys_.emplace(key, std::list<ConnContext>{conn_ctx});
-  } else {
-    iter->second.emplace_back(conn_ctx);
+  auto [conn_it, inserted] = conn_blocking_keys_.try_emplace(ctx);
+  for (const auto &key : keys) {
+    auto [key_it, added] = conn_it->second.try_emplace(BlockingKey{ns, key});
+    if (!added) continue;
+    auto &queue = blocking_keys_[key_it->first];
+    queue.conns.push_back(ctx);
+    key_it->second = std::prev(queue.conns.end());
+    if (queue.next_to_wake == queue.conns.end()) queue.next_to_wake = key_it->second;
   }
-
-  IncrBlockedClientNum();
+  if (inserted) IncrBlockedClientNum();
 }
 
-void Server::UnblockOnKey(const std::string &key, redis::Connection *conn) {
+void Server::UnblockConn(redis::Connection *conn, std::optional<std::string_view> consumed_key) {
+  BlockingConn ctx{conn->Owner(), conn->GetFD(), conn->GetID()};
   std::lock_guard<std::mutex> guard(blocking_keys_mu_);
+  unblockConn(ctx, consumed_key, true);
+}
 
-  woken_blocking_conns_.erase(ConnContext(conn->Owner(), conn->GetFD()));
-  auto iter = blocking_keys_.find(key);
-  if (iter == blocking_keys_.end()) {
-    return;
+void Server::unblockConn(const BlockingConn &ctx, std::optional<std::string_view> consumed_key, bool handoff_wakeup) {
+  auto wakeup = woken_blocking_conns_.extract(ctx);
+  auto conn_it = conn_blocking_keys_.find(ctx);
+  if (conn_it == conn_blocking_keys_.end()) return;
+
+  for (const auto &[key, waiter] : conn_it->second) {
+    auto key_it = blocking_keys_.find(key);
+    auto &queue = key_it->second;
+    if (waiter == queue.next_to_wake) ++queue.next_to_wake;
+    queue.conns.erase(waiter);
+    if (queue.conns.empty()) blocking_keys_.erase(key_it);
   }
-
-  for (const auto &conn_ctx : iter->second) {
-    if (conn->GetFD() == conn_ctx.fd && conn->Owner() == conn_ctx.owner) {
-      iter->second.remove(conn_ctx);
-      if (iter->second.empty()) {
-        blocking_keys_.erase(iter);
-      }
-      break;
-    }
-  }
-
+  conn_blocking_keys_.erase(conn_it);
   DecrBlockedClientNum();
+
+  if (handoff_wakeup && !wakeup.empty() && (!consumed_key || wakeup.mapped().second != *consumed_key)) {
+    wakeupBlockingConnsLocked(wakeup.mapped(), 1);
+  }
 }
 
 void Server::BlockOnStreams(const std::vector<std::string> &keys, const std::vector<redis::StreamEntryID> &entry_ids,
@@ -710,29 +720,42 @@ void Server::UnblockOnStreams(const std::vector<std::string> &keys, redis::Conne
   }
 }
 
-void Server::WakeupBlockingConns(const std::string &key, size_t n_conns) {
+void Server::WakeupBlockingConns(const std::string &ns, const std::string &key, size_t n_conns) {
+  BlockingKey blocking_key{ns, key};
   std::lock_guard<std::mutex> guard(blocking_keys_mu_);
+  wakeupBlockingConnsLocked(blocking_key, n_conns);
+}
 
-  auto iter = blocking_keys_.find(key);
-  if (iter == blocking_keys_.end() || iter->second.empty()) {
-    return;
-  }
+void Server::wakeupBlockingConnsLocked(const BlockingKey &blocking_key, size_t n_conns) {
+  auto it = blocking_keys_.find(blocking_key);
+  while (n_conns > 0 && it != blocking_keys_.end()) {
+    auto &queue = it->second;
+    if (queue.next_to_wake == queue.conns.end()) break;
+    auto ctx = *queue.next_to_wake++;
+    if (!woken_blocking_conns_.try_emplace(ctx, blocking_key).second) continue;
 
-  for (const auto &conn_ctx : iter->second) {
-    if (n_conns == 0) break;
-    if (!woken_blocking_conns_.emplace(conn_ctx).second) continue;
-
-    auto s = conn_ctx.owner->EnableWriteEvent(conn_ctx.fd);
+    auto s = ctx.owner->EnableWriteEvent(ctx.fd, ctx.id);
     if (!s.IsOK()) {
-      ERROR("[server] Failed to enable write event on blocked client {}: {}", conn_ctx.fd, s.Msg());
+      unblockConn(ctx, std::nullopt, false);
+      it = blocking_keys_.find(blocking_key);
+      continue;
     }
-    n_conns--;
+    --n_conns;
   }
 }
 
 void Server::RewaitOnKeys(redis::Connection *conn) {
+  BlockingConn ctx{conn->Owner(), conn->GetFD(), conn->GetID()};
   std::lock_guard<std::mutex> guard(blocking_keys_mu_);
-  woken_blocking_conns_.erase(ConnContext(conn->Owner(), conn->GetFD()));
+  if (woken_blocking_conns_.erase(ctx) == 0) return;
+
+  auto conn_it = conn_blocking_keys_.find(ctx);
+  if (conn_it == conn_blocking_keys_.end()) return;
+
+  for (const auto &[key, waiter] : conn_it->second) {
+    auto &queue = blocking_keys_.find(key)->second;
+    queue.next_to_wake = queue.conns.begin();
+  }
 }
 
 void Server::OnEntryAddedToStream(const std::string &ns, const std::string &key, const redis::StreamEntryID &entry_id) {

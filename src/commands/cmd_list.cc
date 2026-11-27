@@ -52,7 +52,7 @@ class CommandPush : public Commander {
       return {Status::RedisExecErr, s.ToString()};
     }
 
-    srv->WakeupBlockingConns(args_[1], elems.size());
+    srv->WakeupBlockingConns(conn->GetNamespace(), args_[1], elems.size());
 
     *output = redis::Integer(ret);
     return Status::OK();
@@ -274,17 +274,7 @@ class CommandBPop : public BlockingCommander {
     return StartBlocking(timeout_, output);
   }
 
-  void BlockKeys() override {
-    for (const auto &key : keys_) {
-      srv_->BlockOnKey(key, conn_);
-    }
-  }
-
-  void UnblockKeys() override {
-    for (const auto &key : keys_) {
-      srv_->UnblockOnKey(key, conn_);
-    }
-  }
+  void BlockKeys() override { srv_->BlockOnKeys(keys_, conn_); }
 
   rocksdb::Status TryPopFromList(engine::Context &ctx) {
     redis::List list_db(srv_->storage, conn_->GetNamespace());
@@ -303,6 +293,7 @@ class CommandBPop : public BlockingCommander {
       if (!last_key_ptr) {
         conn_->Reply(conn_->MultiBulkString({"", ""}));
       } else {
+        popped_key_ = *last_key_ptr;
         conn_->GetServer()->UpdateWatchedKeysManually({*last_key_ptr});
         conn_->Reply(conn_->MultiBulkString({*last_key_ptr, std::move(elem)}));
       }
@@ -429,6 +420,7 @@ class CommandBLMPop : public BlockingCommander {
         conn_->GetServer()->UpdateWatchedKeysManually({chosen_key});
         std::string elems_bulk = conn_->MultiBulkString(elems);
         conn_->Reply(redis::Array({redis::BulkString(chosen_key), std::move(elems_bulk)}));
+        popped_key_ = std::move(chosen_key);
       }
     } else if (!s.IsNotFound()) {
       conn_->Reply(redis::Error({Status::NotOK, s.ToString()}));
@@ -437,17 +429,7 @@ class CommandBLMPop : public BlockingCommander {
     return s;
   }
 
-  void BlockKeys() override {
-    for (const auto &key : keys_) {
-      srv_->BlockOnKey(key, conn_);
-    }
-  }
-
-  void UnblockKeys() override {
-    for (const auto &key : keys_) {
-      srv_->UnblockOnKey(key, conn_);
-    }
-  }
+  void BlockKeys() override { srv_->BlockOnKeys(keys_, conn_); }
 
   MultiLockGuard GetLocks() override {
     std::vector<std::string> lock_keys;
@@ -778,7 +760,7 @@ class CommandBLMove : public BlockingCommander {
     if (!s.ok() && !s.IsNotFound()) {
       return {Status::RedisExecErr, s.ToString()};
     }
-    if (!elem.empty()) {
+    if (s.ok()) {
       *output = redis::BulkString(elem);
       return Status::OK();
     }
@@ -787,8 +769,6 @@ class CommandBLMove : public BlockingCommander {
   }
 
   void BlockKeys() override { srv_->BlockOnKey(args_[1], conn_); }
-
-  void UnblockKeys() override { srv_->UnblockOnKey(args_[1], conn_); }
 
   MultiLockGuard GetLocks() override {
     std::vector<std::string> lock_keys{
@@ -809,12 +789,12 @@ class CommandBLMove : public BlockingCommander {
       return true;
     }
 
-    bool empty = elem.empty();
-    if (!empty) {
+    if (s.ok()) {
+      popped_key_ = args_[1];
       conn_->Reply(redis::BulkString(elem));
     }
 
-    return !empty;
+    return s.ok();
   }
 
   std::string NoopReply(const Connection *conn) override { return conn->NilArray(); }

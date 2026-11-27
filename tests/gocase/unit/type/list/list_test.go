@@ -1705,3 +1705,323 @@ func TestPotentialDataRaceInBlockingCommand(t *testing.T) {
 	cancelFn()
 	wg.Wait()
 }
+
+// A blocked client that is woken but loses the element to another client must be woken by the next push.
+// With one worker, the woken client runs only after the transaction or pipeline that woke it, so it always loses.
+func TestBlockedClientRewokenAfterLosingElement(t *testing.T) {
+	ctx := context.Background()
+
+	cases := []struct {
+		name  string
+		block []string
+		reply func(t *testing.T, rd *util.TCPClient)
+	}{
+		{"BLPOP", []string{"blpop", "blist", "0"}, func(t *testing.T, rd *util.TCPClient) {
+			rd.MustReadStrings(t, []string{"blist", "y"})
+		}},
+		{"BRPOP", []string{"brpop", "blist", "0"}, func(t *testing.T, rd *util.TCPClient) {
+			rd.MustReadStrings(t, []string{"blist", "y"})
+		}},
+		{"BLPOP on several keys", []string{"blpop", "other", "blist", "0"}, func(t *testing.T, rd *util.TCPClient) {
+			rd.MustReadStrings(t, []string{"blist", "y"})
+		}},
+		{"BLMOVE", []string{"blmove", "blist", "target", "left", "right", "0"}, func(t *testing.T, rd *util.TCPClient) {
+			rd.MustReadBulkString(t, "y")
+		}},
+		{"BLMPOP", []string{"blmpop", "0", "1", "blist", "left"}, func(t *testing.T, rd *util.TCPClient) {
+			rd.MustReadStringsWithKey(t, "blist", []string{"y"})
+		}},
+	}
+
+	start := func(sub *testing.T) (*util.KvrocksServer, *redis.Client) {
+		srv := util.StartServer(sub, map[string]string{"workers": "1"})
+		sub.Cleanup(srv.Close)
+		rdb := srv.NewClient()
+		sub.Cleanup(func() { require.NoError(sub, rdb.Close()) })
+		return srv, rdb
+	}
+
+	pushAndCheck := func(t *testing.T, rdb *redis.Client, rd *util.TCPClient, reply func(t *testing.T, rd *util.TCPClient)) {
+		require.Equal(t, "PONG", rdb.Ping(ctx).Val())
+		require.EqualValues(t, 1, rdb.RPush(ctx, "blist", "y").Val())
+		require.Eventually(t, func() bool {
+			return rdb.LLen(ctx, "blist").Val() == 0
+		}, 2*time.Second, 10*time.Millisecond, "the blocked client was not woken by the push after it lost the race")
+		reply(t, rd)
+	}
+
+	for _, c := range cases {
+		t.Run(c.name+" after the element is popped in the same transaction", func(t *testing.T) {
+			srv, rdb := start(t)
+			rd := srv.NewTCPClient()
+			defer func() { require.NoError(t, rd.Close()) }()
+
+			require.NoError(t, rd.WriteArgs(c.block...))
+			waitForBlockedListClients(t, rdb, 1)
+
+			pipe := rdb.TxPipeline()
+			pipe.RPush(ctx, "blist", "x")
+			pipe.LPop(ctx, "blist")
+			cmds, err := pipe.Exec(ctx)
+			require.NoError(t, err)
+			require.Equal(t, "x", cmds[1].(*redis.StringCmd).Val())
+
+			pushAndCheck(t, rdb, rd, c.reply)
+		})
+
+		t.Run(c.name+" after the element is popped by a pipelined command", func(t *testing.T) {
+			srv, rdb := start(t)
+			rd := srv.NewTCPClient()
+			defer func() { require.NoError(t, rd.Close()) }()
+			producer := srv.NewTCPClient()
+			defer func() { require.NoError(t, producer.Close()) }()
+
+			require.NoError(t, rd.WriteArgs(c.block...))
+			waitForBlockedListClients(t, rdb, 1)
+
+			require.NoError(t, producer.Write("*3\r\n$5\r\nRPUSH\r\n$5\r\nblist\r\n$1\r\nx\r\n"+
+				"*2\r\n$4\r\nLPOP\r\n$5\r\nblist\r\n"))
+			producer.MustRead(t, ":1")
+			producer.MustReadBulkString(t, "x")
+
+			pushAndCheck(t, rdb, rd, c.reply)
+		})
+	}
+}
+
+func waitForBlockedListClients(t *testing.T, rdb *redis.Client, count int) {
+	t.Helper()
+	require.Eventually(t, func() bool {
+		return util.FindInfoEntry(rdb, "blocked_clients") == strconv.Itoa(count)
+	}, 5*time.Second, 10*time.Millisecond, "expected %d blocked clients", count)
+}
+
+func newListWaiter(t *testing.T, srv *util.KvrocksServer) *util.TCPClient {
+	t.Helper()
+	client := srv.NewTCPClient()
+	t.Cleanup(func() { _ = client.Close() })
+	return client
+}
+
+func blockListClient(t *testing.T, rdb *redis.Client, client *util.TCPClient, count int, keys ...string) {
+	t.Helper()
+	args := append([]string{"BLPOP"}, keys...)
+	require.NoError(t, client.WriteArgs(append(args, "0")...))
+	waitForBlockedListClients(t, rdb, count)
+}
+
+func TestBlockedListWakeups(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{"workers": "4"})
+	t.Cleanup(srv.Close)
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	t.Cleanup(func() { require.NoError(t, rdb.Close()) })
+
+	for _, mode := range []struct {
+		name     string
+		pipeline func() redis.Pipeliner
+	}{
+		{"pipeline", rdb.Pipeline},
+		{"transaction", rdb.TxPipeline},
+	} {
+		t.Run(mode.name, func(t *testing.T) {
+			const key = "contended"
+			waiters := make([]*util.TCPClient, 8)
+			for i := range waiters {
+				waiters[i] = newListWaiter(t, srv)
+				blockListClient(t, rdb, waiters[i], i+1, key)
+			}
+
+			pipe := mode.pipeline()
+			for range waiters {
+				pipe.RPush(ctx, key, "value")
+			}
+			_, err := pipe.Exec(ctx)
+			require.NoError(t, err)
+			waitForBlockedListClients(t, rdb, 0)
+			for _, waiter := range waiters {
+				waiter.MustReadStrings(t, []string{key, "value"})
+			}
+
+			first := newListWaiter(t, srv)
+			second := newListWaiter(t, srv)
+			blockListClient(t, rdb, first, 1, "k1", "k2")
+			blockListClient(t, rdb, second, 2, "k2")
+
+			pipe = mode.pipeline()
+			pipe.RPush(ctx, "k1", "first")
+			pipe.RPush(ctx, "k2", "second")
+			_, err = pipe.Exec(ctx)
+			require.NoError(t, err)
+			waitForBlockedListClients(t, rdb, 0)
+			first.MustReadStrings(t, []string{"k1", "first"})
+			second.MustReadStrings(t, []string{"k2", "second"})
+		})
+	}
+
+	t.Run("duplicate keys", func(t *testing.T) {
+		first := newListWaiter(t, srv)
+		second := newListWaiter(t, srv)
+		blockListClient(t, rdb, first, 1, "dup", "dup")
+		blockListClient(t, rdb, second, 2, "dup")
+
+		require.NoError(t, rdb.RPush(ctx, "dup", "first").Err())
+		waitForBlockedListClients(t, rdb, 1)
+		first.MustReadStrings(t, []string{"dup", "first"})
+		require.NoError(t, rdb.RPush(ctx, "dup", "second").Err())
+		waitForBlockedListClients(t, rdb, 0)
+		second.MustReadStrings(t, []string{"dup", "second"})
+	})
+
+	t.Run("move empty element", func(t *testing.T) {
+		waiter := newListWaiter(t, srv)
+		require.NoError(t, waiter.WriteArgs("BLMOVE", "source", "target", "LEFT", "RIGHT", "0"))
+		waitForBlockedListClients(t, rdb, 1)
+		require.NoError(t, rdb.RPush(ctx, "source", "").Err())
+		waitForBlockedListClients(t, rdb, 0)
+		waiter.MustReadBulkString(t, "")
+		require.Equal(t, []string{""}, rdb.LRange(ctx, "target", 0, -1).Val())
+	})
+}
+
+func TestBlockedListWakeupHandoff(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{"workers": "4"})
+	t.Cleanup(srv.Close)
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	t.Cleanup(func() { require.NoError(t, rdb.Close()) })
+
+	for _, tc := range []struct {
+		name      string
+		wrongType bool
+	}{
+		{"different key", false},
+		{"no pop", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			k1, k2 := tc.name+":k1", tc.name+":k2"
+			first := newListWaiter(t, srv)
+			second := newListWaiter(t, srv)
+			blockListClient(t, rdb, first, 1, k1, k2)
+			blockListClient(t, rdb, second, 2, k2)
+
+			pipe := rdb.TxPipeline()
+			pipe.RPush(ctx, k2, "second")
+			if tc.wrongType {
+				pipe.Set(ctx, k1, "wrong type", 0)
+			} else {
+				pipe.RPush(ctx, k1, "first")
+			}
+			_, err := pipe.Exec(ctx)
+			require.NoError(t, err)
+
+			waitForBlockedListClients(t, rdb, 0)
+			if tc.wrongType {
+				first.MustMatch(t, "WRONGTYPE")
+			} else {
+				first.MustReadStrings(t, []string{k1, "first"})
+			}
+			second.MustReadStrings(t, []string{k2, "second"})
+		})
+	}
+}
+
+func TestBlockedListWakeupsAcrossDatabases(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{"workers": "4", "redis-databases": "4"})
+	t.Cleanup(srv.Close)
+	ctx := context.Background()
+	db0 := srv.NewClient()
+	t.Cleanup(func() { require.NoError(t, db0.Close()) })
+	db1 := srv.NewClientWithOption(&redis.Options{DB: 1})
+	t.Cleanup(func() { require.NoError(t, db1.Close()) })
+
+	waiter0 := newListWaiter(t, srv)
+	require.NoError(t, waiter0.WriteArgs("SELECT", "0"))
+	waiter0.MustRead(t, "+OK")
+	blockListClient(t, db0, waiter0, 1, "shared")
+	waiter1 := newListWaiter(t, srv)
+	require.NoError(t, waiter1.WriteArgs("SELECT", "1"))
+	waiter1.MustRead(t, "+OK")
+	blockListClient(t, db0, waiter1, 2, "shared")
+
+	require.NoError(t, db1.RPush(ctx, "shared", "db1").Err())
+	waitForBlockedListClients(t, db0, 1)
+	waiter1.MustReadStrings(t, []string{"shared", "db1"})
+	require.NoError(t, db0.RPush(ctx, "shared", "db0").Err())
+	waitForBlockedListClients(t, db0, 0)
+	waiter0.MustReadStrings(t, []string{"shared", "db0"})
+}
+
+func TestBlockedListClientCleanup(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{"workers": "4"})
+	t.Cleanup(srv.Close)
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	t.Cleanup(func() { require.NoError(t, rdb.Close()) })
+
+	for _, mode := range []string{"disconnect", "kill"} {
+		t.Run(mode, func(t *testing.T) {
+			first := newListWaiter(t, srv)
+			require.NoError(t, first.WriteArgs("CLIENT", "ID"))
+			id, err := first.ReadLine()
+			require.NoError(t, err)
+			require.Regexp(t, `^:\d+$`, id)
+			id = strings.TrimPrefix(id, ":")
+			blockListClient(t, rdb, first, 1, "cleanup", "other")
+			next := newListWaiter(t, srv)
+			blockListClient(t, rdb, next, 2, "cleanup")
+
+			if mode == "disconnect" {
+				require.NoError(t, first.Close())
+			} else {
+				pipe := rdb.TxPipeline()
+				pipe.RPush(ctx, "cleanup", "discarded")
+				pop := pipe.LPop(ctx, "cleanup")
+				kill := pipe.ClientKillByFilter(ctx, "ID", id)
+				_, err := pipe.Exec(ctx)
+				require.NoError(t, err)
+				require.Equal(t, "discarded", pop.Val())
+				require.EqualValues(t, 1, kill.Val())
+			}
+			waitForBlockedListClients(t, rdb, 1)
+			require.Eventually(t, func() bool {
+				clients := rdb.ClientList(ctx)
+				return clients.Err() == nil && !strings.Contains(clients.Val(), "id="+id+" ")
+			}, 5*time.Second, 10*time.Millisecond)
+
+			replacement := newListWaiter(t, srv)
+			blockListClient(t, rdb, replacement, 2, "other")
+			require.NoError(t, rdb.RPush(ctx, "cleanup", "next").Err())
+			waitForBlockedListClients(t, rdb, 1)
+			next.MustReadStrings(t, []string{"cleanup", "next"})
+			require.NoError(t, rdb.RPush(ctx, "other", "replacement").Err())
+			waitForBlockedListClients(t, rdb, 0)
+			replacement.MustReadStrings(t, []string{"other", "replacement"})
+		})
+	}
+}
+
+func TestBlockedListClientSurvivesIdleTimeout(t *testing.T) {
+	srv := util.StartServer(t, map[string]string{"workers": "1", "timeout": "1"})
+	t.Cleanup(srv.Close)
+	ctx := context.Background()
+	rdb := srv.NewClient()
+	t.Cleanup(func() { require.NoError(t, rdb.Close()) })
+
+	waiter := newListWaiter(t, srv)
+	blockListClient(t, rdb, waiter, 1, "timeout")
+	idle := newListWaiter(t, srv)
+	require.NoError(t, idle.WriteArgs("CLIENT", "SETNAME", "idle-control"))
+	idle.MustRead(t, "+OK")
+	require.NoError(t, idle.WriteArgs("WAIT", "1", "0"))
+	waitForBlockedListClients(t, rdb, 2)
+	// The idle sweep should close the WAIT client while the list waiter stays blocked.
+	require.Eventually(t, func() bool {
+		clients := rdb.ClientList(ctx)
+		return clients.Err() == nil && !strings.Contains(clients.Val(), "name=idle-control ")
+	}, 15*time.Second, 100*time.Millisecond)
+	require.Equal(t, "1", util.FindInfoEntry(rdb, "blocked_clients"))
+	require.NoError(t, rdb.RPush(ctx, "timeout", "value").Err())
+	waitForBlockedListClients(t, rdb, 0)
+	waiter.MustReadStrings(t, []string{"timeout", "value"})
+}

@@ -20,6 +20,9 @@
 
 #pragma once
 
+#include <optional>
+#include <string>
+
 #include "commander.h"
 #include "common/lock_manager.h"
 #include "event_util.h"
@@ -38,8 +41,10 @@ class BlockingCommander : public Commander,
   // method to block keys
   virtual void BlockKeys() = 0;
 
-  // method to unblock keys
-  virtual void UnblockKeys() = 0;
+  void UnblockKeys() {
+    conn_->GetServer()->UnblockConn(conn_, popped_key_);
+    conn_->DisableFlag(Connection::kBlocked);
+  }
 
   // method to access database in write callback
   // the return value indicates if the real database operation happens
@@ -58,6 +63,7 @@ class BlockingCommander : public Commander,
       return Status::OK();  // no blocking in multi-exec
     }
 
+    conn_->EnableFlag(Connection::kBlocked);
     BlockKeys();
     SetCB(conn_->GetBufferEvent());
 
@@ -92,24 +98,33 @@ class BlockingCommander : public Commander,
       auto concurrency = conn_->GetServer()->WorkConcurrencyGuard();
 
       auto guard = GetLocks();
+      popped_key_.reset();
       done = OnBlockingWrite();
+
+      if (!done) {
+        // The connection may be waked up but can't pop from the datatype.
+        // For example, connection A is blocked on it and connection B added a new element;
+        // then connection A was unblocked, but this element may be taken by
+        // another connection C. So we need to block connection A again
+        // and wait for the element being added by disabling the WRITE event.
+        // This has to happen before the key locks are released, or a write in between
+        // would see A as woken already and not wake it.
+        bufferevent_disable(bev, EV_WRITE);
+        // CLIENT KILL may have enabled WRITE just before it was disabled.
+        if (!conn_->IsFlagEnabled(Connection::kCloseAsync) && !conn_->IsFlagEnabled(Connection::kCloseAfterReply)) {
+          conn_->GetServer()->RewaitOnKeys(conn_);
+          return;
+        }
+      }
+      UnblockKeys();
     }
 
+    timer_.reset();
     if (!done) {
-      // The connection may be waked up but can't pop from the datatype.
-      // For example, connection A is blocked on it and connection B added a new element;
-      // then connection A was unblocked, but this element may be taken by
-      // another connection C. So we need to block connection A again
-      // and wait for the element being added by disabling the WRITE event.
-      bufferevent_disable(bev, EV_WRITE);
+      conn_->Close();
       return;
     }
 
-    if (timer_) {
-      timer_.reset();
-    }
-
-    UnblockKeys();
     conn_->SetCB(bev);
     bufferevent_enable(bev, EV_READ);
     // We need to manually trigger the read event since we will stop processing commands
@@ -152,6 +167,7 @@ class BlockingCommander : public Commander,
  protected:
   Connection *conn_ = nullptr;
   UniqueEvent timer_;
+  std::optional<std::string> popped_key_;
 };
 
 }  // namespace redis

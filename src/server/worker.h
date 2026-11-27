@@ -31,6 +31,7 @@
 #include <lua.hpp>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <thread>
 #include <utility>
@@ -60,6 +61,7 @@ class Worker : EventCallbackBase<Worker>, EvconnlistenerBase<Worker> {
   void FreeConnectionByID(int fd, uint64_t id);
   Status AddConnection(redis::Connection *c);
   Status EnableWriteEvent(int fd);
+  Status EnableWriteEvent(int fd, uint64_t id);
   Status Reply(int fd, const std::string &reply);
   void UnpauseConnection(int fd, uint64_t id);
   void BecomeMonitorConn(redis::Connection *conn);
@@ -87,7 +89,9 @@ class Worker : EventCallbackBase<Worker>, EvconnlistenerBase<Worker> {
   Status listenTCP(const std::string &host, uint32_t port, int backlog);
   void newTCPConnection(evconnlistener *listener, evutil_socket_t fd, sockaddr *address, int socklen);
   void newUnixSocketConnection(evconnlistener *listener, evutil_socket_t fd, sockaddr *address, int socklen);
-  redis::Connection *removeConnection(int fd);
+  redis::Connection *removeConnection(int fd, std::optional<uint64_t> id = std::nullopt);
+  void cleanupConnection(redis::Connection *conn);
+  Status enableWriteEvent(int fd, std::optional<uint64_t> id);
 
   event_base *base_;
   UniqueEvent timer_;

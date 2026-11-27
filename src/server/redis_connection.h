@@ -49,6 +49,7 @@ class Connection : public EvbufCallbackBase<Connection> {
     kMultiExec = 1 << 8,
     kReadOnly = 1 << 9,
     kAsking = 1 << 10,
+    kBlocked = 1 << 11,
   };
 
   enum class ReplyMode {
@@ -144,6 +145,7 @@ class Connection : public EvbufCallbackBase<Connection> {
   void EnableFlag(Flag flag);
   void DisableFlag(Flag flag);
   bool IsFlagEnabled(Flag flag) const;
+  bool IsBlocked() const { return IsFlagEnabled(kBlocked); }
 
   uint64_t GetID() const { return id_; }
   void SetID(uint64_t id) { id_ = id; }

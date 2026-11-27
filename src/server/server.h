@@ -154,7 +154,7 @@ enum ClientType {
   kTypeSlave = (1ULL << 3),   // slave client
 };
 
-enum ServerLogType { kServerLogNone, kReplIdLog };
+enum ServerLogType { kServerLogNone, kReplIdLog, kPublishLog };
 
 enum class AuthResult {
   IS_USER,
@@ -168,8 +168,9 @@ class ServerLogData {
   // Redis::WriteBatchLogData always starts with digit ascii, we use alphabetic to
   // distinguish ServerLogData with Redis::WriteBatchLogData.
   static const char kReplIdTag = 'r';
+  static const char kPublishTag = 'p';
   static bool IsServerLogData(const char *header) {
-    if (header) return *header == kReplIdTag;
+    if (header) return *header == kReplIdTag || *header == kPublishTag;
     return false;
   }
 

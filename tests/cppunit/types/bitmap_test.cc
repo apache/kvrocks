@@ -177,7 +177,7 @@ TEST_P(RedisBitmapTest, BitPosClearBit) {
     /// (integer) 0
     /// ```
     ///
-    /// String will set a empty string value when initializing, so, when first
+    /// String will set an empty string value when initializing, so, when first
     /// querying, it should return -1.
     bitmap_->BitPos(*ctx_, key_, false, 0, -1, /*stop_given=*/false, &pos, /*bit_index=*/false);
     if (i == 0 && !use_bitmap) {
@@ -630,4 +630,51 @@ TEST_P(RedisBitmapTest, BitfieldStringGetSetTest) {
     rets.clear();
     i += 8;
   }
+}
+
+TEST_P(RedisBitmapTest, BitfieldBitOrderMatchesSetBit) {
+  bool old_bit = false;
+  // 'X' (0b01011000) in byte 0, plus bits 8191 and 8192, which are in different segments.
+  // Bit 8186 is a neighbor that later writes must keep.
+  for (uint32_t offset : {1, 3, 4, 8186, 8191, 8192}) {
+    EXPECT_TRUE(bitmap_->SetBit(*ctx_, key_, offset, true, &old_bit).ok());
+  }
+
+  auto do_bitfield = [&](BitfieldOperation::Type type, BitfieldEncoding::Type sign, uint8_t bits, uint32_t offset,
+                         int64_t value = 0) {
+    BitfieldOperation op;
+    op.type = type;
+    op.encoding = BitfieldEncoding::Create(sign, bits).GetValue();
+    op.offset = offset;
+    op.value = value;
+    std::vector<std::optional<BitfieldValue>> rets;
+    EXPECT_TRUE(bitmap_->Bitfield(*ctx_, key_, {op}, &rets).ok());
+    return rets.at(0).value().Value();
+  };
+  using Op = BitfieldOperation::Type;
+  using Enc = BitfieldEncoding::Type;
+
+  EXPECT_EQ(44, do_bitfield(Op::kGet, Enc::kUnsigned, 7, 0));
+  EXPECT_EQ(1, do_bitfield(Op::kGet, Enc::kUnsigned, 1, 1));
+  EXPECT_EQ(88, do_bitfield(Op::kGet, Enc::kUnsigned, 8, 0));
+  EXPECT_EQ(88, do_bitfield(Op::kGet, Enc::kSigned, 8, 0));
+  EXPECT_EQ(3, do_bitfield(Op::kGet, Enc::kUnsigned, 2, 8191));
+  EXPECT_EQ(24, do_bitfield(Op::kGet, Enc::kUnsigned, 8, 8188));
+
+  // 128 is 0b10000000, so only its first bit in offset order is set.
+  EXPECT_EQ(0, do_bitfield(Op::kSet, Enc::kUnsigned, 8, 16, 128));
+  for (uint32_t offset = 16; offset < 24; ++offset) {
+    bool bit = false;
+    EXPECT_TRUE(bitmap_->GetBit(*ctx_, key_, offset, &bit).ok());
+    EXPECT_EQ(offset == 16, bit) << "offset " << offset;
+  }
+
+  // 0b1001 at 8189 crosses the segment boundary: 8189..8192 go from 0011 to 1001.
+  EXPECT_EQ(3, do_bitfield(Op::kSet, Enc::kUnsigned, 4, 8189, 0b1001));
+  for (uint32_t offset = 8185; offset < 8195; ++offset) {
+    bool bit = false;
+    EXPECT_TRUE(bitmap_->GetBit(*ctx_, key_, offset, &bit).ok());
+    EXPECT_EQ(offset == 8186 || offset == 8189 || offset == 8192, bit) << "offset " << offset;
+  }
+  EXPECT_EQ(88, do_bitfield(Op::kGet, Enc::kUnsigned, 8, 0));
 }

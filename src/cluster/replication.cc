@@ -1178,6 +1178,13 @@ Status ReplicationThread::parseWriteBatch(const rocksdb::WriteBatch &write_batch
 
   switch (write_batch_handler.Type()) {
     case kBatchTypePublish:
+      // The publish time comes from the master's clock, so this relies on synchronized clocks.
+      // Older masters do not record publish timestamps.
+      if (write_batch_handler.PublishTime() != 0 && write_batch_handler.PublishTime() < publish_cutoff_us_) {
+        DEBUG("[replication] Skip Pub/Sub message on channel {} published before replication started",
+              write_batch_handler.Key());
+        break;
+      }
       srv_->PublishMessage(write_batch_handler.Key(), write_batch_handler.Value());
       break;
     case kBatchTypePropagate:
@@ -1225,6 +1232,14 @@ bool ReplicationThread::isWrongPsyncNum(std::string_view err) {
 bool ReplicationThread::isUnknownOption(std::string_view err) {
   // err doesn't contain the CRLF, so cannot use redis::Error here.
   return err == RESP_PREFIX_ERROR + redis::StatusToRedisErrorMsg({Status::NotOK, redis::errUnknownOption});
+}
+
+void WriteBatchHandler::LogData(const rocksdb::Slice &blob) {
+  ServerLogData log_data;
+  if (log_data.Decode(blob).IsOK() && log_data.GetType() == kPublishLog) {
+    auto timestamp = ParseInt<uint64_t>(log_data.GetContent(), 10);
+    if (timestamp) publish_time_us_ = *timestamp;
+  }
 }
 
 rocksdb::Status WriteBatchHandler::PutCF(uint32_t column_family_id, const rocksdb::Slice &key,

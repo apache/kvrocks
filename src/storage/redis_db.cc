@@ -729,6 +729,26 @@ rocksdb::Status Database::Copy(engine::Context &ctx, const std::string &key, con
   engine::DBIterator iter(ctx, ctx.GetReadOptions());
   iter.Seek(key);
 
+  // Give new_key a fresh version instead of reusing the source's. DEL only removes metadata, so new_key may
+  // still own orphaned subkeys carrying the source's version (e.g. from an earlier COPY/RENAME), and reusing
+  // that version would make them visible again; compaction could never drop them since the version matches.
+  std::string new_metadata_bytes = iter.Value().ToString();
+  uint64_t new_version = 0;
+
+  Slice rest = iter.Value();
+  Metadata base_metadata(kRedisNone, false);  // empty object, don't generate a version
+  s = base_metadata.Decode(&rest);
+  if (!s.ok()) return s;
+
+  if (!base_metadata.IsSingleKVType()) {
+    new_version = Metadata(base_metadata.Type()).version;
+    base_metadata.version = new_version;
+    // Re-encode the common fields and keep the type-specific tail (e.g. list head/tail) unchanged.
+    new_metadata_bytes.clear();
+    base_metadata.Encode(&new_metadata_bytes);
+    new_metadata_bytes.append(rest.data(), rest.size());
+  }
+
   auto batch = storage_->GetWriteBatchBase();
   WriteBatchLogData log_data(type);
   if (type == kRedisHash) {
@@ -749,7 +769,7 @@ rocksdb::Status Database::Copy(engine::Context &ctx, const std::string &key, con
     }
   }
   // copy metadata
-  s = batch->Put(metadata_cf_handle_, new_key, iter.Value());
+  s = batch->Put(metadata_cf_handle_, new_key, new_metadata_bytes);
   if (!s.ok()) {
     return s;
   }
@@ -762,7 +782,7 @@ rocksdb::Status Database::Copy(engine::Context &ctx, const std::string &key, con
     for (subkey_iter->Seek(); subkey_iter->Valid(); subkey_iter->Next()) {
       InternalKey from_ikey(subkey_iter->Key(), storage_->IsSlotIdEncoded());
       std::string to_ikey =
-          InternalKey(new_key, from_ikey.GetSubKey(), from_ikey.GetVersion(), storage_->IsSlotIdEncoded()).Encode();
+          InternalKey(new_key, from_ikey.GetSubKey(), new_version, storage_->IsSlotIdEncoded()).Encode();
       // copy sub key
       auto s = batch->Put(subkey_iter->ColumnFamilyHandle(), to_ikey, subkey_iter->Value());
       if (!s.ok()) {
@@ -775,8 +795,7 @@ rocksdb::Status Database::Copy(engine::Context &ctx, const std::string &key, con
         std::string score_bytes = subkey_iter->Value().ToString();
         score_bytes.append(from_ikey.GetSubKey().ToString());
         // copy score key
-        std::string score_key =
-            InternalKey(new_key, score_bytes, from_ikey.GetVersion(), storage_->IsSlotIdEncoded()).Encode();
+        std::string score_key = InternalKey(new_key, score_bytes, new_version, storage_->IsSlotIdEncoded()).Encode();
         auto s = batch->Put(zset_score_cf, score_key, Slice());
         if (!s.ok()) {
           return s;

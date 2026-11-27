@@ -120,6 +120,15 @@ static uint64_t GenerateNamespaceFlag(uint64_t flags, const std::vector<std::str
     return flags & ~kCmdAdmin;
   }
 
+  // The ADD/SET/DEL subcommands mutate the namespace metadata: they rewrite the
+  // configuration file, and also write to the Propagate column family (and
+  // replicate to replicas) when repl-namespace-enabled is turned on.
+  // Hence they are write commands instead of read-only ones.
+  if (args.size() >= 2 &&
+      (util::EqualICase(args[1], "add") || util::EqualICase(args[1], "set") || util::EqualICase(args[1], "del"))) {
+    return (flags & ~kCmdReadOnly) | kCmdWrite;
+  }
+
   return flags;
 }
 

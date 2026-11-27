@@ -26,7 +26,7 @@ on:
       dry_run:
         description: "Run nightly tests without creating, updating, or closing GitHub issues"
         required: false
-        default: false
+        default: true
         type: boolean
   pull_request:
     paths:
@@ -47,7 +47,7 @@ env:
 
 jobs:
   validate-reporter:
-    name: Validate nightly reporter
+    name: Validate Nightly Reporter
     if: github.event_name != 'schedule' || github.repository == 'apache/kvrocks'
     runs-on: ubuntu-24.04
     steps:
@@ -113,7 +113,7 @@ jobs:
           fetch-depth: 0
       - name: Restore Kvrocks dependency cache
         id: cache-kvrocks-deps
-        uses: actions/cache@v6
+        uses: actions/cache/restore@v6
         with:
           path: ${{ env.KVROCKS_DEPS_CACHE_DIR }}
           key: kvrocks-full-deps-${{ hashFiles('x.py', 'CMakeLists.txt', 'cmake/**/*.cmake') }}
@@ -136,42 +136,90 @@ jobs:
         run: |
           ./x.py build -j$NPROC --unittest --toolchain cmake/riscv64.cmake --dep-dir ${{ env.KVROCKS_DEPS_CACHE_DIR }}
 
+      - name: Setup Coredump
+        run: |
+          echo "$(pwd)/coredumps/corefile-%e-%p-%t" | sudo tee /proc/sys/kernel/core_pattern
+          mkdir coredumps
+
       - name: Run Unit Test
-        run: ./x.py test cpp
+        run: |
+          ulimit -c unlimited
+          ./x.py test cpp
 
       - name: Run Go Integration Cases
         run: |
+          ulimit -c unlimited
           export PATH=$PATH:$HOME/local/bin/
           ./x.py test go build -parallel 2 -luaJITEnable=false
 
       - name: Run kvrocks2redis Test
         run: |
+          ulimit -c unlimited
+          redis_cli="$HOME/local/bin/redis-cli"
+
+          redis_matches() {
+            local port=$1 expected=$2
+            shift 2
+            [[ "$("$redis_cli" -p "$port" "$@" 2>/dev/null)" == "$expected" ]]
+          }
+
+          wait_for() {
+            local description=$1
+            shift
+            for _ in {1..300}; do
+              if "$@"; then
+                return 0
+              fi
+              sleep 0.1
+            done
+            echo "Timed out waiting for $description" >&2
+            tail -n 100 ./kvrocks2redis*.log kvrocks2redis-ci-data/kvrocks*.log >&2 || true
+            return 1
+          }
+
+          final_writes_synced() {
+            redis_matches 6379 2 get foo2 &&
+              redis_matches 6379 1 getbit bfoo 900000 &&
+              redis_matches 6379 0 exists foo &&
+              redis_matches 6379 0 exists zfoo
+          }
+
           pip3 install redis==5.2.0
-          $HOME/local/bin/redis-server --daemonize yes
+          "$HOME/local/bin/redis-server" --daemonize yes
           mkdir -p kvrocks2redis-ci-data
           ./build/kvrocks --dir "$(pwd)/kvrocks2redis-ci-data" --pidfile "$(pwd)/kvrocks.pid" --daemonize yes
-          for _ in {1..100}; do
-            if $HOME/local/bin/redis-cli -p 6379 ping >/dev/null 2>&1 && $HOME/local/bin/redis-cli -p 6666 ping >/dev/null 2>&1; then
-              break
-            fi
-            sleep 0.1
-          done
+          wait_for "Redis startup on port 6379" redis_matches 6379 PONG ping
+          wait_for "Kvrocks startup on port 6666" redis_matches 6666 PONG ping
+          [[ "$("$redis_cli" -p 6379 ping)" == "PONG" ]]
+          [[ "$("$redis_cli" -p 6666 ping)" == "PONG" ]]
+
           printf "data-dir %s/kvrocks2redis-ci-data\ndaemonize yes\noutput-dir ./\nnamespace.__namespace 127.0.0.1 6379\n" "$(pwd)" > ./kvrocks2redis-ci.conf
           ./build/kvrocks2redis -c ./kvrocks2redis-ci.conf
-          for _ in {1..100}; do
-            if $HOME/local/bin/redis-cli -p 6666 info replication | grep -q "connected_slaves:1"; then
-              break
-            fi
-            sleep 0.1
-          done
+          [[ "$("$redis_cli" -p 6666 set __ci_k2r_ready 1)" == "OK" ]]
+          wait_for "kvrocks2redis sentinel sync" redis_matches 6379 1 get __ci_k2r_ready
+
           python3 utils/kvrocks2redis/tests/populate-kvrocks.py --password="" --flushdb=true
-          for _ in {1..100}; do
-            if [[ "$($HOME/local/bin/redis-cli -p 6379 get foo2 2>/dev/null)" == "2" ]]; then
-              break
-            fi
-            sleep 0.1
-          done
+          wait_for "kvrocks2redis to sync all test writes and deletes" final_writes_synced
           python3 utils/kvrocks2redis/tests/check_consistency.py --src_password=""
+
+      - name: Find reports and crashes
+        if: always()
+        run: |
+          [[ -d tests/gocase/workspace ]] || exit 0
+          mapfile -d '' -t logs < <(grep -rlZE 'Sanitizer:|Ooops!' tests/gocase/workspace || true)
+          if (( ${#logs[@]} )); then
+            echo "Found sanitizer reports or crashes:"
+            tail -vn +1 -- "${logs[@]}"
+            exit 1
+          fi
+
+      - uses: actions/upload-artifact@v7
+        if: ${{ failure() }}
+        with:
+          name: kvrocks-coredumps-riscv-qemu
+          path: |
+            ./build/kvrocks
+            ./coredumps/*
 
   gcc-tsan:
     name: Ubuntu GCC TSan
@@ -180,11 +228,18 @@ jobs:
       || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-22.04
     steps:
+      - name: Maximize build space
+        run: |
+          sudo df -h
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          sudo df -h
+
       - name: Setup Linux
         run: |
           sudo apt update
-          sudo apt install -y ninja-build ccache
-          echo "NPROC=$(nproc)" >> $GITHUB_ENV
+          sudo apt install -y ccache
+          echo "NPROC=$(nproc)" >> "$GITHUB_ENV"
+          echo "CCACHE_DIR=$RUNNER_TEMP/ccache" >> "$GITHUB_ENV"
 
       - name: Cache redis
         id: cache-redis
@@ -205,7 +260,7 @@ jobs:
           fetch-depth: 0
       - name: Restore Kvrocks dependency cache
         id: cache-kvrocks-deps
-        uses: actions/cache@v6
+        uses: actions/cache/restore@v6
         with:
           path: ${{ env.KVROCKS_DEPS_CACHE_DIR }}
           key: kvrocks-full-deps-${{ hashFiles('x.py', 'CMakeLists.txt', 'cmake/**/*.cmake') }}
@@ -218,13 +273,13 @@ jobs:
       - name: Restore ccache
         uses: actions/cache@v6
         with:
-          path: ~/.cache/ccache
+          path: ${{ env.CCACHE_DIR }}
           key: ccache-ubuntu22-gcc-tsan-${{ github.sha }}
           restore-keys: |
             ccache-ubuntu22-gcc-tsan-
       - name: Configure ccache
         run: |
-          ccache --set-config=max_size=2G
+          ccache --set-config=max_size=1G
           ccache --set-config=compression=true
           ccache --set-config=compiler_check=content
           ccache --set-config=base_dir="$GITHUB_WORKSPACE"
@@ -247,6 +302,11 @@ jobs:
             --dep-dir ${{ env.KVROCKS_DEPS_CACHE_DIR }}
           ccache -s
 
+      - name: Setup Coredump
+        run: |
+          echo "$(pwd)/coredumps/corefile-%e-%p-%t" | sudo tee /proc/sys/kernel/core_pattern
+          mkdir coredumps
+
       - name: Run Unit Test
         run: |
           ulimit -c unlimited
@@ -260,25 +320,26 @@ jobs:
           export LSAN_OPTIONS="suppressions=$(realpath ./tests/lsan-suppressions)"
           export TSAN_OPTIONS="suppressions=$(realpath ./tests/tsan-suppressions)"
           export PATH=$PATH:$HOME/local/bin/
-          ./x.py test go build -parallel 4 -tags=ignore_when_tsan
+          ./x.py test go build -parallel 2 -tags=ignore_when_tsan
 
       - name: Find reports and crashes
         if: always()
         run: |
-          SANITIZER_OUTPUT=$(grep "Sanitizer:" tests/gocase/workspace -r || true)
-          if [[ $SANITIZER_OUTPUT ]]; then
-            echo "found sanitizer reports:"
-            echo "$SANITIZER_OUTPUT"
-            cat $(echo "$SANITIZER_OUTPUT" | awk -F ':' '{print $1}')
+          [[ -d tests/gocase/workspace ]] || exit 0
+          mapfile -d '' -t logs < <(grep -rlZE 'Sanitizer:|Ooops!' tests/gocase/workspace || true)
+          if (( ${#logs[@]} )); then
+            echo "Found sanitizer reports or crashes:"
+            tail -vn +1 -- "${logs[@]}"
             exit 1
           fi
-          CRASHES=$(grep "Ooops!" tests/gocase/workspace -r || true)
-          if [[ $CRASHES ]]; then
-            echo "found crashes:"
-            echo "$CRASHES"
-            cat $(echo "$CRASHES" | awk -F ':' '{print $1}')
-            exit 1
-          fi
+
+      - uses: actions/upload-artifact@v7
+        if: ${{ failure() }}
+        with:
+          name: kvrocks-coredumps-gcc-tsan
+          path: |
+            ./build/kvrocks
+            ./coredumps/*
 
   cold-start-build:
     name: Pure Cold-Start Release Build
@@ -287,6 +348,12 @@ jobs:
       || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     steps:
+      - name: Maximize build space
+        run: |
+          sudo df -h
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          sudo df -h
+
       - name: Setup Linux
         run: |
           sudo apt update
@@ -309,13 +376,17 @@ jobs:
       - name: Run Unit Test
         run: ./x.py test cpp
 
+      - name: Verify binary versions
+        run: |
+          ./build/kvrocks -v
+          ./build/kvrocks2redis -v
+
   report:
     name: Report Nightly Status
-    if: >-
-      always() && (
-        (github.event_name == 'schedule' && github.repository == 'apache/kvrocks')
-        || github.event_name == 'workflow_dispatch'
-      )
+    if: ${{ always() && !cancelled() }}
+    concurrency:
+      group: nightly-tests-report-${{ github.ref }}
+      cancel-in-progress: false
     needs:
       - validate-reporter
       - riscv-qemu
@@ -329,20 +400,30 @@ jobs:
       issues: write
     steps:
       - uses: actions/checkout@v7
+        id: checkout
+        if: >-
+          (github.event_name == 'schedule' && github.repository == 'apache/kvrocks')
+          || github.event_name == 'workflow_dispatch'
         with:
           persist-credentials: false
       - name: Reconcile nightly test issue
+        if: steps.checkout.conclusion == 'success'
         env:
           GH_TOKEN: ${{ github.token }}
-          DRY_RUN: ${{ inputs.dry_run || 'false' }}
+          DRY_RUN: ${{ inputs.dry_run }}
         run: |
           args=(
             --repository "${{ github.repository }}"
             --run-id "${{ github.run_id }}"
             --head-sha "${{ github.sha }}"
             --self-job-name "Report Nightly Status"
+            --expected-jobs "Validate Nightly Reporter"
+            --expected-jobs "Ubuntu RISC-V GCC without luaJIT (QEMU)"
+            --expected-jobs "Ubuntu GCC TSan"
+            --expected-jobs "Pure Cold-Start Release Build"
           )
-          if [[ "$GITHUB_REPOSITORY" == "apache/kvrocks" && "$GITHUB_REF" == "refs/heads/unstable" && "$DRY_RUN" != "true" ]]; then
+          if [[ "$GITHUB_REPOSITORY" == "apache/kvrocks" && "$GITHUB_REF" == "refs/heads/unstable" ]] &&
+            [[ "$GITHUB_EVENT_NAME" == "schedule" || "$DRY_RUN" == "false" ]]; then
             args+=(--apply)
           fi
           python3 .github/scripts/nightly_report.py "${args[@]}"

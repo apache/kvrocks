@@ -19,6 +19,7 @@
 
 from argparse import ArgumentParser
 from fnmatch import fnmatchcase
+import http.client
 import json
 import os
 from pathlib import Path
@@ -28,7 +29,6 @@ import urllib.error
 import urllib.request
 
 FULL_CI_LABEL = "ci/full"
-FULL_CI_MARKER = "[ci/full]"
 DEFAULT_BRANCH = "unstable"
 
 ALL_COMPAT_VERSIONS = [
@@ -43,7 +43,6 @@ SMOKE_COMPAT_VERSIONS = ["v2.3.0", "v2.15.0"]
 
 DOCS_ONLY_EXACT = {
     ".asf.yaml",
-    ".github/config/changes.yml",
     ".gitignore",
     "NOTICE",
 }
@@ -68,10 +67,16 @@ CMAKE_PREFIXES = ("cmake/",)
 CMAKE_EXACT = {"CMakeLists.txt", "x.py"}
 
 COMPAT_EXACT = {
+    ".github/scripts/ci_plan.py",
     ".github/workflows/compatibility.yml",
     "CMakeLists.txt",
     "Dockerfile",
     "kvrocks.conf",
+    "src/common/encoding.cc",
+    "src/common/encoding.h",
+    "src/search/search_encoding.h",
+    "tests/gocase/go.mod",
+    "tests/gocase/go.sum",
     "x.py",
 }
 COMPAT_PREFIXES = (
@@ -89,6 +94,7 @@ def _job(
     compiler: str,
     cache_key: str,
     *,
+    cache_fallback_key: str = "",
     arm_linux: bool = False,
     with_ninja: str = "",
     with_lld: str = "",
@@ -100,7 +106,6 @@ def _job(
     sonarcloud: str = "",
     go_tags: str = "",
     use_ccache: bool = True,
-    maximize_disk: bool = False,
     skip_kvrocks2redis: bool = False,
 ) -> Dict[str, Any]:
     return {
@@ -108,6 +113,7 @@ def _job(
         "os": os_name,
         "compiler": compiler,
         "cache_key": cache_key,
+        "cache_fallback_key": cache_fallback_key,
         "arm_linux": arm_linux,
         "with_ninja": with_ninja,
         "with_lld": with_lld,
@@ -119,7 +125,8 @@ def _job(
         "sonarcloud": sonarcloud,
         "go_tags": go_tags,
         "use_ccache": use_ccache,
-        "maximize_disk": maximize_disk,
+        "maximize_disk": os_name == "ubuntu-22.04" or bool(with_sanitizer or sonarcloud),
+        "go_parallel": 2 if with_sanitizer else 4,
         "skip_kvrocks2redis": skip_kvrocks2redis,
     }
 
@@ -157,6 +164,7 @@ def tier1_build_matrix() -> List[Dict[str, Any]]:
             "ubuntu-24.04",
             "clang",
             "ubuntu24-clang-openssl",
+            cache_fallback_key="ubuntu24-clang",
             with_ninja="--ninja",
             with_lld="-DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld",
             with_openssl="-DENABLE_OPENSSL=ON",
@@ -166,6 +174,7 @@ def tier1_build_matrix() -> List[Dict[str, Any]]:
             "ubuntu-24.04",
             "gcc",
             "ubuntu24-gcc-oldenc-lua",
+            cache_fallback_key="ubuntu24-gcc",
             with_ninja="--ninja",
             without_luajit="-DENABLE_LUAJIT=OFF",
             new_encoding="-DENABLE_NEW_ENCODING=FALSE",
@@ -194,6 +203,7 @@ def tier1_build_matrix() -> List[Dict[str, Any]]:
             "ubuntu-22.04",
             "clang",
             "ubuntu22-clang-asan-ubsan",
+            cache_fallback_key="ubuntu22-clang-asan",
             with_ninja="--ninja",
             with_lld="-DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld",
             without_jemalloc="-DDISABLE_JEMALLOC=ON",
@@ -220,7 +230,6 @@ def tier1_build_matrix() -> List[Dict[str, Any]]:
             "ubuntu22-gcc-sonar",
             sonarcloud="-DCMAKE_CXX_FLAGS=--coverage",
             use_ccache=False,
-            maximize_disk=True,
             skip_kvrocks2redis=True,
         ),
     ]
@@ -292,7 +301,7 @@ def tier2_build_matrix(*, include_sonarcloud: bool) -> List[Dict[str, Any]]:
             "Ubuntu GCC Ninja",
             "ubuntu-22.04",
             "gcc",
-            "ubuntu22-gcc",
+            "ubuntu22-gcc-ninja",
             with_ninja="--ninja",
         ),
         _job(
@@ -362,7 +371,6 @@ def tier2_build_matrix(*, include_sonarcloud: bool) -> List[Dict[str, Any]]:
                 "ubuntu22-gcc-sonar",
                 sonarcloud="-DCMAKE_CXX_FLAGS=--coverage",
                 use_ccache=False,
-                maximize_disk=True,
                 skip_kvrocks2redis=True,
             ),
         )
@@ -429,11 +437,11 @@ def build_plan(
     changed_files: Optional[Sequence[str]],
     labels: Sequence[str] = (),
     base_ref: str = "",
-    pr_body: str = "",
 ) -> Dict[str, Any]:
     notes: List[str] = []
 
-    if changed_files is not None and is_docs_only(changed_files):
+    has_full_label = event_name == "pull_request" and FULL_CI_LABEL in labels
+    if not has_full_label and changed_files is not None and is_docs_only(changed_files):
         notes.append("All changed files match documentation/non-code filters; skipping build and test jobs.")
         return {
             "docs_only": True,
@@ -450,7 +458,6 @@ def build_plan(
             "notes": notes,
         }
 
-    has_full_label = FULL_CI_LABEL in set(labels) or FULL_CI_MARKER in pr_body.lower()
     non_default_pr_base = bool(base_ref) and base_ref != DEFAULT_BRANCH
 
     if event_name == "merge_group":
@@ -459,7 +466,7 @@ def build_plan(
     elif event_name in ("push", "workflow_dispatch", "release"):
         tier = "t2"
         notes.append(f"Event '{event_name}' detected: running full canonical Tier 2 matrix.")
-    elif event_name == "pull_request" and has_full_label:
+    elif has_full_label:
         tier = "t2"
         notes.append(f"'{FULL_CI_LABEL}' opt-in detected: escalating PR to full canonical Tier 2 matrix.")
     elif event_name == "pull_request" and non_default_pr_base:
@@ -544,24 +551,22 @@ def fetch_live_pr_labels(repository: str, pr_number: int, token: str) -> Optiona
             items = json.loads(resp.read().decode("utf-8"))
             if isinstance(items, list):
                 return [str(item.get("name")) for item in items if isinstance(item, dict) and item.get("name")]
-    except (urllib.error.URLError, TimeoutError, ValueError):
+    except (urllib.error.URLError, http.client.HTTPException, OSError, ValueError):
         return None
     return None
 
 
 def extract_event_metadata(
     event_name: str, payload: Dict[str, Any]
-) -> Tuple[List[str], str, Optional[Tuple[str, str]], int, str]:
+) -> Tuple[List[str], str, Optional[Tuple[str, str]], int]:
     labels: List[str] = []
     base_ref = ""
     diff_range: Optional[Tuple[str, str]] = None
     pr_number = 0
-    pr_body = ""
 
     if event_name == "pull_request":
         pr = payload.get("pull_request") or {}
         pr_number = int(pr.get("number") or payload.get("number") or 0)
-        pr_body = str(pr.get("body") or "")
         labels = [lbl.get("name", "") for lbl in (pr.get("labels") or []) if isinstance(lbl, dict) and lbl.get("name")]
         base = pr.get("base") or {}
         head = pr.get("head") or {}
@@ -583,21 +588,20 @@ def extract_event_metadata(
         if before and after and set(before) != {"0"}:
             diff_range = (before, after)
 
-    return labels, base_ref, diff_range, pr_number, pr_body
+    return labels, base_ref, diff_range, pr_number
 
 
 def git_changed_files(base_sha: str, head_sha: str, cwd: Optional[str] = None) -> Optional[List[str]]:
     for rev_expr in (f"{base_sha}...{head_sha}", f"{base_sha}..{head_sha}"):
         proc = subprocess.run(
-            ["git", "diff", "--name-only", rev_expr],
+            ["git", "diff", "--no-renames", "--name-only", "-z", rev_expr],
             cwd=cwd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            text=True,
             check=False,
         )
         if proc.returncode == 0:
-            return [line.strip() for line in proc.stdout.splitlines() if line.strip()]
+            return [path.decode("utf-8", errors="surrogateescape") for path in proc.stdout.split(b"\x00") if path]
     return None
 
 
@@ -658,7 +662,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if args.event_path and Path(args.event_path).is_file():
         payload = json.loads(Path(args.event_path).read_text(encoding="utf-8"))
 
-    event_labels, payload_base_ref, diff_range, pr_number, pr_body = extract_event_metadata(args.event_name, payload)
+    event_labels, payload_base_ref, diff_range, pr_number = extract_event_metadata(args.event_name, payload)
     labels: Sequence[str] = event_labels
     if args.label is not None:
         labels = args.label
@@ -679,7 +683,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         changed_files=changed_files,
         labels=labels,
         base_ref=base_ref,
-        pr_body=pr_body,
     )
 
     print(json.dumps(plan, indent=2))

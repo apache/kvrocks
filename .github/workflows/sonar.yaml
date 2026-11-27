@@ -31,13 +31,6 @@ jobs:
       github.event.workflow_run.event != 'merge_group' &&
       github.repository_owner == 'apache'
     steps:
-      - uses: actions/checkout@v7
-        with:
-          repository: ${{ github.event.workflow_run.head_repository.full_name }}
-          ref: ${{ github.event.workflow_run.head_sha }}
-          fetch-depth: 0
-      - name: Install Build Wrapper
-        uses: SonarSource/sonarqube-scan-action/install-build-wrapper@59202af334b4ba7b5db01b701b8e79f8b3bef0f4 # v8.5.0
       - name: 'Download code coverage'
         id: download-coverage
         uses: actions/github-script@v9
@@ -61,12 +54,21 @@ jobs:
                archive_format: 'zip',
             });
             let fs = require('fs');
-            fs.writeFileSync(`${process.env.GITHUB_WORKSPACE}/sonarcloud-data.zip`, Buffer.from(download.data));
+            fs.writeFileSync(`${process.env.RUNNER_TEMP}/sonarcloud-data.zip`, Buffer.from(download.data));
             core.setOutput('has_artifact', 'true');
+      - uses: actions/checkout@v7
+        if: steps.download-coverage.outputs.has_artifact == 'true'
+        with:
+          repository: ${{ github.event.workflow_run.head_repository.full_name }}
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+      - name: Install Build Wrapper
+        if: steps.download-coverage.outputs.has_artifact == 'true'
+        uses: SonarSource/sonarqube-scan-action/install-build-wrapper@59202af334b4ba7b5db01b701b8e79f8b3bef0f4 # v8.5.0
       - name: 'Unzip code coverage'
         if: steps.download-coverage.outputs.has_artifact == 'true'
         run: |
-          unzip sonarcloud-data.zip
+          unzip "$RUNNER_TEMP/sonarcloud-data.zip"
           mv _build build
           mkdir -p build/CMakeFiles/CMakeTmp
           ls -a sonarcloud-data build

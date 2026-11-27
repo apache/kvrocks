@@ -30,7 +30,7 @@ on:
       - checks_requested
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || (github.event_name == 'merge_group' && github.ref) || github.run_id }}
   cancel-in-progress: ${{ github.event_name != 'push' }}
 
 env:

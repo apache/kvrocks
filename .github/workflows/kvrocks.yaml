@@ -552,7 +552,7 @@ jobs:
         if: ${{ startsWith(matrix.image, 'alpine') }}
         run: |
           apk update
-          apk add bash cmake ccache curl git python3 wget make gcc g++ autoconf linux-headers py3-pip py3-redis
+          apk add bash cmake ccache curl git python3 wget make gcc g++ autoconf linux-headers py3-pip py3-redis tar zstd
           echo "NPROC=$(nproc)" >> $GITHUB_ENV
 
       - name: Cache redis

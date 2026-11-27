@@ -25,11 +25,6 @@ on:
       - '*.*.*'
       - 'action/**'
   pull_request:
-    types:
-      - opened
-      - synchronize
-      - reopened
-      - labeled
   merge_group:
     types:
       - checks_requested
@@ -63,6 +58,8 @@ jobs:
         run: python3 -m unittest discover -s .github/scripts -p "test_ci_plan.py"
       - name: Generate CI execution plan
         id: plan
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python3 .github/scripts/ci_plan.py --changed-files-from-git
 
   check-typos:

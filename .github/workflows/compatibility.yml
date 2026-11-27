@@ -21,11 +21,6 @@ on:
   push:
     branches: [unstable]
   pull_request:
-    types:
-      - opened
-      - synchronize
-      - reopened
-      - labeled
   merge_group:
     types:
       - checks_requested
@@ -49,6 +44,8 @@ jobs:
           fetch-depth: 0
       - name: Generate compatibility plan
         id: plan
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python3 .github/scripts/ci_plan.py --changed-files-from-git
 
   build:

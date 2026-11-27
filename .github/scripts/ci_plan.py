@@ -24,8 +24,11 @@ import os
 from pathlib import Path
 import subprocess
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+import urllib.error
+import urllib.request
 
 FULL_CI_LABEL = "ci/full"
+FULL_CI_MARKER = "[ci/full]"
 DEFAULT_BRANCH = "unstable"
 
 ALL_COMPAT_VERSIONS = [
@@ -426,6 +429,7 @@ def build_plan(
     changed_files: Optional[Sequence[str]],
     labels: Sequence[str] = (),
     base_ref: str = "",
+    pr_body: str = "",
 ) -> Dict[str, Any]:
     notes: List[str] = []
 
@@ -446,7 +450,7 @@ def build_plan(
             "notes": notes,
         }
 
-    has_full_label = FULL_CI_LABEL in set(labels)
+    has_full_label = FULL_CI_LABEL in set(labels) or FULL_CI_MARKER in pr_body.lower()
     non_default_pr_base = bool(base_ref) and base_ref != DEFAULT_BRANCH
 
     if event_name == "merge_group":
@@ -457,7 +461,7 @@ def build_plan(
         notes.append(f"Event '{event_name}' detected: running full canonical Tier 2 matrix.")
     elif event_name == "pull_request" and has_full_label:
         tier = "t2"
-        notes.append(f"Label '{FULL_CI_LABEL}' present: escalating PR to full canonical Tier 2 matrix.")
+        notes.append(f"'{FULL_CI_LABEL}' opt-in detected: escalating PR to full canonical Tier 2 matrix.")
     elif event_name == "pull_request" and non_default_pr_base:
         tier = "t2"
         notes.append(f"Target branch '{base_ref}' is not '{DEFAULT_BRANCH}': running full canonical Tier 2 matrix.")
@@ -484,7 +488,6 @@ def build_plan(
             "notes": notes,
         }
 
-    # Tier 1 path-aware escalations for pull_request.
     files = list(changed_files) if changed_files is not None else []
     diff_unavailable = changed_files is None
 
@@ -525,13 +528,40 @@ def build_plan(
     }
 
 
-def extract_event_metadata(event_name: str, payload: Dict[str, Any]) -> Tuple[List[str], str, Optional[Tuple[str, str]]]:
+def fetch_live_pr_labels(repository: str, pr_number: int, token: str) -> Optional[List[str]]:
+    if not repository or not pr_number or not token:
+        return None
+    url = f"https://api.github.com/repos/{repository}/issues/{pr_number}/labels?per_page=100"
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "Authorization": f"Bearer {token}",
+        "User-Agent": "apache-kvrocks-ci-planner",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    try:
+        req = urllib.request.Request(url, headers=headers, method="GET")
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            items = json.loads(resp.read().decode("utf-8"))
+            if isinstance(items, list):
+                return [str(item.get("name")) for item in items if isinstance(item, dict) and item.get("name")]
+    except (urllib.error.URLError, TimeoutError, ValueError):
+        return None
+    return None
+
+
+def extract_event_metadata(
+    event_name: str, payload: Dict[str, Any]
+) -> Tuple[List[str], str, Optional[Tuple[str, str]], int, str]:
     labels: List[str] = []
     base_ref = ""
     diff_range: Optional[Tuple[str, str]] = None
+    pr_number = 0
+    pr_body = ""
 
     if event_name == "pull_request":
         pr = payload.get("pull_request") or {}
+        pr_number = int(pr.get("number") or payload.get("number") or 0)
+        pr_body = str(pr.get("body") or "")
         labels = [lbl.get("name", "") for lbl in (pr.get("labels") or []) if isinstance(lbl, dict) and lbl.get("name")]
         base = pr.get("base") or {}
         head = pr.get("head") or {}
@@ -553,11 +583,10 @@ def extract_event_metadata(event_name: str, payload: Dict[str, Any]) -> Tuple[Li
         if before and after and set(before) != {"0"}:
             diff_range = (before, after)
 
-    return labels, base_ref, diff_range
+    return labels, base_ref, diff_range, pr_number, pr_body
 
 
 def git_changed_files(base_sha: str, head_sha: str, cwd: Optional[str] = None) -> Optional[List[str]]:
-    # Use two-dot diff for push/merge_group exact range, or three-dot merge-base diff for PRs when available.
     for rev_expr in (f"{base_sha}...{head_sha}", f"{base_sha}..{head_sha}"):
         proc = subprocess.run(
             ["git", "diff", "--name-only", rev_expr],
@@ -616,6 +645,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = ArgumentParser(description="Generate tiered GitHub Actions execution plan for Apache Kvrocks.")
     parser.add_argument("--event-name", default=os.environ.get("GITHUB_EVENT_NAME", "pull_request"))
     parser.add_argument("--event-path", default=os.environ.get("GITHUB_EVENT_PATH", ""))
+    parser.add_argument("--repository", default=os.environ.get("GITHUB_REPOSITORY", ""))
     parser.add_argument("--base-ref", default=os.environ.get("GITHUB_BASE_REF", ""))
     parser.add_argument("--changed-files-from-git", action="store_true", help="Resolve changed files from git diff.")
     parser.add_argument("--changed-file", action="append", default=None, help="Explicit changed file path (repeatable).")
@@ -628,8 +658,16 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if args.event_path and Path(args.event_path).is_file():
         payload = json.loads(Path(args.event_path).read_text(encoding="utf-8"))
 
-    event_labels, payload_base_ref, diff_range = extract_event_metadata(args.event_name, payload)
-    labels = args.label if args.label is not None else event_labels
+    event_labels, payload_base_ref, diff_range, pr_number, pr_body = extract_event_metadata(args.event_name, payload)
+    labels: Sequence[str] = event_labels
+    if args.label is not None:
+        labels = args.label
+    elif args.event_name == "pull_request" and pr_number > 0:
+        token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN") or ""
+        live_labels = fetch_live_pr_labels(args.repository, pr_number, token)
+        if live_labels is not None:
+            labels = live_labels
+
     base_ref = args.base_ref or payload_base_ref
 
     changed_files: Optional[Sequence[str]] = args.changed_file
@@ -641,6 +679,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         changed_files=changed_files,
         labels=labels,
         base_ref=base_ref,
+        pr_body=pr_body,
     )
 
     print(json.dumps(plan, indent=2))

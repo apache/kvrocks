@@ -141,7 +141,9 @@ class TestCIPlan(unittest.TestCase):
                 "head_sha": "2222222",
             }
         }
-        labels, base_ref, diff_range = ci_plan.extract_event_metadata("merge_group", mg_payload)
+        labels, base_ref, diff_range, pr_num, pr_body = ci_plan.extract_event_metadata("merge_group", mg_payload)
+        self.assertEqual(pr_num, 0)
+        self.assertEqual(pr_body, "")
         self.assertEqual(labels, [])
         self.assertEqual(base_ref, "unstable")
         self.assertEqual(diff_range, ("1111111", "2222222"))

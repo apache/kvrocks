@@ -32,6 +32,7 @@ EXPECTED_JOBS = (
     "Ubuntu RISC-V GCC without luaJIT (QEMU)",
     "Ubuntu GCC TSan",
     "Pure Cold-Start Release Build",
+    "SonarCloud with Coverage",
 )
 
 
@@ -108,12 +109,12 @@ class TestNightlyReport(unittest.TestCase):
         client = FakeRepoClient(
             jobs=[
                 {
-                    "name": "Ubuntu GCC TSan",
+                    "name": "SonarCloud with Coverage",
                     "conclusion": "failure",
                     "html_url": "https://github.com/apache/kvrocks/actions/runs/1/job/10",
                     "steps": [
-                        {"name": "Build Kvrocks", "conclusion": "success"},
-                        {"name": "Run Go Integration Cases", "conclusion": "failure"},
+                        {"name": "Build Kvrocks (SonarCloud)", "conclusion": "success"},
+                        {"name": "SonarQube Scan", "conclusion": "failure"},
                     ],
                 },
                 {
@@ -134,7 +135,9 @@ class TestNightlyReport(unittest.TestCase):
         self.assertEqual(outcome["action"], "created_issue")
         self.assertEqual(outcome["issue_number"], 4000)
         self.assertEqual(len(client.issues), 1)
-        self.assertIn("Run Go Integration Cases", client.issues[0]["body"])
+        self.assertIn("ci/nightly", client.issues[0]["labels"])
+        self.assertIn("SonarCloud with Coverage", client.issues[0]["body"])
+        self.assertIn("SonarQube Scan", client.issues[0]["body"])
         self.assertIn(nightly_report.NIGHTLY_MARKER, client.issues[0]["body"])
         self.assertIn("<!-- kvrocks-nightly-last-run-id: 12345 -->", client.issues[0]["body"])
 

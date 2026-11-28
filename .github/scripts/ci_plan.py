@@ -106,6 +106,13 @@ def _job(
     use_ccache: bool = False,
     skip_kvrocks2redis: bool = False,
 ) -> Dict[str, Any]:
+    if with_sanitizer:
+        go_pkg_parallel = 2
+    elif os_name.startswith("macos"):
+        go_pkg_parallel = 3
+    else:
+        go_pkg_parallel = 4
+
     return {
         "name": name,
         "os": os_name,
@@ -122,7 +129,8 @@ def _job(
         "go_tags": go_tags,
         "use_ccache": use_ccache,
         "maximize_disk": os_name == "ubuntu-22.04" or bool(with_sanitizer),
-        "go_parallel": 2 if with_sanitizer else 4,
+        "go_pkg_parallel": go_pkg_parallel,
+        "go_parallel": 2,
         "skip_kvrocks2redis": skip_kvrocks2redis,
     }
 

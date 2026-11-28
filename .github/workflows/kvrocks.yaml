@@ -331,7 +331,8 @@ jobs:
           if [[ -n "${{ matrix.without_luajit }}" ]]; then
             GOCASE_RUN_ARGS="$GOCASE_RUN_ARGS -luaJITEnable=false"
           fi
-          ./x.py test go build -parallel ${{ matrix.go_parallel || 2 }} $GOCASE_RUN_ARGS ${{ matrix.go_tags }}
+          ./x.py test go build -count=1 -p ${{ matrix.go_pkg_parallel || 2 }} -parallel ${{ matrix.go_parallel || 2 }} \
+            $GOCASE_RUN_ARGS ${{ matrix.go_tags }}
 
       - name: Install redis-py
         if: ${{ !matrix.skip_kvrocks2redis }}
@@ -562,7 +563,7 @@ jobs:
       - name: Run Go Integration Cases
         run: |
           export PATH=$PATH:$HOME/local/bin/
-          ./x.py test go build -parallel 4
+          ./x.py test go build -p 2 -parallel 2
 
       - name: Install redis-py for openSUSE and Rocky
         if: ${{ !startsWith(matrix.image, 'archlinux') && !startsWith(matrix.image, 'debian') && !startsWith(matrix.image, 'alpine') }}

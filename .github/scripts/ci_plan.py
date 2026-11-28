@@ -136,7 +136,6 @@ def _container_job(
     *,
     disable_jemalloc: str = "",
     container_options: str = "",
-    use_ccache: bool = False,
 ) -> Dict[str, Any]:
     return {
         "name": name,
@@ -144,7 +143,7 @@ def _container_job(
         "compiler": compiler,
         "disable_jemalloc": disable_jemalloc,
         "container_options": container_options,
-        "use_ccache": use_ccache,
+        "use_ccache": False,
     }
 
 
@@ -367,7 +366,6 @@ def tier2_container_matrix() -> List[Dict[str, Any]]:
             "Alpine 3",
             "alpine:3.22",
             disable_jemalloc="-DDISABLE_JEMALLOC=ON",
-            use_ccache=True,
         ),
     ]
 
@@ -378,7 +376,6 @@ def alpine_smoke_container_matrix() -> List[Dict[str, Any]]:
             "Alpine 3",
             "alpine:3.22",
             disable_jemalloc="-DDISABLE_JEMALLOC=ON",
-            use_ccache=True,
         )
     ]
 

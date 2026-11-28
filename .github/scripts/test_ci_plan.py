@@ -94,6 +94,7 @@ class TestCIPlan(unittest.TestCase):
         self.assertTrue(plan["run_docker"])
         self.assertTrue(plan["has_container_matrix"])
         self.assertEqual([c["name"] for c in plan["container_matrix"]], ["Alpine 3"])
+        self.assertFalse(plan["container_matrix"][0]["use_ccache"])
         self.assertTrue(plan["has_compat_matrix"])
         self.assertEqual(plan["compat_matrix"], ["v2.3.0", "v2.15.0"])
 
@@ -243,6 +244,16 @@ class TestCIPlan(unittest.TestCase):
         )
         self.assertEqual(plan["tier"], "t2")
         self.assertEqual(len(plan["container_matrix"]), 6)
+
+    def test_tier2_keeps_all_distro_containers_without_ccache(self) -> None:
+        jobs = ci_plan.tier2_container_matrix()
+        self.assertCountEqual(
+            [job["image"] for job in jobs],
+            ["opensuse/leap:15", "archlinux:base", "rockylinux:8", "rockylinux:9", "debian:12", "alpine:3.22"],
+        )
+        for job in jobs:
+            with self.subTest(job=job["name"]):
+                self.assertFalse(job["use_ccache"])
 
     def test_merge_group_runs_canonical_tier2_without_sonarcloud(self) -> None:
         plan = ci_plan.build_plan(

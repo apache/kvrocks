@@ -511,7 +511,7 @@ jobs:
         if: ${{ startsWith(matrix.image, 'alpine') }}
         run: |
           apk update
-          apk add bash cmake ccache curl git python3 wget make gcc g++ autoconf linux-headers py3-pip py3-redis tar zstd
+          apk add bash cmake curl git python3 wget make gcc g++ autoconf linux-headers py3-pip py3-redis tar zstd
           echo "NPROC=$(nproc)" >> $GITHUB_ENV
 
       - name: Cache redis
@@ -554,52 +554,17 @@ jobs:
         run: |
           ./x.py fetch-deps ${{ env.KVROCKS_DEPS_CACHE_DIR }}
 
-      - name: Set ccache directory
-        if: ${{ matrix.use_ccache }}
-        run: echo "CCACHE_DIR=$RUNNER_TEMP/ccache" >> "$GITHUB_ENV"
-      - name: Restore and save ccache on push
-        if: ${{ matrix.use_ccache && github.event_name == 'push' }}
-        uses: actions/cache@v6
-        with:
-          path: ${{ env.CCACHE_DIR }}
-          key: ccache-container-${{ matrix.image }}--${{ github.sha }}
-          restore-keys: |
-            ccache-container-${{ matrix.image }}--
-      - name: Restore ccache
-        if: ${{ matrix.use_ccache && github.event_name != 'push' }}
-        uses: actions/cache/restore@v6
-        with:
-          path: ${{ env.CCACHE_DIR }}
-          key: ccache-container-${{ matrix.image }}--${{ github.sha }}
-          restore-keys: |
-            ccache-container-${{ matrix.image }}--
-      - name: Configure ccache
-        if: ${{ matrix.use_ccache }}
-        shell: bash
-        run: |
-          ccache --set-config=max_size=1G
-          ccache --set-config=compression=true
-          ccache --set-config=compiler_check=content
-          ccache --set-config=base_dir="$GITHUB_WORKSPACE"
-          ccache --set-config=hash_dir=false
-          ccache -z
-          echo "CCACHE_CMAKE_DEFS=-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache" >> $GITHUB_ENV
-
       - uses: actions/setup-go@v7
         if: ${{ !startsWith(matrix.image, 'opensuse') }}
         with:
           go-version-file: 'tests/gocase/go.mod'
-          cache: true
-          cache-dependency-path: 'tests/gocase/go.sum'
+          cache: false
 
       - name: Build Kvrocks
         shell: bash
         run: |
           ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.disable_jemalloc }} \
-            ${{ env.CCACHE_CMAKE_DEFS }} --dep-dir ${{ env.KVROCKS_DEPS_CACHE_DIR }}
-          if [[ "${{ matrix.use_ccache }}" == "true" ]]; then
-            ccache -s
-          fi
+            --dep-dir ${{ env.KVROCKS_DEPS_CACHE_DIR }}
 
       - name: Run Unit Test
         run: |

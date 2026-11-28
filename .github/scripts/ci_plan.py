@@ -103,7 +103,6 @@ def _job(
     with_sanitizer: str = "",
     with_openssl: str = "",
     new_encoding: str = "",
-    sonarcloud: str = "",
     go_tags: str = "",
     use_ccache: bool = True,
     skip_kvrocks2redis: bool = False,
@@ -122,10 +121,9 @@ def _job(
         "with_sanitizer": with_sanitizer,
         "with_openssl": with_openssl,
         "new_encoding": new_encoding,
-        "sonarcloud": sonarcloud,
         "go_tags": go_tags,
         "use_ccache": use_ccache,
-        "maximize_disk": os_name == "ubuntu-22.04" or bool(with_sanitizer or sonarcloud),
+        "maximize_disk": os_name == "ubuntu-22.04" or bool(with_sanitizer),
         "go_parallel": 2 if with_sanitizer else 4,
         "skip_kvrocks2redis": skip_kvrocks2redis,
     }
@@ -223,20 +221,11 @@ def tier1_build_matrix() -> List[Dict[str, Any]]:
             go_tags="-tags=ignore_when_tsan",
             skip_kvrocks2redis=True,
         ),
-        _job(
-            "SonarCloud with Coverage",
-            "ubuntu-22.04",
-            "gcc",
-            "ubuntu22-gcc-sonar",
-            sonarcloud="-DCMAKE_CXX_FLAGS=--coverage",
-            use_ccache=False,
-            skip_kvrocks2redis=True,
-        ),
     ]
 
 
-def tier2_build_matrix(*, include_sonarcloud: bool) -> List[Dict[str, Any]]:
-    jobs = [
+def tier2_build_matrix() -> List[Dict[str, Any]]:
+    return [
         _job("Darwin Clang arm64", "macos-15", "auto", "macos15-clang", skip_kvrocks2redis=True),
         _job(
             "Darwin Clang arm64 with OpenSSL",
@@ -361,20 +350,6 @@ def tier2_build_matrix(*, include_sonarcloud: bool) -> List[Dict[str, Any]]:
             arm_linux=True,
         ),
     ]
-    if include_sonarcloud:
-        jobs.insert(
-            4,
-            _job(
-                "SonarCloud with Coverage",
-                "ubuntu-22.04",
-                "gcc",
-                "ubuntu22-gcc-sonar",
-                sonarcloud="-DCMAKE_CXX_FLAGS=--coverage",
-                use_ccache=False,
-                skip_kvrocks2redis=True,
-            ),
-        )
-    return jobs
 
 
 def tier2_container_matrix() -> List[Dict[str, Any]]:
@@ -462,7 +437,7 @@ def build_plan(
 
     if event_name == "merge_group":
         tier = "t2"
-        notes.append("Merge Queue event detected: running full canonical Tier 2 matrix (SonarCloud skipped on synthetic queue ref).")
+        notes.append("Merge Queue event detected: running full canonical Tier 2 matrix.")
     elif event_name in ("push", "workflow_dispatch", "release"):
         tier = "t2"
         notes.append(f"Event '{event_name}' detected: running full canonical Tier 2 matrix.")
@@ -477,8 +452,7 @@ def build_plan(
         notes.append("Routine pull request: running fast orthogonal Tier 1 matrix.")
 
     if tier == "t2":
-        include_sonar = event_name != "merge_group"
-        build_matrix = tier2_build_matrix(include_sonarcloud=include_sonar)
+        build_matrix = tier2_build_matrix()
         container_matrix = tier2_container_matrix()
         return {
             "docs_only": False,

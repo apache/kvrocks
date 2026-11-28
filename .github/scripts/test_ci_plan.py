@@ -55,7 +55,7 @@ class TestCIPlan(unittest.TestCase):
         self.assertFalse(plan["docs_only"])
         self.assertEqual(plan["tier"], "t1")
         self.assertEqual(plan["tidy_mode"], "incremental")
-        self.assertEqual(len(plan["build_matrix"]), 8)
+        self.assertEqual(len(plan["build_matrix"]), 7)
         self.assertFalse(plan["has_container_matrix"])
         self.assertFalse(plan["run_docker"])
         self.assertFalse(plan["has_compat_matrix"])
@@ -67,7 +67,7 @@ class TestCIPlan(unittest.TestCase):
             base_ref="unstable",
         )
         jobs = {job["name"]: job for job in plan["build_matrix"]}
-        self.assertEqual(len(jobs), 8)
+        self.assertEqual(len(jobs), 7)
 
         # Canonical baseline must use native Makefiles and system linker.
         canonical = jobs["Ubuntu 24 GCC"]
@@ -81,10 +81,7 @@ class TestCIPlan(unittest.TestCase):
         self.assertIn("-DENABLE_UBSAN=ON", asan_ubsan["with_sanitizer"])
         self.assertEqual(asan_ubsan["go_tags"], "-tags=ignore_when_asan,ignore_when_ubsan")
 
-        # SonarCloud must keep standard build wrapper output without ccache launcher.
-        sonar = jobs["SonarCloud with Coverage"]
-        self.assertFalse(sonar["use_ccache"])
-        self.assertEqual(sonar["with_ninja"], "")
+        self.assertNotIn("SonarCloud with Coverage", jobs)
 
     def test_tier1_escalates_on_cmake_and_storage_changes(self) -> None:
         plan = ci_plan.build_plan(
@@ -124,7 +121,7 @@ class TestCIPlan(unittest.TestCase):
         self.assertFalse(plan["docs_only"])
         self.assertEqual(plan["tier"], "t2")
         self.assertEqual(plan["tidy_mode"], "full")
-        self.assertEqual(len(plan["build_matrix"]), 21)
+        self.assertEqual(len(plan["build_matrix"]), 20)
         self.assertEqual(len(plan["container_matrix"]), 6)
         self.assertTrue(plan["run_docker"])
         self.assertEqual(len(plan["compat_matrix"]), 6)
@@ -200,7 +197,7 @@ class TestCIPlan(unittest.TestCase):
 
     def test_host_cache_keys_and_fallbacks(self) -> None:
         tier1 = ci_plan.tier1_build_matrix()
-        tier2 = ci_plan.tier2_build_matrix(include_sonarcloud=True)
+        tier2 = ci_plan.tier2_build_matrix()
         for tier, jobs in (("t1", tier1), ("t2", tier2)):
             keys = set()
             for job in jobs:
@@ -213,7 +210,7 @@ class TestCIPlan(unittest.TestCase):
         tier2_keys = {job["cache_key"] for job in tier2}
         self.assertEqual(
             tier1_keys & tier2_keys,
-            {"macos15-clang-openssl", "ubuntu22-clang-tsan", "ubuntu22-gcc-sonar", "ubuntu24-arm64-clang", "ubuntu24-gcc"},
+            {"macos15-clang-openssl", "ubuntu22-clang-tsan", "ubuntu24-arm64-clang", "ubuntu24-gcc"},
         )
         tier2_keys_by_name = {job["name"]: job["cache_key"] for job in tier2}
         self.assertEqual(tier2_keys_by_name["Ubuntu GCC Ninja"], "ubuntu22-gcc-ninja")
@@ -230,12 +227,12 @@ class TestCIPlan(unittest.TestCase):
     def test_host_disk_space_and_go_parallelism(self) -> None:
         for tier, jobs in (
             ("t1", ci_plan.tier1_build_matrix()),
-            ("t2", ci_plan.tier2_build_matrix(include_sonarcloud=True)),
+            ("t2", ci_plan.tier2_build_matrix()),
         ):
             for job in jobs:
                 with self.subTest(tier=tier, job=job["name"]):
                     self.assertEqual(job["go_parallel"], 2 if job["with_sanitizer"] else 4)
-                    if job["os"] == "ubuntu-22.04" or job["with_sanitizer"] or job["sonarcloud"]:
+                    if job["os"] == "ubuntu-22.04" or job["with_sanitizer"]:
                         self.assertTrue(job["maximize_disk"])
 
     def test_release_branch_pr_escalates_to_tier2(self) -> None:

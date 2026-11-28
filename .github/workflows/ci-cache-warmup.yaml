@@ -115,8 +115,8 @@ jobs:
         uses: actions/cache@v6
         with:
           path: ${{ env.CCACHE_DIR }}
-          key: ccache-${{ matrix.cache_key }}--${{ github.sha }}
-          restore-keys: ccache-${{ matrix.cache_key }}--
+          key: ccache-p1-${{ matrix.cache_key }}--${{ github.sha }}
+          restore-keys: ccache-p1-${{ matrix.cache_key }}--
       - name: Configure ccache
         if: ${{ matrix.use_ccache }}
         run: |
@@ -126,7 +126,7 @@ jobs:
           ccache --set-config=base_dir="$GITHUB_WORKSPACE"
           ccache --set-config=hash_dir=false
           ccache -z
-          echo "CCACHE_CMAKE_DEFS=-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache" >> $GITHUB_ENV
+          echo "CCACHE_CMAKE_DEFS=-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DPORTABLE=1" >> $GITHUB_ENV
 
       - uses: actions/setup-python@v7
         if: ${{ !matrix.arm_linux }}

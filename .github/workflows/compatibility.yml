@@ -19,29 +19,42 @@ name: Compatibility Tests
 
 on:
   push:
-    branches: [unstable]
+    branches:
+      - unstable
+      - '*.*'
+      - '*.*.*'
   pull_request:
-    paths:
-      - '.github/workflows/compatibility.yml'
-      - 'Dockerfile'
-      - 'x.py'
-      - 'CMakeLists.txt'
-      - 'cmake/**'
-      - 'kvrocks.conf'
-      - 'src/**'
-      - 'tests/gocase/go.mod'
-      - 'tests/gocase/go.sum'
-      - 'tests/gocase/integration/compatibility/**'
+  merge_group:
+    types:
+      - checks_requested
   release:
     types: [published]
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.number || github.run_id }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || (github.event_name == 'merge_group' && github.ref) || github.run_id }}
+  cancel-in-progress: ${{ github.event_name != 'push' && github.event_name != 'release' }}
 
 jobs:
+  plan:
+    name: Plan compatibility matrix
+    runs-on: ubuntu-24.04
+    outputs:
+      has_compat_matrix: ${{ steps.plan.outputs.has_compat_matrix }}
+      compat_matrix: ${{ steps.plan.outputs.compat_matrix }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Generate compatibility plan
+        id: plan
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 .github/scripts/ci_plan.py --changed-files-from-git
+
   build:
     name: Build current kvrocks image
+    needs: plan
+    if: ${{ needs.plan.outputs.has_compat_matrix == 'true' }}
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v7
@@ -72,11 +85,12 @@ jobs:
   compatibility-test:
     name: "${{ matrix.version }} -> current"
     runs-on: ubuntu-22.04
-    needs: build
+    needs: [plan, build]
+    if: ${{ needs.plan.outputs.has_compat_matrix == 'true' }}
     strategy:
       fail-fast: false
       matrix:
-        version: [v2.3.0, v2.6.0, v2.7.0, v2.10.0, v2.14.0, v2.15.0]
+        version: ${{ fromJson(needs.plan.outputs.compat_matrix) }}
     env:
       KVROCKS_OLD_VERSION: ${{ matrix.version }}
       # Test old-version data against the PR's own build, not the released
@@ -97,20 +111,44 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: 'tests/gocase/go.mod'
-          cache: false
+          cache: true
+          cache-dependency-path: 'tests/gocase/go.sum'
 
       # Pull the old-version image up front so the test does not race a lazy
       # pull inside the container lifecycle.
       - name: Pull old kvrocks image
         run: docker pull docker.io/apache/kvrocks:${KVROCKS_OLD_VERSION#v}
 
-      # Each job runs on a fresh runner, so GOCACHE starts empty and the go
-      # test result cache cannot replay one version's result for another.
       # KVROCKS_OLD_VERSION is read at runtime and is NOT part of the go test
-      # cache key, so if a shared cache is ever added (actions/cache on
-      # GOCACHE, or collapsing the matrix into a single looping job), version
-      # the cache key or pass -count=1 to go test.
+      # cache key, so pass -count=1 when GOCACHE is enabled via actions/setup-go.
       - name: Run compatibility test
         run: |
           cd tests/gocase
-          go test -tags compat -run TestCompatibilityAllTypes ./integration/compatibility/
+          go test -count=1 -tags compat -run TestCompatibilityAllTypes ./integration/compatibility/
+
+  required-compatibility:
+    name: Required Compatibility
+    runs-on: ubuntu-24.04
+    if: always()
+    needs: [plan, build, compatibility-test]
+    steps:
+      - name: Check compatibility job results
+        env:
+          PLAN_RESULT: ${{ needs.plan.result }}
+          HAS_COMPAT_MATRIX: ${{ needs.plan.outputs.has_compat_matrix }}
+          BUILD_RESULT: ${{ needs.build.result }}
+          TEST_RESULT: ${{ needs.compatibility-test.result }}
+        run: |
+          if [[ "$PLAN_RESULT" != "success" ]]; then
+            echo "Compatibility planning failed (result=$PLAN_RESULT)."
+            exit 1
+          fi
+          if [[ "$HAS_COMPAT_MATRIX" != "true" ]]; then
+            echo "No compatibility tests planned."
+            exit 0
+          fi
+          if [[ "$BUILD_RESULT" != "success" || "$TEST_RESULT" != "success" ]]; then
+            echo "Compatibility checks failed (build=$BUILD_RESULT, tests=$TEST_RESULT)."
+            exit 1
+          fi
+          echo "All planned compatibility checks succeeded."

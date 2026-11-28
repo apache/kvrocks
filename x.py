@@ -19,6 +19,7 @@
 
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter, REMAINDER
 from glob import glob
+from itertools import takewhile
 import os
 from pathlib import Path
 import re
@@ -325,12 +326,13 @@ def test_go(dir: str, cli_path: str, rest: List[str]) -> None:
     basedir = Path(__file__).parent.absolute() / 'tests' / 'gocase'
     workspace = basedir / 'workspace'
 
+    packages = list(takewhile(lambda arg: arg.startswith('./'), rest))
     args = [
-        'test', '-timeout=1800s', '-bench=.', './...',
+        'test', '-timeout=1800s', *(packages or ['./...']),
         f'-binPath={binpath}',
         f'-cliPath={cli_path}',
         f'-workspace={workspace}',
-        *rest
+        *rest[len(packages):]
     ]
 
     run(go, *args, cwd=str(basedir), verbose=True)
@@ -467,7 +469,8 @@ if __name__ == '__main__':
     parser_test_go.add_argument('dir', metavar='BUILD_DIR', nargs='?', default='build',
                                 help="directory including kvrocks build files")
     parser_test_go.add_argument('--cli-path', default='redis-cli', help="path of redis-cli to test kvrocks")
-    parser_test_go.add_argument('rest', nargs=REMAINDER, help="the rest of arguments to forward to go test")
+    parser_test_go.add_argument('rest', nargs=REMAINDER,
+                                help="optional ./package paths followed by flags to forward to go test")
     parser_test_go.set_defaults(func=test_go)
 
     parser_prepare = subparsers.add_parser(

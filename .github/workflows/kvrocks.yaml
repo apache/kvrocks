@@ -25,44 +25,46 @@ on:
       - '*.*.*'
       - 'action/**'
   pull_request:
+  merge_group:
+    types:
+      - checks_requested
 
-# Concurrency strategy:
-#   github.workflow: distinguish this workflow from others
-#   github.event_name: distinguish `push` event from `pull_request` event
-#   github.event.number: set to the number of the pull request if `pull_request` event
-#   github.run_id: otherwise, it's a `push` event, only cancel if we rerun the workflow
-#
-# Reference:
-#   https://docs.github.com/en/actions/using-jobs/using-concurrency
-#   https://docs.github.com/en/actions/learn-github-actions/contexts#github-context
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.number || github.run_id }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || (github.event_name == 'merge_group' && github.ref) || github.run_id }}
+  cancel-in-progress: ${{ github.event_name != 'push' }}
 
 env:
   KVROCKS_DEPS_CACHE_DIR: build-deps
 
 jobs:
-  precondition:
-    name: Precondition
-    runs-on: ubuntu-22.04
+  plan:
+    name: Plan CI
+    runs-on: ubuntu-24.04
     outputs:
-      docs_only: ${{ steps.result.outputs.docs_only }}
+      docs_only: ${{ steps.plan.outputs.docs_only }}
+      tier: ${{ steps.plan.outputs.tier }}
+      tidy_mode: ${{ steps.plan.outputs.tidy_mode }}
+      run_lint: ${{ steps.plan.outputs.run_lint }}
+      has_build_matrix: ${{ steps.plan.outputs.has_build_matrix }}
+      build_matrix: ${{ steps.plan.outputs.build_matrix }}
+      has_container_matrix: ${{ steps.plan.outputs.has_container_matrix }}
+      container_matrix: ${{ steps.plan.outputs.container_matrix }}
+      run_docker: ${{ steps.plan.outputs.run_docker }}
     steps:
       - uses: actions/checkout@v7
-      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d
-        id: changes
         with:
-          filters: .github/config/changes.yml
-          list-files: csv
-      - name: Calculate changes
-        id: result
-        run: |
-          echo "docs_only=${{ fromJSON(steps.changes.outputs.all_count) == fromJSON(steps.changes.outputs.docs_count) && fromJSON(steps.changes.outputs.docs_count) > 0 }}" >> $GITHUB_OUTPUT
+          fetch-depth: 0
+      - name: Run CI script unit tests
+        run: python3 -m unittest discover -s .github/scripts -p 'test_*.py'
+      - name: Generate CI execution plan
+        id: plan
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 .github/scripts/ci_plan.py --changed-files-from-git
 
   check-typos:
     name: Check typos and licenses
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     env:
       FORCE_COLOR: 1
     steps:
@@ -77,11 +79,13 @@ jobs:
 
   check-and-lint:
     name: Lint and check code
-    needs: [precondition, check-typos]
-    if: ${{ needs.precondition.outputs.docs_only != 'true' }}
+    needs: [plan]
+    if: ${{ needs.plan.outputs.run_lint == 'true' }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - name: Restore Kvrocks dependency cache
         id: cache-kvrocks-deps
         uses: actions/cache@v6
@@ -97,7 +101,8 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: 'tests/gocase/go.mod'
-          cache: false
+          cache: true
+          cache-dependency-path: 'tests/gocase/go.sum'
       - name: Prepare Dependencies
         run: |
           wget --max-redirect=0 -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
@@ -108,9 +113,54 @@ jobs:
         id: check-format
         run: ./x.py check format --clang-format-path clang-format-18
       - name: Check with clang-tidy
+        shell: python
+        env:
+          TIDY_MODE: ${{ needs.plan.outputs.tidy_mode }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          ./x.py build --skip-build --dep-dir ${{ env.KVROCKS_DEPS_CACHE_DIR }}
-          ./x.py check tidy -j $(nproc) --clang-tidy-path clang-tidy-18 --run-clang-tidy-path run-clang-tidy-18
+          import os
+          from pathlib import Path
+          import re
+          import subprocess
+          import sys
+
+          fallback_full = os.environ["TIDY_MODE"] != "incremental" or os.environ["GITHUB_EVENT_NAME"] != "pull_request"
+          targets = []
+          if not fallback_full:
+              base_sha, head_sha = os.environ["BASE_SHA"], os.environ["HEAD_SHA"]
+              diff = None
+              if base_sha and head_sha:
+                  diff = subprocess.run(
+                      ["git", "diff", "--no-renames", "--name-only", "-z", f"{base_sha}...{head_sha}"],
+                      stdout=subprocess.PIPE,
+                  )
+              if diff is None or diff.returncode != 0:
+                  print("Git diff unavailable; running full clang-tidy.", flush=True)
+                  fallback_full = True
+              else:
+                  for name in diff.stdout.split(b"\x00"):
+                      path = Path(os.fsdecode(name))
+                      if path.suffix in {".h", ".hh", ".hpp", ".hxx"}:
+                          fallback_full = True
+                          break
+                      if path.suffix in {".c", ".cc", ".cpp", ".cxx"} and path.is_file():
+                          targets.append(rf"^{re.escape(str(path.absolute()))}\Z")
+
+          if not fallback_full and not targets:
+              print("No changed C/C++ translation units to check; skipping clang-tidy.")
+              sys.exit(0)
+
+          subprocess.run(["./x.py", "build", "--skip-build", "--dep-dir", os.environ["KVROCKS_DEPS_CACHE_DIR"]], check=True)
+          jobs = subprocess.check_output(["nproc"], text=True).strip()
+          if fallback_full:
+              command = ["./x.py", "check", "tidy", "-j", jobs,
+                         "--clang-tidy-path", "clang-tidy-18", "--run-clang-tidy-path", "run-clang-tidy-18"]
+          else:
+              print(f"Running incremental clang-tidy on {len(targets)} translation unit(s).", flush=True)
+              command = ["run-clang-tidy-18", "-p", "build", "-j", jobs, "-clang-tidy-binary", "clang-tidy-18",
+                         "-header-filter=kvrocks/src/|utils/kvrocks2redis/|tests/cppunit/", *targets]
+          sys.exit(subprocess.call(command))
       - name: Lint with golangci-lint
         run: ./x.py check golangci-lint
       - name: Prepare format patch
@@ -126,147 +176,44 @@ jobs:
           path: clang-format.patch
 
   build-and-test:
-    name: Build and test
-    needs: [precondition, check-typos]
-    if: ${{ needs.precondition.outputs.docs_only != 'true' }}
+    name: Build and test (${{ matrix.name }})
+    needs: [plan]
+    if: ${{ needs.plan.outputs.has_build_matrix == 'true' }}
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - name: Darwin Clang arm64
-            os: macos-15
-            compiler: auto
-          - name: Darwin Clang arm64 without Jemalloc
-            os: macos-15
-            compiler: auto
-            without_jemalloc: -DDISABLE_JEMALLOC=ON
-          - name: Darwin Clang arm64 with OpenSSL
-            os: macos-15
-            compiler: auto
-            with_openssl: -DENABLE_OPENSSL=ON
-          - name: Darwin Clang arm64 without luaJIT
-            os: macos-15
-            compiler: auto
-            without_luajit: -DENABLE_LUAJIT=OFF
-          - name: Ubuntu GCC
-            os: ubuntu-22.04
-            compiler: gcc
-          - name: SonarCloud with Coverage
-            os: ubuntu-22.04
-            compiler: gcc
-            sonarcloud: -DCMAKE_CXX_FLAGS=--coverage
-          - name: Ubuntu Clang
-            os: ubuntu-22.04
-            compiler: clang
-          - name: Ubuntu 24 GCC
-            os: ubuntu-24.04
-            compiler: gcc
-          - name: Ubuntu 24 Clang
-            os: ubuntu-24.04
-            compiler: clang
-          - name: Ubuntu GCC ASan
-            os: ubuntu-22.04
-            without_jemalloc: -DDISABLE_JEMALLOC=ON
-            with_sanitizer: -DENABLE_ASAN=ON
-            compiler: gcc
-            ignore_when_asan: -tags="ignore_when_asan"
-          - name: Ubuntu Clang ASan
-            os: ubuntu-22.04
-            with_sanitizer: -DENABLE_ASAN=ON
-            without_jemalloc: -DDISABLE_JEMALLOC=ON
-            compiler: clang
-            ignore_when_asan: -tags="ignore_when_asan"
-          - name: Ubuntu GCC TSan
-            os: ubuntu-22.04
-            without_jemalloc: -DDISABLE_JEMALLOC=ON
-            with_sanitizer: -DENABLE_TSAN=ON
-            compiler: gcc
-            ignore_when_tsan: -tags="ignore_when_tsan"
-          - name: Ubuntu Clang TSan
-            os: ubuntu-22.04
-            with_sanitizer: -DENABLE_TSAN=ON
-            without_jemalloc: -DDISABLE_JEMALLOC=ON
-            compiler: clang
-            ignore_when_tsan: -tags="ignore_when_tsan"
-          - name: Ubuntu Clang UBSAN
-            os: ubuntu-22.04
-            with_sanitizer: -DENABLE_UBSAN=ON
-            without_jemalloc: -DDISABLE_JEMALLOC=ON
-            compiler: clang
-            ignore_when_ubsan: -tags="ignore_when_ubsan"
-          - name: Ubuntu GCC Ninja
-            os: ubuntu-22.04
-            with_ninja: --ninja
-            compiler: gcc
-          - name: Ubuntu GCC with OpenSSL
-            os: ubuntu-22.04
-            compiler: gcc
-            with_openssl: -DENABLE_OPENSSL=ON
-          - name: Ubuntu Clang with OpenSSL
-            os: ubuntu-22.04
-            compiler: clang
-            with_openssl: -DENABLE_OPENSSL=ON
-          - name: Ubuntu GCC without luaJIT
-            os: ubuntu-22.04
-            without_luajit: -DENABLE_LUAJIT=OFF
-            compiler: gcc
-          - name: Ubuntu Clang without luaJIT
-            os: ubuntu-22.04
-            without_luajit: -DENABLE_LUAJIT=OFF
-            compiler: clang
-          - name: Ubuntu GCC with old encoding
-            os: ubuntu-22.04
-            compiler: gcc
-            new_encoding: -DENABLE_NEW_ENCODING=FALSE
-          - name: Ubuntu Clang with old encoding
-            os: ubuntu-22.04
-            compiler: clang
-            new_encoding: -DENABLE_NEW_ENCODING=FALSE
-          - name: Ubuntu ARM GCC
-            os: ubuntu-24.04-arm
-            compiler: gcc
-            arm_linux: true
-          - name: Ubuntu ARM Clang
-            os: ubuntu-24.04-arm
-            compiler: clang
-            arm_linux: true
-          - name: Ubuntu RISC-V GCC without luaJIT (QEMU)
-            os: ubuntu-24.04
-            riscv_toolchain: true
-            toolchain_file: cmake/riscv64.cmake
-            riscv_toolchain_url: "https://github.com/riscv-collab/riscv-gnu-toolchain/releases/download/2025.07.03/riscv64-glibc-ubuntu-24.04-gcc-nightly-2025.07.03-nightly.tar.xz"
-            cmake_crosscompiling: -DCMAKE_CROSSCOMPILING=TRUE
-            cmake_system_name: -DCMAKE_SYSTEM_NAME=Linux
-            cmake_system_processor: -DCMAKE_SYSTEM_PROCESSOR=riscv64
-            without_luajit: -DENABLE_LUAJIT=OFF
-
+        include: ${{ fromJson(needs.plan.outputs.build_matrix) }}
     runs-on: ${{ matrix.os }}
     env:
-      SONARCLOUD_OUTPUT_DIR: sonarcloud-data
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE20: true
-      RISCV_PATH: "/opt/riscv"
     steps:
       - name: Maximize build space
-        if: ${{ startsWith(matrix.os, 'ubuntu') }}
+        if: ${{ startsWith(matrix.os, 'ubuntu') && matrix.maximize_disk }}
         run: |
-          # refer to https://github.com/easimon/maximize-build-space,
-          # we take some ideas from this action but don't use it directly.
-          sudo df -h
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /usr/local/lib/android
-          sudo rm -rf /opt/ghc
-          sudo df -h
+          echo "Disk space before cleanup:"
+          df -h .
+          available_gb=$(df -BG --output=avail . | tail -n 1 | tr -dc '0-9')
+          if (( available_gb < 25 )); then
+            sudo rm -rf /usr/local/lib/android
+            available_gb=$(df -BG --output=avail . | tail -n 1 | tr -dc '0-9')
+            if (( available_gb < 25 )); then
+              sudo rm -rf /usr/share/dotnet /opt/ghc
+            fi
+          fi
+          echo "Disk space after cleanup:"
+          df -h .
 
       - name: Setup macOS
         if: ${{ startsWith(matrix.os, 'macos') }}
         run: |
-          brew install --quiet --formula gcc autoconf automake libtool openssl coreutils
+          HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK=1 \
+            brew install --quiet --formula gcc autoconf automake libtool openssl coreutils ninja ccache
           echo "NPROC=$(sysctl -n hw.ncpu)" >> $GITHUB_ENV
           echo "CMAKE_EXTRA_DEFS=-DOPENSSL_ROOT_DIR=/usr/local/opt/openssl" >> $GITHUB_ENV
 
       - name: Setup cmake
         if: ${{ startsWith(matrix.os, 'macos') }}
-        # Cmake 4.0 has the compatibility issue, just pin it to 3.31.
+        # CMake 4.0 has compatibility issues with bundled third-party dependencies; pin to 3.31.
         # See https://github.com/actions/runner-images/issues/11926.
         run: |
           pipx install --force 'cmake>=3.31,<4'
@@ -275,27 +222,13 @@ jobs:
         if: ${{ startsWith(matrix.os, 'ubuntu') || matrix.arm_linux }}
         run: |
           sudo apt update
-          sudo apt install -y ninja-build
+          sudo apt install -y ninja-build ccache lld
           echo "NPROC=$(nproc)" >> $GITHUB_ENV
+
       - name: Setup Linux ARM64
         if: ${{ matrix.arm_linux }}
         run: |
           sudo apt install -y git build-essential cmake libtool python3 python3-pip libssl-dev
-      - name: Setup RISC-V Toolchain
-        if: ${{ matrix.riscv_toolchain }}
-        run: |
-          sudo apt install -y wget build-essential cmake git python3 \
-            libgflags-dev libsnappy-dev zlib1g-dev liblz4-dev libzstd-dev \
-            qemu-user qemu-user-static
-          sudo mkdir -p $RISCV_PATH
-          wget "${{ matrix.riscv_toolchain_url }}" -O riscv-toolchain.tar.xz
-          sudo tar -xvf riscv-toolchain.tar.xz -C $RISCV_PATH --strip-components=1
-          rm riscv-toolchain.tar.xz
-          sudo sed -i "s|libdir='/mnt/riscv/riscv64-unknown-linux-gnu/lib'|libdir='$RISCV_PATH/riscv64-unknown-linux-gnu/lib'|g" \
-            $RISCV_PATH/riscv64-unknown-linux-gnu/lib/libatomic.la
-          echo "PATH=$RISCV_PATH/bin:$PATH" >> $GITHUB_ENV
-          echo "LD_LIBRARY_PATH=/opt/riscv/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
-          echo "QEMU_LD_PREFIX=$RISCV_PATH/sysroot" >> $GITHUB_ENV
 
       - name: Cache redis
         id: cache-redis
@@ -322,13 +255,40 @@ jobs:
 
       - uses: actions/checkout@v7
         with:
-          fetch-depth: 0
+          fetch-depth: 1
       - name: Restore Kvrocks dependency cache
-        uses: actions/cache@v6
+        id: cache-kvrocks-deps
+        uses: actions/cache/restore@v6
         with:
           path: ${{ env.KVROCKS_DEPS_CACHE_DIR }}
           key: kvrocks-full-deps-${{ hashFiles('x.py', 'CMakeLists.txt', 'cmake/**/*.cmake') }}
           enableCrossOsArchive: true
+      - name: Fetch Kvrocks dependencies
+        if: ${{ steps.cache-kvrocks-deps.outputs.cache-hit != 'true' }}
+        run: |
+          ./x.py fetch-deps ${{ env.KVROCKS_DEPS_CACHE_DIR }} ${{ matrix.without_luajit }}
+
+      - name: Set ccache directory
+        if: ${{ matrix.use_ccache }}
+        run: echo "CCACHE_DIR=$RUNNER_TEMP/ccache" >> "$GITHUB_ENV"
+      - name: Restore ccache
+        if: ${{ matrix.use_ccache }}
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-p1-${{ matrix.cache_key }}--${{ github.sha }}
+          restore-keys: ccache-p1-${{ matrix.cache_key }}--
+      - name: Configure ccache
+        if: ${{ matrix.use_ccache }}
+        run: |
+          ccache --set-config=max_size=1G
+          ccache --set-config=compression=true
+          ccache --set-config=compiler_check=content
+          ccache --set-config=base_dir="$GITHUB_WORKSPACE"
+          ccache --set-config=hash_dir=false
+          ccache -z
+          echo "CCACHE_CMAKE_DEFS=-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DPORTABLE=1" >> $GITHUB_ENV
+
       - uses: actions/setup-python@v7
         if: ${{ !matrix.arm_linux }}
         with:
@@ -336,36 +296,18 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: 'tests/gocase/go.mod'
-          cache: false
-          
-      - name: Install gcovr 5.0
-        run: pip install gcovr==5.0 # 5.1 is not supported
-        if: ${{ matrix.sonarcloud }}
-
-      - name: Install Build Wrapper
-        uses: SonarSource/sonarqube-scan-action/install-build-wrapper@59202af334b4ba7b5db01b701b8e79f8b3bef0f4 # v8.5.0
-        if: ${{ matrix.sonarcloud }}
+          cache: true
+          cache-dependency-path: 'tests/gocase/go.sum'
 
       - name: Build Kvrocks
-        if: ${{ !matrix.sonarcloud && !matrix.riscv_toolchain }}
         run: |
           ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.without_jemalloc }} \
-            ${{ matrix.without_luajit }} ${{ matrix.with_ninja }} ${{ matrix.with_sanitizer }} ${{ matrix.with_openssl }} \
-            ${{ matrix.new_encoding }} ${{ env.CMAKE_EXTRA_DEFS }} --dep-dir ${{ env.KVROCKS_DEPS_CACHE_DIR }}
-
-      - name: Build Kvrocks (SonarCloud)
-        if: ${{ matrix.sonarcloud }}
-        run: |
-          build-wrapper-linux-x86-64 --out-dir ${{ env.SONARCLOUD_OUTPUT_DIR }} ./x.py build -j$NPROC --compiler ${{ matrix.compiler }} --skip-build --dep-dir ${{ env.KVROCKS_DEPS_CACHE_DIR }}
-          cp -r build _build
-          ./x.py build -j$NPROC --compiler ${{ matrix.compiler }} ${{ matrix.sonarcloud }} --skip-build --dep-dir ${{ env.KVROCKS_DEPS_CACHE_DIR }}
-          # x.py's default build targets include kvrocks2redis; keep it out of SonarCloud coverage.
-          build-wrapper-linux-x86-64 --out-dir ${{ env.SONARCLOUD_OUTPUT_DIR }} cmake --build build --parallel $NPROC --target kvrocks unittest
-
-      - name: Build Kvrocks (RISC-V)
-        if: ${{ matrix.riscv_toolchain }}
-        run: |
-          ./x.py build -j$NPROC --unittest --toolchain ${{ matrix.toolchain_file }} --dep-dir ${{ env.KVROCKS_DEPS_CACHE_DIR }}
+            ${{ matrix.without_luajit }} ${{ matrix.with_ninja }} ${{ matrix.with_lld }} ${{ matrix.with_sanitizer }} \
+            ${{ matrix.with_openssl }} ${{ matrix.new_encoding }} ${{ env.CMAKE_EXTRA_DEFS }} ${{ env.CCACHE_CMAKE_DEFS }} \
+            --dep-dir ${{ env.KVROCKS_DEPS_CACHE_DIR }}
+          if [[ "${{ matrix.use_ccache }}" == "true" ]]; then
+            ccache -s
+          fi
 
       - name: Setup Coredump
         if: ${{ startsWith(matrix.os, 'ubuntu') }}
@@ -374,6 +316,7 @@ jobs:
           mkdir coredumps
 
       - name: Run Unit Test
+        if: ${{ matrix.run_cpp_test != false }}
         run: |
           ulimit -c unlimited
           export LSAN_OPTIONS="suppressions=$(realpath ./tests/lsan-suppressions)"
@@ -399,36 +342,39 @@ jobs:
           if [[ -n "${{ matrix.without_luajit }}" ]]; then
             GOCASE_RUN_ARGS="$GOCASE_RUN_ARGS -luaJITEnable=false"
           fi
-          ./x.py test go build -parallel 2 $GOCASE_RUN_ARGS ${{ matrix.ignore_when_tsan}} ${{ matrix.ignore_when_asan}} ${{ matrix.ignore_when_ubsan}}
+          packages=()
+          if [[ "${{ matrix.shard_total }}" -gt 1 ]]; then
+            shard_packages=$(GOFLAGS="${GOFLAGS:-} ${{ matrix.go_tags }}" python3 .github/scripts/go_test_shard.py \
+              --shard-index ${{ matrix.shard_index }} --shard-total ${{ matrix.shard_total }} --gocase-dir tests/gocase)
+            if [[ -z "$shard_packages" ]]; then
+              echo "No Go packages assigned to this shard."
+              exit 0
+            fi
+            while IFS= read -r package; do
+              packages+=("$package")
+            done <<< "$shard_packages"
+          fi
+          ./x.py test go build "${packages[@]}" -count=1 -p ${{ matrix.go_pkg_parallel || 2 }} -parallel ${{ matrix.go_parallel || 2 }} \
+            $GOCASE_RUN_ARGS ${{ matrix.go_tags }}
 
       - name: Install redis-py
+        if: ${{ matrix.run_cpp_test != false && !matrix.skip_kvrocks2redis }}
         run: pip3 install redis==5.2.0
 
       - name: Run kvrocks2redis Test
-        # Currently, when enabling Tsan/Asan or running in macOS 11/14, the value mismatch in destination redis server.
-        # It also stays out of the SonarCloud matrix so kvrocks2redis execution does not affect coverage.
+        # Currently, when enabling TSan/ASan or running on macOS, value mismatches can occur in destination Redis.
         # See https://github.com/apache/kvrocks/issues/2195.
-        if: ${{ !contains(matrix.name, 'Tsan') && !contains(matrix.name, 'Asan') && !startsWith(matrix.os, 'macos') && !matrix.sonarcloud }}
+        if: ${{ matrix.run_cpp_test != false && !matrix.skip_kvrocks2redis }}
         run: |
           ulimit -c unlimited
           export LSAN_OPTIONS="suppressions=$(realpath ./tests/lsan-suppressions)"
           export TSAN_OPTIONS="suppressions=$(realpath ./tests/tsan-suppressions)"
-          $HOME/local/bin/redis-server --daemonize yes
-          mkdir -p kvrocks2redis-ci-data
-          ./build/kvrocks --dir `pwd`/kvrocks2redis-ci-data --pidfile `pwd`/kvrocks.pid --daemonize yes
-          sleep 10s
-          echo -en "data-dir `pwd`/kvrocks2redis-ci-data\ndaemonize yes\noutput-dir ./\nnamespace.__namespace 127.0.0.1 6379\n" >> ./kvrocks2redis-ci.conf
-          cat ./kvrocks2redis-ci.conf
-          ./build/kvrocks2redis -c ./kvrocks2redis-ci.conf
-          sleep 10s
-          python3 utils/kvrocks2redis/tests/populate-kvrocks.py --password="" --flushdb=true
-          sleep 10s
-          python3 utils/kvrocks2redis/tests/check_consistency.py --src_password=""
+          bash .github/scripts/test_kvrocks2redis.sh
 
       - name: Find reports and crashes
         if: always()
         run: |
-          SANITIZER_OUTPUT=$(grep "Sanitizer:" tests/gocase/workspace -r || true)
+          SANITIZER_OUTPUT=$(grep -rI "Sanitizer:" tests/gocase/workspace || true)
           if [[ $SANITIZER_OUTPUT ]]; then
             echo "found sanitizer reports:"
             echo "$SANITIZER_OUTPUT"
@@ -436,7 +382,7 @@ jobs:
             cat $(echo "$SANITIZER_OUTPUT" | awk -F ':' '{print $1}')
             exit 1
           fi
-          CRASHES=$(grep "Ooops!" tests/gocase/workspace -r || true)
+          CRASHES=$(grep -rI "Ooops!" tests/gocase/workspace || true)
           if [[ $CRASHES ]]; then
             echo "found crashes:"
             echo "$CRASHES"
@@ -448,36 +394,15 @@ jobs:
       - uses: actions/upload-artifact@v7
         if: ${{ failure() && startsWith(matrix.os, 'ubuntu') }}
         with:
-          name: kvrocks-coredumps-${{ matrix.name }}
+          name: kvrocks-coredumps-${{ matrix.cache_key }}-${{ matrix.shard_index }}
           path: |
             ./build/kvrocks
             ./coredumps/*
-      
-      - name: Collect coverage into one XML report
-        if: ${{ matrix.sonarcloud }}
-        run: |
-          gcovr --sonarqube > ${{ env.SONARCLOUD_OUTPUT_DIR }}/coverage.xml
-      
-      - name: Add event information
-        if: ${{ matrix.sonarcloud }}
-        env:
-          GITHUB_EVENT_JSON: ${{ toJson(github.event) }}
-        run: |
-          echo "$GITHUB_EVENT_JSON" | tee ${{ env.SONARCLOUD_OUTPUT_DIR }}/github-event.json
-      
-      - name: Upload SonarCloud data
-        if: ${{ matrix.sonarcloud }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: sonarcloud-data
-          path: |
-            ${{ env.SONARCLOUD_OUTPUT_DIR }}
-            _build
 
   check-docker:
     name: Check Docker image
-    needs: [precondition, check-typos]
-    if: ${{ needs.precondition.outputs.docs_only != 'true' }}
+    needs: [plan]
+    if: ${{ needs.plan.outputs.run_docker == 'true' }}
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -496,48 +421,39 @@ jobs:
       - name: Test built image
         run: |
           docker run --rm kvrocks:ci -v
-          ID="$(docker run --rm -d -p 6666:6666 kvrocks:ci)"
-          sleep 1m
-          if [ "$(docker inspect --format='{{.State.Health.Status}}' $ID)" != "healthy" ]; then
+          ID="$(docker run -d -p 6666:6666 kvrocks:ci)"
+          trap 'docker rm -f "$ID" >/dev/null 2>&1 || true' EXIT
+          for _ in {1..60}; do
+            case "$(docker inspect --format='{{.State.Status}}' "$ID")" in
+              exited|dead)
+                echo "The container stopped before becoming healthy."
+                docker logs "$ID" || true
+                exit 1
+                ;;
+            esac
+            if [ "$(docker inspect --format='{{.State.Health.Status}}' "$ID")" = "healthy" ]; then
+              break
+            fi
+            sleep 1
+          done
+          if [ "$(docker inspect --format='{{.State.Health.Status}}' "$ID")" != "healthy" ]; then
             echo "The container is not healthy."
+            docker logs "$ID" || true
             exit 1
           fi
           if [ "$(ss --listening --no-header --tcp '( sport = :6666 )')" == "" ]; then
             echo "The container listening port can not be accessed from outside."
             exit 1
           fi
-          docker stop $ID
 
   build-and-test-in-container:
-    name: Build and test in container
-    needs: [precondition, check-typos]
-    if: ${{ needs.precondition.outputs.docs_only != 'true' }}
+    name: Build and test in container (${{ matrix.name }})
+    needs: [plan]
+    if: ${{ needs.plan.outputs.has_container_matrix == 'true' }}
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - name: openSUSE Leap 15
-            image: opensuse/leap:15
-            compiler: gcc
-          - name: ArchLinux
-            image: archlinux:base
-            compiler: gcc
-          - name: Rocky Linux 8
-            image: rockylinux:8
-            compiler: gcc
-          - name: Rocky Linux 9
-            image: rockylinux:9
-            compiler: gcc
-            # Work around missing PATH in the Rocky Linux 9.9 image
-            container_options: --env PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-          - name: Debian 12
-            image: debian:12
-            compiler: gcc
-          - name: Alpine 3
-            image: alpine:3.22
-            compiler: gcc
-            disable_jemalloc: -DDISABLE_JEMALLOC=ON
-
+        include: ${{ fromJson(needs.plan.outputs.container_matrix) }}
     runs-on: ubuntu-22.04
     container:
       image: ${{ matrix.image }}
@@ -549,8 +465,7 @@ jobs:
       - name: Maximize build space
         run: |
           df -h
-          rm -rf /usr-local-lib-android/*
-          rm -rf /usr-share-dotnet/*
+          rm -rf /usr-local-lib-android/* /usr-share-dotnet/*
           df -h
       - name: Setup ArchLinux
         if: ${{ startsWith(matrix.image, 'archlinux') }}
@@ -609,7 +524,7 @@ jobs:
         if: ${{ startsWith(matrix.image, 'alpine') }}
         run: |
           apk update
-          apk add bash cmake curl git python3 wget make gcc g++ autoconf linux-headers py3-pip py3-redis
+          apk add bash cmake curl git python3 wget make gcc g++ autoconf linux-headers py3-pip py3-redis tar zstd
           echo "NPROC=$(nproc)" >> $GITHUB_ENV
 
       - name: Cache redis
@@ -640,11 +555,18 @@ jobs:
 
       - uses: actions/checkout@v7
       - name: Restore Kvrocks dependency cache
-        uses: actions/cache@v6
+        id: cache-kvrocks-deps
+        uses: actions/cache/restore@v6
         with:
           path: ${{ env.KVROCKS_DEPS_CACHE_DIR }}
           key: kvrocks-full-deps-${{ hashFiles('x.py', 'CMakeLists.txt', 'cmake/**/*.cmake') }}
           enableCrossOsArchive: true
+      - name: Fetch Kvrocks dependencies
+        if: ${{ steps.cache-kvrocks-deps.outputs.cache-hit != 'true' }}
+        shell: bash
+        run: |
+          ./x.py fetch-deps ${{ env.KVROCKS_DEPS_CACHE_DIR }}
+
       - uses: actions/setup-go@v7
         if: ${{ !startsWith(matrix.image, 'opensuse') }}
         with:
@@ -652,8 +574,10 @@ jobs:
           cache: false
 
       - name: Build Kvrocks
+        shell: bash
         run: |
-          ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.disable_jemalloc }} --dep-dir ${{ env.KVROCKS_DEPS_CACHE_DIR }}
+          ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.disable_jemalloc }} \
+            --dep-dir ${{ env.KVROCKS_DEPS_CACHE_DIR }}
 
       - name: Run Unit Test
         run: |
@@ -662,8 +586,7 @@ jobs:
       - name: Run Go Integration Cases
         run: |
           export PATH=$PATH:$HOME/local/bin/
-          GOCASE_RUN_ARGS=""
-          ./x.py test go build -parallel 2 $GOCASE_RUN_ARGS
+          ./x.py test go build -p 2 -parallel 2
 
       - name: Install redis-py for openSUSE and Rocky
         if: ${{ !startsWith(matrix.image, 'archlinux') && !startsWith(matrix.image, 'debian') && !startsWith(matrix.image, 'alpine') }}
@@ -678,40 +601,45 @@ jobs:
         if: ${{ !startsWith(matrix.image, 'archlinux') }}
         shell: bash
         run: |
-          $HOME/local/bin/redis-server --daemonize yes
-          mkdir -p kvrocks2redis-ci-data
-          ./build/kvrocks --dir `pwd`/kvrocks2redis-ci-data --pidfile `pwd`/kvrocks.pid --daemonize yes
-          sleep 10s
-          echo -en "data-dir `pwd`/kvrocks2redis-ci-data\ndaemonize yes\noutput-dir ./\nnamespace.__namespace 127.0.0.1 6379\n" >> ./kvrocks2redis-ci.conf
-          cat ./kvrocks2redis-ci.conf
-          ./build/kvrocks2redis -c ./kvrocks2redis-ci.conf
-          sleep 10s
-          python3 utils/kvrocks2redis/tests/populate-kvrocks.py --password="" --flushdb=true
-          sleep 10s
-          python3 utils/kvrocks2redis/tests/check_consistency.py --src_password=""
+          bash .github/scripts/test_kvrocks2redis.sh
 
   required:
     if: always()
     name: Required
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs:
-      - precondition
+      - plan
+      - check-typos
       - check-and-lint
       - build-and-test
       - build-and-test-in-container
       - check-docker
     steps:
       - name: Merge requirement checking
-        if: ${{ needs.precondition.outputs.docs_only != 'true' }}
         run: |
-          if [[ ! ( \
-                   "${{ needs.check-and-lint.result }}" == "success" \
-                && "${{ needs.build-and-test.result }}" == "success" \
-                && "${{ needs.build-and-test-in-container.result }}" == "success" \
-                && "${{ needs.check-docker.result }}" == "success" \
-               ) ]]; then
-            echo "Required jobs haven't been completed successfully."
+          set -euo pipefail
+          if [[ "${{ needs.plan.result }}" != "success" || "${{ needs.check-typos.result }}" != "success" ]]; then
+            echo "Plan or typo/license check failed."
             exit 1
           fi
-      - name: Sentinel
-        run: true
+          if [[ "${{ needs.plan.outputs.docs_only }}" == "true" ]]; then
+            echo "Docs-only change verified."
+            exit 0
+          fi
+          if [[ "${{ needs.plan.outputs.run_lint }}" == "true" && "${{ needs.check-and-lint.result }}" != "success" ]]; then
+            echo "Lint and check code failed (result=${{ needs.check-and-lint.result }})."
+            exit 1
+          fi
+          if [[ "${{ needs.plan.outputs.has_build_matrix }}" == "true" && "${{ needs.build-and-test.result }}" != "success" ]]; then
+            echo "Build and test failed (result=${{ needs.build-and-test.result }})."
+            exit 1
+          fi
+          if [[ "${{ needs.plan.outputs.has_container_matrix }}" == "true" && "${{ needs.build-and-test-in-container.result }}" != "success" ]]; then
+            echo "Build and test in container failed (result=${{ needs.build-and-test-in-container.result }})."
+            exit 1
+          fi
+          if [[ "${{ needs.plan.outputs.run_docker }}" == "true" && "${{ needs.check-docker.result }}" != "success" ]]; then
+            echo "Check Docker image failed (result=${{ needs.check-docker.result }})."
+            exit 1
+          fi
+          echo "All planned CI checks for tier '${{ needs.plan.outputs.tier }}' succeeded."

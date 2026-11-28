@@ -1,0 +1,157 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+name: CI Cache Warmup
+
+on:
+  push:
+    branches: [unstable]
+  schedule:
+    - cron: '0 16 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-cache-warmup-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  KVROCKS_DEPS_CACHE_DIR: build-deps
+
+jobs:
+  plan-warmup:
+    if: github.event_name != 'schedule' || github.repository == 'apache/kvrocks'
+    runs-on: ubuntu-24.04
+    outputs:
+      warmup_matrix: ${{ steps.plan.outputs.warmup_matrix }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Warm Kvrocks dependency cache
+        id: warm-deps
+        uses: actions/cache@v6
+        with:
+          path: ${{ env.KVROCKS_DEPS_CACHE_DIR }}
+          key: kvrocks-full-deps-${{ hashFiles('x.py', 'CMakeLists.txt', 'cmake/**/*.cmake') }}
+          enableCrossOsArchive: true
+      - name: Fetch Kvrocks dependencies
+        if: ${{ steps.warm-deps.outputs.cache-hit != 'true' }}
+        run: |
+          ./x.py fetch-deps ${{ env.KVROCKS_DEPS_CACHE_DIR }}
+          ./x.py fetch-deps ${{ env.KVROCKS_DEPS_CACHE_DIR }} -D ENABLE_LUAJIT=OFF
+      - name: Generate warmup matrix
+        id: plan
+        run: python3 .github/scripts/ci_plan.py --emit-warmup-matrix
+
+  warmup:
+    name: Warm ccache (${{ matrix.cache_key }})
+    needs: plan-warmup
+    if: github.event_name != 'schedule' || github.repository == 'apache/kvrocks'
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.plan-warmup.outputs.warmup_matrix) }}
+    runs-on: ${{ matrix.os }}
+    # Keep the runner setup and build command in sync with build-and-test in kvrocks.yaml.
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE20: true
+    steps:
+      - name: Maximize build space
+        if: ${{ startsWith(matrix.os, 'ubuntu') && matrix.maximize_disk }}
+        run: |
+          sudo df -h
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          sudo df -h
+
+      - name: Setup macOS
+        if: ${{ startsWith(matrix.os, 'macos') }}
+        run: |
+          HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK=1 \
+            brew install --quiet --formula gcc autoconf automake libtool openssl coreutils ninja ccache
+          echo "NPROC=$(sysctl -n hw.ncpu)" >> $GITHUB_ENV
+          echo "CMAKE_EXTRA_DEFS=-DOPENSSL_ROOT_DIR=/usr/local/opt/openssl" >> $GITHUB_ENV
+
+      - name: Setup cmake
+        if: ${{ startsWith(matrix.os, 'macos') }}
+        # CMake 4.0 has compatibility issues with bundled third-party dependencies; pin to 3.31.
+        # See https://github.com/actions/runner-images/issues/11926.
+        run: |
+          pipx install --force 'cmake>=3.31,<4'
+
+      - name: Setup Linux
+        if: ${{ startsWith(matrix.os, 'ubuntu') || matrix.arm_linux }}
+        run: |
+          sudo apt update
+          sudo apt install -y ninja-build ccache lld
+          echo "NPROC=$(nproc)" >> $GITHUB_ENV
+
+      - name: Setup Linux ARM64
+        if: ${{ matrix.arm_linux }}
+        run: |
+          sudo apt install -y git build-essential cmake libtool python3 python3-pip libssl-dev
+
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+      - name: Restore Kvrocks dependency cache
+        id: cache-kvrocks-deps
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ env.KVROCKS_DEPS_CACHE_DIR }}
+          key: kvrocks-full-deps-${{ hashFiles('x.py', 'CMakeLists.txt', 'cmake/**/*.cmake') }}
+          enableCrossOsArchive: true
+      - name: Fetch Kvrocks dependencies
+        if: ${{ steps.cache-kvrocks-deps.outputs.cache-hit != 'true' }}
+        run: |
+          ./x.py fetch-deps ${{ env.KVROCKS_DEPS_CACHE_DIR }} ${{ matrix.without_luajit }}
+
+      - name: Set ccache directory
+        if: ${{ matrix.use_ccache }}
+        run: echo "CCACHE_DIR=$RUNNER_TEMP/ccache" >> "$GITHUB_ENV"
+      - name: Restore and save ccache
+        if: ${{ matrix.use_ccache }}
+        uses: actions/cache@v6
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-p1-${{ matrix.cache_key }}--${{ github.sha }}
+          restore-keys: ccache-p1-${{ matrix.cache_key }}--
+      - name: Configure ccache
+        if: ${{ matrix.use_ccache }}
+        run: |
+          ccache --set-config=max_size=1G
+          ccache --set-config=compression=true
+          ccache --set-config=compiler_check=content
+          ccache --set-config=base_dir="$GITHUB_WORKSPACE"
+          ccache --set-config=hash_dir=false
+          ccache -z
+          echo "CCACHE_CMAKE_DEFS=-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DPORTABLE=1" >> $GITHUB_ENV
+
+      - uses: actions/setup-python@v7
+        if: ${{ !matrix.arm_linux }}
+        with:
+          python-version: 3.x
+
+      - name: Build Kvrocks
+        run: |
+          ./x.py build -j$NPROC --unittest --compiler ${{ matrix.compiler }} ${{ matrix.without_jemalloc }} \
+            ${{ matrix.without_luajit }} ${{ matrix.with_ninja }} ${{ matrix.with_lld }} ${{ matrix.with_sanitizer }} \
+            ${{ matrix.with_openssl }} ${{ matrix.new_encoding }} ${{ env.CMAKE_EXTRA_DEFS }} ${{ env.CCACHE_CMAKE_DEFS }} \
+            --dep-dir ${{ env.KVROCKS_DEPS_CACHE_DIR }}
+          if [[ "${{ matrix.use_ccache }}" == "true" ]]; then
+            ccache -s
+          fi

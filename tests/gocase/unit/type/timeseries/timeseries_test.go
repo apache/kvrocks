@@ -428,6 +428,41 @@ func testTimeSeries(t *testing.T, configs util.KvrocksServerConfigs) {
 		assert.Equal(t, 1, len(res))
 	})
 
+	t.Run("TS.RANGE Aggregation Over A Large Time Span", func(t *testing.T) {
+		key := "test_range_large_span"
+		require.NoError(t, rdb.Do(ctx, "ts.add", key, 1, 1).Err())
+		require.NoError(t, rdb.Do(ctx, "ts.add", key, 1000000000000, 1).Err())
+		require.Equal(t, []interface{}{[]interface{}{int64(1), float64(1)}, []interface{}{int64(1000000000000), float64(1)}},
+			rdb.Do(ctx, "ts.range", key, "-", "+", "AGGREGATION", "AVG", 1).Val())
+		require.Equal(t, []interface{}{[]interface{}{int64(1000000000000), float64(1)}, []interface{}{int64(1), float64(1)}},
+			rdb.Do(ctx, "ts.revrange", key, "-", "+", "AGGREGATION", "AVG", 1).Val())
+
+		res := rdb.Do(ctx, "ts.range", key, "-", "+", "COUNT", 3, "AGGREGATION", "SUM", 1, "EMPTY").Val()
+		require.Equal(t, []interface{}{
+			[]interface{}{int64(1), float64(1)}, []interface{}{int64(2), float64(0)}, []interface{}{int64(3), float64(0)},
+		}, res)
+
+		// The compaction rule aggregates the source chunk with a small bucket.
+		src, dst := "test_rule_large_span_src", "test_rule_large_span_dst"
+		require.NoError(t, rdb.Do(ctx, "ts.create", src).Err())
+		require.NoError(t, rdb.Do(ctx, "ts.create", dst).Err())
+		require.NoError(t, rdb.Do(ctx, "ts.createrule", src, dst, "AGGREGATION", "AVG", 2000).Err())
+		require.NoError(t, rdb.Do(ctx, "ts.add", src, 1, 1).Err())
+		require.NoError(t, rdb.Do(ctx, "ts.add", src, 1000000000000, 1).Err())
+		require.Equal(t, []interface{}{[]interface{}{int64(0), float64(1)}}, rdb.Do(ctx, "ts.range", dst, "-", "+").Val())
+	})
+
+	t.Run("TS.RANGE Empty Buckets With LAST", func(t *testing.T) {
+		key := "test_range_empty_last"
+		require.NoError(t, rdb.Do(ctx, "ts.add", key, 10, 1).Err())
+		require.NoError(t, rdb.Do(ctx, "ts.add", key, 15, 5).Err())
+		require.NoError(t, rdb.Do(ctx, "ts.add", key, 50, 7).Err())
+		require.Equal(t, []interface{}{
+			[]interface{}{int64(10), float64(5)}, []interface{}{int64(20), float64(5)}, []interface{}{int64(30), float64(5)},
+			[]interface{}{int64(40), float64(5)}, []interface{}{int64(50), float64(7)},
+		}, rdb.Do(ctx, "ts.range", key, "-", "+", "AGGREGATION", "LAST", 10, "EMPTY").Val())
+	})
+
 	t.Run("TS.GET Basic", func(t *testing.T) {
 		key := "test_get_key"
 		require.NoError(t, rdb.Del(ctx, key).Err())

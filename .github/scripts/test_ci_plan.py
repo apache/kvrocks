@@ -55,7 +55,7 @@ class TestCIPlan(unittest.TestCase):
         self.assertFalse(plan["docs_only"])
         self.assertEqual(plan["tier"], "t1")
         self.assertEqual(plan["tidy_mode"], "incremental")
-        self.assertEqual(len(plan["build_matrix"]), 7)
+        self.assertEqual(len(plan["build_matrix"]), 6)
         self.assertFalse(plan["has_container_matrix"])
         self.assertFalse(plan["run_docker"])
         self.assertFalse(plan["has_compat_matrix"])
@@ -66,22 +66,35 @@ class TestCIPlan(unittest.TestCase):
             changed_files=["src/commands/cmd_string.cc"],
             base_ref="unstable",
         )
-        jobs = {job["name"]: job for job in plan["build_matrix"]}
-        self.assertEqual(len(jobs), 7)
+        matrix = plan["build_matrix"]
+        self.assertEqual(len(matrix), 6)
+        jobs = {job["name"]: job for job in matrix}
+        keys = {
+            "Ubuntu 24 GCC": "ubuntu24-gcc",
+            "Ubuntu 24 Clang with OpenSSL": "ubuntu24-clang-openssl",
+            "Ubuntu 24 GCC (Old Encoding + Lua)": "ubuntu24-gcc-oldenc-lua",
+            "Darwin Clang arm64 with OpenSSL": "macos15-clang-openssl",
+            "Ubuntu ARM Clang": "ubuntu24-arm64-clang",
+            "Ubuntu Clang ASan + UBSan": "ubuntu22-clang-asan-ubsan",
+        }
+        self.assertEqual({name: job["cache_key"] for name, job in jobs.items()}, keys)
+        for job in matrix:
+            with self.subTest(job=job["name"]):
+                self.assertTrue(job["use_ccache"])
+                self.assertNotIn("cache_fallback_key", job)
+                self.assertEqual(job["with_ninja"], "" if job["name"] == "Ubuntu 24 GCC" else "--ninja")
+                uses_lld = job["with_ninja"] and job["os"].startswith("ubuntu")
+                self.assertEqual(job["with_lld"], "-DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld" if uses_lld else "")
 
-        # Canonical baseline must use native Makefiles and system linker.
-        canonical = jobs["Ubuntu 24 GCC"]
-        self.assertEqual(canonical["with_ninja"], "")
-        self.assertEqual(canonical["with_lld"], "")
-        self.assertTrue(canonical["use_ccache"])
+        oldenc_lua = jobs["Ubuntu 24 GCC (Old Encoding + Lua)"]
+        self.assertEqual(oldenc_lua["new_encoding"], "-DENABLE_NEW_ENCODING=FALSE")
+        self.assertEqual(oldenc_lua["without_luajit"], "-DENABLE_LUAJIT=OFF")
 
         # Combined ASan + UBSan job must pass comma-separated Go build tags.
         asan_ubsan = jobs["Ubuntu Clang ASan + UBSan"]
         self.assertIn("-DENABLE_ASAN=ON", asan_ubsan["with_sanitizer"])
         self.assertIn("-DENABLE_UBSAN=ON", asan_ubsan["with_sanitizer"])
         self.assertEqual(asan_ubsan["go_tags"], "-tags=ignore_when_asan,ignore_when_ubsan")
-
-        self.assertNotIn("SonarCloud with Coverage", jobs)
 
     def test_tier1_escalates_on_cmake_and_storage_changes(self) -> None:
         plan = ci_plan.build_plan(
@@ -196,35 +209,6 @@ class TestCIPlan(unittest.TestCase):
     def test_obsolete_changes_config_is_not_docs_only(self) -> None:
         self.assertFalse(ci_plan.is_docs_only([".github/config/changes.yml"]))
 
-    def test_host_cache_keys_and_fallbacks(self) -> None:
-        tier1 = ci_plan.tier1_build_matrix()
-        tier2 = ci_plan.tier2_build_matrix()
-        for tier, jobs in (("t1", tier1), ("t2", tier2)):
-            keys = set()
-            for job in jobs:
-                key = job["cache_key"]
-                with self.subTest(tier=tier, job=job["name"], key=key):
-                    self.assertNotIn(key, keys)
-                    keys.add(key)
-
-        tier1_keys = {job["cache_key"] for job in tier1}
-        tier2_keys = {job["cache_key"] for job in tier2}
-        self.assertEqual(
-            tier1_keys & tier2_keys,
-            {"macos15-clang-openssl", "ubuntu22-clang-tsan", "ubuntu24-arm64-clang", "ubuntu24-gcc"},
-        )
-        tier2_keys_by_name = {job["name"]: job["cache_key"] for job in tier2}
-        self.assertEqual(tier2_keys_by_name["Ubuntu GCC Ninja"], "ubuntu22-gcc-ninja")
-        fallbacks = {job["cache_key"]: job["cache_fallback_key"] for job in tier1 if job["cache_fallback_key"]}
-        self.assertEqual(fallbacks, {
-            "ubuntu24-clang-openssl": "ubuntu24-clang",
-            "ubuntu24-gcc-oldenc-lua": "ubuntu24-gcc",
-            "ubuntu22-clang-asan-ubsan": "ubuntu22-clang-asan",
-        })
-        self.assertEqual(fallbacks.keys(), tier1_keys - tier2_keys)
-        self.assertTrue(set(fallbacks.values()) <= tier2_keys)
-        self.assertTrue(all(job["cache_fallback_key"] == "" for job in tier2))
-
     def test_host_disk_space_and_go_parallelism(self) -> None:
         for tier, jobs in (
             ("t1", ci_plan.tier1_build_matrix()),
@@ -255,21 +239,54 @@ class TestCIPlan(unittest.TestCase):
             with self.subTest(job=job["name"]):
                 self.assertFalse(job["use_ccache"])
 
-    def test_merge_group_runs_canonical_tier2_without_sonarcloud(self) -> None:
-        plan = ci_plan.build_plan(
-            event_name="merge_group",
-            changed_files=["src/commands/cmd_server.cc"],
-            base_ref="unstable",
-        )
-        self.assertEqual(plan["tier"], "t2")
-        names = [job["name"] for job in plan["build_matrix"]]
+    def test_tier2_keeps_canonical_host_jobs_without_ccache(self) -> None:
+        jobs = ci_plan.tier2_build_matrix()
+        self.assertEqual(len(jobs), 20)
+        self.assertEqual(len({job["cache_key"] for job in jobs}), 20)
+        names = [job["name"] for job in jobs]
+        self.assertIn("Ubuntu Clang TSan", names)
         self.assertNotIn("SonarCloud with Coverage", names)
         self.assertNotIn("Darwin Clang arm64 without Jemalloc", names)
-        self.assertEqual(len(plan["build_matrix"]), 20)
-        self.assertEqual(len(plan["container_matrix"]), 6)
+        for job in jobs:
+            with self.subTest(job=job["name"]):
+                self.assertFalse(job["use_ccache"])
+                self.assertNotIn("cache_fallback_key", job)
         # Only the dedicated Ninja check job should pass --ninja in Tier 2.
-        ninja_jobs = [job["name"] for job in plan["build_matrix"] if job["with_ninja"]]
+        ninja_jobs = [job["name"] for job in jobs if job["with_ninja"]]
         self.assertEqual(ninja_jobs, ["Ubuntu GCC Ninja"])
+
+    def test_full_ci_events_use_canonical_tier2_matrices(self) -> None:
+        for event, labels in (("merge_group", []), ("pull_request", ["ci/full"]), ("push", [])):
+            with self.subTest(event=event):
+                plan = ci_plan.build_plan(
+                    event_name=event,
+                    changed_files=["src/commands/cmd_server.cc"],
+                    labels=labels,
+                    base_ref="unstable",
+                )
+                self.assertEqual(plan["tier"], "t2")
+                self.assertEqual(plan["build_matrix"], ci_plan.tier2_build_matrix())
+                self.assertEqual(plan["container_matrix"], ci_plan.tier2_container_matrix())
+
+    def test_emit_warmup_matrix_matches_tier1(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / "output"
+            for env in ({}, {"GITHUB_OUTPUT": str(output)}):
+                with (
+                    self.subTest(env=env),
+                    patch.dict("os.environ", env, clear=True),
+                    redirect_stdout(StringIO()) as stdout,
+                ):
+                    self.assertEqual(ci_plan.main(["--emit-warmup-matrix"]), 0)
+                    if env:
+                        self.assertEqual(stdout.getvalue(), "")
+                        result = output.read_text(encoding="utf-8")
+                    else:
+                        result = stdout.getvalue()
+                    line, = result.splitlines()
+                    key, value = line.split("=", 1)
+                    self.assertEqual(key, "warmup_matrix")
+                    self.assertEqual(json.loads(value), ci_plan.tier1_build_matrix())
 
     def test_extract_event_metadata_and_github_outputs(self) -> None:
         mg_payload = {

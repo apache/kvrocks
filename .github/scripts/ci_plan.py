@@ -94,7 +94,6 @@ def _job(
     compiler: str,
     cache_key: str,
     *,
-    cache_fallback_key: str = "",
     arm_linux: bool = False,
     with_ninja: str = "",
     with_lld: str = "",
@@ -104,7 +103,7 @@ def _job(
     with_openssl: str = "",
     new_encoding: str = "",
     go_tags: str = "",
-    use_ccache: bool = True,
+    use_ccache: bool = False,
     skip_kvrocks2redis: bool = False,
 ) -> Dict[str, Any]:
     return {
@@ -112,7 +111,6 @@ def _job(
         "os": os_name,
         "compiler": compiler,
         "cache_key": cache_key,
-        "cache_fallback_key": cache_fallback_key,
         "arm_linux": arm_linux,
         "with_ninja": with_ninja,
         "with_lld": with_lld,
@@ -155,26 +153,28 @@ def tier1_build_matrix() -> List[Dict[str, Any]]:
             "ubuntu-24.04",
             "gcc",
             "ubuntu24-gcc",
+            use_ccache=True,
         ),
         _job(
             "Ubuntu 24 Clang with OpenSSL",
             "ubuntu-24.04",
             "clang",
             "ubuntu24-clang-openssl",
-            cache_fallback_key="ubuntu24-clang",
             with_ninja="--ninja",
             with_lld="-DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld",
             with_openssl="-DENABLE_OPENSSL=ON",
+            use_ccache=True,
         ),
         _job(
             "Ubuntu 24 GCC (Old Encoding + Lua)",
             "ubuntu-24.04",
             "gcc",
             "ubuntu24-gcc-oldenc-lua",
-            cache_fallback_key="ubuntu24-gcc",
             with_ninja="--ninja",
+            with_lld="-DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld",
             without_luajit="-DENABLE_LUAJIT=OFF",
             new_encoding="-DENABLE_NEW_ENCODING=FALSE",
+            use_ccache=True,
         ),
         # CMakeLists.txt forces DISABLE_JEMALLOC=ON on Apple hosts, covering no-jemalloc too.
         _job(
@@ -184,6 +184,7 @@ def tier1_build_matrix() -> List[Dict[str, Any]]:
             "macos15-clang-openssl",
             with_ninja="--ninja",
             with_openssl="-DENABLE_OPENSSL=ON",
+            use_ccache=True,
             skip_kvrocks2redis=True,
         ),
         _job(
@@ -194,30 +195,19 @@ def tier1_build_matrix() -> List[Dict[str, Any]]:
             arm_linux=True,
             with_ninja="--ninja",
             with_lld="-DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld",
+            use_ccache=True,
         ),
         _job(
             "Ubuntu Clang ASan + UBSan",
             "ubuntu-22.04",
             "clang",
             "ubuntu22-clang-asan-ubsan",
-            cache_fallback_key="ubuntu22-clang-asan",
             with_ninja="--ninja",
             with_lld="-DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld",
             without_jemalloc="-DDISABLE_JEMALLOC=ON",
             with_sanitizer="-DENABLE_ASAN=ON -DENABLE_UBSAN=ON",
             go_tags="-tags=ignore_when_asan,ignore_when_ubsan",
-            skip_kvrocks2redis=True,
-        ),
-        _job(
-            "Ubuntu Clang TSan",
-            "ubuntu-22.04",
-            "clang",
-            "ubuntu22-clang-tsan",
-            with_ninja="--ninja",
-            with_lld="-DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld",
-            without_jemalloc="-DDISABLE_JEMALLOC=ON",
-            with_sanitizer="-DENABLE_TSAN=ON",
-            go_tags="-tags=ignore_when_tsan",
+            use_ccache=True,
             skip_kvrocks2redis=True,
         ),
     ]
@@ -627,7 +617,18 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--label", action="append", default=None, help="Explicit PR label override (repeatable).")
     parser.add_argument("--github-output", default=os.environ.get("GITHUB_OUTPUT", ""))
     parser.add_argument("--summary-file", default=os.environ.get("GITHUB_STEP_SUMMARY", ""))
+    parser.add_argument("--emit-warmup-matrix", action="store_true", help="Emit only the Tier 1 cache warmup matrix.")
     args = parser.parse_args(argv)
+
+    if args.emit_warmup_matrix:
+        matrix = json.dumps(tier1_build_matrix(), separators=(",", ":"))
+        output = f"warmup_matrix={matrix}\n"
+        if args.github_output:
+            with open(args.github_output, "a", encoding="utf-8") as out_file:
+                out_file.write(output)
+        else:
+            print(output, end="")
+        return 0
 
     payload: Dict[str, Any] = {}
     if args.event_path and Path(args.event_path).is_file():

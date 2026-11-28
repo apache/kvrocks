@@ -261,24 +261,13 @@ jobs:
       - name: Set ccache directory
         if: ${{ matrix.use_ccache }}
         run: echo "CCACHE_DIR=$RUNNER_TEMP/ccache" >> "$GITHUB_ENV"
-      - name: Restore and save ccache on push
-        if: ${{ matrix.use_ccache && github.event_name == 'push' }}
-        uses: actions/cache@v6
-        with:
-          path: ${{ env.CCACHE_DIR }}
-          key: ccache-${{ matrix.cache_key }}--${{ github.sha }}
-          restore-keys: |
-            ccache-${{ matrix.cache_key }}--
-            ${{ matrix.cache_fallback_key != '' && format('ccache-{0}--', matrix.cache_fallback_key) || '' }}
       - name: Restore ccache
-        if: ${{ matrix.use_ccache && github.event_name != 'push' }}
+        if: ${{ matrix.use_ccache }}
         uses: actions/cache/restore@v6
         with:
           path: ${{ env.CCACHE_DIR }}
           key: ccache-${{ matrix.cache_key }}--${{ github.sha }}
-          restore-keys: |
-            ccache-${{ matrix.cache_key }}--
-            ${{ matrix.cache_fallback_key != '' && format('ccache-{0}--', matrix.cache_fallback_key) || '' }}
+          restore-keys: ccache-${{ matrix.cache_key }}--
       - name: Configure ccache
         if: ${{ matrix.use_ccache }}
         run: |

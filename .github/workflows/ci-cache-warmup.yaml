@@ -42,6 +42,18 @@ jobs:
       warmup_matrix: ${{ steps.plan.outputs.warmup_matrix }}
     steps:
       - uses: actions/checkout@v7
+      - name: Warm Kvrocks dependency cache
+        id: warm-deps
+        uses: actions/cache@v6
+        with:
+          path: ${{ env.KVROCKS_DEPS_CACHE_DIR }}
+          key: kvrocks-full-deps-${{ hashFiles('x.py', 'CMakeLists.txt', 'cmake/**/*.cmake') }}
+          enableCrossOsArchive: true
+      - name: Fetch Kvrocks dependencies
+        if: ${{ steps.warm-deps.outputs.cache-hit != 'true' }}
+        run: |
+          ./x.py fetch-deps ${{ env.KVROCKS_DEPS_CACHE_DIR }}
+          ./x.py fetch-deps ${{ env.KVROCKS_DEPS_CACHE_DIR }} -D ENABLE_LUAJIT=OFF
       - name: Generate warmup matrix
         id: plan
         run: python3 .github/scripts/ci_plan.py --emit-warmup-matrix

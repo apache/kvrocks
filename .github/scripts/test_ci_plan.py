@@ -55,7 +55,7 @@ class TestCIPlan(unittest.TestCase):
         self.assertFalse(plan["docs_only"])
         self.assertEqual(plan["tier"], "t1")
         self.assertEqual(plan["tidy_mode"], "incremental")
-        self.assertEqual(len(plan["build_matrix"]), 6)
+        self.assertEqual(len(plan["build_matrix"]), 8)
         self.assertFalse(plan["has_container_matrix"])
         self.assertFalse(plan["run_docker"])
         self.assertFalse(plan["has_compat_matrix"])
@@ -67,15 +67,18 @@ class TestCIPlan(unittest.TestCase):
             base_ref="unstable",
         )
         matrix = plan["build_matrix"]
-        self.assertEqual(len(matrix), 6)
+        self.assertEqual(len(matrix), 8)
+        self.assertEqual(len({job["cache_key"] for job in matrix}), 6)
         jobs = {job["name"]: job for job in matrix}
         keys = {
             "Ubuntu 24 GCC": "ubuntu24-gcc",
             "Ubuntu 24 Clang with OpenSSL": "ubuntu24-clang-openssl",
             "Ubuntu 24 GCC (Old Encoding + Lua)": "ubuntu24-gcc-oldenc-lua",
-            "Darwin Clang arm64 with OpenSSL": "macos15-clang-openssl",
+            "Darwin Clang arm64 with OpenSSL (shard 1/2)": "macos15-clang-openssl",
+            "Darwin Clang arm64 with OpenSSL (shard 2/2)": "macos15-clang-openssl",
             "Ubuntu ARM Clang": "ubuntu24-arm64-clang",
-            "Ubuntu Clang ASan + UBSan": "ubuntu22-clang-asan-ubsan",
+            "Ubuntu Clang ASan + UBSan (shard 1/2)": "ubuntu22-clang-asan-ubsan",
+            "Ubuntu Clang ASan + UBSan (shard 2/2)": "ubuntu22-clang-asan-ubsan",
         }
         self.assertEqual({name: job["cache_key"] for name, job in jobs.items()}, keys)
         for job in matrix:
@@ -91,10 +94,26 @@ class TestCIPlan(unittest.TestCase):
         self.assertEqual(oldenc_lua["without_luajit"], "-DENABLE_LUAJIT=OFF")
 
         # Combined ASan + UBSan job must pass comma-separated Go build tags.
-        asan_ubsan = jobs["Ubuntu Clang ASan + UBSan"]
+        asan_ubsan = jobs["Ubuntu Clang ASan + UBSan (shard 1/2)"]
         self.assertIn("-DENABLE_ASAN=ON", asan_ubsan["with_sanitizer"])
         self.assertIn("-DENABLE_UBSAN=ON", asan_ubsan["with_sanitizer"])
         self.assertEqual(asan_ubsan["go_tags"], "-tags=ignore_when_asan,ignore_when_ubsan")
+
+    def test_tier1_shards_only_darwin_openssl_and_combined_sanitizers(self) -> None:
+        jobs = ci_plan.tier1_build_matrix()
+        sharded_keys = {"macos15-clang-openssl", "ubuntu22-clang-asan-ubsan"}
+        for key in {job["cache_key"] for job in jobs}:
+            with self.subTest(cache_key=key):
+                shards = [job for job in jobs if job["cache_key"] == key]
+                total = 2 if key in sharded_keys else 1
+                self.assertEqual(len(shards), total)
+                for index, job in enumerate(shards, start=1):
+                    self.assertEqual(job["shard_total"], total)
+                    self.assertEqual(job["shard_index"], index)
+                    self.assertIs(job["run_cpp_test"], index == 1)
+                if total == 2:
+                    first, second = shards
+                    self.assertEqual(dict(second, name=first["name"], shard_index=1, run_cpp_test=True), first)
 
     def test_tier1_escalates_on_cmake_and_storage_changes(self) -> None:
         plan = ci_plan.build_plan(
@@ -256,6 +275,9 @@ class TestCIPlan(unittest.TestCase):
             with self.subTest(job=job["name"]):
                 self.assertFalse(job["use_ccache"])
                 self.assertNotIn("cache_fallback_key", job)
+                self.assertEqual(job["shard_index"], 1)
+                self.assertEqual(job["shard_total"], 1)
+                self.assertIs(job["run_cpp_test"], True)
         # Only the dedicated Ninja check job should pass --ninja in Tier 2.
         ninja_jobs = [job["name"] for job in jobs if job["with_ninja"]]
         self.assertEqual(ninja_jobs, ["Ubuntu GCC Ninja"])
@@ -291,7 +313,10 @@ class TestCIPlan(unittest.TestCase):
                     line, = result.splitlines()
                     key, value = line.split("=", 1)
                     self.assertEqual(key, "warmup_matrix")
-                    self.assertEqual(json.loads(value), ci_plan.tier1_build_matrix())
+                    jobs = json.loads(value)
+                    self.assertEqual(len(jobs), 6)
+                    self.assertEqual(len({job["cache_key"] for job in jobs}), 6)
+                    self.assertEqual(jobs, [job for job in ci_plan.tier1_build_matrix() if job["shard_index"] == 1])
 
     def test_extract_event_metadata_and_github_outputs(self) -> None:
         mg_payload = {

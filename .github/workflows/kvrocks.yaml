@@ -54,8 +54,8 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - name: Run CI planner unit tests
-        run: python3 -m unittest discover -s .github/scripts -p "test_ci_plan.py"
+      - name: Run CI script unit tests
+        run: python3 -m unittest discover -s .github/scripts -p 'test_*.py'
       - name: Generate CI execution plan
         id: plan
         env:
@@ -316,6 +316,7 @@ jobs:
           mkdir coredumps
 
       - name: Run Unit Test
+        if: ${{ matrix.run_cpp_test != false }}
         run: |
           ulimit -c unlimited
           export LSAN_OPTIONS="suppressions=$(realpath ./tests/lsan-suppressions)"
@@ -341,17 +342,29 @@ jobs:
           if [[ -n "${{ matrix.without_luajit }}" ]]; then
             GOCASE_RUN_ARGS="$GOCASE_RUN_ARGS -luaJITEnable=false"
           fi
-          ./x.py test go build -count=1 -p ${{ matrix.go_pkg_parallel || 2 }} -parallel ${{ matrix.go_parallel || 2 }} \
+          packages=()
+          if [[ "${{ matrix.shard_total }}" -gt 1 ]]; then
+            shard_packages=$(GOFLAGS="${GOFLAGS:-} ${{ matrix.go_tags }}" python3 .github/scripts/go_test_shard.py \
+              --shard-index ${{ matrix.shard_index }} --shard-total ${{ matrix.shard_total }} --gocase-dir tests/gocase)
+            if [[ -z "$shard_packages" ]]; then
+              echo "No Go packages assigned to this shard."
+              exit 0
+            fi
+            while IFS= read -r package; do
+              packages+=("$package")
+            done <<< "$shard_packages"
+          fi
+          ./x.py test go build "${packages[@]}" -count=1 -p ${{ matrix.go_pkg_parallel || 2 }} -parallel ${{ matrix.go_parallel || 2 }} \
             $GOCASE_RUN_ARGS ${{ matrix.go_tags }}
 
       - name: Install redis-py
-        if: ${{ !matrix.skip_kvrocks2redis }}
+        if: ${{ matrix.run_cpp_test != false && !matrix.skip_kvrocks2redis }}
         run: pip3 install redis==5.2.0
 
       - name: Run kvrocks2redis Test
         # Currently, when enabling TSan/ASan or running on macOS, value mismatches can occur in destination Redis.
         # See https://github.com/apache/kvrocks/issues/2195.
-        if: ${{ !matrix.skip_kvrocks2redis }}
+        if: ${{ matrix.run_cpp_test != false && !matrix.skip_kvrocks2redis }}
         run: |
           ulimit -c unlimited
           export LSAN_OPTIONS="suppressions=$(realpath ./tests/lsan-suppressions)"
@@ -381,7 +394,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         if: ${{ failure() && startsWith(matrix.os, 'ubuntu') }}
         with:
-          name: kvrocks-coredumps-${{ matrix.name }}
+          name: kvrocks-coredumps-${{ matrix.cache_key }}-${{ matrix.shard_index }}
           path: |
             ./build/kvrocks
             ./coredumps/*

@@ -105,6 +105,7 @@ def _job(
     go_tags: str = "",
     use_ccache: bool = False,
     skip_kvrocks2redis: bool = False,
+    shard_total: int = 1,
 ) -> Dict[str, Any]:
     if with_sanitizer:
         go_pkg_parallel = 2
@@ -132,6 +133,9 @@ def _job(
         "go_pkg_parallel": go_pkg_parallel,
         "go_parallel": 1 if with_sanitizer else 2,
         "skip_kvrocks2redis": skip_kvrocks2redis,
+        "shard_index": 1,
+        "shard_total": shard_total,
+        "run_cpp_test": True,
     }
 
 
@@ -154,7 +158,7 @@ def _container_job(
 
 
 def tier1_build_matrix() -> List[Dict[str, Any]]:
-    return [
+    jobs = [
         # Canonical Makefiles + GNU ld baseline guarding real user source builds.
         _job(
             "Ubuntu 24 GCC",
@@ -194,6 +198,7 @@ def tier1_build_matrix() -> List[Dict[str, Any]]:
             with_openssl="-DENABLE_OPENSSL=ON",
             use_ccache=True,
             skip_kvrocks2redis=True,
+            shard_total=2,
         ),
         _job(
             "Ubuntu ARM Clang",
@@ -217,8 +222,23 @@ def tier1_build_matrix() -> List[Dict[str, Any]]:
             go_tags="-tags=ignore_when_asan,ignore_when_ubsan",
             use_ccache=True,
             skip_kvrocks2redis=True,
+            shard_total=2,
         ),
     ]
+    matrix = []
+    for job in jobs:
+        shard_total = job["shard_total"]
+        if shard_total == 1:
+            matrix.append(job)
+            continue
+        for shard_index in range(1, shard_total + 1):
+            matrix.append(dict(
+                job,
+                name=f"{job['name']} (shard {shard_index}/{shard_total})",
+                shard_index=shard_index,
+                run_cpp_test=shard_index == 1,
+            ))
+    return matrix
 
 
 def tier2_build_matrix() -> List[Dict[str, Any]]:
@@ -629,7 +649,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     args = parser.parse_args(argv)
 
     if args.emit_warmup_matrix:
-        matrix = json.dumps(tier1_build_matrix(), separators=(",", ":"))
+        jobs_by_cache_key = {}
+        for job in tier1_build_matrix():
+            jobs_by_cache_key.setdefault(job["cache_key"], job)
+        matrix = json.dumps(list(jobs_by_cache_key.values()), separators=(",", ":"))
         output = f"warmup_matrix={matrix}\n"
         if args.github_output:
             with open(args.github_output, "a", encoding="utf-8") as out_file:

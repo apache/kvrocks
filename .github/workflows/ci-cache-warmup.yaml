@@ -59,7 +59,7 @@ jobs:
         run: python3 .github/scripts/ci_plan.py --emit-warmup-matrix
 
   warmup:
-    name: Warm ccache (${{ matrix.name }})
+    name: Warm ccache (${{ matrix.cache_key }})
     needs: plan-warmup
     if: github.event_name != 'schedule' || github.repository == 'apache/kvrocks'
     strategy:

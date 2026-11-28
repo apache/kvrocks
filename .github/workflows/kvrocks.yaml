@@ -79,7 +79,7 @@ jobs:
 
   check-and-lint:
     name: Lint and check code
-    needs: [plan, check-typos]
+    needs: [plan]
     if: ${{ needs.plan.outputs.run_lint == 'true' }}
     runs-on: ubuntu-24.04
     steps:
@@ -177,7 +177,7 @@ jobs:
 
   build-and-test:
     name: Build and test (${{ matrix.name }})
-    needs: [plan, check-typos]
+    needs: [plan]
     if: ${{ needs.plan.outputs.has_build_matrix == 'true' }}
     strategy:
       fail-fast: false
@@ -379,7 +379,7 @@ jobs:
 
   check-docker:
     name: Check Docker image
-    needs: [plan, check-typos]
+    needs: [plan]
     if: ${{ needs.plan.outputs.run_docker == 'true' }}
     runs-on: ${{ matrix.os }}
     strategy:
@@ -426,7 +426,7 @@ jobs:
 
   build-and-test-in-container:
     name: Build and test in container (${{ matrix.name }})
-    needs: [plan, check-typos]
+    needs: [plan]
     if: ${{ needs.plan.outputs.has_container_matrix == 'true' }}
     strategy:
       fail-fast: false

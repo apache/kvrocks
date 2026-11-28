@@ -216,13 +216,12 @@ class TestCIPlan(unittest.TestCase):
         ):
             for job in jobs:
                 with self.subTest(tier=tier, job=job["name"]):
-                    self.assertEqual(job["go_parallel"], 2)
                     if job["with_sanitizer"]:
+                        self.assertEqual(job["go_parallel"], 1)
                         self.assertEqual(job["go_pkg_parallel"], 2)
-                    elif job["os"].startswith("macos"):
-                        self.assertEqual(job["go_pkg_parallel"], 3)
                     else:
-                        self.assertEqual(job["go_pkg_parallel"], 4)
+                        self.assertEqual(job["go_parallel"], 2)
+                        self.assertEqual(job["go_pkg_parallel"], 3 if job["os"].startswith("macos") else 4)
                     if job["os"] == "ubuntu-22.04" or job["with_sanitizer"]:
                         self.assertTrue(job["maximize_disk"])
 

@@ -130,7 +130,7 @@ def _job(
         "use_ccache": use_ccache,
         "maximize_disk": os_name == "ubuntu-22.04" or bool(with_sanitizer),
         "go_pkg_parallel": go_pkg_parallel,
-        "go_parallel": 2,
+        "go_parallel": 1 if with_sanitizer else 2,
         "skip_kvrocks2redis": skip_kvrocks2redis,
     }
 

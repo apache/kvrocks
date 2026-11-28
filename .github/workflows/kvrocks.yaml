@@ -197,7 +197,8 @@ jobs:
       - name: Setup macOS
         if: ${{ startsWith(matrix.os, 'macos') }}
         run: |
-          brew install --quiet --formula gcc autoconf automake libtool openssl coreutils ninja ccache
+          HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK=1 \
+            brew install --quiet --formula gcc autoconf automake libtool openssl coreutils ninja ccache
           echo "NPROC=$(sysctl -n hw.ncpu)" >> $GITHUB_ENV
           echo "CMAKE_EXTRA_DEFS=-DOPENSSL_ROOT_DIR=/usr/local/opt/openssl" >> $GITHUB_ENV
 
@@ -351,7 +352,7 @@ jobs:
       - name: Find reports and crashes
         if: always()
         run: |
-          SANITIZER_OUTPUT=$(grep "Sanitizer:" tests/gocase/workspace -r || true)
+          SANITIZER_OUTPUT=$(grep -rI "Sanitizer:" tests/gocase/workspace || true)
           if [[ $SANITIZER_OUTPUT ]]; then
             echo "found sanitizer reports:"
             echo "$SANITIZER_OUTPUT"
@@ -359,7 +360,7 @@ jobs:
             cat $(echo "$SANITIZER_OUTPUT" | awk -F ':' '{print $1}')
             exit 1
           fi
-          CRASHES=$(grep "Ooops!" tests/gocase/workspace -r || true)
+          CRASHES=$(grep -rI "Ooops!" tests/gocase/workspace || true)
           if [[ $CRASHES ]]; then
             echo "found crashes:"
             echo "$CRASHES"

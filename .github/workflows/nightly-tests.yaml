@@ -129,8 +129,7 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: 'tests/gocase/go.mod'
-          cache: true
-          cache-dependency-path: 'tests/gocase/go.sum'
+          cache: false
 
       - name: Build Kvrocks (RISC-V)
         run: |
@@ -240,11 +239,7 @@ jobs:
           sudo df -h
 
       - name: Setup Linux
-        run: |
-          sudo apt update
-          sudo apt install -y ccache
-          echo "NPROC=$(nproc)" >> "$GITHUB_ENV"
-          echo "CCACHE_DIR=$RUNNER_TEMP/ccache" >> "$GITHUB_ENV"
+        run: echo "NPROC=$(nproc)" >> "$GITHUB_ENV"
 
       - name: Cache redis
         id: cache-redis
@@ -275,37 +270,18 @@ jobs:
         run: |
           ./x.py fetch-deps ${{ env.KVROCKS_DEPS_CACHE_DIR }}
 
-      - name: Restore ccache
-        uses: actions/cache@v6
-        with:
-          path: ${{ env.CCACHE_DIR }}
-          key: ccache-ubuntu22-gcc-tsan--${{ github.sha }}
-          restore-keys: |
-            ccache-ubuntu22-gcc-tsan--
-      - name: Configure ccache
-        run: |
-          ccache --set-config=max_size=1G
-          ccache --set-config=compression=true
-          ccache --set-config=compiler_check=content
-          ccache --set-config=base_dir="$GITHUB_WORKSPACE"
-          ccache --set-config=hash_dir=false
-          ccache -z
-
       - uses: actions/setup-python@v7
         with:
           python-version: 3.x
       - uses: actions/setup-go@v7
         with:
           go-version-file: 'tests/gocase/go.mod'
-          cache: true
-          cache-dependency-path: 'tests/gocase/go.sum'
+          cache: false
 
       - name: Build Kvrocks (GCC TSan)
         run: |
           ./x.py build -j$NPROC --unittest --compiler gcc -DDISABLE_JEMALLOC=ON -DENABLE_TSAN=ON \
-            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             --dep-dir ${{ env.KVROCKS_DEPS_CACHE_DIR }}
-          ccache -s
 
       - name: Setup Coredump
         run: |
